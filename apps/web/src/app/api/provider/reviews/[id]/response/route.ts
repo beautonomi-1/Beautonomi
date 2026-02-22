@@ -1,3 +1,4 @@
+import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requirePermission } from "@/lib/auth/requirePermission";
 

@@ -76,6 +76,8 @@ const PersonalInfo: React.FC = () => {
   const [defaultCountryCode, setDefaultCountryCode] = useState<string>("+27");
   const [defaultCountry, setDefaultCountry] = useState<string>("South Africa");
   const [languages] = useState<string[]>(['English']);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
 
   // Load countries, default country code, and profile data
   useEffect(() => {

@@ -24,7 +24,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    const auth = await requireRoleInApi(["superadmin"]);
+    if (!auth) throw new Error("Authentication required");
     const supabase = await getSupabaseServer();
     const { id } = await params;
     const body = await request.json();
