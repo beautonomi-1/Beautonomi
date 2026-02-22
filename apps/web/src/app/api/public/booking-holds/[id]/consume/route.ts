@@ -1,0 +1,234 @@
+/**
+ * POST /api/public/booking-holds/[id]/consume
+ *
+ * Convert a hold into a booking. Requires auth.
+ * Called after guest completes Beautonomi Gate (OAuth/OTP).
+ */
+
+import { NextRequest } from "next/server";
+import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { z } from "zod";
+
+const consumeBodySchema = z.object({
+  client_info: z
+    .object({
+      firstName: z.string().min(1),
+      lastName: z.string().min(1),
+      email: z.string().email().optional(),
+      phone: z.string().optional(),
+    })
+    .optional(),
+  guest_fingerprint_hash: z.string().optional(),
+  payment_method: z.enum(["card", "cash", "giftcard"]).optional(),
+  payment_option: z.enum(["deposit", "full"]).optional(),
+  use_wallet: z.boolean().optional(),
+  gift_card_code: z.string().optional(),
+});
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: holdId } = await params;
+
+    if (!holdId) {
+      return handleApiError(
+        new Error("Hold ID is required"),
+        "Hold ID is required",
+        "VALIDATION_ERROR",
+        400
+      );
+    }
+
+    const supabase = await getSupabaseServer();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return handleApiError(
+        new Error("Authentication required"),
+        "Please sign in to complete your booking",
+        "AUTH_REQUIRED",
+        401
+      );
+    }
+
+    const body = await request.json();
+    const parsed = consumeBodySchema.safeParse(body);
+    const clientInfo = parsed.success ? parsed.data.client_info : undefined;
+    const guestFingerprint = parsed.success ? parsed.data.guest_fingerprint_hash : undefined;
+    const paymentMethod = parsed.success ? parsed.data.payment_method : undefined;
+    const paymentOption = parsed.success ? parsed.data.payment_option : undefined;
+    const useWallet = parsed.success ? parsed.data.use_wallet : undefined;
+    const giftCardCode = parsed.success ? parsed.data.gift_card_code : undefined;
+
+    const adminSupabase = getSupabaseAdmin();
+
+    const { data: hold, error: holdError } = await adminSupabase
+      .from("booking_holds")
+      .select("*")
+      .eq("id", holdId)
+      .single();
+
+    if (holdError || !hold) {
+      return handleApiError(
+        new Error("Hold not found"),
+        "Hold not found or expired",
+        "NOT_FOUND",
+        404
+      );
+    }
+
+    if (hold.hold_status !== "active") {
+      return handleApiError(
+        new Error("Hold is no longer active"),
+        hold.hold_status === "expired"
+          ? "Your hold has expired. Please select a new time."
+          : "This slot is no longer available.",
+        "HOLD_INACTIVE",
+        410
+      );
+    }
+
+    const expiresAt = new Date(hold.expires_at);
+    if (expiresAt < new Date()) {
+      return handleApiError(
+        new Error("Hold has expired"),
+        "Your hold has expired. Please select a new time.",
+        "HOLD_EXPIRED",
+        410
+      );
+    }
+
+    // Verify ownership: user created it, guest fingerprint matches, or guest hold (created before auth)
+    const userOwnsHold = hold.created_by_user_id === user.id;
+    const fingerprintMatch =
+      hold.guest_fingerprint_hash &&
+      guestFingerprint &&
+      hold.guest_fingerprint_hash === guestFingerprint;
+    // Guest hold: created before auth; user completed OAuth and landed on /book/continue?hold_id=...
+    const isGuestHold = hold.created_by_user_id === null;
+
+    if (!userOwnsHold && !fingerprintMatch && !isGuestHold) {
+      return handleApiError(
+        new Error("Hold does not belong to this session"),
+        "This hold cannot be used. Please start a new booking.",
+        "HOLD_OWNERSHIP",
+        403
+      );
+    }
+
+    // Build booking draft from hold snapshot
+    const snapshot = hold.booking_services_snapshot as Array<{
+      offering_id: string;
+      staff_id: string | null;
+      duration_minutes: number;
+      price: number;
+      currency: string;
+      scheduled_start_at: string;
+      scheduled_end_at: string;
+    }>;
+
+    const services = snapshot.map((s) => ({
+      offering_id: s.offering_id,
+      staff_id: s.staff_id,
+    }));
+
+    const selectedDatetime = hold.start_at;
+
+    const address = hold.address_snapshot as Record<string, unknown> | null;
+    const addressFormatted =
+      hold.location_type === "at_home" && address
+        ? {
+            line1: String(address.line1 ?? address.address_line1 ?? ""),
+            line2: address.line2 as string | undefined,
+            city: String(address.city ?? address.address_city ?? ""),
+            state: (address.state ?? address.address_state) as string | undefined,
+            country: String(address.country ?? address.address_country ?? ""),
+            postal_code: (address.postal_code ?? address.address_postal_code) as string | undefined,
+            latitude: address.latitude as number | undefined,
+            longitude: address.longitude as number | undefined,
+          }
+        : undefined;
+
+    const holdMeta = (hold.metadata as Record<string, unknown>) || {};
+    const travelFeeFromHold = holdMeta.travel_fee != null ? Number(holdMeta.travel_fee) : 0;
+
+    const draft = {
+      provider_id: hold.provider_id,
+      services,
+      selected_datetime: selectedDatetime,
+      location_type: hold.location_type,
+      location_id: hold.location_id,
+      address: addressFormatted,
+      travel_fee: travelFeeFromHold,
+      client_info: clientInfo ?? {
+        firstName: user.user_metadata?.full_name?.split(" ")[0] ?? "Guest",
+        lastName: user.user_metadata?.full_name?.split(" ").slice(1).join(" ") ?? "User",
+        email: user.email ?? undefined,
+        phone: user.user_metadata?.phone ?? undefined,
+      },
+      payment_method: paymentMethod ?? "card",
+      payment_option: paymentOption ?? "deposit",
+      use_wallet: useWallet ?? false,
+      gift_card_code: giftCardCode ?? null,
+      booking_source: "online" as const,
+      hold_id: holdId,
+    };
+
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : new URL(request.url).origin;
+
+    const cookieHeader = request.headers.get("cookie") || "";
+
+    const bookingRes = await fetch(`${baseUrl}/api/public/bookings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: cookieHeader,
+      },
+      body: JSON.stringify(draft),
+    });
+
+    const bookingData = await bookingRes.json();
+
+    if (!bookingRes.ok) {
+      const errMsg =
+        bookingData?.error?.message ||
+        `Booking failed (${bookingRes.status})`;
+      return handleApiError(
+        new Error(errMsg),
+        errMsg,
+        bookingData?.error?.code || "BOOKING_FAILED",
+        bookingRes.status
+      );
+    }
+
+    // Mark hold as consumed
+    await adminSupabase
+      .from("booking_holds")
+      .update({
+        hold_status: "consumed",
+        created_by_user_id: user.id,
+        metadata: {
+          ...((hold.metadata as Record<string, unknown>) || {}),
+          booking_id: bookingData?.data?.booking_id,
+          consumed_at: new Date().toISOString(),
+        },
+      })
+      .eq("id", holdId);
+
+    return successResponse({
+      booking_id: bookingData?.data?.booking_id,
+      booking_number: bookingData?.data?.booking_number,
+      payment_url: bookingData?.data?.payment_url,
+    });
+  } catch (error) {
+    return handleApiError(error, "Failed to complete booking");
+  }
+}

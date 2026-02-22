@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================================
+   MANGOMINT-STYLE CALENDAR CSS VARIABLES
+   ============================================================================ */
+
+@layer base {
+  :root {
+    /* Status Colors - Normal Mode */
+    --status-unconfirmed: #FEC89A;
+    --status-unconfirmed-border: #F97316;
+    --status-unconfirmed-text: #9D4E00;
+    
+    --status-confirmed: #93C5FD;
+    --status-confirmed-border: #3B82F6;
+    --status-confirmed-text: #1E40AF;
+    
+    --status-waiting: #C4B5FD;
+    --status-waiting-border: #8B5CF6;
+    --status-waiting-text: #5B21B6;
+    
+    --status-in-service: #F9A8D4;
+    --status-in-service-border: #EC4899;
+    --status-in-service-text: #9D174D;
+    
+    --status-completed: #9CA3AF;
+    --status-completed-border: #6B7280;
+    --status-completed-text: #374151;
+    
+    --status-canceled: #D1D5DB;
+    --status-canceled-border: #9CA3AF;
+    --status-canceled-text: #6B7280;
+    
+    --status-no-show: #FCA5A5;
+    --status-no-show-border: #EF4444;
+    --status-no-show-text: #991B1B;
+    
+    /* Calendar Backgrounds */
+    --calendar-working-bg: #FFFFFF;
+    --calendar-non-working-bg: #F9FAFB;
+    --calendar-now-line: #EF4444;
+    --calendar-grid-line: #E5E7EB;
+    --calendar-hover-bg: rgba(0, 0, 0, 0.02);
+    
+    /* Block Colors */
+    --block-time-bg: #E5E7EB;
+    --block-time-border: #9CA3AF;
+    --block-time-text: #4B5563;
+    --block-travel-bg: #DBEAFE;
+    --block-travel-border: #60A5FA;
+    --block-travel-text: #1E40AF;
+    
+    /* Segment Overlays */
+    --segment-buffer-opacity: 0.5;
+    --segment-processing-overlay: rgba(0, 0, 0, 0.08);
+    --segment-finishing-overlay: rgba(255, 255, 255, 0.3);
+  }
+  
+  /* High Contrast Mode */
+  .high-contrast {
+    --calendar-non-working-bg: #1F2937;
+    --calendar-grid-line: #374151;
+    --calendar-hover-bg: rgba(255, 255, 255, 0.05);
+    
+    --status-unconfirmed: #FB923C;
+    --status-unconfirmed-border: #EA580C;
+    --status-unconfirmed-text: #FFF7ED;
+    
+    --status-confirmed: #60A5FA;
+    --status-confirmed-border: #2563EB;
+    --status-confirmed-text: #EFF6FF;
+    
+    --status-waiting: #A78BFA;
+    --status-waiting-border: #7C3AED;
+    --status-waiting-text: #F5F3FF;
+    
+    --status-in-service: #F472B6;
+    --status-in-service-border: #DB2777;
+    --status-in-service-text: #FDF2F8;
+    
+    --status-completed: #6B7280;
+    --status-completed-border: #4B5563;
+    --status-completed-text: #F9FAFB;
+    
+    --status-canceled: #4B5563;
+    --status-canceled-border: #374151;
+    --status-canceled-text: #9CA3AF;
+    
+    --status-no-show: #F87171;
+    --status-no-show-border: #DC2626;
+    --status-no-show-text: #FEF2F2;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-area-inset {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* WhatsApp-like messaging styles */
+  .whatsapp-message-bubble {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  /* Smooth scrolling for messages */
+  .messages-container {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Mobile-first touch targets */
+  @media (max-width: 768px) {
+    .message-input {
+      font-size: 16px; /* Prevents zoom on iOS */
+    }
+  }
+
+  /* Squircle (super-ellipse) shape - organic, high-end rounded corners */
+  /* Using a larger border-radius to approximate the squircle/super-ellipse shape */
+  .squircle {
+    border-radius: 28px;
+  }
+
+  @media (min-width: 768px) {
+    .squircle {
+      border-radius: 32px;
+    }
+  }
+
+  /* Alternative: True squircle using clip-path (more accurate but less browser support) */
+  .squircle-true {
+    clip-path: polygon(
+      0% 12%, 12% 0%, 88% 0%, 100% 12%,
+      100% 88%, 88% 100%, 12% 100%, 0% 88%
+    );
+  }
+}

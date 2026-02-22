@@ -1,0 +1,26 @@
+-- Beautonomi Database Migration
+-- 104_create_verification_documents_bucket.sql
+-- Instructions for creating the verification-documents storage bucket
+--
+-- IMPORTANT: Storage buckets cannot be created via SQL migrations.
+-- This bucket must be created manually via Supabase Dashboard or CLI.
+--
+-- Steps to create the bucket:
+-- 1. Go to Supabase Dashboard: https://app.supabase.com
+-- 2. Select your project
+-- 3. Navigate to: Storage → New Bucket
+-- 4. Configure:
+--    - Name: verification-documents
+--    - Public: false (private bucket)
+--    - File size limit: 10 MB (recommended)
+--    - Allowed MIME types: image/jpeg, image/png, image/webp, application/pdf
+-- 5. Click "Create bucket"
+--
+-- After creating the bucket, the RLS policies from migration 085_verification_documents_storage_policies.sql
+-- will automatically apply to secure access to the documents.
+--
+-- Note: If you're using Supabase CLI, you can create the bucket with:
+-- supabase storage create verification-documents --public false
+
+-- This migration file serves as documentation only.
+-- No SQL statements are executed here.

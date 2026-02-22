@@ -1,0 +1,14 @@
+# Ignore files from Next.js compilation to speed up builds
+*.md
+!README.md
+docs/
+scripts/
+supabase/migrations/*.sql
+*.sql
+.env.local
+.env*.local
+node_modules/
+.next/
+.git/
+*.log
+*.tsbuildinfo

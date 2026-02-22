@@ -1,0 +1,2 @@
+# This directory contains server-only code
+# Files in this directory should never be imported in client components
