@@ -10,21 +10,11 @@
  */
 
 import { NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { sendMessage } from "@/lib/marketing/unified-service";
 import { subDays, subMinutes } from "date-fns";
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  }
-);
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * POST /api/provider/automations/execute
@@ -47,6 +37,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
     const now = new Date();
     const executedAutomations: string[] = [];
     const errors: Array<{ automationId: string; error: string }> = [];
@@ -71,7 +62,7 @@ export async function POST(request: NextRequest) {
     // Process each automation
     for (const automation of automations) {
       try {
-        const shouldExecute = await shouldExecuteAutomation(automation, now);
+        const shouldExecute = await shouldExecuteAutomation(supabaseAdmin, automation, now);
         
         if (!shouldExecute.shouldRun) {
           continue;
@@ -79,6 +70,7 @@ export async function POST(request: NextRequest) {
 
         // Get the target customer(s) for this automation
         const customers = await getAutomationRecipients(
+          supabaseAdmin,
           automation.provider_id,
           automation.trigger_type,
           automation.trigger_config,
@@ -108,6 +100,7 @@ export async function POST(request: NextRequest) {
           try {
             // Check if we've already sent this automation to this customer recently
             const alreadySent = await checkIfAlreadySent(
+              supabaseAdmin,
               automation.id,
               customer.id,
               shouldExecute.context
@@ -148,6 +141,7 @@ export async function POST(request: NextRequest) {
             } else {
               // Log successful execution to prevent duplicates
               await logAutomationExecution(
+                supabaseAdmin,
                 automation.id,
                 customer.id,
                 result.messageId ?? "",
@@ -186,6 +180,7 @@ export async function POST(request: NextRequest) {
  * Determine if an automation should be executed now
  */
 async function shouldExecuteAutomation(
+  supabaseAdmin: SupabaseClient,
   automation: any,
   now: Date
 ): Promise<{ shouldRun: boolean; context?: any }> {
@@ -523,6 +518,7 @@ async function shouldExecuteAutomation(
  * Get recipients for an automation based on trigger context
  */
 async function getAutomationRecipients(
+  supabaseAdmin: SupabaseClient,
   providerId: string,
   triggerType: string,
   triggerConfig: any,
@@ -750,6 +746,7 @@ async function getAutomationMessage(
  * Check if automation was already sent to this customer
  */
 async function checkIfAlreadySent(
+  supabaseAdmin: SupabaseClient,
   automationId: string,
   customerId: string,
   _context: any
@@ -808,6 +805,7 @@ function personalizeMessage(
  * Log automation execution to prevent duplicate sends
  */
 async function logAutomationExecution(
+  supabaseAdmin: SupabaseClient,
   automationId: string,
   customerId: string,
   messageId: string,
