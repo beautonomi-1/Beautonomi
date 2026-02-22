@@ -29,7 +29,7 @@ export default function PlatformLogo({
   const isExternalUrl = typeof safeLogoUrl === "string" && (safeLogoUrl.startsWith("http://") || safeLogoUrl.startsWith("https://"));
 
   // Determine if it's an imported image object (has src property) or a string path
-  const isImportedImage = typeof safeLogoUrl === "object" && safeLogoUrl !== null && "src" in safeLogoUrl;
+  const isImportedImage = typeof safeLogoUrl === "object" && safeLogoUrl !== null && "src" in (safeLogoUrl as object);
   
   // Default dimensions if not provided (w-44 = 176px, typical logo aspect ratio)
   const defaultWidth = width || 176;
