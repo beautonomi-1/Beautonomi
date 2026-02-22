@@ -23,7 +23,7 @@ export default function PlatformLogo({
 
   // Use platform logo if available, otherwise fallback to default (normalize null to fallback)
   const logoUrl = branding?.logo_url ?? logo;
-  const safeLogoUrl = logoUrl ?? "/images/logo.svg";
+  const safeLogoUrl: string | typeof logo = (logoUrl ?? "/images/logo.svg") ?? "/images/logo.svg";
 
   // Determine if it's an external URL
   const isExternalUrl = typeof safeLogoUrl === "string" && (safeLogoUrl.startsWith("http://") || safeLogoUrl.startsWith("https://"));
