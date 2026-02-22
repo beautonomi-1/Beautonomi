@@ -1,6 +1,8 @@
 import { fetchExplorePosts } from "@/lib/explore/fetch-posts";
 import { ExploreFeed } from "@/components/explore/ExploreFeed";
 
+export const dynamic = "force-dynamic";
+
 export default async function ExplorePage() {
   const initialPosts = await fetchExplorePosts(20);
   return (

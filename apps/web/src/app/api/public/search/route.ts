@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import type { SearchFilters, SearchResult } from "@/types/beautonomi";
 
+export const dynamic = "force-dynamic";
 // Cache search results for 30 seconds
 export const revalidate = 30;
 

@@ -8,6 +8,8 @@ import Breadcrumb from "@/components/ui/breadcrumb";
 import BottomNav from "@/components/layout/bottom-nav";
 import BackButton from "@/app/account-settings/components/back-button";
 
+export const dynamic = "force-dynamic";
+
 async function calculateCompletionData(
   supabase: any,
   userId: string,

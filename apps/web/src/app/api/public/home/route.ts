@@ -4,6 +4,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import type { PublicProviderCard } from "@/types/beautonomi";
 
+export const dynamic = "force-dynamic";
 // Increase timeout for this route (Next.js default is 10s, we need more for parallel queries)
 export const maxDuration = 30;
 // Cache response for 60 seconds (revalidate every minute)
