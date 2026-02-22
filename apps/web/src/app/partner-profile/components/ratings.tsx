@@ -1,5 +1,7 @@
 import React from "react";
-import Image, { StaticImageData } from "next/image";
+import Image, { type StaticImageData } from "next/image";
+
+type ImgSrc = StaticImageData | string;
 import Image1 from "./../../../../public/images/33b80859-e87e-4c86-841c-645c786ba4c1.png";
 import Image2 from "./../../../../public/images/059619e1-1751-42dd-84e4-50881483571a(1).png";
 import CleaningSpray from "./../../../../public/images/cleaning-spray.svg";
@@ -12,7 +14,7 @@ import Tag from "./../../../../public/images/outlined-tag.svg";
 interface RatingCategory {
   label: string;
   value: string;
-  image: StaticImageData; 
+  image: ImgSrc;
 }
 
 interface RatingsProps {

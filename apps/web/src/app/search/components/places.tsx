@@ -23,7 +23,12 @@ import type { PublicProviderCard, SearchResult } from "@/types/beautonomi";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 
 // Import the location marker image
+import type { StaticImageData } from "next/image";
 import locationMarker from "../../../../public/images/map-marker.svg";
+
+function toMarkerSrc(src: string | StaticImageData): string {
+  return typeof src === "string" ? src : src.src;
+}
 
 interface Listing {
   id: string;
@@ -233,7 +238,7 @@ export default function Places() {
             anchor: [0.5, 1],
             anchorXUnits: "fraction",
             anchorYUnits: "fraction",
-            src: locationMarker.src,
+            src: toMarkerSrc(locationMarker),
             scale: scale * 0.5,
           }),
           text: new Text({

@@ -1,4 +1,4 @@
-import Image, { StaticImageData } from "next/image";
+import Image, { type StaticImageData } from "next/image";
 import Access from "./../../public/images/accessing-your-account-optimized.jpg";
 import Paid from "./../../public/images/getting-paid-optimized.jpg";
 import Help from "./../../public/images/help-with-hosting-optimized.jpg";
@@ -7,12 +7,14 @@ import Started from "./../../public/images/started.svg";
 import Arrow from "./../../public/images/Arrow.svg";
 import Link from "next/link";
 
+type ImgSrc = StaticImageData | string;
+
 interface Guide {
   link: string;
-  src: StaticImageData;
+  src: ImgSrc;
   alt: string;
   description: string;
-  mobileSrc: StaticImageData;
+  mobileSrc: ImgSrc;
 }
 
 const guides: Guide[] = [

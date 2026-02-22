@@ -652,11 +652,15 @@ const ProviderDetails = () => {
                         key={itemIndex}
                         className="flex items-center border-b mb-6 pb-6"
                       >
-                        <Image
-                          src={item.image}
-                          alt=""
-                          className="h-6 w-6 mr-2"
-                        />
+                        {typeof item.image === "function" ? (
+                          <item.image className="h-6 w-6 mr-2" />
+                        ) : (
+                          <Image
+                            src={item.image}
+                            alt=""
+                            className="h-6 w-6 mr-2"
+                          />
+                        )}
                         <p className="text-base font-light  text-secondary">
                           {item.text}
                         </p>
