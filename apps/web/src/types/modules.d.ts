@@ -1,2 +1,28 @@
 declare module 'react-quill';
 declare module 'react-leaflet';
+
+// Asset imports (so TypeScript accepts image/media paths without resolving file on disk)
+declare module '*.svg' {
+  const src: string;
+  export default src;
+}
+declare module '*.png' {
+  const src: string;
+  export default src;
+}
+declare module '*.jpg' {
+  const src: string;
+  export default src;
+}
+declare module '*.jpeg' {
+  const src: string;
+  export default src;
+}
+declare module '*.webp' {
+  const src: string;
+  export default src;
+}
+declare module '*.gif' {
+  const src: string;
+  export default src;
+}
