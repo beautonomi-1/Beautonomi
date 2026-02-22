@@ -1,0 +1,17 @@
+/**
+ * Beautonomi border radius scale
+ * Soft, consistent radii for web + RN
+ */
+
+export const radius = {
+  0: 0,
+  none: 0,
+  sm: 2,
+  DEFAULT: 6,
+  md: 6,
+  lg: 8,
+  xl: 12,
+  "2xl": 16,
+  "3xl": 24,
+  full: 9999,
+} as const;

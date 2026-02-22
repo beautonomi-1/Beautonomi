@@ -1,0 +1,18 @@
+{
+  "name": "@beautonomi/ui",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./native": "./src/native/index.ts",
+    "./web": "./src/web/index.ts"
+  },
+  "dependencies": {
+    "@beautonomi/ui-tokens": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  }
+}

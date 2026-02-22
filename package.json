@@ -1,0 +1,31 @@
+{
+  "name": "beautonomi-monorepo",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm exec turbo run dev",
+    "dev:web": "pnpm exec turbo run dev --filter=web",
+    "dev:backend": "pnpm exec turbo run dev --filter=web",
+    "dev:customer": "pnpm --filter customer dev",
+    "dev:provider": "pnpm --filter provider dev",
+    "build": "pnpm exec turbo run build",
+    "lint": "pnpm exec turbo run lint",
+    "typecheck": "pnpm exec turbo run typecheck",
+    "test": "pnpm exec turbo run test",
+    "clean": "pnpm exec turbo run clean && npx rimraf node_modules",
+    "typecheck:web": "pnpm exec turbo run typecheck --filter=web",
+    "typecheck:customer": "pnpm exec turbo run typecheck --filter=customer",
+    "typecheck:provider": "pnpm exec turbo run typecheck --filter=provider",
+    "lint:fix": "pnpm exec turbo run lint -- --fix",
+    "build:web": "pnpm exec turbo run build --filter=web",
+    "build:packages": "pnpm exec turbo run build --filter='./packages/*'",
+    "parity:check": "node tooling/parity/check-parity.mjs",
+    "audit:routes": "node tooling/audit/scan-routes.mjs",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md}\"",
+    "setup:env": "node scripts/setup-env.js",
+    "setup": "pnpm install && node scripts/setup-env.js"
+  },
+  "devDependencies": {
+    "turbo": "^2.8.8"
+  }
+}

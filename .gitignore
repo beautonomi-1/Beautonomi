@@ -1,0 +1,52 @@
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Editor ---
+.vscode/
+.idea/
+
+# --- Node / Monorepo ---
+node_modules/
+.pnpm-store/
+.turbo/
+.next/
+dist/
+build/
+out/
+coverage/
+*.log
+*.tsbuildinfo
+test-report.json
+
+# --- Environment / Secrets ---
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+apps/**/.env
+apps/**/.env.local
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.keystore
+credentials.json
+secrets.*
+**/secrets/**
+
+# --- Mobile / Expo ---
+.expo/
+google-services.json
+google-services-key.json
+GoogleService-Info.plist
+ios/Pods/
+android/.gradle/
+android/local.properties
+
+# --- Vercel ---
+.vercel/
