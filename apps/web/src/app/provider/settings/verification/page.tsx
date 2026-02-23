@@ -87,14 +87,14 @@ export default function VerificationPage() {
 
   if (loading) {
     return (
-      <SettingsDetailLayout title="Identity verification" description="Verify your identity with Sumsub (KYC).">
+      <SettingsDetailLayout title="Identity verification" subtitle="Verify your identity with Sumsub (KYC).">
         <LoadingTimeout loadingMessage="Loading..." />
       </SettingsDetailLayout>
     );
   }
 
   return (
-    <SettingsDetailLayout title="Identity verification" description="Verify your identity for payouts and compliance.">
+    <SettingsDetailLayout title="Identity verification" subtitle="Verify your identity for payouts and compliance.">
       {!enabled && (
         <Alert className="mb-6">
           <AlertDescription>Verification is not enabled for your region. Contact support if you need to verify.</AlertDescription>

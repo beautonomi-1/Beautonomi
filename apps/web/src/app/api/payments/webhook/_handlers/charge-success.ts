@@ -80,7 +80,7 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
       return;
     }
     if (metadata?.ads_budget_order_id) {
-      await handleAdsBudgetOrderSuccess({ reference, metadata, amount, fees, customer }, supabase);
+      await handleAdsBudgetOrderSuccess({ reference, metadata, amount, fees }, supabase);
       return;
     }
     console.error("Missing reference or booking_id in payment data");

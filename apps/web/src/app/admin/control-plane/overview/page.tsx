@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ToggleLeft, Plug, Music, Sparkles, ListChecks, Megaphone, TrendingUp, MapPin } from "lucide-react";
+import { ToggleLeft, Plug, Music, Sparkles, ListChecks, Megaphone, TrendingUp, MapPin, ShieldAlert } from "lucide-react";
 import {
   Select,
   SelectContent,

@@ -220,7 +220,7 @@ export async function PUT(request: Request) {
         const mapbox = (settings.mapbox as Record<string, unknown>) || {};
         settings.mapbox = {
           ...mapbox,
-          public_token: publicTokenForClients || (mapbox.public_token as string) ?? "",
+          public_token: (publicTokenForClients || (mapbox.public_token as string)) ?? "",
           enabled: validationResult.data.is_enabled,
         };
         await (admin.from("platform_settings") as any)
@@ -230,7 +230,7 @@ export async function PUT(request: Request) {
     } catch (syncErr) {
       console.warn("Mapbox config sync to platform_settings failed (non-blocking):", syncErr);
     }
-    revalidateTag("platform-settings");
+    revalidateTag("platform-settings", "default");
 
     // Mask token in response
     const maskedConfig = {

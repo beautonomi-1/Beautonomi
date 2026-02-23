@@ -1676,7 +1676,7 @@ export async function GET(request: Request) {
     const radiusKmParam = new URL(request.url).searchParams.get("radius_km");
     const radiusKm = radiusKmParam ? parseFloat(radiusKmParam) : null;
 
-    let data = result?.data ?? { all: [], topRated: [], nearest: [], hottest: [], upcoming: [], browseByCity: [] };
+    let data = result?.data ?? { all: [], topRated: [], nearest: [], hottest: [], upcoming: [], browseByCity: [], sponsored: [] as PublicProviderCard[] };
     const sponsored: PublicProviderCard[] = [];
 
     if (distanceRow?.data?.enabled && radiusKm != null && radiusKm > 0 && Array.isArray(data.nearest)) {
@@ -1731,7 +1731,7 @@ export async function GET(request: Request) {
           }
         }
       }
-      data = { ...data, sponsored };
+      data = { ...data, sponsored } as typeof data & { sponsored: PublicProviderCard[] };
     }
 
     const response = NextResponse.json({ ...result, data });

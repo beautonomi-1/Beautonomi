@@ -249,7 +249,7 @@ export default function ProviderAdsPage() {
 
   if (loading) {
     return (
-      <SettingsDetailLayout title="Paid ads" description="Boost your visibility with sponsored slots.">
+      <SettingsDetailLayout title="Paid ads" subtitle="Boost your visibility with sponsored slots.">
         <LoadingTimeout loadingMessage="Loading..." />
       </SettingsDetailLayout>
     );
@@ -258,7 +258,7 @@ export default function ProviderAdsPage() {
   return (
     <SettingsDetailLayout
       title="Growth & Marketing — Paid ads"
-      description="Create and manage boosted profile campaigns. Placement in search depends on your bid, profile quality, and relevance to the customer. Set daily or total budget and target specific categories."
+      subtitle="Create and manage boosted profile campaigns. Placement in search depends on your bid, profile quality, and relevance to the customer. Set daily or total budget and target specific categories."
     >
       {!enabled && (
         <Alert className="mb-6">
@@ -353,6 +353,7 @@ export default function ProviderAdsPage() {
                       {cat.name}
                     </label>
                   ))}
+                </div>
                 </div>
               )}
               {packs.length > 0 && (

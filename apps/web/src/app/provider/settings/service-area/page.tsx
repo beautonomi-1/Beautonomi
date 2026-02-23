@@ -82,14 +82,14 @@ export default function ServiceAreaPage() {
 
   if (loading) {
     return (
-      <SettingsDetailLayout title="Service area" description="Set your service radius or zones for house calls.">
+      <SettingsDetailLayout title="Service area" subtitle="Set your service radius or zones for house calls.">
         <LoadingTimeout loadingMessage="Loading..." />
       </SettingsDetailLayout>
     );
   }
 
   return (
-    <SettingsDetailLayout title="Service area" description="Define how far you travel for at-home bookings (Tinder-style radius).">
+    <SettingsDetailLayout title="Service area" subtitle="Define how far you travel for at-home bookings (Tinder-style radius).">
       {!enabled && (
         <Alert className="mb-6">
           <AlertDescription>Service area is not enabled. Enable the distance module in Control Plane to use this.</AlertDescription>
