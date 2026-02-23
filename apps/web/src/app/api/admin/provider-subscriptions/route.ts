@@ -8,8 +8,8 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const providerId = searchParams.get("provider_id");
     const status = searchParams.get("status");

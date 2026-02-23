@@ -102,7 +102,8 @@ export async function getAllFeatureFlags(): Promise<FeatureFlag[]> {
     }
 
     const data = await response.json();
-    return data.featureFlags ?? [];
+    if (data.error) throw new Error(data.error.message ?? 'Failed to fetch feature flags');
+    return data.data ?? [];
   } catch (error) {
     console.error('Error fetching feature flags:', error);
     throw error;
@@ -158,13 +159,12 @@ export async function createFeatureFlag(
       body: JSON.stringify(featureFlag),
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to create feature flag');
-    }
-
     const data = await response.json();
-    return data.featureFlag;
+    if (!response.ok) {
+      throw new Error(data.error?.message || data.error || 'Failed to create feature flag');
+    }
+    if (data.error) throw new Error(data.error.message ?? 'Failed to create feature flag');
+    return data.data;
   } catch (error) {
     console.error('Error creating feature flag:', error);
     throw error;

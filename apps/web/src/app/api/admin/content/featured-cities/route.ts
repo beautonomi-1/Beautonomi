@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
@@ -20,14 +20,14 @@ void _updateCitySchema;
  * 
  * Get all featured cities
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const auth = await requireRole(["superadmin"]);
     if (!auth) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Get cities with provider count
     const { data: cities, error } = await supabase
@@ -90,14 +90,14 @@ export async function GET() {
  * 
  * Create a new featured city
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const auth = await requireRole(["superadmin"]);
     if (!auth) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     // Validate request body

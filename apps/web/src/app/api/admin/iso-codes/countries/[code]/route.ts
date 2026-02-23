@@ -26,7 +26,7 @@ export async function GET(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: country, error } = await supabase
       .from("iso_countries")
@@ -80,7 +80,7 @@ export async function PUT(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validationResult = updateCountrySchema.safeParse(body);
@@ -166,7 +166,7 @@ export async function DELETE(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Check if country is default
     const { data: country } = await supabase

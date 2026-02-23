@@ -130,7 +130,7 @@ export default function AdminAddons() {
   const filteredAddons = filterType === "all" ? addons : addons.filter((a) => a.type === filterType);
 
   return (
-    <RoleGuard allowedRoles={["provider_owner"]}>
+    <RoleGuard allowedRoles={["superadmin", "provider_owner"]} redirectTo="/admin/dashboard">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="mb-6 flex justify-between items-center">
           <div>

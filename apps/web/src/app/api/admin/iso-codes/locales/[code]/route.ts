@@ -23,7 +23,7 @@ export async function GET(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: locale, error } = await supabase
       .from("iso_locales")
@@ -77,7 +77,7 @@ export async function PUT(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validationResult = updateLocaleSchema.safeParse(body);
@@ -163,7 +163,7 @@ export async function DELETE(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Check if locale is default
     const { data: locale } = await supabase

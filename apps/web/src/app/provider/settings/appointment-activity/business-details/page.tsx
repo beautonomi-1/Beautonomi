@@ -13,8 +13,10 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { CustomFieldsForm } from "@/components/custom-fields/CustomFieldsForm";
 
 interface BusinessDetailsData {
+  providerId?: string;
   businessName: string;
   timezone: string;
   timeFormat: "12h" | "24h";
@@ -275,6 +277,20 @@ export default function BusinessDetailsSettings() {
           </div>
         </div>
       </SectionCard>
+
+      {/* Custom fields (platform-defined extra info) */}
+      {formData.providerId && (
+        <SectionCard title="Additional information" className="w-full">
+          <p className="text-sm text-muted-foreground mb-4">
+            Extra details defined by the platform (e.g. registration number, specialties). Save with the button below.
+          </p>
+          <CustomFieldsForm
+            entityType="provider"
+            entityId={formData.providerId}
+            showSaveButton={true}
+          />
+        </SectionCard>
+      )}
 
       {/* Language Settings */}
       <SectionCard title="Language Settings" className="w-full">

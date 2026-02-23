@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { ArrowLeft } from "lucide-react";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 export default function ControlPlaneFeatureFlagsPage() {
   const [flags, setFlags] = useState<Array<Record<string, unknown>>>([]);
@@ -34,8 +35,8 @@ export default function ControlPlaneFeatureFlagsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetcher.get<{ featureFlags: Array<Record<string, unknown>> }>("/api/admin/feature-flags");
-        setFlags(res.featureFlags ?? []);
+        const res = await fetcher.get<{ data: Array<Record<string, unknown>> }>("/api/admin/feature-flags");
+        setFlags(res.data ?? []);
       } catch {
         toast.error("Failed to load feature flags");
       } finally {
@@ -60,6 +61,7 @@ export default function ControlPlaneFeatureFlagsPage() {
   };
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Link href="/admin/control-plane/overview">
@@ -172,5 +174,6 @@ export default function ControlPlaneFeatureFlagsPage() {
         </Card>
       )}
     </div>
+    </RoleGuard>
   );
 }

@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { format } from "date-fns";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface SystemHealth {
   overall_status: "healthy" | "degraded" | "down";
@@ -67,19 +68,45 @@ export default function MonitoringPage() {
     }
   }, [autoRefresh, timeframe]); // eslint-disable-line react-hooks/exhaustive-deps -- load on mount and when options change
 
+  const emptyErrorStats: ErrorStats = {
+    total: 0,
+    by_severity: {},
+    by_endpoint: [],
+    recent_errors: [],
+  };
+
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [healthResponse, errorsResponse] = await Promise.all([
+      setError(null);
+
+      const [healthResult, errorsResult] = await Promise.allSettled([
         fetcher.get<{ data: SystemHealth }>("/api/admin/monitoring/health?hours=24"),
-        fetcher.get<{ data: { stats: ErrorStats; logs: any[] } }>(
+        fetcher.get<{ data: { stats: ErrorStats; logs: unknown[] } }>(
           `/api/admin/monitoring/errors?timeframe=${timeframe}`
         ),
       ]);
 
-      setHealth(healthResponse.data);
-      setErrorStats(errorsResponse.data.stats);
-      setError(null);
+      const health =
+        healthResult.status === "fulfilled" && healthResult.value?.data != null
+          ? healthResult.value.data
+          : null;
+      const stats =
+        errorsResult.status === "fulfilled" && errorsResult.value?.data?.stats != null
+          ? errorsResult.value.data.stats
+          : emptyErrorStats;
+
+      setHealth(health);
+      setErrorStats(stats);
+
+      if (healthResult.status === "rejected" && errorsResult.status === "rejected") {
+        const msg =
+          healthResult.reason instanceof Error
+            ? healthResult.reason.message
+            : "Failed to load monitoring data";
+        setError(msg);
+        toast.error(msg);
+      }
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : "Failed to load monitoring data";
       setError(errorMessage);
@@ -119,16 +146,19 @@ export default function MonitoringPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading monitoring data..." />
-      </div>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
+        <div className="container mx-auto px-4 py-8">
+          <LoadingTimeout loadingMessage="Loading monitoring data..." />
+        </div>
+      </RoleGuard>
     );
   }
 
   if (error) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <EmptyState
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
+        <div className="container mx-auto px-4 py-8">
+          <EmptyState
           title="Failed to load monitoring data"
           description={error}
           action={{
@@ -136,11 +166,13 @@ export default function MonitoringPage() {
             onClick: loadData,
           }}
         />
-      </div>
+        </div>
+      </RoleGuard>
     );
   }
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -170,7 +202,15 @@ export default function MonitoringPage() {
           </TabsList>
 
           <TabsContent value="health" className="space-y-4">
-            {health && (
+            {!health ? (
+              <Card>
+                <CardContent className="py-8">
+                  <p className="text-muted-foreground text-center">
+                    No health data available. Health checks may not be configured or the API failed to load.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
               <>
                 {/* Overall Status */}
                 <Card>
@@ -381,5 +421,6 @@ export default function MonitoringPage() {
           </TabsContent>
         </Tabs>
       </div>
+    </RoleGuard>
   );
 }

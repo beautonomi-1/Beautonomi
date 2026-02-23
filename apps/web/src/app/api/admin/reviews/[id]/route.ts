@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { successResponse, errorResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { writeAuditLog } from "@/lib/audit/audit";
@@ -27,7 +27,7 @@ export async function GET(
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
 
     const { data: review, error } = await supabase
@@ -52,7 +52,7 @@ export async function GET(
         created_at,
         updated_at,
         customer:users!reviews_customer_id_fkey(id, full_name, email, avatar_url),
-        provider:providers!reviews_provider_id_fkey(id, business_name, logo_url),
+        provider:providers!reviews_provider_id_fkey(id, business_name, thumbnail_url),
         booking:bookings(id, booking_number, status)
       `)
       .eq("id", id)
@@ -83,7 +83,7 @@ export async function PATCH(
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
     const body = await request.json();
 
@@ -169,7 +169,7 @@ export async function DELETE(
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
 
     // Verify review exists

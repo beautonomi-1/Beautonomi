@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { CheckCircle, Calendar, MapPin, Clock, Mail, Phone, Download, Share2, Plus } from "lucide-react";
@@ -60,6 +60,7 @@ export default function BookingConfirmationPage() {
   const [booking, setBooking] = useState<BookingDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const referralTracked = useRef(false);
 
   useEffect(() => {
     if (!bookingId) {
@@ -89,6 +90,15 @@ export default function BookingConfirmationPage() {
 
     loadBooking();
   }, [bookingId]);
+
+  // Attribute referral conversion when user has referred_by and completes this booking (fire once)
+  useEffect(() => {
+    if (!bookingId || !booking || referralTracked.current) return;
+    referralTracked.current = true;
+    fetcher
+      .post("/api/me/referrals/track", { booking_id: bookingId })
+      .catch(() => {});
+  }, [bookingId, booking]);
 
   const handleDownloadReceipt = () => {
     // Open receipt page in new tab for printing/saving as PDF

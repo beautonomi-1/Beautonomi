@@ -9,8 +9,8 @@ import { requireRoleInApi, successResponse, handleApiError, getPaginationParams 
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
 
     const { searchParams } = new URL(request.url);
     const { page, limit, offset } = getPaginationParams(request);

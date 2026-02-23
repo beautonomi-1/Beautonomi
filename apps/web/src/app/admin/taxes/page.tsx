@@ -162,7 +162,10 @@ export default function AdminTaxes() {
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-semibold mb-2">Tax Management</h1>
-          <p className="text-gray-600">Manage tax rates and configurations</p>
+          <p className="text-gray-600">Manage the platform tax rate catalog and view platform-wide statistics.</p>
+          <p className="text-sm text-amber-700 mt-2">
+            <strong>Providers control their own tax:</strong> Each provider sets their tax (e.g. VAT) under <em>Provider → Settings → Sales → Taxes</em>. Here you manage the <em>catalog</em> of available rates (reference_data) and can override a specific provider’s rate if needed. Platform stats below are for reporting only.
+          </p>
         </div>
 
         {/* Statistics */}

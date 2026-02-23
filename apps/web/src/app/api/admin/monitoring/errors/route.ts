@@ -5,7 +5,7 @@ import { errorLogger } from "@/lib/monitoring/error-logger";
 export async function GET(request: NextRequest) {
   try {
     // Only superadmin can access
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
     const { searchParams } = new URL(request.url);
     const timeframe = (searchParams.get("timeframe") || "24h") as "24h" | "7d" | "30d";

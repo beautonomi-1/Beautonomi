@@ -37,7 +37,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user: adminUser } = await requireRoleInApi(["superadmin"]);
+    const { user: adminUser } = await requireRoleInApi(["superadmin"], request);
 
     const { id } = await params;
 

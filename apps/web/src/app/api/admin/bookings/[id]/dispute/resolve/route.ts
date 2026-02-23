@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
@@ -26,7 +26,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
 
     // Validate request body
@@ -92,19 +92,19 @@ export async function POST(
     const { resolution, refund_amount, notes } = validationResult.data;
     const bookingData = booking as any;
 
-    // Handle refunds
+    // Handle refunds: always credit customer wallet (no Paystack call)
     if (resolution === "refund_full" || resolution === "refund_partial") {
       const refundAmt =
         resolution === "refund_full"
           ? bookingData.total_amount
           : refund_amount || 0;
 
-      if (refundAmt > bookingData.total_amount) {
+      if (refundAmt <= 0 || refundAmt > bookingData.total_amount) {
         return NextResponse.json(
           {
             data: null,
             error: {
-              message: "Refund amount cannot exceed booking total",
+              message: "Refund amount must be positive and cannot exceed booking total",
               code: "INVALID_REFUND_AMOUNT",
             },
           },
@@ -112,107 +112,70 @@ export async function POST(
         );
       }
 
-      // Process refund via Paystack for successful payment transaction
-      const { data: tx } = await (supabase
-        .from("payment_transactions") as any)
-        .select("*")
-        .eq("booking_id", id)
-        .eq("status", "success")
-        .eq("provider", "paystack")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (!tx) {
-        return NextResponse.json(
-          {
-            data: null,
-            error: {
-              message: "No successful Paystack transaction found to refund",
-              code: "NO_TRANSACTION",
-            },
-          },
-          { status: 400 }
-        );
-      }
-
-      const txData = tx as any;
-
-      // Paystack refund API call (mirrors /api/admin/payments/[txId]/refund)
-      const { getPaystackSecretKey } = await import("@/lib/payments/paystack-server");
-      const paystackSecretKey = await getPaystackSecretKey();
-
-      const refundPayload: any = { transaction: txData.reference };
-      if (refundAmt < Number(txData.amount || 0)) {
-        refundPayload.amount = Math.round(refundAmt * 100);
-      }
-
-      const paystackResponse = await fetch(`https://api.paystack.co/refund`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${paystackSecretKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(refundPayload),
+      // Credit customer wallet
+      const { error: walletError } = await (supabase.rpc as any)("wallet_credit_admin", {
+        p_user_id: bookingData.customer_id,
+        p_amount: refundAmt,
+        p_currency: bookingData.currency || "ZAR",
+        p_description: `Dispute resolution refund for booking ${bookingData.booking_number}`,
+        p_reference_id: (dispute as any).id,
+        p_reference_type: "booking_dispute",
       });
 
-      if (!paystackResponse.ok) {
-        const errorData = await paystackResponse.json().catch(() => ({}));
-        console.error("Paystack refund error:", errorData);
+      if (walletError) {
+        console.error("Wallet credit failed:", walletError);
         return NextResponse.json(
           {
             data: null,
             error: {
-              message: (errorData as any)?.message || "Failed to process refund",
-              code: "PAYSTACK_ERROR",
+              message: "Failed to credit customer wallet",
+              code: "WALLET_ERROR",
             },
           },
           { status: 500 }
         );
       }
 
-      const paystackRefundData = await paystackResponse.json();
-      const refundReference = paystackRefundData.data?.reference || `refund_${txData.id}_${Date.now()}`;
+      const refundReference = `dispute_refund_${(dispute as any).id}_${Date.now()}`;
+      const newBookingPaymentStatus = refundAmt >= bookingData.total_amount ? "refunded" : "partially_refunded";
 
-      const isFullRefund = refundAmt >= Number(txData.amount || 0);
-      const newTransactionStatus = isFullRefund ? "refunded" : "partially_refunded";
-      const newBookingPaymentStatus = isFullRefund ? "refunded" : "partially_refunded";
-
-      // Update original transaction to refunded status + refund info
-      await (supabase
+      // Optional: mark any success payment_transaction for this booking as refunded (ledger consistency)
+      const { data: tx } = await (supabase
         .from("payment_transactions") as any)
-        .update({
-          status: newTransactionStatus,
-          refund_amount: refundAmt,
-          refund_reference: refundReference,
-          refund_reason: "booking_dispute",
-          refunded_at: new Date().toISOString(),
-          refunded_by: auth.user.id,
-        })
-        .eq("id", txData.id);
+        .select("id, amount")
+        .eq("booking_id", id)
+        .eq("status", "success")
+        .neq("transaction_type", "refund")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      // Create refund transaction record
-      await (supabase
-        .from("payment_transactions") as any)
-        .insert({
-          booking_id: id,
-          reference: refundReference,
-          amount: -refundAmt,
-          fees: 0,
-          net_amount: -refundAmt,
-          status: "success",
-          provider: "paystack",
-          transaction_type: "refund",
-          metadata: {
-            original_transaction_id: txData.id,
-            original_reference: txData.reference,
-            resolution,
-            dispute_id: (dispute as any).id,
-          },
-          created_at: new Date().toISOString(),
-        });
+      if (tx) {
+        const txData = tx as any;
+        const isFullRefund = refundAmt >= Number(txData.amount || 0);
+        await (supabase
+          .from("payment_transactions") as any)
+          .update({
+            status: isFullRefund ? "refunded" : "partially_refunded",
+            refund_amount: refundAmt,
+            refund_reference: refundReference,
+            refund_reason: "booking_dispute",
+            refunded_at: new Date().toISOString(),
+            refunded_by: auth.user.id,
+          })
+          .eq("id", txData.id);
+      }
 
-      // Update booking payment status
+      // booking_refunds so update_booking_payment_status trigger keeps totals in sync
+      await (supabase.from("booking_refunds") as any).insert({
+        booking_id: id,
+        amount: refundAmt,
+        reason: "Dispute resolution",
+        refund_method: "store_credit",
+        status: "completed",
+        created_by: auth.user.id,
+      });
+
       await (supabase
         .from("bookings") as any)
         .update({ payment_status: newBookingPaymentStatus })
@@ -276,9 +239,9 @@ export async function POST(
       
       const resolutionMessage =
         resolution === "refund_full"
-          ? "Your dispute has been resolved with a full refund."
+          ? "Your dispute has been resolved with a full refund. The amount has been added to your wallet—use it for your next booking or request a payout."
           : resolution === "refund_partial"
-          ? `Your dispute has been resolved with a partial refund of ZAR ${refund_amount}.`
+          ? `Your dispute has been resolved with a partial refund of ${bookingData.currency || "ZAR"} ${refund_amount ?? 0}. The amount has been added to your wallet.`
           : "Your dispute has been reviewed and the decision is in favor of the provider.";
 
       // Notify customer

@@ -39,7 +39,7 @@ export async function GET(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: zone, error } = await supabase
       .from("service_zones")
@@ -149,7 +149,7 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validationResult = updateServiceZoneSchema.safeParse(body);
@@ -337,7 +337,7 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Check existing zone
     const { data: existing } = await supabase

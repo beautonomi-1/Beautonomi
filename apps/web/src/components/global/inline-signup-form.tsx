@@ -16,15 +16,18 @@ import { CiMail } from "react-icons/ci";
 import { AlertCircle } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { signIn as signInAuth, signUp as signUpAuth, signInWithOAuth, resendVerificationEmail } from "@/lib/supabase/auth";
+import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 
 interface InlineSignupFormProps {
   redirectContext?: "provider" | "customer";
   onAuthSuccess?: () => void;
   redirectUrl?: string;
+  /** Referral code from signup?ref=CODE — attached after signup for attribution */
+  referralCode?: string;
 }
 
-export default function InlineSignupForm({ redirectContext, onAuthSuccess, redirectUrl }: InlineSignupFormProps) {
+export default function InlineSignupForm({ redirectContext, onAuthSuccess, redirectUrl, referralCode }: InlineSignupFormProps) {
   const router = useRouter();
   const { refreshUser, role: _contextRole, user } = useAuth();
   
@@ -48,6 +51,15 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       }, 300);
     }
   }, [user, onAuthSuccess]);
+
+  // After login/signup: attach referral if ref was stored (e.g. from email verification return)
+  useEffect(() => {
+    if (!user?.id || typeof window === "undefined") return;
+    const storedRef = sessionStorage.getItem("referral_ref");
+    if (!storedRef?.trim()) return;
+    sessionStorage.removeItem("referral_ref");
+    fetcher.post("/api/me/referrals/attach", { referral_code: storedRef.trim() }).catch(() => {});
+  }, [user?.id]);
 
   const handleEmailContinue = () => {
     if (!email) {
@@ -79,6 +91,10 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     setError(null);
     setShowResendVerification(false);
 
+    if (referralCode?.trim() && typeof window !== "undefined") {
+      sessionStorage.setItem("referral_ref", referralCode.trim());
+    }
+
     try {
       // Sign up new user
       if (!fullName) {
@@ -100,6 +116,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       if (signupResult?.session) {
         toast.success("Account created successfully! Welcome to Beautonomi.");
         await refreshUser();
+        if (referralCode?.trim()) {
+          try {
+            await fetcher.post("/api/me/referrals/attach", { referral_code: referralCode.trim() });
+          } catch {
+            // Non-blocking; attribution may already be set
+          }
+        }
         await new Promise(resolve => setTimeout(resolve, 300));
         
         if (onAuthSuccess) {
@@ -122,6 +145,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           if (loginResult?.session) {
             toast.success("Account created successfully! Welcome to Beautonomi.");
             await refreshUser();
+            if (referralCode?.trim()) {
+              try {
+                await fetcher.post("/api/me/referrals/attach", { referral_code: referralCode.trim() });
+              } catch {
+                // Non-blocking
+              }
+            }
             await new Promise(resolve => setTimeout(resolve, 300));
             
             if (onAuthSuccess) {

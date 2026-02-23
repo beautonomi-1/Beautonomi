@@ -23,7 +23,7 @@ const membershipSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
     const adminSupabase = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
     const body = await request.json();
     const validated = membershipSchema.parse(body);
 

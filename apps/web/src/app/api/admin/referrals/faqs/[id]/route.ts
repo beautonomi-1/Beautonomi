@@ -18,8 +18,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const { user } = await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = updateSchema.parse(await request.json());
 
@@ -73,8 +73,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const { user } = await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
     const { data: existing } = await supabase

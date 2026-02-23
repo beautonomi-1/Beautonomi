@@ -1,17 +1,17 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/admin/reviews
  * 
- * Fetch all reviews with filtering and pagination
+ * Fetch all reviews with filtering and pagination. Uses admin client to bypass RLS.
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get("status"); // all, visible, hidden, flagged
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
         created_at,
         updated_at,
         customer:users!reviews_customer_id_fkey(id, full_name, email, avatar_url),
-        provider:providers!reviews_provider_id_fkey(id, business_name, logo_url),
+        provider:providers!reviews_provider_id_fkey(id, business_name, thumbnail_url),
         booking:bookings(id, booking_number, status)
       `)
       .order("created_at", { ascending: false })

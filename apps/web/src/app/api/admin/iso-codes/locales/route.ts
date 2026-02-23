@@ -26,7 +26,7 @@ export async function GET() {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: locales, error } = await supabase
       .from("iso_locales")
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validationResult = localeSchema.safeParse(body);

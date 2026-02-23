@@ -23,10 +23,10 @@ const versionSettingsSchema = z.object({
  * 
  * Get app version settings
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
 
     const { data: versionSettings, error } = await (supabase
       .from('app_version_settings') as any)
@@ -93,8 +93,8 @@ export async function GET(_request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const { ios, android } = versionSettingsSchema.parse(body);

@@ -32,7 +32,7 @@ export async function GET(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: service, error } = await supabase
       .from("master_services")
@@ -94,7 +94,7 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     // Validate request body
@@ -226,7 +226,7 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Check if service has active provider offerings
     const { count } = await supabase

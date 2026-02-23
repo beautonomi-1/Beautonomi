@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import RoleGuard from "@/components/auth/RoleGuard";
+import { useAuth } from "@/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +33,7 @@ interface ReferralFAQ {
 }
 
 export default function ReferralSettingsPage() {
+  const { user, role } = useAuth();
   const [settings, setSettings] = useState<ReferralSettings | null>(null);
   const [faqs, setFaqs] = useState<ReferralFAQ[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -49,9 +51,14 @@ export default function ReferralSettingsPage() {
   });
 
   useEffect(() => {
-    loadSettings();
-    loadFAQs();
-  }, []);
+    if (user?.id && role === "superadmin") {
+      loadSettings();
+      loadFAQs();
+    } else if (role != null && role !== "superadmin") {
+      setIsLoading(false);
+      setIsLoadingFaqs(false);
+    }
+  }, [user?.id, role]);
 
   const loadSettings = async () => {
     try {
@@ -321,7 +328,10 @@ export default function ReferralSettingsPage() {
                   </select>
                 </div>
                 <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                  Amount credited to both referrer and referee when a referral is successful
+                  Amount credited to the referrer&apos;s wallet when the referred user completes their first booking
+                </p>
+                <p className="text-xs text-amber-700 mt-2 rounded-md bg-amber-50 border border-amber-200 px-2 py-1.5">
+                  <strong>Revenue impact:</strong> This is a platform cost. Each successful referral reduces platform revenue by this amount (paid from the platform; not deducted from the booking or the provider).
                 </p>
               </div>
 
@@ -347,9 +357,7 @@ export default function ReferralSettingsPage() {
 
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p className="text-xs sm:text-sm text-blue-800">
-                  <strong>Note:</strong> The referral amount will be credited to both the referrer 
-                  and the referee when the referred user completes their first booking. The referral 
-                  message can be customized by users when sharing their referral link.
+                  <strong>Note:</strong> The referral amount is credited only to the <strong>referrer</strong> (the person who shared the link) when the referred user completes their first booking. Each referred user can only trigger one reward. The referral message can be customized by users when sharing their link.
                 </p>
               </div>
             </>

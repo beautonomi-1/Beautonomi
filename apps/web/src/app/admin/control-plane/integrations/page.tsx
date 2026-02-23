@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Map, Shield, Sparkles, UserCheck } from "lucide-react";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 const integrations = [
   { name: "Amplitude", href: "/admin/integrations/amplitude", icon: BarChart3, description: "Analytics, guides, surveys" },
@@ -16,6 +17,7 @@ const integrations = [
 
 export default function ControlPlaneIntegrationsPage() {
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Integrations</h1>
@@ -40,5 +42,6 @@ export default function ControlPlaneIntegrationsPage() {
         ))}
       </div>
     </div>
+    </RoleGuard>
   );
 }

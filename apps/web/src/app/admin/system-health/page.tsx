@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface SystemStats {
   api_requests: {
@@ -153,28 +154,33 @@ export default function SystemHealthPage() {
 
   if (isLoading && !stats) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading system health..." />
-      </div>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
+        <div className="container mx-auto px-4 py-8">
+          <LoadingTimeout loadingMessage="Loading system health..." />
+        </div>
+      </RoleGuard>
     );
   }
 
   if (error && !stats) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <EmptyState
-          title="Failed to load system health data"
-          description={error}
-          action={{
-            label: "Retry",
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
+        <div className="container mx-auto px-4 py-8">
+          <EmptyState
+            title="Failed to load system health data"
+            description={error}
+            action={{
+              label: "Retry",
             onClick: loadHealthData,
           }}
         />
-      </div>
+        </div>
+      </RoleGuard>
     );
   }
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -531,5 +537,6 @@ export default function SystemHealthPage() {
           </Tabs>
         )}
       </div>
+    </RoleGuard>
   );
 }

@@ -10,9 +10,9 @@ import { sendToUsers } from "@/lib/notifications/onesignal";
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireRoleInApi(['superadmin']);
+    const auth = await requireRoleInApi(['superadmin'], request);
     if (!auth) throw new Error("Authentication required");
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const { title, message, recipient_type, user_ids, url } = body;

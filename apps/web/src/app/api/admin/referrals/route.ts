@@ -10,40 +10,37 @@ const referralSettingsSchema = z.object({
   is_enabled: z.boolean().optional(),
 });
 
+const REFERRAL_SETTINGS_ID = '00000000-0000-0000-0000-000000000001';
+const DEFAULT_REFERRAL_SETTINGS = {
+  referral_amount: 50,
+  referral_message: 'Join Beautonomi and get rewarded! Use my referral link to get started.',
+  referral_currency: 'ZAR',
+  is_enabled: true,
+};
+
 /**
  * GET /api/admin/referrals
- * 
- * Get referral settings
+ * Get referral settings (single-row table by fixed id).
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
 
     const { data: referralSettings, error } = await supabase
       .from('referral_settings')
       .select('*')
-      .single();
+      .eq('id', REFERRAL_SETTINGS_ID)
+      .maybeSingle();
 
-    // Return default if not found (PGRST116 is "not found" error)
-    if (error && error.code === 'PGRST116') {
-      return successResponse({
-        referral_amount: 50,
-        referral_message: 'Join Beautonomi and get rewarded! Use my referral link to get started.',
-        referral_currency: 'ZAR',
-        is_enabled: true,
-      });
-    }
-
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
+    if (!referralSettings) return successResponse(DEFAULT_REFERRAL_SETTINGS);
 
     return successResponse({
-      referral_amount: referralSettings?.referral_amount || 50,
-      referral_message: referralSettings?.referral_message || 'Join Beautonomi and get rewarded! Use my referral link to get started.',
-      referral_currency: referralSettings?.referral_currency || 'ZAR',
-      is_enabled: referralSettings?.is_enabled !== false,
+      referral_amount: referralSettings.referral_amount ?? 50,
+      referral_message: referralSettings.referral_message || DEFAULT_REFERRAL_SETTINGS.referral_message,
+      referral_currency: referralSettings.referral_currency || 'ZAR',
+      is_enabled: referralSettings.is_enabled !== false,
     });
   } catch (error) {
     return handleApiError(error, 'Failed to fetch referral settings');
@@ -57,8 +54,8 @@ export async function GET(_request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validatedData = referralSettingsSchema.parse(body);
@@ -67,15 +64,14 @@ export async function PATCH(request: NextRequest) {
       .from('referral_settings')
       .upsert(
         {
+          id: REFERRAL_SETTINGS_ID,
           referral_amount: validatedData.referral_amount ?? 50,
           referral_message: validatedData.referral_message || 'Join Beautonomi and get rewarded! Use my referral link to get started.',
           referral_currency: validatedData.referral_currency || 'ZAR',
           is_enabled: validatedData.is_enabled !== false,
           updated_at: new Date().toISOString(),
         },
-        {
-          onConflict: 'id',
-        }
+        { onConflict: 'id' }
       )
       .select()
       .single();

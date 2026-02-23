@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireRoleInApi, successResponse, handleApiError, errorResponse, unauthorizedResponse } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 
@@ -27,14 +27,11 @@ const addonSchema = z.object({
  * 
  * List all addons (global and provider-specific)
  */
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin", "provider_owner"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
+    const { user: authUser } = await requireRoleInApi(["superadmin", "provider_owner"], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     if (!supabase) {
       return NextResponse.json(
         { data: null, error: { message: "Server error", code: "SERVER_ERROR" } },
@@ -46,20 +43,21 @@ export async function GET(request: Request) {
     const type = searchParams.get("type");
     const isActive = searchParams.get("is_active");
 
+    // service_addons view is from offerings: use display_order, title (view has no sort_order/name)
     let query = supabase
       .from("service_addons")
       .select("*")
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
+      .order("display_order", { ascending: true })
+      .order("title", { ascending: true });
 
     if (providerId) {
       query = query.eq("provider_id", providerId);
-    } else if (auth.user.role === "provider_owner") {
+    } else if (authUser.role === "provider_owner") {
       // Providers can only see their own addons; superadmin sees all
       const { data: provider } = await supabase
         .from("providers")
         .select("id")
-        .eq("user_id", auth.user.id)
+        .eq("user_id", authUser.id)
         .single();
 
       if (provider) {
@@ -84,55 +82,24 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error("Error fetching addons:", error);
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Failed to fetch addons",
-            code: "FETCH_ERROR",
-          },
-        },
-        { status: 500 }
-      );
+      return errorResponse("Failed to fetch addons", "FETCH_ERROR", 500);
     }
 
-    // Load service associations
+    // service_addons view is from offerings; use applicable_service_ids (no service_addon_associations table)
     if (addons && addons.length > 0) {
-      const addonIds = addons.map((a: any) => a.id);
-      const { data: associations } = await (supabase as any)
-        .from("service_addon_associations")
-        .select("addon_id, service_id")
-        .in("addon_id", addonIds);
-
       const addonsWithServices = addons.map((addon: any) => ({
         ...addon,
-        service_ids: associations
-          ?.filter((a: any) => a.addon_id === addon.id)
-          .map((a: any) => a.service_id) || [],
+        name: addon.name ?? addon.title ?? "",
+        service_ids: Array.isArray(addon.applicable_service_ids) ? addon.applicable_service_ids : [],
       }));
 
-      return NextResponse.json({
-        data: addonsWithServices,
-        error: null,
-      });
+      return successResponse(addonsWithServices);
     }
 
-    return NextResponse.json({
-      data: addons || [],
-      error: null,
-    });
+    return successResponse(addons || []);
   } catch (error) {
     console.error("Unexpected error in /api/admin/addons:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: "Failed to fetch addons",
-          code: "INTERNAL_ERROR",
-        },
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to fetch addons");
   }
 }
 
@@ -141,14 +108,11 @@ export async function GET(request: Request) {
  * 
  * Create a new addon
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin", "provider_owner"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
+    const { user: authUser } = await requireRoleInApi(["superadmin", "provider_owner"], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     if (!supabase) {
       return NextResponse.json(
         { data: null, error: { message: "Server error", code: "SERVER_ERROR" } },
@@ -176,13 +140,13 @@ export async function POST(request: Request) {
     }
 
     // Superadmin can set provider_id = null (global addon); provider_owner must use their provider
-    if (auth.user.role === "provider_owner") {
+    if (authUser.role === "provider_owner") {
       if (validationResult.data.provider_id) {
         const { data: provider } = await supabase
           .from("providers")
           .select("id")
           .eq("id", validationResult.data.provider_id)
-          .eq("user_id", auth.user.id)
+          .eq("user_id", authUser.id)
           .single();
 
         if (!provider) {
@@ -201,7 +165,7 @@ export async function POST(request: Request) {
         const { data: provider } = await supabase
           .from("providers")
           .select("id")
-          .eq("user_id", auth.user.id)
+          .eq("user_id", authUser.id)
           .single();
 
         if (provider) {
@@ -259,8 +223,8 @@ export async function POST(request: Request) {
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: authUser.id,
+      actor_role: (authUser as any).role || "superadmin",
       action: "admin.addon.create",
       entity_type: "service_addon",
       entity_id: (addon as any).id,

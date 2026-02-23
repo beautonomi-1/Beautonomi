@@ -33,6 +33,16 @@ import {
 } from "@/components/ui/select";
 import { format } from "date-fns";
 
+const CURRENCY_CODE = "ZAR";
+const formatCurrency = (value: number) =>
+  `${CURRENCY_CODE} ${(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const formatGrowth = (growth: number | undefined | null) => {
+  if (growth == null || (typeof growth === "number" && Number.isNaN(growth))) return "No growth data";
+  if (growth > 0) return `+${growth}% growth`;
+  if (growth < 0) return `${growth}% growth`;
+  return "No change";
+};
+
 interface TimeSeriesData {
   date: string;
   count?: number;
@@ -209,9 +219,9 @@ export default function AdminAnalytics() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.total_users || 0}</div>
+              <div className="text-2xl font-bold">{stats.total_users ?? 0}</div>
               <p className="text-xs text-muted-foreground">
-                {stats.users_growth ? `+${stats.users_growth}% growth` : "No growth data"}
+                {formatGrowth(stats.users_growth)}
               </p>
             </CardContent>
           </Card>
@@ -222,9 +232,9 @@ export default function AdminAnalytics() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.total_providers || 0}</div>
+              <div className="text-2xl font-bold">{stats.total_providers ?? 0}</div>
               <p className="text-xs text-muted-foreground">
-                {stats.providers_growth ? `+${stats.providers_growth}% growth` : "No growth data"}
+                {formatGrowth(stats.providers_growth)}
               </p>
             </CardContent>
           </Card>
@@ -235,9 +245,9 @@ export default function AdminAnalytics() {
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.total_bookings || 0}</div>
+              <div className="text-2xl font-bold">{stats.total_bookings ?? 0}</div>
               <p className="text-xs text-muted-foreground">
-                {stats.bookings_growth ? `+${stats.bookings_growth}% growth` : "No growth data"}
+                {formatGrowth(stats.bookings_growth)}
               </p>
             </CardContent>
           </Card>
@@ -249,10 +259,10 @@ export default function AdminAnalytics() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ${(stats.total_revenue || 0).toLocaleString()}
+                {formatCurrency(stats.total_revenue ?? 0)}
               </div>
               <p className="text-xs text-muted-foreground">
-                {stats.revenue_growth ? `+${stats.revenue_growth}% growth` : "No growth data"}
+                {formatGrowth(stats.revenue_growth)}
               </p>
             </CardContent>
           </Card>
@@ -267,30 +277,30 @@ export default function AdminAnalytics() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">GMV Total</span>
-                <span className="font-semibold">${(stats.gmv_total || 0).toLocaleString()}</span>
+                <span className="font-semibold">{formatCurrency(stats.gmv_total ?? 0)}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Platform Net Total</span>
                 <span className="font-semibold">
-                  ${(stats.platform_net_total || 0).toLocaleString()}
+                  {formatCurrency(stats.platform_net_total ?? 0)}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Platform Commission (Gross)</span>
                 <span className="font-semibold">
-                  ${(stats.platform_commission_gross_total || 0).toLocaleString()}
+                  {formatCurrency(stats.platform_commission_gross_total ?? 0)}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Gateway Fees</span>
                 <span className="font-semibold">
-                  ${(stats.gateway_fees_total || 0).toLocaleString()}
+                  {formatCurrency(stats.gateway_fees_total ?? 0)}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Refunds Total</span>
                 <span className="font-semibold text-red-600">
-                  ${(stats.refunds_total || 0).toLocaleString()}
+                  {formatCurrency(stats.refunds_total ?? 0)}
                 </span>
               </div>
             </div>
@@ -307,17 +317,17 @@ export default function AdminAnalytics() {
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600">Active Bookings</span>
-                  <span className="font-semibold">{stats.active_bookings_today || 0}</span>
+                  <span className="font-semibold">{stats.active_bookings_today ?? 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600">Revenue Today</span>
                   <span className="font-semibold">
-                    ${(stats.revenue_today || 0).toLocaleString()}
+                    {formatCurrency(stats.revenue_today ?? 0)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600">Pending Approvals</span>
-                  <span className="font-semibold">{stats.pending_approvals || 0}</span>
+                  <span className="font-semibold">{stats.pending_approvals ?? 0}</span>
                 </div>
               </div>
             </CardContent>
@@ -332,19 +342,19 @@ export default function AdminAnalytics() {
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600">Revenue This Month</span>
                   <span className="font-semibold">
-                    ${(stats.revenue_this_month || 0).toLocaleString()}
+                    {formatCurrency(stats.revenue_this_month ?? 0)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600">Subscription Net</span>
                   <span className="font-semibold">
-                    ${(stats.subscription_net_total || 0).toLocaleString()}
+                    {formatCurrency(stats.subscription_net_total ?? 0)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600">Gift Card Sales</span>
                   <span className="font-semibold">
-                    ${(stats.gift_card_sales_total || 0).toLocaleString()}
+                    {formatCurrency(stats.gift_card_sales_total ?? 0)}
                   </span>
                 </div>
               </div>
@@ -368,7 +378,7 @@ export default function AdminAnalytics() {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={analyticsData.timeSeries.revenue}>
+                  <LineChart data={analyticsData.timeSeries?.revenue ?? []}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis
                       dataKey="date"
@@ -377,9 +387,9 @@ export default function AdminAnalytics() {
                       textAnchor="end"
                       height={80}
                     />
-                    <YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} />
+                    <YAxis tickFormatter={(value) => formatCurrency(Number(value))} />
                     <Tooltip
-                      formatter={(value: number) => `$${value.toLocaleString()}`}
+                      formatter={(value: number) => formatCurrency(Number(value))}
                       labelFormatter={formatDate}
                     />
                     <Legend />
@@ -403,7 +413,7 @@ export default function AdminAnalytics() {
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={250}>
-                    <LineChart data={analyticsData.timeSeries.users}>
+                    <LineChart data={analyticsData.timeSeries?.users ?? []}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis
                         dataKey="date"
@@ -433,7 +443,7 @@ export default function AdminAnalytics() {
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={250}>
-                    <LineChart data={analyticsData.timeSeries.providers}>
+                    <LineChart data={analyticsData.timeSeries?.providers ?? []}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis
                         dataKey="date"
@@ -465,7 +475,7 @@ export default function AdminAnalytics() {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={analyticsData.timeSeries.bookings}>
+                  <BarChart data={analyticsData.timeSeries?.bookings ?? []}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis
                       dataKey="date"
@@ -494,19 +504,10 @@ export default function AdminAnalytics() {
                     <PieChart>
                       <Pie
                         data={[
-                          { name: "Active", value: analyticsData.breakdowns.providerStatus.active },
-                          {
-                            name: "Pending",
-                            value: analyticsData.breakdowns.providerStatus.pending,
-                          },
-                          {
-                            name: "Suspended",
-                            value: analyticsData.breakdowns.providerStatus.suspended,
-                          },
-                          {
-                            name: "Rejected",
-                            value: analyticsData.breakdowns.providerStatus.rejected,
-                          },
+                          { name: "Active", value: analyticsData.breakdowns?.providerStatus?.active ?? 0 },
+                          { name: "Pending", value: analyticsData.breakdowns?.providerStatus?.pending ?? 0 },
+                          { name: "Suspended", value: analyticsData.breakdowns?.providerStatus?.suspended ?? 0 },
+                          { name: "Rejected", value: analyticsData.breakdowns?.providerStatus?.rejected ?? 0 },
                         ]}
                         cx="50%"
                         cy="50%"
@@ -517,10 +518,10 @@ export default function AdminAnalytics() {
                         dataKey="value"
                       >
                         {[
-                          analyticsData.breakdowns.providerStatus.active,
-                          analyticsData.breakdowns.providerStatus.pending,
-                          analyticsData.breakdowns.providerStatus.suspended,
-                          analyticsData.breakdowns.providerStatus.rejected,
+                          analyticsData.breakdowns?.providerStatus?.active ?? 0,
+                          analyticsData.breakdowns?.providerStatus?.pending ?? 0,
+                          analyticsData.breakdowns?.providerStatus?.suspended ?? 0,
+                          analyticsData.breakdowns?.providerStatus?.rejected ?? 0,
                         ].map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
@@ -540,22 +541,10 @@ export default function AdminAnalytics() {
                     <PieChart>
                       <Pie
                         data={[
-                          {
-                            name: "Completed",
-                            value: analyticsData.breakdowns.bookingStatus.completed,
-                          },
-                          {
-                            name: "Confirmed",
-                            value: analyticsData.breakdowns.bookingStatus.confirmed,
-                          },
-                          {
-                            name: "Cancelled",
-                            value: analyticsData.breakdowns.bookingStatus.cancelled,
-                          },
-                          {
-                            name: "No Show",
-                            value: analyticsData.breakdowns.bookingStatus.no_show,
-                          },
+                          { name: "Completed", value: analyticsData.breakdowns?.bookingStatus?.completed ?? 0 },
+                          { name: "Confirmed", value: analyticsData.breakdowns?.bookingStatus?.confirmed ?? 0 },
+                          { name: "Cancelled", value: analyticsData.breakdowns?.bookingStatus?.cancelled ?? 0 },
+                          { name: "No Show", value: analyticsData.breakdowns?.bookingStatus?.no_show ?? 0 },
                         ]}
                         cx="50%"
                         cy="50%"
@@ -566,10 +555,10 @@ export default function AdminAnalytics() {
                         dataKey="value"
                       >
                         {[
-                          analyticsData.breakdowns.bookingStatus.completed,
-                          analyticsData.breakdowns.bookingStatus.confirmed,
-                          analyticsData.breakdowns.bookingStatus.cancelled,
-                          analyticsData.breakdowns.bookingStatus.no_show,
+                          analyticsData.breakdowns?.bookingStatus?.completed ?? 0,
+                          analyticsData.breakdowns?.bookingStatus?.confirmed ?? 0,
+                          analyticsData.breakdowns?.bookingStatus?.cancelled ?? 0,
+                          analyticsData.breakdowns?.bookingStatus?.no_show ?? 0,
                         ].map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
@@ -582,7 +571,7 @@ export default function AdminAnalytics() {
             </div>
 
             {/* Top Providers */}
-            {analyticsData.topProviders.length > 0 && (
+            {(analyticsData.topProviders?.length ?? 0) > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle>Top Providers by Revenue</CardTitle>
@@ -590,19 +579,19 @@ export default function AdminAnalytics() {
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart
-                      data={analyticsData.topProviders}
+                      data={analyticsData.topProviders ?? []}
                       layout="vertical"
                       margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis type="number" tickFormatter={(value) => `$${value.toLocaleString()}`} />
+                      <XAxis type="number" tickFormatter={(value) => formatCurrency(Number(value))} />
                       <YAxis
                         dataKey="business_name"
                         type="category"
                         width={90}
                         tick={{ fontSize: 12 }}
                       />
-                      <Tooltip formatter={(value: number) => `$${value.toLocaleString()}`} />
+                      <Tooltip formatter={(value: number) => formatCurrency(Number(value))} />
                       <Legend />
                       <Bar dataKey="revenue" fill="#0088FE" name="Revenue" />
                     </BarChart>

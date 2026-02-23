@@ -56,14 +56,16 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
+>(({ side = "right", className, children, "aria-describedby": ariaDescribedby, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
       <SheetPrimitive.Content
         ref={ref}
+        aria-describedby={ariaDescribedby ?? undefined}
         className={cn(sheetVariants({ side }), side === "bottom" ? "" : "overflow-y-auto max-h-screen", className)}
         {...props}
       >
+        <SheetPrimitive.Title className="sr-only">Menu</SheetPrimitive.Title>
         {children}
         {side !== "bottom" && (
           <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary min-w-[44px] min-h-[44px] flex items-center justify-center touch-manipulation">

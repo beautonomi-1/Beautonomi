@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
       : ["English"];
 
     const result = {
+      providerId,
       businessName: provider.business_name || "",
       timezone: extendedSettings?.timezone || "Africa/Johannesburg",
       timeFormat: extendedSettings?.time_format || "24h",

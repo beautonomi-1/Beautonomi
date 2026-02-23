@@ -31,13 +31,13 @@ export async function GET(
       }
     }
 
-    // Get invoice with all details
+    // Get invoice with all details (providers use business_name, not name)
     let query = supabase
       .from("provider_invoices")
       .select(
         `
         *,
-        providers(id, name, billing_email, billing_phone, billing_address),
+        providers(id, business_name, billing_email, billing_phone, billing_address),
         line_items:provider_invoice_line_items(*),
         payments:provider_invoice_payments(*)
       `
@@ -229,7 +229,7 @@ function generateInvoiceHTML(invoice: any) {
     <div>
       <div class="section-title">Bill To</div>
       <div>
-        <strong>${provider?.name || "Provider"}</strong><br>
+        <strong>${providerName}</strong><br>
         ${billingAddress.address_line1 || ""}<br>
         ${billingAddress.city ? billingAddress.city + ", " : ""}
         ${billingAddress.country || ""}<br>
@@ -284,14 +284,14 @@ function generateInvoiceHTML(invoice: any) {
         <td>Total:</td>
         <td class="text-right">${formatCurrency(invoice.total_amount)}</td>
       </tr>
-      ${invoice.amount_paid > 0 ? `
+      ${Number(invoice.amount_paid ?? 0) > 0 ? `
         <tr>
           <td>Amount Paid:</td>
-          <td class="text-right">${formatCurrency(invoice.amount_paid)}</td>
+          <td class="text-right">${formatCurrency(Number(invoice.amount_paid ?? 0))}</td>
         </tr>
         <tr>
           <td><strong>Amount Due:</strong></td>
-          <td class="text-right"><strong>${formatCurrency(invoice.amount_due)}</strong></td>
+          <td class="text-right"><strong>${formatCurrency(Number(invoice.amount_due ?? invoice.total_amount ?? 0))}</strong></td>
         </tr>
       ` : ""}
     </table>

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireRoleInApi, handleApiError, errorResponse, unauthorizedResponse } from "@/lib/supabase/api-helpers";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 
@@ -29,13 +29,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin", "provider_owner"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
+    const { user: authUser } = await requireRoleInApi(["superadmin", "provider_owner"], request);
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     if (!supabase) {
       return NextResponse.json(
         { data: null, error: { message: "Server error", code: "SERVER_ERROR" } },
@@ -63,12 +60,12 @@ export async function GET(
     }
 
     // Check access - providers can only access their own addons; superadmin can access any
-    if (auth.user.role === "provider_owner" && (addon as any).provider_id) {
+    if (authUser.role === "provider_owner" && (addon as any).provider_id) {
       const { data: provider } = await supabase
         .from("providers")
         .select("id")
         .eq("id", (addon as any).provider_id)
-        .eq("user_id", auth.user.id)
+        .eq("user_id", authUser.id)
         .single();
 
       if (!provider) {
@@ -85,16 +82,13 @@ export async function GET(
       }
     }
 
-    // Load service associations
-    const { data: associations } = await (supabase as any)
-      .from("service_addon_associations")
-      .select("service_id")
-      .eq("addon_id", id);
-
+    // service_addons view is from offerings; use applicable_service_ids (no service_addon_associations table)
+    const addonData = addon as Record<string, unknown> & { applicable_service_ids?: string[]; title?: string };
     return NextResponse.json({
       data: {
-        ...(addon as Record<string, unknown>),
-        service_ids: associations?.map((a: any) => a.service_id) || [],
+        ...addonData,
+        name: addonData.name ?? addonData.title ?? "",
+        service_ids: Array.isArray(addonData.applicable_service_ids) ? addonData.applicable_service_ids : [],
       },
       error: null,
     });
@@ -121,13 +115,10 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin", "provider_owner"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
+    const { user: authUser } = await requireRoleInApi(["superadmin", "provider_owner"], request);
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     if (!supabase) {
       return NextResponse.json(
         { data: null, error: { message: "Server error", code: "SERVER_ERROR" } },
@@ -175,12 +166,12 @@ export async function PUT(
     }
 
     // Check access for provider_owner
-    if (auth.user.role === "provider_owner" && (existing as any).provider_id) {
+    if (authUser.role === "provider_owner" && (existing as any).provider_id) {
       const { data: provider } = await supabase
         .from("providers")
         .select("id")
         .eq("id", (existing as any).provider_id)
-        .eq("user_id", auth.user.id)
+        .eq("user_id", authUser.id)
         .single();
 
       if (!provider) {
@@ -247,8 +238,8 @@ export async function PUT(
       .eq("addon_id", id);
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: authUser.id,
+      actor_role: (authUser as any).role || "superadmin",
       action: "admin.addon.update",
       entity_type: "service_addon",
       entity_id: id,
@@ -285,13 +276,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin", "provider_owner"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
+    const { user: authUser } = await requireRoleInApi(["superadmin", "provider_owner"], request);
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     if (!supabase) {
       return NextResponse.json(
         { data: null, error: { message: "Server error", code: "SERVER_ERROR" } },
@@ -320,12 +308,12 @@ export async function DELETE(
     }
 
     // Check access - providers can only delete their own addons; superadmin can delete any
-    if (auth.user.role === "provider_owner" && (existing as any).provider_id) {
+    if (authUser.role === "provider_owner" && (existing as any).provider_id) {
       const { data: provider } = await supabase
         .from("providers")
         .select("id")
         .eq("id", (existing as any).provider_id)
-        .eq("user_id", auth.user.id)
+        .eq("user_id", authUser.id)
         .single();
 
       if (!provider) {
@@ -363,8 +351,8 @@ export async function DELETE(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: authUser.id,
+      actor_role: (authUser as any).role || "superadmin",
       action: "admin.addon.delete",
       entity_type: "service_addon",
       entity_id: id,

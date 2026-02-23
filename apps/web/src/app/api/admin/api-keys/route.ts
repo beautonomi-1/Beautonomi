@@ -7,7 +7,7 @@ import crypto from "crypto";
 export async function GET(request: NextRequest) {
   try {
     await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { searchParams } = new URL(request.url);
     const isActive = searchParams.get("is_active");
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
     const {

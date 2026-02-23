@@ -9,8 +9,8 @@ import { requireRoleInApi, handleApiError, getPaginationParams } from "@/lib/sup
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
 
     if (!supabase) {
       return NextResponse.json({

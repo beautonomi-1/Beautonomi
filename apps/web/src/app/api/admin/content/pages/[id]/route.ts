@@ -30,7 +30,7 @@ export async function GET(
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: pageContent, error } = await supabase
       .from("page_content")
@@ -87,7 +87,7 @@ export async function PUT(
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     // Validate request body
@@ -184,7 +184,7 @@ export async function DELETE(
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: pageContent, error } = await (supabase
       .from("page_content") as any)

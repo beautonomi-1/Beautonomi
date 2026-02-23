@@ -92,10 +92,10 @@ export default function WebhooksPage() {
   const loadEndpoints = async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<{ endpoints: WebhookEndpoint[] }>(
+      const response = await fetcher.get<{ data: { endpoints: WebhookEndpoint[] } }>(
         "/api/admin/webhooks/endpoints"
       );
-      setEndpoints(response.endpoints || []);
+      setEndpoints(response.data?.endpoints ?? []);
     } catch (error) {
       console.error("Failed to load webhook endpoints:", error);
       toast.error("Failed to load webhook endpoints");
@@ -185,15 +185,15 @@ export default function WebhooksPage() {
         });
         toast.success("Webhook endpoint updated successfully");
       } else {
-        const response = await fetcher.post<{ endpoint: WebhookEndpoint & { secret?: string } }>(
-          "/api/admin/webhooks/endpoints",
-          {
-            ...formData,
-            headers: headersObj,
-          }
-        );
-        if (response.endpoint.secret) {
-          setNewSecret(response.endpoint.secret);
+        const response = await fetcher.post<{
+          data: { endpoint: WebhookEndpoint & { secret?: string } };
+        }>("/api/admin/webhooks/endpoints", {
+          ...formData,
+          headers: headersObj,
+        });
+        const endpoint = response.data?.endpoint;
+        if (endpoint?.secret) {
+          setNewSecret(endpoint.secret);
           toast.success("Webhook endpoint created successfully");
         }
       }
@@ -210,16 +210,18 @@ export default function WebhooksPage() {
 
     try {
       const response = await fetcher.post<{
-        success: boolean;
-        status: number;
-        response: string;
-        timestamp: number;
-        signature: string;
+        data: {
+          success: boolean;
+          status: number;
+          response: string;
+          timestamp: number;
+          signature: string;
+        };
       }>(`/api/admin/webhooks/endpoints/${testingEndpoint.id}/test`, {
         test_payload: { test: true, message: "Test webhook from admin panel" },
       });
 
-      setTestResult(response);
+      setTestResult(response.data ?? response);
       toast.success("Test webhook sent");
       loadEndpoints(); // Refresh to see the test event
     } catch (error) {
@@ -691,6 +693,7 @@ export default function WebhooksPage() {
 function WebhookFailuresTab() {
   const [failures, setFailures] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   useEffect(() => {
     loadFailures();
@@ -700,12 +703,26 @@ function WebhookFailuresTab() {
     try {
       setIsLoading(true);
       const response = await fetcher.get<{ data: any[] }>("/api/admin/webhooks/failures");
-      setFailures(response.data || []);
+      setFailures(Array.isArray(response.data) ? response.data : []);
     } catch (error) {
       console.error("Failed to load webhook failures:", error);
       toast.error("Failed to load webhook failures");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleRetry = async (id: string) => {
+    try {
+      setRetryingId(id);
+      await fetcher.post(`/api/admin/webhooks/failures/${id}/retry`, {});
+      toast.success("Retry initiated");
+      await loadFailures();
+    } catch (error) {
+      console.error("Failed to retry webhook:", error);
+      toast.error(error instanceof FetchError ? error.message : "Failed to retry webhook");
+    } finally {
+      setRetryingId(null);
     }
   };
 
@@ -749,8 +766,13 @@ function WebhookFailuresTab() {
                     {new Date(failure.created_at).toLocaleString()}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm">
-                      Retry
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRetry(failure.id)}
+                      disabled={retryingId === failure.id}
+                    >
+                      {retryingId === failure.id ? "Retrying…" : "Retry"}
                     </Button>
                   </TableCell>
                 </TableRow>

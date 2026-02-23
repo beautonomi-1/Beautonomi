@@ -6,7 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
-import { Award, Save, Loader2 } from "lucide-react";
+import { Award, Save, Loader2, Link2 } from "lucide-react";
+import Link from "next/link";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 type PointRule = {
   id: string;
@@ -68,6 +70,7 @@ export default function AdminPointRulesPage() {
   const getPoints = (r: PointRule) => (editing[r.source] !== undefined ? editing[r.source] : r.points);
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
       <div className="container max-w-3xl py-8 px-4">
         <div className="flex items-center gap-3 mb-6">
           <Award className="w-8 h-8 text-amber-600" />
@@ -75,6 +78,13 @@ export default function AdminPointRulesPage() {
             <h1 className="text-2xl font-bold text-gray-900">Provider point rules</h1>
             <p className="text-sm text-gray-500">
               Control how many reward points providers earn for each task. Changes apply to new awards only.
+            </p>
+            <p className="text-sm text-gray-500 mt-1">
+              For <strong>customer</strong> loyalty rules and milestone rewards, go to{" "}
+              <Link href="/admin/loyalty" className="text-[#FF0077] hover:underline inline-flex items-center gap-1">
+                <Link2 className="w-3.5 h-3.5" />
+                Loyalty
+              </Link> (Marketing &amp; comms).
             </p>
           </div>
         </div>
@@ -130,5 +140,6 @@ export default function AdminPointRulesPage() {
           </div>
         )}
       </div>
+    </RoleGuard>
   );
 }

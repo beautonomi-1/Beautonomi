@@ -135,14 +135,14 @@ export default function GodsEyePage() {
     }
   };
 
-  const filteredActivity = data?.recent_activity.filter((activity) => {
+  const filteredActivity = (data?.recent_activity ?? []).filter((activity) => {
     if (filterType !== "all" && activity.type !== filterType) return false;
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       return (
-        activity.action.toLowerCase().includes(query) ||
-        activity.entity_name.toLowerCase().includes(query) ||
-        activity.entity_id.toLowerCase().includes(query)
+        (activity.action || "").toLowerCase().includes(query) ||
+        (activity.entity_name || "").toLowerCase().includes(query) ||
+        (activity.entity_id || "").toLowerCase().includes(query)
       );
     }
     return true;

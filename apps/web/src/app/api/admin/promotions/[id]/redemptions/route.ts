@@ -18,7 +18,7 @@ export async function GET(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
 
     const page = parseInt(searchParams.get("page") || "1");

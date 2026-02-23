@@ -1,17 +1,17 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/admin/bookings
- * 
- * Get all platform bookings with filters
+ *
+ * Get all platform bookings with filters. Uses admin client so superadmin sees all bookings.
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
 
     // Get bookings without joins to avoid join issues

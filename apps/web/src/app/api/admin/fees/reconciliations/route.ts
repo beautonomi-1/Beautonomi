@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole } from "@/lib/supabase/auth-server";
+
+function isTableMissingError(e: unknown): boolean {
+  const msg = typeof (e as any)?.message === "string" ? (e as any).message : "";
+  return msg.includes("schema cache") || (msg.includes("relation ") && msg.includes("does not exist")) || msg.includes("Could not find the table");
+}
 
 export async function GET(request: NextRequest) {
   try {
     await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
     const gateway = searchParams.get("gateway");
@@ -18,14 +23,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("fee_reconciliations")
-      .select(
-        `
-        *,
-        created_by_user:created_by(id, email, full_name),
-        reviewed_by_user:reviewed_by(id, email, full_name)
-      `,
-        { count: "exact" }
-      )
+      .select("*", { count: "exact" })
       .order("reconciliation_date", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -44,7 +42,12 @@ export async function GET(request: NextRequest) {
 
     const { data, error, count } = await query;
 
-    if (error) throw error;
+    if (error) {
+      if (isTableMissingError(error)) {
+        return NextResponse.json({ data: [], meta: { page, limit, total: 0, has_more: false }, error: null });
+      }
+      throw error;
+    }
 
     return NextResponse.json({
       data: data || [],
@@ -56,10 +59,14 @@ export async function GET(request: NextRequest) {
       },
       error: null,
     });
-  } catch (error: any) {
-    console.error("Error fetching reconciliations:", error);
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    console.error("Error fetching reconciliations:", err);
+    if (isTableMissingError(err)) {
+      return NextResponse.json({ data: [], meta: { page: 1, limit: 50, total: 0, has_more: false }, error: null });
+    }
     return NextResponse.json(
-      { error: error.message || "Failed to fetch reconciliations" },
+      { error: err?.message || "Failed to fetch reconciliations" },
       { status: 500 }
     );
   }
@@ -68,7 +75,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
 
     const body = await request.json();
     const {
@@ -121,7 +128,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const { user } = await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
 
     const body = await request.json();
     const { id, status, notes, ...updates } = body;

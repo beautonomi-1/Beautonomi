@@ -10,6 +10,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { useAuth } from "@/providers/AuthProvider";
 
 interface PlatformFeesSettings {
   platform_service_fee_type: "percentage" | "fixed";
@@ -23,10 +24,15 @@ export default function PlatformFeesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { user, role } = useAuth();
 
   useEffect(() => {
-    loadSettings();
-  }, []);
+    if (user?.id && role === "superadmin") {
+      loadSettings();
+    } else if (role != null && role !== "superadmin") {
+      setIsLoading(false);
+    }
+  }, [user?.id, role]);
 
   const loadSettings = async () => {
     try {

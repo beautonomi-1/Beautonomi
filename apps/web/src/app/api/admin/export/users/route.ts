@@ -35,7 +35,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
 
     const role = searchParams.get("role");

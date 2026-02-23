@@ -6,20 +6,23 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServer();
     const searchParams = request.nextUrl.searchParams;
     const platform = searchParams.get('platform'); // 'ios' or 'android'
-    const currentVersion = searchParams.get('version'); // Current app version
+    const currentVersion = searchParams.get('version') ?? ''; // Optional: app sends from Constants.expoConfig?.version
 
-    if (!platform || !currentVersion) {
+    if (!platform) {
       return NextResponse.json(
-        { error: 'Platform and version are required' },
+        { error: 'Platform is required (ios or android)' },
         { status: 400 }
       );
     }
 
-    // Fetch app version settings from Supabase
+    // Normalize platform for DB (Expo sends "ios" | "android")
+    const platformKey = platform === 'ios' || platform === 'android' ? platform : 'ios';
+
+    // Fetch app version settings from Supabase (same settings for all apps; optional: use ?app=customer|provider later for per-app)
     const { data: versionSettings, error } = await supabase
       .from('app_version_settings')
       .select('*')
-      .eq('platform', platform)
+      .eq('platform', platformKey)
       .single();
 
     if (error && error.code !== 'PGRST116') {
@@ -38,6 +41,7 @@ export async function GET(request: NextRequest) {
         minVersion: null,
         latestVersion: null,
         updateUrl: null,
+        ...(currentVersion && { currentVersion: currentVersion, platform: platformKey }),
       });
     }
 
@@ -46,17 +50,17 @@ export async function GET(request: NextRequest) {
     const forceUpdate = versionSettings.force_update || false;
     const updateUrl = versionSettings.update_url;
 
-    // Compare versions (simple string comparison, can be enhanced with semver)
-    const requiresUpdate = compareVersions(currentVersion, minVersion) < 0;
+    // Clients compare locally: if (data.forceUpdate && compareVersions(currentVersion, data.minVersion) < 0) → force; else compare to latestVersion for optional prompt.
+    const hasVersion = currentVersion && currentVersion.trim().length > 0;
+    const requiresUpdate = hasVersion ? compareVersions(currentVersion, minVersion) < 0 : false;
 
     return NextResponse.json({
       requiresUpdate,
-      forceUpdate: requiresUpdate && forceUpdate,
+      forceUpdate: forceUpdate, // Policy from admin: "require update when below min"
       minVersion,
       latestVersion,
       updateUrl,
-      currentVersion,
-      platform,
+      ...(hasVersion && { currentVersion: currentVersion, platform: platformKey }),
     });
   } catch (error) {
     console.error('Error in app-version route:', error);

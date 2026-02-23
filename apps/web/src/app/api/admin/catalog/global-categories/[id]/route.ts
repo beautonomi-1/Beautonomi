@@ -25,9 +25,9 @@ export async function GET(
   try {
     const { id } = await params;
     
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: category, error } = await supabase
       .from("global_service_categories")
@@ -66,9 +66,9 @@ export async function PUT(
   try {
     const { id } = await params;
     
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     // Validate request body
@@ -126,9 +126,9 @@ export async function DELETE(
   try {
     const { id } = await params;
     
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: category, error } = await (supabase
       .from("global_service_categories") as any)

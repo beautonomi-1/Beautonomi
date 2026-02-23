@@ -26,7 +26,7 @@ export async function GET() {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: config, error } = await supabase
       .from("mapbox_config")
@@ -91,7 +91,7 @@ export async function PUT(request: Request) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validationResult = mapboxConfigSchema.safeParse(body);

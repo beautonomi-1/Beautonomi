@@ -11,6 +11,7 @@ import {
   ChevronRight,
   X,
 } from "lucide-react";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface ReturnRequest {
   id: string;
@@ -128,6 +129,7 @@ export default function AdminProductReturnsPage() {
     : [];
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Product Returns</h1>
@@ -325,5 +327,6 @@ export default function AdminProductReturnsPage() {
         </div>
       )}
     </div>
+    </RoleGuard>
   );
 }

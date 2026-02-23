@@ -22,11 +22,11 @@ void _updateGlobalCategorySchema;
  * 
  * Get all global categories
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: categories, error } = await supabase
       .from("global_service_categories")
@@ -74,9 +74,9 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     let body;
     try {
       body = await request.json();

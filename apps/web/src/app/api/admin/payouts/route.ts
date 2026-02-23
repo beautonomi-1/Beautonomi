@@ -9,8 +9,8 @@ import { requireRoleInApi, getPaginationParams } from "@/lib/supabase/api-helper
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
 
     if (!supabase) {
       return NextResponse.json({
@@ -93,12 +93,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch bank account data for payouts
+    // Fetch bank account data: by recipient_code (stored on payout) and by provider_id (for pending payouts without recipient_code yet)
     const recipientCodes = payouts
       .map((p: any) => p.recipient_code)
       .filter(Boolean);
-    
-    let bankAccountMap = new Map();
+
+    let bankAccountByRecipient = new Map();
     if (recipientCodes.length > 0) {
       const { data: bankAccounts } = await supabase
         .from("provider_payout_accounts")
@@ -108,22 +108,49 @@ export async function GET(request: NextRequest) {
         .is("deleted_at", null);
 
       if (bankAccounts) {
-        bankAccountMap = new Map(
+        bankAccountByRecipient = new Map(
           bankAccounts.map((acc: any) => [acc.recipient_code, acc])
         );
       }
     }
 
+    // For payouts without recipient_code (e.g. pending), use provider's active payout account for display
+    let bankAccountByProviderId = new Map();
+    if (providerIds.length > 0) {
+      const { data: providerAccounts } = await supabase
+        .from("provider_payout_accounts")
+        .select("provider_id, account_name, account_number_last4, bank_name, bank_code")
+        .in("provider_id", providerIds)
+        .eq("active", true)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+      // One row per provider (latest); if multiple active, first wins
+      if (providerAccounts) {
+        for (const acc of providerAccounts) {
+          if (!bankAccountByProviderId.has(acc.provider_id)) {
+            bankAccountByProviderId.set(acc.provider_id, acc);
+          }
+        }
+      }
+    }
+
     // Transform payouts to include provider and bank account data
-    const enrichedPayouts = payouts.map((payout: any) => ({
-      ...payout,
-      provider: payout.provider_id
-        ? providerMap.get(payout.provider_id) || null
-        : null,
-      bank_account: payout.recipient_code
-        ? bankAccountMap.get(payout.recipient_code) || null
-        : null,
-    }));
+    const enrichedPayouts = payouts.map((payout: any) => {
+      const bankFromRecipient = payout.recipient_code
+        ? bankAccountByRecipient.get(payout.recipient_code) || null
+        : null;
+      const bankFromProvider =
+        !bankFromRecipient && payout.provider_id
+          ? bankAccountByProviderId.get(payout.provider_id) || null
+          : null;
+      return {
+        ...payout,
+        provider: payout.provider_id
+          ? providerMap.get(payout.provider_id) || null
+          : null,
+        bank_account: bankFromRecipient || bankFromProvider || null,
+      };
+    });
 
     return NextResponse.json({
       data: enrichedPayouts,

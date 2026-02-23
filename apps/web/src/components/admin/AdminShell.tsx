@@ -38,7 +38,6 @@ import {
   Shield,
   Receipt,
   UserCheck,
-  Mail,
   MessageSquare,
   TrendingUp,
   Crown,
@@ -76,64 +75,115 @@ interface NavItem {
   badge?: number;
 }
 
-const navItems: NavItem[] = [
-  { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
-  { title: "Gods Eye", href: "/admin/gods-eye", icon: Eye },
-  { title: "Providers", href: "/admin/providers", icon: Building2 },
-  { title: "Bookings", href: "/admin/bookings", icon: Calendar },
-  { title: "Reviews", href: "/admin/reviews", icon: Star },
-  { title: "Disputes", href: "/admin/disputes", icon: AlertCircle },
-  { title: "User Reports", href: "/admin/user-reports", icon: Flag },
-  { title: "Refunds", href: "/admin/refunds", icon: RotateCcw },
-  { title: "Analytics", href: "/admin/analytics", icon: BarChart3 },
-  { title: "Reports", href: "/admin/reports", icon: FileText },
-  { title: "System Health", href: "/admin/system-health", icon: BarChart3 },
-  { title: "Monitoring", href: "/admin/monitoring", icon: Activity },
-  { title: "Security", href: "/admin/security", icon: Shield },
-  { title: "API Keys", href: "/admin/api-keys", icon: Shield },
-  { title: "Amplitude", href: "/admin/integrations/amplitude", icon: BarChart3 },
-  { title: "Webhooks", href: "/admin/webhooks", icon: Globe },
-  { title: "Gift Cards", href: "/admin/gift-cards", icon: Gift },
-  { title: "Support Tickets", href: "/admin/support-tickets", icon: AlertCircle },
-  { title: "Product Orders", href: "/admin/ecommerce/orders", icon: ShoppingBag },
-  { title: "Product Returns", href: "/admin/ecommerce/returns", icon: Undo2 },
-  { title: "Product Catalog", href: "/admin/ecommerce/products", icon: Store },
-  { title: "Catalog", href: "/admin/catalog", icon: Tag },
-  { title: "Promotions", href: "/admin/promotions", icon: Gift },
-  { title: "Loyalty", href: "/admin/loyalty", icon: Award },
-  { title: "Point rules", href: "/admin/gamification/point-rules", icon: Coins },
-  { title: "Content", href: "/admin/content", icon: FileText },
-  { title: "Explore", href: "/admin/explore", icon: ImageIcon },
-  { title: "Users", href: "/admin/users", icon: Users },
-  { title: "Verifications", href: "/admin/verifications", icon: ShieldCheck },
-  { title: "Finance", href: "/admin/finance", icon: DollarSign },
-  { title: "Fee Management", href: "/admin/fees", icon: CreditCard },
-  { title: "Payouts", href: "/admin/payouts", icon: Wallet },
-  { title: "Notifications", href: "/admin/notifications", icon: Bell },
-  { title: "Broadcast", href: "/admin/broadcast", icon: MessageSquare },
-  { title: "Marketing Automations", href: "/admin/automations", icon: Zap },
-  { title: "Email Templates", href: "/admin/email-templates", icon: Mail },
-  { title: "SMS Templates", href: "/admin/sms-templates", icon: MessageSquare },
-  { title: "Taxes", href: "/admin/taxes", icon: Receipt },
-  { title: "Staff", href: "/admin/staff", icon: UserCheck },
-  { title: "Audit Logs", href: "/admin/audit-logs", icon: FileSearch },
-  { title: "ISO Codes", href: "/admin/iso-codes", icon: Globe },
-  { title: "Mapbox", href: "/admin/mapbox", icon: Map },
-  { title: "Control Plane", href: "/admin/control-plane/overview", icon: Settings },
-  { title: "Feature Flags", href: "/admin/settings/feature-flags", icon: ToggleLeft },
-  { title: "Subscription Plans", href: "/admin/subscription-plans", icon: CreditCard },
-  { title: "Subscription Revenue", href: "/admin/subscription-revenue", icon: TrendingUp },
-  { title: "Provider Subscriptions", href: "/admin/provider-subscriptions", icon: CreditCard },
-  { title: "Custom Fields", href: "/admin/custom-fields", icon: FileText },
-  { title: "Memberships", href: "/admin/memberships", icon: Crown },
-  { title: "Addons", href: "/admin/addons", icon: Layers },
-  { title: "Billing", href: "/admin/billing", icon: CreditCard },
-  { title: "Pricing Plans", href: "/admin/pricing-plans", icon: Percent },
-  { title: "Notification Templates", href: "/admin/notification-templates", icon: Bell },
-  { title: "App Version", href: "/admin/settings/app-version", icon: Smartphone },
-  { title: "Platform Fees", href: "/admin/settings/platform-fees", icon: DollarSign },
-  { title: "Referral Settings", href: "/admin/settings/referrals", icon: Link2 },
-  { title: "Settings", href: "/admin/settings", icon: Settings },
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const navGroups: NavGroup[] = [
+  {
+    label: "Overview",
+    items: [
+      { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+      { title: "Gods Eye", href: "/admin/gods-eye", icon: Eye },
+      { title: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+      { title: "Reports", href: "/admin/reports", icon: FileText },
+    ],
+  },
+  {
+    label: "Providers & operations",
+    items: [
+      { title: "Providers", href: "/admin/providers", icon: Building2 },
+      { title: "Staff", href: "/admin/staff", icon: UserCheck },
+      { title: "Bookings", href: "/admin/bookings", icon: Calendar },
+      { title: "Reviews", href: "/admin/reviews", icon: Star },
+      { title: "Disputes", href: "/admin/disputes", icon: AlertCircle },
+      { title: "User Reports", href: "/admin/user-reports", icon: Flag },
+      { title: "Refunds", href: "/admin/refunds", icon: RotateCcw },
+      { title: "Support Tickets", href: "/admin/support-tickets", icon: AlertCircle },
+    ],
+  },
+  {
+    label: "Finance",
+    items: [
+      { title: "Finance", href: "/admin/finance", icon: DollarSign },
+      { title: "Payouts", href: "/admin/payouts", icon: Wallet },
+      { title: "Fee Management", href: "/admin/fees", icon: CreditCard },
+      { title: "Platform Fees", href: "/admin/settings/platform-fees", icon: DollarSign },
+      { title: "Taxes", href: "/admin/taxes", icon: Receipt },
+      { title: "Plans", href: "/admin/plans", icon: CreditCard },
+      { title: "Provider Subscriptions", href: "/admin/provider-subscriptions", icon: CreditCard },
+      { title: "Subscription Revenue", href: "/admin/subscription-revenue", icon: TrendingUp },
+      { title: "Billing", href: "/admin/billing", icon: CreditCard },
+    ],
+  },
+  {
+    label: "Users & trust",
+    items: [
+      { title: "Users", href: "/admin/users", icon: Users },
+      { title: "Verifications", href: "/admin/verifications", icon: ShieldCheck },
+      { title: "Audit Logs", href: "/admin/audit-logs", icon: FileSearch },
+    ],
+  },
+  {
+    label: "Content & catalog",
+    items: [
+      { title: "Content", href: "/admin/content", icon: FileText },
+      { title: "Catalog", href: "/admin/catalog", icon: Tag },
+      { title: "Explore", href: "/admin/explore", icon: ImageIcon },
+    ],
+  },
+  {
+    label: "E‑commerce",
+    items: [
+      { title: "Product Orders", href: "/admin/ecommerce/orders", icon: ShoppingBag },
+      { title: "Product Returns", href: "/admin/ecommerce/returns", icon: Undo2 },
+      { title: "Product Catalog", href: "/admin/ecommerce/products", icon: Store },
+    ],
+  },
+  {
+    label: "Marketing & comms",
+    items: [
+      { title: "Promotions", href: "/admin/promotions", icon: Gift },
+      { title: "Loyalty", href: "/admin/loyalty", icon: Award },
+      { title: "Point rules", href: "/admin/gamification/point-rules", icon: Coins },
+      { title: "Gift Cards", href: "/admin/gift-cards", icon: Gift },
+      { title: "Notifications", href: "/admin/notifications", icon: Bell },
+      { title: "Broadcast", href: "/admin/broadcast", icon: MessageSquare },
+      { title: "Marketing Automations", href: "/admin/automations", icon: Zap },
+      { title: "Notification Templates", href: "/admin/notification-templates", icon: Bell },
+    ],
+  },
+  {
+    label: "Integrations & dev",
+    items: [
+      { title: "Webhooks", href: "/admin/webhooks", icon: Globe },
+      { title: "API Keys", href: "/admin/api-keys", icon: Shield },
+      { title: "Amplitude", href: "/admin/integrations/amplitude", icon: BarChart3 },
+      { title: "Mapbox", href: "/admin/mapbox", icon: Map },
+      { title: "ISO Codes", href: "/admin/iso-codes", icon: Globe },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { title: "System Health", href: "/admin/system-health", icon: Activity },
+      { title: "Monitoring", href: "/admin/monitoring", icon: Activity },
+      { title: "Security", href: "/admin/security", icon: Shield },
+    ],
+  },
+  {
+    label: "Platform config",
+    items: [
+      { title: "Settings", href: "/admin/settings", icon: Settings },
+      { title: "Control Plane", href: "/admin/control-plane/overview", icon: Layers },
+      { title: "Feature Flags", href: "/admin/settings/feature-flags", icon: ToggleLeft },
+      { title: "Custom Fields", href: "/admin/custom-fields", icon: FileText },
+      { title: "Memberships", href: "/admin/memberships", icon: Crown },
+      { title: "App Version", href: "/admin/settings/app-version", icon: Smartphone },
+      { title: "Referral Settings", href: "/admin/settings/referrals", icon: Link2 },
+    ],
+  },
 ];
 
 interface SearchResult {
@@ -152,6 +202,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const [navCounts, setNavCounts] = useState<Record<string, number>>({});
 
   // Debounce search
   useEffect(() => {
@@ -191,6 +242,20 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Fetch nav counts for sidebar badges (verifications, payouts, support tickets, refunds, disputes)
+  useEffect(() => {
+    let cancelled = false;
+    fetcher
+      .get<{ data: Record<string, number> }>("/api/admin/nav-counts")
+      .then((res) => {
+        if (!cancelled && res?.data) setNavCounts(res.data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]); // refetch when navigating so counts stay fresh after actions
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -236,6 +301,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                   <SidebarContent
                     pathname={pathname}
                     onNavigate={() => setSidebarOpen(false)}
+                    navCounts={navCounts}
                   />
                 </SheetContent>
               </Sheet>
@@ -382,7 +448,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       <div className="flex w-full overflow-x-hidden">
         {/* Desktop Sidebar */}
         <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 lg:z-50 bg-white border-r overflow-x-hidden">
-          <SidebarContent pathname={pathname} />
+          <SidebarContent pathname={pathname} navCounts={navCounts} />
         </aside>
 
         {/* Main Content */}
@@ -557,9 +623,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 function SidebarContent({
   pathname,
   onNavigate,
+  navCounts = {},
 }: {
   pathname: string;
   onNavigate?: () => void;
+  navCounts?: Record<string, number>;
 }) {
   return (
     <>
@@ -572,32 +640,43 @@ function SidebarContent({
           Beautonomi Admin
         </Link>
       </div>
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavigate}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-pink-50 text-pink-600"
-                  : "text-gray-700 hover:bg-gray-100"
-              )}
-            >
-              <Icon className="w-5 h-5" />
-              <span>{item.title}</span>
-              {item.badge && (
-                <Badge variant="secondary" className="ml-auto">
-                  {item.badge}
-                </Badge>
-              )}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
+        {navGroups.map((group) => (
+          <div key={group.label}>
+            <div className="px-3 mb-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              {group.label}
+            </div>
+            <div className="space-y-0.5">
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                const count = navCounts[item.href] ?? item.badge ?? 0;
+                const showBadge = count > 0;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={onNavigate}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-pink-50 text-pink-600"
+                        : "text-gray-700 hover:bg-gray-100"
+                    )}
+                  >
+                    <Icon className="w-5 h-5 shrink-0" />
+                    <span className="truncate flex-1 min-w-0">{item.title}</span>
+                    {showBadge && (
+                      <Badge variant="secondary" className="ml-auto shrink-0 min-w-[1.25rem] justify-center bg-amber-100 text-amber-800 hover:bg-amber-100">
+                        {count > 99 ? "99+" : count}
+                      </Badge>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
     </>
   );

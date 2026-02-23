@@ -430,13 +430,12 @@ async function shouldExecuteAutomation(
       const targetTime = subMinutes(now, delayMinutes);
       const windowStart = subMinutes(targetTime, 60); // 1 hour window
 
-      // Find new bookings that came from referrals (check booking source or referral tracking)
-      // This assumes you have a referral tracking system
+      // Bookings tagged with a provider referral source (e.g. Instagram, Friend) from Settings → Referral Sources
       const { data: referrals } = await supabaseAdmin
         .from("bookings")
-        .select("id, customer_id, created_at, referral_source")
+        .select("id, customer_id, created_at, referral_source_id")
         .eq("provider_id", automation.provider_id)
-        .not("referral_source", "is", null)
+        .not("referral_source_id", "is", null)
         .gte("created_at", windowStart.toISOString())
         .lte("created_at", targetTime.toISOString());
 

@@ -16,11 +16,13 @@ import {
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { useAuth } from "@/providers/AuthProvider";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface DashboardStats {
   total_users: number;
@@ -56,10 +58,15 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { user, role } = useAuth();
 
   useEffect(() => {
-    loadDashboard();
-  }, []);
+    if (user?.id && role === "superadmin") {
+      loadDashboard();
+    } else if (role != null && role !== "superadmin") {
+      setIsLoading(false);
+    }
+  }, [user?.id, role]);
 
   const loadDashboard = async () => {
     try {
@@ -87,16 +94,19 @@ export default function AdminDashboard() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading dashboard..." />
-      </div>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
+        <div className="container mx-auto px-4 py-8">
+          <LoadingTimeout loadingMessage="Loading dashboard..." />
+        </div>
+      </RoleGuard>
     );
   }
 
   if (error || !stats) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <EmptyState
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
+        <div className="container mx-auto px-4 py-8">
+          <EmptyState
           title="Failed to load dashboard"
           description={error || "Unable to load dashboard data"}
           action={{
@@ -104,11 +114,13 @@ export default function AdminDashboard() {
             onClick: loadDashboard,
           }}
         />
-      </div>
+        </div>
+      </RoleGuard>
     );
   }
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
     <div className="container mx-auto px-4 py-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -435,6 +447,7 @@ export default function AdminDashboard() {
           />
         </div>
       </div>
+    </RoleGuard>
   );
 }
 

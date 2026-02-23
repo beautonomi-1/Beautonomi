@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
@@ -20,14 +20,14 @@ void _updateResourceSchema;
  * 
  * Get all resources
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const auth = await requireRole(["superadmin"]);
     if (!auth) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     
     // Return empty array if query fails instead of 500 error
     if (!supabase) {
@@ -83,14 +83,14 @@ export async function GET() {
  * 
  * Create a new resource
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const auth = await requireRole(["superadmin"]);
     if (!auth) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     // Validate request body

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
@@ -59,6 +60,9 @@ export async function GET(request: Request) {
     const country = searchParams.get("country") || "ZA"; // Default to South Africa
     const categorySlug = searchParams.get("category"); // Filter by category slug
 
+    const cacheKey = `home-${latitude ?? ""}-${longitude ?? ""}-${city ?? ""}-${country}-${categorySlug ?? "all"}`;
+    const result = await unstable_cache(
+      async () => {
     // Get category ID if category slug is provided (skip if "all")
     let categoryId: string | null = null;
     let providerIdsForCategory: string[] | null = null;
@@ -116,7 +120,7 @@ export async function GET(request: Request) {
     };
 
     // Helper function to add timeout to Supabase queries
-    const withTimeout = async (queryPromise: Promise<{ data: any; error: any }>, timeoutMs: number = 5000, _queryName: string = 'unknown') => {
+    const withTimeout = async (queryPromise: Promise<{ data: any; error: any }>, timeoutMs: number = 3000, _queryName: string = 'unknown') => {
       try {
         return await Promise.race([
           queryPromise,
@@ -289,7 +293,7 @@ export async function GET(request: Request) {
             .from("provider_locations")
             .select("city, country, provider_id")
             .eq("is_active", true)
-            .limit(1000); // Increased limit to capture more cities
+            .limit(400);
 
           if (locationsError || !locationsData) {
             console.error("Error fetching locations for browse by city:", locationsError);
@@ -410,21 +414,18 @@ export async function GET(request: Request) {
           const thirtyDaysAgo = new Date();
           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-          // Get booking counts per provider for the last 30 days
+          // Get booking counts per provider for the last 30 days (capped for performance)
           let bookingQuery = supabase
             .from("bookings")
             .select("provider_id")
             .gte("created_at", thirtyDaysAgo.toISOString())
-            .in("status", ["confirmed", "completed", "in_progress"]);
-          
-          // Apply category filter to bookings if needed
+            .in("status", ["confirmed", "completed", "in_progress"])
+            .limit(5000);
           if (providerIdsForCategory !== null && providerIdsForCategory.length > 0) {
             bookingQuery = bookingQuery.in("provider_id", providerIdsForCategory);
           } else if (providerIdsForCategory !== null && providerIdsForCategory.length === 0) {
-            // No providers in category, return empty
             return { data: [], error: null };
           }
-          
           const { data: bookingCounts, error: bookingError } = await bookingQuery;
 
           if (bookingError || !bookingCounts || bookingCounts.length === 0) {
@@ -1648,7 +1649,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const response = NextResponse.json({
+    return {
       data: {
         all: allProviders,
         topRated: topRated,
@@ -1658,11 +1659,14 @@ export async function GET(request: Request) {
         browseByCity: browseByCity,
       },
       error: null,
-    });
+    };
+      },
+      [cacheKey],
+      { revalidate: 60 }
+    )();
 
-    // Add caching headers for public content
+    const response = NextResponse.json(result);
     response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
-    
     return response;
   } catch (error: any) {
     console.error("Unexpected error in /api/public/home:", error);

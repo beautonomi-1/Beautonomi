@@ -361,9 +361,10 @@ export default function SignupPage() {
                     Create your account to get started
                   </p>
                 </div>
-                {/* Inline signup form */}
+                {/* Inline signup form — pass ref= for referral attribution */}
                 <InlineSignupForm
                   redirectContext={selectedPersona === "provider" ? "provider" : "customer"}
+                  referralCode={searchParams.get("ref") ?? undefined}
                   onAuthSuccess={() => {
                     setSelectedPersona(null);
                   }}

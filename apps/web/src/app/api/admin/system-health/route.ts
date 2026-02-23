@@ -4,9 +4,9 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { searchParams } = new URL(request.url);
     const metricType = searchParams.get("type");
@@ -95,9 +95,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const { metric_type, metric_name, value, unit, status, metadata } = body;
 

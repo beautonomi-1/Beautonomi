@@ -6,9 +6,9 @@ import { requireRoleInApi, successResponse, errorResponse, handleApiError } from
  * GET /api/admin/gamification/point-rules
  * List all point rules (superadmin only)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
     const supabase = getSupabaseAdmin();
 
     const { data, error } = await supabase
@@ -29,7 +29,7 @@ export async function GET() {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
     const supabase = getSupabaseAdmin();
     const body = await request.json();
     const { rules } = body as { rules: Array<{ source: string; points: number }> };

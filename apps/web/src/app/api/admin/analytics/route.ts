@@ -4,8 +4,8 @@ import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabas
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
     
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d'; // 7d, 30d, 90d, 1y
@@ -30,13 +30,21 @@ export async function GET(request: NextRequest) {
         startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    // Get daily time series data
-    const getDailyTimeSeries = async (table: string, dateField: string = 'created_at') => {
-      const { data, error } = await supabase
+    // Get daily time series data (optional extra filter, e.g. for users by role)
+    const getDailyTimeSeries = async (
+      table: string,
+      dateField: string = 'created_at',
+      extraFilter?: { column: string; value: string }
+    ) => {
+      let query = supabase
         .from(table)
         .select(dateField)
         .gte(dateField, startDate.toISOString())
         .order(dateField, { ascending: true });
+      if (extraFilter) {
+        query = query.eq(extraFilter.column, extraFilter.value);
+      }
+      const { data, error } = await query;
 
       if (error) {
         console.error(`Error fetching ${table}:`, error);
@@ -100,12 +108,11 @@ export async function GET(request: NextRequest) {
       return result;
     };
 
-    // Get provider status breakdown
+    // Get provider status breakdown (all providers by current status)
     const getProviderStatusBreakdown = async () => {
       const { data, error } = await supabase
         .from('providers')
-        .select('status')
-        .gte('created_at', startDate.toISOString());
+        .select('status');
 
       if (error) {
         console.error('Error fetching provider status:', error);
@@ -158,13 +165,13 @@ export async function GET(request: NextRequest) {
       return breakdown;
     };
 
-    // Get top providers by revenue
+    // Get top providers by revenue (provider earnings: provider_earnings, travel_fee, tip)
     const getTopProviders = async () => {
       const { data, error } = await supabase
         .from('finance_transactions')
-        .select('provider_id, net')
+        .select('provider_id, net, amount')
         .gte('created_at', startDate.toISOString())
-        .in('transaction_type', ['payment', 'additional_charge_payment']);
+        .in('transaction_type', ['provider_earnings', 'travel_fee', 'tip']);
 
       if (error) {
         console.error('Error fetching top providers:', error);
@@ -174,7 +181,8 @@ export async function GET(request: NextRequest) {
       const providerRevenue: Record<string, number> = {};
       (data || []).forEach((t: any) => {
         if (t.provider_id) {
-          providerRevenue[t.provider_id] = (providerRevenue[t.provider_id] || 0) + Math.abs(t.net || 0);
+          const amt = Number(t.net ?? t.amount ?? 0);
+          providerRevenue[t.provider_id] = (providerRevenue[t.provider_id] || 0) + amt;
         }
       });
 
@@ -203,7 +211,7 @@ export async function GET(request: NextRequest) {
       return [];
     };
 
-    // Run all queries in parallel
+    // Run all queries in parallel (users = customers only for growth chart)
     const [
       usersTimeSeries,
       providersTimeSeries,
@@ -213,7 +221,7 @@ export async function GET(request: NextRequest) {
       bookingStatusBreakdown,
       topProviders,
     ] = await Promise.all([
-      getDailyTimeSeries('users', 'created_at'),
+      getDailyTimeSeries('users', 'created_at', { column: 'role', value: 'customer' }),
       getDailyTimeSeries('providers', 'created_at'),
       getDailyTimeSeries('bookings', 'created_at'),
       getRevenueTimeSeries(),

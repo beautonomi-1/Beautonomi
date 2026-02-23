@@ -184,15 +184,19 @@ export async function POST(request: NextRequest) {
     let platformFee = 0;
     const isOnline = !["cash", "yoco"].includes(parsed.payment_method ?? "paystack");
     if (isOnline) {
-      const { data: platformSettings } = await (supabase.from("platform_settings") as any)
-        .select("platform_service_fee_type, platform_service_fee_percentage, platform_service_fee_fixed")
-        .single();
+      const { data: settingsRow } = await (supabase.from("platform_settings") as any)
+        .select("settings")
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
 
-      if (platformSettings) {
-        if (platformSettings.platform_service_fee_type === "fixed") {
-          platformFee = parseFloat(platformSettings.platform_service_fee_fixed) || 0;
+      const payouts = (settingsRow?.settings as Record<string, unknown>)?.payouts as Record<string, unknown> | undefined;
+      if (payouts) {
+        const feeType = (payouts.platform_service_fee_type as string) || "percentage";
+        if (feeType === "fixed") {
+          platformFee = Number(payouts.platform_service_fee_fixed) || 0;
         } else {
-          const pct = parseFloat(platformSettings.platform_service_fee_percentage) || 5;
+          const pct = Number(payouts.platform_service_fee_percentage) || 5;
           platformFee = Math.round(subtotal * pct) / 100;
         }
       } else {

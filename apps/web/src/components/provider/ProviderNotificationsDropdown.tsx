@@ -122,8 +122,15 @@ export function ProviderNotificationsDropdown() {
   const { user } = useAuth();
 
   useEffect(() => {
-    loadNotifications();
-    
+    // Only fetch notifications when user is authenticated (avoids 401 from API)
+    if (user?.id) {
+      loadNotifications();
+    } else {
+      setIsLoading(false);
+      setNotifications([]);
+      setTotalUnread(0);
+    }
+
     // Set up real-time subscription for notifications
     const supabase = getSupabaseClient();
     let subscription: any = null;
@@ -201,10 +208,10 @@ export function ProviderNotificationsDropdown() {
         )
         .subscribe();
     }
-    
-    // Fallback: Refresh every 5 minutes as backup (reduced from 2 minutes)
-    const interval = setInterval(loadNotifications, 300000);
-    
+
+    // Fallback: Refresh every 5 minutes when authenticated
+    const interval = user?.id ? setInterval(loadNotifications, 300000) : undefined;
+
     return () => {
       if (subscription) {
         try {
@@ -213,7 +220,7 @@ export function ProviderNotificationsDropdown() {
           // Ignore when channel is still connecting (e.g. React Strict Mode unmount)
         }
       }
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
     };
   }, [user?.id]);
 

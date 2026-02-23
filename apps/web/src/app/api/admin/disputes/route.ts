@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/admin/disputes
  * 
- * Fetch all disputes with filtering and pagination
+ * Fetch all disputes with filtering and pagination. Uses admin client to bypass RLS.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get("status"); // all, open, resolved, closed
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
           customer_id,
           provider_id,
           customer:users!bookings_customer_id_fkey(id, full_name, email),
-          provider:providers!bookings_provider_id_fkey(id, business_name, owner_name, owner_email)
+          provider:providers!bookings_provider_id_fkey(id, business_name)
         )
       `)
       .order("created_at", { ascending: false })

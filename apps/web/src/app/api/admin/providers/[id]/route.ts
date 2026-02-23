@@ -1,28 +1,27 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/admin/providers/[id]
  * 
- * Get detailed provider information
+ * Get detailed provider information (superadmin only). Uses admin client to bypass RLS.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
 
-    // Get provider with owner info
+    // Get provider (avoid FK-hint join which can fail; fetch owner separately)
     const { data: provider, error } = await supabase
       .from("providers")
       .select(`
         *,
-        owner:users!providers_user_id_fkey(id, full_name, email, phone, avatar_url),
         locations:provider_locations(*),
         staff:provider_staff(*),
         offerings:provider_offerings(*)
@@ -32,6 +31,17 @@ export async function GET(
 
     if (error || !provider) {
       return notFoundResponse("Provider not found");
+    }
+
+    const prov = provider as Record<string, unknown> & { user_id?: string };
+    let owner: { id: string; full_name: string | null; email: string | null; phone: string | null; avatar_url: string | null } | null = null;
+    if (prov.user_id) {
+      const { data: ownerRow } = await supabase
+        .from("users")
+        .select("id, full_name, email, phone, avatar_url")
+        .eq("id", prov.user_id)
+        .single();
+      owner = ownerRow as typeof owner;
     }
 
     // Get stats
@@ -57,6 +67,7 @@ export async function GET(
 
     return successResponse({
       ...(provider as Record<string, unknown>),
+      owner: owner ?? null,
       stats: {
         booking_count: bookingCount || 0,
         review_count: reviewCount || 0,
@@ -78,9 +89,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
 
     // Verify provider exists
@@ -105,25 +116,28 @@ export async function PATCH(
     if (body.phone !== undefined) updateData.phone = body.phone;
     if (body.business_type !== undefined) updateData.business_type = body.business_type;
 
-    // Update provider
     const { data: updatedProvider, error: updateError } = await supabase
       .from("providers")
       .update(updateData)
       .eq("id", id)
-      .select(`
-        *,
-        owner:users!providers_user_id_fkey(id, full_name, email, phone, avatar_url),
-        locations:provider_locations(*),
-        staff:provider_staff(*),
-        offerings:provider_offerings(*)
-      `)
+      .select("*, locations:provider_locations(*), staff:provider_staff(*), offerings:provider_offerings(*)")
       .single();
 
     if (updateError || !updatedProvider) {
       return handleApiError(updateError, "Failed to update provider");
     }
 
-    return successResponse(updatedProvider);
+    const updated = updatedProvider as Record<string, unknown> & { user_id?: string };
+    let owner: { id: string; full_name: string | null; email: string | null; phone: string | null; avatar_url: string | null } | null = null;
+    if (updated.user_id) {
+      const { data: ownerRow } = await supabase
+        .from("users")
+        .select("id, full_name, email, phone, avatar_url")
+        .eq("id", updated.user_id)
+        .single();
+      owner = ownerRow as typeof owner;
+    }
+    return successResponse({ ...updated, owner: owner ?? null });
   } catch (error) {
     return handleApiError(error, "Failed to update provider");
   }

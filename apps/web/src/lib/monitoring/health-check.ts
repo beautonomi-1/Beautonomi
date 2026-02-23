@@ -62,7 +62,7 @@ class HealthCheckService {
 
   async recordHealthCheck(result: HealthCheckResult): Promise<void> {
     this.init();
-    
+
     if (!this.supabaseAdmin) {
       return;
     }
@@ -80,6 +80,67 @@ class HealthCheckService {
     } catch (error) {
       console.error("Failed to record health check:", error);
     }
+  }
+
+  /**
+   * Run probes against the most important public API endpoints and record results.
+   * Call this when serving the admin monitoring health API so the dashboard has data.
+   * Only public GET endpoints that need no path params – provider/customer APIs require auth.
+   * @param baseUrl - Origin e.g. https://localhost:3000 or request origin
+   */
+  async runProbes(baseUrl: string): Promise<void> {
+    const endpoints: { path: string; method: string }[] = [
+      { path: "/api/public/config-bundle", method: "GET" },       // App bootstrap – critical
+      { path: "/api/public/analytics-config", method: "GET" },  // Analytics
+      { path: "/api/public/categories", method: "GET" },        // Discovery
+      { path: "/api/public/search", method: "GET" },            // Search (GET with optional query)
+      { path: "/api/public/home", method: "GET" },               // Home/landing
+      { path: "/api/public/platform-settings", method: "GET" }, // Platform config
+      { path: "/api/public/subscription-plans", method: "GET" },  // Plans
+      { path: "/api/public/faqs", method: "GET" },              // Support
+      { path: "/api/public/signup-content", method: "GET" },    // Become a partner / signup page content
+      { path: "/api/public/previous-software-options", method: "GET" }, // Partner onboarding form dropdown
+      { path: "/api/public/countries", method: "GET" },         // Partner onboarding / address forms
+    ];
+
+    const now = new Date().toISOString();
+
+    await Promise.all(
+      endpoints.map(async ({ path, method }) => {
+        const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+        const start = Date.now();
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        try {
+          const res = await fetch(url, { method, signal: controller.signal });
+          clearTimeout(timeoutId);
+          const responseTime = Date.now() - start;
+          const status: "healthy" | "degraded" | "down" =
+            res.ok ? (responseTime > 3000 ? "degraded" : "healthy") : "down";
+          await this.recordHealthCheck({
+            endpoint: path,
+            method,
+            status,
+            response_time_ms: responseTime,
+            status_code: res.status,
+            error: res.ok ? undefined : `HTTP ${res.status}`,
+            checked_at: now,
+          });
+        } catch (err) {
+          clearTimeout(timeoutId);
+          const responseTime = Date.now() - start;
+          await this.recordHealthCheck({
+            endpoint: path,
+            method,
+            status: "down",
+            response_time_ms: responseTime,
+            status_code: 0,
+            error: err instanceof Error ? err.message : String(err),
+            checked_at: now,
+          });
+        }
+      })
+    );
   }
 
   async getEndpointHealth(

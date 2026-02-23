@@ -201,7 +201,9 @@ export default function AdminPayouts() {
       <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         <div className="mb-4 sm:mb-6">
           <h1 className="text-2xl sm:text-3xl font-semibold mb-1 sm:mb-2">Payout Management</h1>
-          <p className="text-sm sm:text-base text-gray-600">Manage provider payout queue</p>
+          <p className="text-sm sm:text-base text-gray-600">
+            Manage provider payout queue. Provider payouts are paid to their linked bank account. Customer refunds are processed via payments/refunds, not this queue.
+          </p>
         </div>
 
         {/* Filters */}

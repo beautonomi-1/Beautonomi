@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface OrderSummary {
   total_orders: number;
@@ -99,6 +100,7 @@ export default function AdminProductOrdersPage() {
     : [];
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Product Orders</h1>
@@ -266,6 +268,7 @@ export default function AdminProductOrdersPage() {
         </div>
       )}
     </div>
+    </RoleGuard>
   );
 }
 

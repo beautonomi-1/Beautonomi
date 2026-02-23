@@ -18,9 +18,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: verification, error } = await supabase
       .from("user_verifications")
@@ -64,10 +64,10 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['superadmin']);
+    const { user } = await requireRoleInApi(['superadmin'], request);
     const { id } = await params;
     const body = await request.json();
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const validationResult = reviewSchema.safeParse(body);
     if (!validationResult.success) {

@@ -406,8 +406,18 @@ export function ProviderTopbar() {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
+                <Link href="/help" className="cursor-pointer">
+                  Help Centre
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/help/submit-ticket" className="cursor-pointer">
+                  Contact support
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
                 <Link href="/provider/resources" className="cursor-pointer">
-                  Help & Resources
+                  Resources
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />

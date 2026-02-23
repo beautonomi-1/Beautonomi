@@ -168,7 +168,10 @@ export default function CustomFieldsPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Custom Fields</h1>
             <p className="text-gray-600 mt-1">
-              Manage custom fields for users, providers, and bookings
+              Platform-level definitions: extra fields that can apply to users, providers, bookings, and services. Managed by superadmin only—not by individual providers.
+            </p>
+            <p className="text-sm text-amber-700 mt-2">
+              <strong>Not provider-managed:</strong> Providers do not define their own custom fields here. You define which fields exist for each entity type; those definitions would be used when editing a user, provider, booking, or service (consumer UI may not be wired yet).
             </p>
           </div>
           <Button onClick={handleCreate} className="bg-[#FF0077] hover:bg-[#D60565]">
@@ -181,7 +184,7 @@ export default function CustomFieldsPage() {
           <EmptyState
             icon={Edit}
             title="No custom fields yet"
-            description="Create custom fields to collect additional information from users, providers, or bookings."
+            description="Define platform-wide extra fields for user, provider, booking, or service entities. Only superadmin can create or edit these."
             action={{
               label: "Create Custom Field",
               onClick: handleCreate,

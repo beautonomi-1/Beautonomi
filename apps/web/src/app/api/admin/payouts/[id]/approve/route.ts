@@ -13,10 +13,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRoleInApi(['superadmin']);
+    const auth = await requireRoleInApi(['superadmin'], request);
     if (!auth) throw new Error("Authentication required");
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     // Verify payout exists

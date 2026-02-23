@@ -243,6 +243,19 @@ const ReferralsPage = () => {
               </div>
             ) : (
               <div className="space-y-6">
+                {/* When referrals disabled by admin, show message and hide copy/share */}
+                {settings?.is_enabled === false && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 md:p-6"
+                  >
+                    <p className="text-sm font-medium text-amber-800">
+                      Referrals are currently disabled. You can still see your code; rewards will apply when the program is enabled again.
+                    </p>
+                  </motion.div>
+                )}
+
                 {/* Referral Code Card */}
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}

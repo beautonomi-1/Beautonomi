@@ -6,10 +6,10 @@ import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabas
  * GET /api/admin/activity
  * Get recent activity notifications for admin dashboard
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
 
     if (!supabase) {
       return successResponse([]);

@@ -8,8 +8,8 @@ import { EVENT_API_KEY_CREATED, EVENT_API_KEY_UPDATED } from "@/lib/analytics/am
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
 
     const { searchParams } = new URL(request.url);
     const environment = searchParams.get("environment") || "production";
@@ -34,8 +34,8 @@ export async function GET(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const { user } = await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
     const {

@@ -1,21 +1,21 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/admin/bookings/[id]
- * 
- * Get detailed booking information
+ *
+ * Get detailed booking information. Uses admin client so superadmin always sees any booking.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
 
     // Get booking with related data
     const { data: booking, error } = await supabase
@@ -71,7 +71,7 @@ export async function GET(
 
 /**
  * PATCH /api/admin/bookings/[id]
- * 
+ *
  * Update booking details
  */
 export async function PATCH(
@@ -79,9 +79,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
 
     // Verify booking exists

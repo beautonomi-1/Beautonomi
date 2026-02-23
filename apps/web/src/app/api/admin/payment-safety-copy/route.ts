@@ -16,8 +16,8 @@ const DEFAULT_COPY = {
 
 export async function GET() {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], req);
+    const supabase = await getSupabaseServer(req);
     const { data: row } = await supabase
       .from("platform_settings")
       .select("id, settings")
@@ -35,8 +35,8 @@ export async function GET() {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const { user } = await requireRoleInApi(["superadmin"], req);
+    const supabase = await getSupabaseServer(req);
     const body = await req.json();
 
     const { data: row } = await supabase

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -7,17 +7,17 @@ import {
 } from "@/lib/supabase/api-helpers";
 
 /**
- * GET /api/admin/providers/[id]/distance-settings
- * Get distance settings for a provider (superadmin only)
+ * GET/PATCH /api/admin/providers/[id]/distance-settings
+ * Get/update distance settings for a provider (superadmin only). Uses admin client to bypass RLS.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
 
     const { data: provider, error } = await supabase
@@ -61,9 +61,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
     const body = await request.json();
 

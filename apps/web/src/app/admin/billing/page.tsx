@@ -25,12 +25,13 @@ import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Plus, Search, Download, Send } from "lucide-react";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface Provider {
   id: string;
-  name: string;
-  billing_email: string | null;
-  billing_phone: string | null;
+  business_name: string;
+  billing_email?: string | null;
+  billing_phone?: string | null;
 }
 
 interface Invoice {
@@ -115,7 +116,7 @@ export default function AdminBillingDashboard() {
 
   const handleSendInvoice = async (invoiceId: string) => {
     try {
-      await fetcher.patch(`/api/provider/invoices/${invoiceId}`, { status: "sent" });
+      await fetcher.patch(`/api/admin/invoices/${invoiceId}`, { status: "sent" });
       toast.success("Invoice sent");
       loadData();
     } catch {
@@ -124,9 +125,10 @@ export default function AdminBillingDashboard() {
   };
 
   const filteredInvoices = invoices.filter((invoice) => {
+    const providerName = invoice.provider?.business_name ?? invoice.provider?.name ?? "";
     const matchesSearch = searchQuery === "" || 
       invoice.invoice_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      invoice.provider?.name?.toLowerCase().includes(searchQuery.toLowerCase());
+      providerName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "all" || invoice.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -158,6 +160,7 @@ export default function AdminBillingDashboard() {
   }
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -225,7 +228,7 @@ export default function AdminBillingDashboard() {
               filteredInvoices.map((invoice) => (
                 <TableRow key={invoice.id}>
                   <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
-                  <TableCell>{invoice.provider?.name || "Unknown"}</TableCell>
+                  <TableCell>{invoice.provider?.business_name ?? invoice.provider?.name ?? "Unknown"}</TableCell>
                   <TableCell className="text-sm text-gray-600">
                     {new Date(invoice.period_start).toLocaleDateString()} - {new Date(invoice.period_end).toLocaleDateString()}
                   </TableCell>
@@ -280,7 +283,7 @@ export default function AdminBillingDashboard() {
                 <SelectContent>
                   {providers.map((provider) => (
                     <SelectItem key={provider.id} value={provider.id}>
-                      {provider.name}
+                      {provider.business_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -333,5 +336,6 @@ export default function AdminBillingDashboard() {
         </DialogContent>
       </Dialog>
     </div>
+    </RoleGuard>
   );
 }

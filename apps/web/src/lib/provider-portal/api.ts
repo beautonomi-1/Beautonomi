@@ -770,6 +770,7 @@ export class MockProviderApi implements ProviderApi {
       updated_by_name: booking.updated_by_name || "",
       client_since: customer.created_at || "",
       ...(booking.version !== undefined && { version: booking.version }),
+      ...(booking.referral_source_id !== undefined && { referral_source_id: booking.referral_source_id }),
     } as Appointment;
   }
 
@@ -842,6 +843,7 @@ export class MockProviderApi implements ProviderApi {
         address_city: data.address_city || null,
         address_state: data.address_state || null,
         address_postal_code: data.address_postal_code || null,
+        referral_source_id: (data as any).referral_source_id ?? null,
       };
 
       console.log("Creating appointment with data:", bookingData);
@@ -1061,6 +1063,10 @@ export class MockProviderApi implements ProviderApi {
       }
       if (data.cancellation_fee !== undefined) {
         updateData.cancellation_fee = data.cancellation_fee;
+      }
+      // Referral source (where did this client come from?)
+      if ((data as any).referral_source_id !== undefined) {
+        updateData.referral_source_id = (data as any).referral_source_id || null;
       }
       
       // Ensure we have at least one field to update

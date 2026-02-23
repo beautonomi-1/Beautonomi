@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fetcher } from "@/lib/http/fetcher";
 import { ArrowLeft } from "lucide-react";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface LogEntry {
   id: string;
@@ -50,6 +51,7 @@ export default function ConfigChangeLogPage() {
   }, [page, limit, area, recordKey]);
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Link href="/admin/control-plane/overview"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
@@ -125,5 +127,6 @@ export default function ConfigChangeLogPage() {
         </CardContent>
       </Card>
     </div>
+    </RoleGuard>
   );
 }

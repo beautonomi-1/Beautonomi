@@ -162,7 +162,7 @@ export function ProviderSidebar() {
     }
     
     // For staff members, apply permission filtering
-    return navigationSections.map(section => ({
+    const withFilteredItems = navigationSections.map(section => ({
       ...section,
       items: section.items.filter(item => {
         // If no permission required, always show
@@ -182,7 +182,14 @@ export function ProviderSidebar() {
           return true;
         }
       })
-    })).filter(section => section.items.length > 0);
+    }));
+    // Always show E-Commerce section (alignment with provider app): if all items were filtered out, show one entry point
+    return withFilteredItems.map(section => {
+      if (section.title === "E-Commerce" && section.items.length === 0) {
+        return { ...section, items: [{ icon: Store, label: "E-Commerce", href: "/provider/ecommerce/orders", permission: undefined }] };
+      }
+      return section;
+    }).filter(section => section.items.length > 0);
   }, [navigationSections, isProvider, role, permissionsLoading, permissions, hasPermission]);
 
   // Filter bottom items

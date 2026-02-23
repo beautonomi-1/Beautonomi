@@ -10,7 +10,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRoleInApi(['superadmin']);
+    const auth = await requireRoleInApi(['superadmin'], request);
     const { allowed, retryAfter } = checkRateLimit(auth.user.id, "export:analytics");
     if (!allowed) {
       return errorResponse(
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get("period") || "30d";

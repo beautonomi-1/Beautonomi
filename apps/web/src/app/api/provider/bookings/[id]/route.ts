@@ -155,6 +155,7 @@ export async function GET(
       created_at: bookingData.created_at,
       updated_at: bookingData.updated_at,
       version: bookingData.version || 0,
+      referral_source_id: bookingData.referral_source_id || null,
       // Include joined data for provider portal (customers, locations)
       customers: bookingData.customers || null,
       locations: bookingData.locations || null,
@@ -220,6 +221,7 @@ export async function PATCH(
       // Client arrived (in-salon check-in) - stores WAITING state
       current_stage,
       send_arrival_notification,
+      referral_source_id,
     } = body;
     
     // Check if any updateable field is provided
@@ -231,7 +233,8 @@ export async function PATCH(
         tax_amount !== undefined ||
         location_type || location_id || address_line1 || travel_fee !== undefined ||
         services !== undefined || products !== undefined ||
-        current_stage !== undefined;
+        current_stage !== undefined ||
+        referral_source_id !== undefined;
         
     if (!hasUpdates) {
       return errorResponse("At least one field to update is required", "VALIDATION_ERROR", 400);
@@ -404,6 +407,23 @@ export async function PATCH(
     // Update travel fee if provided
     if (travel_fee !== undefined) {
       updateData.travel_fee = travel_fee;
+    }
+
+    // Update referral source if provided (must belong to this provider)
+    if (referral_source_id !== undefined) {
+      if (referral_source_id === null || referral_source_id === "") {
+        updateData.referral_source_id = null;
+      } else {
+        const { data: src } = await supabase
+          .from("referral_sources")
+          .select("id")
+          .eq("id", referral_source_id)
+          .eq("provider_id", providerId)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (src) updateData.referral_source_id = referral_source_id;
+        // If invalid, leave existing value (don't overwrite)
+      }
     }
 
     // Increment version for optimistic locking

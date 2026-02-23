@@ -8,6 +8,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import { CreditCard, Banknote, Loader2 } from "lucide-react";
+import { CustomFieldsForm } from "@/components/custom-fields/CustomFieldsForm";
 
 interface HoldData {
   hold_id: string;
@@ -41,6 +42,7 @@ function BookContinueContent() {
   const [allowPayInPerson, setAllowPayInPerson] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "cash">("card");
   const [paymentOption, setPaymentOption] = useState<"deposit" | "full">("deposit");
+  const [bookingCustomValues, setBookingCustomValues] = useState<Record<string, string | number | boolean | null>>({});
 
   useEffect(() => {
     if (!holdId) {
@@ -110,6 +112,7 @@ function BookContinueContent() {
       }>(`/api/public/booking-holds/${holdId}/consume`, {
         payment_method: paymentMethod,
         payment_option: paymentOption,
+        custom_field_values: Object.keys(bookingCustomValues).length > 0 ? bookingCustomValues : undefined,
       });
 
       const data = (res as any)?.data ?? res;
@@ -218,6 +221,19 @@ function BookContinueContent() {
                 ? String(hold.address_snapshot.line1)
                 : "At your location"}
             </p>
+          </div>
+
+          <div className="rounded-lg border bg-card p-4 space-y-3">
+            <h2 className="font-medium">Additional details</h2>
+            <p className="text-sm text-muted-foreground">
+              Optional information for this booking (e.g. notes, preferences).
+            </p>
+            <CustomFieldsForm
+              entityType="booking"
+              initialValues={bookingCustomValues}
+              onChange={setBookingCustomValues}
+              showSaveButton={false}
+            />
           </div>
 
           <div className="space-y-3">

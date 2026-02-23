@@ -19,7 +19,7 @@ export async function GET(
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id } = params;
 
     const { data: template, error } = await supabase
@@ -51,7 +51,7 @@ export async function PATCH(
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id } = params;
     const body = await request.json();
 
@@ -106,7 +106,7 @@ export async function DELETE(
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id } = params;
 
     const { error } = await supabase

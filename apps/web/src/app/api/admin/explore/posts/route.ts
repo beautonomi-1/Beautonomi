@@ -9,7 +9,7 @@ import { requireRoleInApi } from "@/lib/supabase/api-helpers";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
     const supabaseAdmin = await getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);

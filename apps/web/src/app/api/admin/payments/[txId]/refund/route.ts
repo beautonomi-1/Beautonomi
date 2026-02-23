@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
-import { getPaystackSecretKey } from "@/lib/payments/paystack-server";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 const refundSchema = z.object({
@@ -12,8 +11,10 @@ const refundSchema = z.object({
 
 /**
  * POST /api/admin/payments/[txId]/refund
- * 
- * Process a refund for a payment transaction (admin-controlled)
+ *
+ * Process a refund for a payment transaction. Refunds always credit the
+ * customer's wallet (use for next booking or request payout); we do not call
+ * Paystack so the same flow works for Paystack, wallet, or other payment methods.
  */
 export async function POST(
   request: Request,
@@ -26,10 +27,9 @@ export async function POST(
     }
 
     const { txId } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
 
-    // Validate request body
     const validationResult = refundSchema.safeParse(body);
     if (!validationResult.success) {
       return NextResponse.json(
@@ -45,7 +45,6 @@ export async function POST(
       );
     }
 
-    // Get transaction
     const { data: transaction } = await supabase
       .from("payment_transactions")
       .select("*")
@@ -68,7 +67,6 @@ export async function POST(
 
     const txData = transaction as any;
 
-    // Check if already refunded
     if (txData.status === "refunded" || txData.status === "partially_refunded") {
       return NextResponse.json(
         {
@@ -82,7 +80,6 @@ export async function POST(
       );
     }
 
-    // Get booking
     const { data: booking } = await supabase
       .from("bookings")
       .select("*")
@@ -103,11 +100,10 @@ export async function POST(
     }
 
     const bookingData = booking as any;
-    const refundAmount = validationResult.data.amount || txData.amount;
+    const refundAmount = validationResult.data.amount ?? Number(txData.amount);
     const { reason } = validationResult.data;
 
-    // Validate refund amount
-    if (refundAmount > txData.amount) {
+    if (refundAmount > Number(txData.amount)) {
       return NextResponse.json(
         {
           data: null,
@@ -120,56 +116,32 @@ export async function POST(
       );
     }
 
-    // Process refund via Paystack
-    const paystackSecretKey = await getPaystackSecretKey();
+    // Credit customer wallet (refunds always go to wallet)
+    const { error: walletError } = await (supabase.rpc as any)("wallet_credit_admin", {
+      p_user_id: bookingData.customer_id,
+      p_amount: refundAmount,
+      p_currency: bookingData.currency || "ZAR",
+      p_description: `Refund for booking ${bookingData.booking_number}: ${reason}`,
+      p_reference_id: txId,
+      p_reference_type: "refund",
+    });
 
-    // Convert amount to kobo
-    const refundAmountInKobo = Math.round(refundAmount * 100);
-
-    // Paystack refund API: https://api.paystack.co/refund
-    // Use transaction reference (not ID) for refunds
-    const refundPayload: any = {
-      transaction: txData.reference,
-    };
-
-    // Only include amount if it's a partial refund
-    // If amount is not provided, Paystack processes a full refund
-    if (refundAmount < txData.amount) {
-      refundPayload.amount = refundAmountInKobo;
-    }
-
-    const paystackResponse = await fetch(
-      `https://api.paystack.co/refund`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${paystackSecretKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(refundPayload),
-      }
-    );
-
-    if (!paystackResponse.ok) {
-      const errorData = await paystackResponse.json();
-      console.error("Paystack refund error:", errorData);
+    if (walletError) {
+      console.error("Wallet credit failed:", walletError);
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: errorData.message || "Failed to process refund",
-            code: "PAYSTACK_ERROR",
+            message: "Failed to credit customer wallet",
+            code: "WALLET_ERROR",
           },
         },
         { status: 500 }
       );
     }
 
-    const paystackRefundData = await paystackResponse.json();
-    const refundReference = paystackRefundData.data?.reference || `refund_${txId}_${Date.now()}`;
-
-    // Determine if full or partial refund
-    const isFullRefund = refundAmount >= txData.amount;
+    const refundReference = `wallet_refund_${txId}_${Date.now()}`;
+    const isFullRefund = refundAmount >= Number(txData.amount);
     const newTransactionStatus = isFullRefund ? "refunded" : "partially_refunded";
     const newBookingPaymentStatus = isFullRefund ? "refunded" : "partially_refunded";
 
@@ -194,17 +166,27 @@ export async function POST(
       })
       .eq("id", txData.booking_id);
 
-    // Create refund transaction record
+    // Record in booking_refunds so update_booking_payment_status keeps totals in sync
+    await (supabase.from("booking_refunds") as any).insert({
+      booking_id: txData.booking_id,
+      amount: refundAmount,
+      reason,
+      refund_method: "store_credit",
+      status: "completed",
+      created_by: auth.user.id,
+    });
+
+    // Create refund transaction record (ledger)
     await (supabase
       .from("payment_transactions") as any)
       .insert({
         booking_id: txData.booking_id,
         reference: refundReference,
-        amount: -refundAmount, // Negative for refund
+        amount: -refundAmount,
         fees: 0,
         net_amount: -refundAmount,
         status: "success",
-        provider: "paystack",
+        provider: txData.provider || "wallet",
         transaction_type: "refund",
         metadata: {
           original_transaction_id: txId,
@@ -248,14 +230,14 @@ export async function POST(
     try {
       const { sendToUser } = await import("@/lib/notifications/onesignal");
       await sendToUser(bookingData.customer_id, {
-        title: "Refund Processed",
-        message: `A ${isFullRefund ? "full" : "partial"} refund of ${bookingData.currency || "ZAR"} ${refundAmount} has been processed for booking ${bookingData.booking_number}.`,
+        title: "Refund added to wallet",
+        message: `A refund of ${bookingData.currency || "ZAR"} ${refundAmount} for booking ${bookingData.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
         data: {
           type: "refund_processed",
           booking_id: txData.booking_id,
           refund_reference: refundReference,
         },
-        url: `/account-settings/bookings/${txData.booking_id}`,
+        url: "/account-settings/wallet",
       });
 
       const { data: providerRow } = await supabase

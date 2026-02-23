@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 const links = [
   { title: "Feature Flags", href: "/admin/control-plane/feature-flags", icon: ToggleLeft, description: "Rollouts, platforms, roles, min version" },
@@ -24,6 +25,7 @@ export default function ControlPlaneOverviewPage() {
   const [environment, setEnvironment] = useState<string>("production");
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Control Plane</h1>
@@ -65,5 +67,6 @@ export default function ControlPlaneOverviewPage() {
         ))}
       </div>
     </div>
+    </RoleGuard>
   );
 }

@@ -60,7 +60,8 @@ interface Review {
   provider: {
     id: string;
     business_name: string;
-    logo_url: string | null;
+    thumbnail_url?: string | null;
+    logo_url?: string | null; // deprecated, use thumbnail_url
   };
   booking: {
     id: string;

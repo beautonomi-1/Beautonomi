@@ -2,11 +2,11 @@ import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     
     if (!supabase) {
       console.error("Failed to get Supabase client");
@@ -119,7 +119,7 @@ export async function GET(_request: NextRequest) {
           subscription_gateway_fees: sumFees(["provider_subscription_payment"]),
           gift_cards: sum(["gift_card_sale"], "amount"),
           memberships: sum(["membership_sale"], "amount"),
-          refunds_gross: -sum(["refund"], "amount"),
+          refunds_gross: sum(["refund"], "amount"),
         };
       } catch (err) {
         console.error("Error in sumLedger:", err);

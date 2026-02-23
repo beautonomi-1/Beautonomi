@@ -8,9 +8,9 @@ import { requireRoleInApi, successResponse, handleApiError, getPaginationParams 
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { page, limit, offset } = getPaginationParams(request);
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status");
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       .select(
         `
         *,
-        providers!inner(id, name, billing_email, billing_phone)
+        providers!inner(id, business_name, billing_email, billing_phone)
       `,
         { count: "exact" }
       )
@@ -42,10 +42,12 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    // Transform to include provider info
+    // Transform to include provider info (business_name as name for display)
     const transformedInvoices = (invoices || []).map((invoice: any) => ({
       ...invoice,
-      provider: invoice.providers,
+      provider: invoice.providers
+        ? { ...invoice.providers, name: invoice.providers.business_name }
+        : null,
     }));
 
     return successResponse({

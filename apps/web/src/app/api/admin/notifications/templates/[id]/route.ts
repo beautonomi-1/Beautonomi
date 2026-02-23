@@ -39,7 +39,7 @@ export async function GET(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     
     if (!supabase) {
       return NextResponse.json(
@@ -108,7 +108,7 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     
     if (!supabase) {
       return NextResponse.json(
@@ -208,7 +208,7 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     
     if (!supabase) {
       return NextResponse.json(

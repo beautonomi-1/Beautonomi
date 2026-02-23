@@ -11,9 +11,9 @@ import { z } from "zod";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const { page, limit, offset } = getPaginationParams(request);
 
@@ -79,7 +79,7 @@ const createUserSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
     const body = await request.json();
     const validationResult = createUserSchema.safeParse(body);
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create user record in users table
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { data: userRecord, error: userError } = await supabase
       .from("users")
       .insert({

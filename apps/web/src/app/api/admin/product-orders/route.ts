@@ -12,7 +12,7 @@ import {
 export async function GET(request: NextRequest) {
   try {
     await requireRoleInApi(["superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get("status");

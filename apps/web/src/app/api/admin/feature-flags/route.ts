@@ -2,17 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { requireRole } from '@/lib/supabase/auth-server';
 import { writeAuditLog } from "@/lib/audit/audit";
+import { handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/admin/feature-flags
- * Get all feature flags (superadmin only)
+ * Get all feature flags (superadmin only). Returns { data, error }.
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
-    // Fetch all feature flags
     const { data: featureFlags, error } = await supabase
       .from('feature_flags')
       .select('*')
@@ -20,20 +20,15 @@ export async function GET(_request: NextRequest) {
       .order('feature_name', { ascending: true });
 
     if (error) {
-      console.error('Error fetching feature flags:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch feature flags' },
+        { data: null, error: { message: 'Failed to fetch feature flags', code: 'FETCH_ERROR' } },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ featureFlags }, { status: 200 });
+    return NextResponse.json({ data: featureFlags ?? [], error: null });
   } catch (error) {
-    console.error('Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to fetch feature flags");
   }
 }
 
@@ -44,20 +39,18 @@ export async function GET(_request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
     const { feature_key, feature_name, description, enabled, category, metadata } = body;
 
-    // Validate required fields
     if (!feature_key || !feature_name) {
       return NextResponse.json(
-        { error: 'feature_key and feature_name are required' },
+        { data: null, error: { message: 'feature_key and feature_name are required', code: 'VALIDATION_ERROR' } },
         { status: 400 }
       );
     }
 
-    // Create feature flag
     const { data: featureFlag, error } = await supabase
       .from('feature_flags')
       .insert({
@@ -74,9 +67,8 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error('Error creating feature flag:', error);
       return NextResponse.json(
-        { error: 'Failed to create feature flag' },
+        { data: null, error: { message: error.message || 'Failed to create feature flag', code: 'CREATE_ERROR' } },
         { status: 500 }
       );
     }
@@ -87,15 +79,11 @@ export async function POST(request: NextRequest) {
       action: "admin.feature_flag.create",
       entity_type: "feature_flag",
       entity_id: featureFlag.id,
-      metadata: { feature_key: feature_key, enabled: enabled ?? false },
+      metadata: { feature_key, enabled: enabled ?? false },
     });
 
-    return NextResponse.json({ featureFlag }, { status: 201 });
+    return NextResponse.json({ data: featureFlag, error: null }, { status: 201 });
   } catch (error) {
-    console.error('Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to create feature flag");
   }
 }

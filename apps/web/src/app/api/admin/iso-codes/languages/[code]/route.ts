@@ -25,7 +25,7 @@ export async function GET(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: language, error } = await supabase
       .from("iso_languages")
@@ -79,7 +79,7 @@ export async function PUT(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validationResult = updateLanguageSchema.safeParse(body);
@@ -165,7 +165,7 @@ export async function DELETE(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Check if language is default
     const { data: language } = await supabase

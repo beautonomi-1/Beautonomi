@@ -21,11 +21,11 @@ const travelFeesSchema = z.object({
  * Get platform travel fee settings
  * Allows providers to read limits (for validation), but only superadmins can modify
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     // Allow providers and superadmins to read platform limits
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin']);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: platformSettings, error } = await supabase
       .from('platform_settings')
@@ -75,8 +75,8 @@ export async function GET(_request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validatedData = travelFeesSchema.parse(body);

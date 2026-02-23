@@ -161,6 +161,9 @@ export default function ReferralSourcesSettings() {
       breadcrumbs={breadcrumbs}
     >
       <div className="space-y-4 sm:space-y-6">
+        <div className="rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-sm text-blue-800">
+          <strong>Provider attribution only.</strong> These sources (e.g. Instagram, Friend, Walk-in) are for tracking where <em>your</em> clients come from. They are separate from the platform referral program (invite friends → wallet reward), which is configured under Admin → Settings → Referrals. Assign a source when creating or editing a booking to trigger the &quot;Referral received&quot; automation.
+        </div>
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <p className="text-sm text-gray-600">
