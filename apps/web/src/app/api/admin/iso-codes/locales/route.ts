@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
@@ -19,7 +19,7 @@ const localeSchema = z.object({
  * 
  * List all locales (ISO 639-1 + ISO 3166-1)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const auth = await requireRole(["superadmin"]);
     if (!auth) {

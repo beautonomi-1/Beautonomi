@@ -7,10 +7,10 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { writeAuditLog } from "@/lib/audit/audit";
 
-export async function GET(_req: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], req);
-    const supabase = await getSupabaseServer(req);
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
 
     const { data, error } = await supabase
       .from("platform_settings")

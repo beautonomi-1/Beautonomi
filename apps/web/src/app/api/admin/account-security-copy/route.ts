@@ -11,10 +11,10 @@ import { writeAuditLog } from "@/lib/audit/audit";
  * GET /api/admin/account-security-copy
  * Returns the account security sidebar copy for superadmin editing.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], req);
-    const supabase = await getSupabaseServer(req);
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
     const { data: row } = await supabase
       .from("platform_settings")
       .select("id, settings")

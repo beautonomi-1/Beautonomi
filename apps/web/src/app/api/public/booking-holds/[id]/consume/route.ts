@@ -25,7 +25,7 @@ const consumeBodySchema = z.object({
   payment_option: z.enum(["deposit", "full"]).optional(),
   use_wallet: z.boolean().optional(),
   gift_card_code: z.string().optional(),
-  custom_field_values: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+  custom_field_values: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
 });
 
 export async function POST(

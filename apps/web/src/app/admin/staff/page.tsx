@@ -267,11 +267,11 @@ export default function AdminStaff() {
             </div>
             <div className="bg-white border rounded-lg p-4">
               <p className="text-sm text-gray-600 mb-1">Staff role: Manager</p>
-              <p className="text-2xl font-semibold">{statistics.by_staff_role?.manager ?? statistics.by_role?.manager ?? 0}</p>
+              <p className="text-2xl font-semibold">{statistics.by_staff_role?.manager ?? 0}</p>
             </div>
             <div className="bg-white border rounded-lg p-4">
               <p className="text-sm text-gray-600 mb-1">Staff role: Employee</p>
-              <p className="text-2xl font-semibold">{statistics.by_staff_role?.employee ?? statistics.by_role?.employee ?? 0}</p>
+              <p className="text-2xl font-semibold">{statistics.by_staff_role?.employee ?? 0}</p>
             </div>
           </div>
         )}

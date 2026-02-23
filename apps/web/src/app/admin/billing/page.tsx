@@ -125,7 +125,7 @@ export default function AdminBillingDashboard() {
   };
 
   const filteredInvoices = invoices.filter((invoice) => {
-    const providerName = invoice.provider?.business_name ?? invoice.provider?.name ?? "";
+    const providerName = invoice.provider?.business_name ?? "";
     const matchesSearch = searchQuery === "" || 
       invoice.invoice_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
       providerName.toLowerCase().includes(searchQuery.toLowerCase());
@@ -228,7 +228,7 @@ export default function AdminBillingDashboard() {
               filteredInvoices.map((invoice) => (
                 <TableRow key={invoice.id}>
                   <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
-                  <TableCell>{invoice.provider?.business_name ?? invoice.provider?.name ?? "Unknown"}</TableCell>
+                  <TableCell>{invoice.provider?.business_name ?? "Unknown"}</TableCell>
                   <TableCell className="text-sm text-gray-600">
                     {new Date(invoice.period_start).toLocaleDateString()} - {new Date(invoice.period_end).toLocaleDateString()}
                   </TableCell>

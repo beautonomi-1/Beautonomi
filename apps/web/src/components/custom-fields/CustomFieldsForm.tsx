@@ -200,7 +200,7 @@ export function CustomFieldsForm({
           {field.field_type === "number" && (
             <Input
               type="number"
-              value={values[field.name] ?? ""}
+              value={values[field.name] === undefined || values[field.name] === null ? "" : typeof values[field.name] === "boolean" ? String(values[field.name]) : (values[field.name] as string | number)}
               onChange={(e) =>
                 updateValue(field.name, e.target.value === "" ? "" : Number(e.target.value))
               }

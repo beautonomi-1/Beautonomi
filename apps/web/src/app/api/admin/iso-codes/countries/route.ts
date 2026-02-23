@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
@@ -20,7 +20,7 @@ const countrySchema = z.object({
  * 
  * List all countries (ISO 3166-1) with phone codes (ITU-T E.164)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const auth = await requireRole(["superadmin"]);
     if (!auth) {

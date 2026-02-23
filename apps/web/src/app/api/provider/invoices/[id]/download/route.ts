@@ -91,7 +91,8 @@ function generateInvoiceHTML(invoice: any) {
   };
 
   const provider = invoice.providers;
-  const billingAddress = provider?.billing_address || {};
+  const billingAddress = (typeof provider?.billing_address === "object" && provider?.billing_address) || {};
+  const providerDisplayName = provider?.business_name ?? (provider as { name?: string })?.name ?? "Provider";
 
   return `
 <!DOCTYPE html>
@@ -229,7 +230,7 @@ function generateInvoiceHTML(invoice: any) {
     <div>
       <div class="section-title">Bill To</div>
       <div>
-        <strong>${providerName}</strong><br>
+        <strong>${providerDisplayName}</strong><br>
         ${billingAddress.address_line1 || ""}<br>
         ${billingAddress.city ? billingAddress.city + ", " : ""}
         ${billingAddress.country || ""}<br>
