@@ -2,10 +2,13 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 /**
  * GET /api/admin/providers/[id]
- * 
+ *
  * Get detailed provider information (superadmin only). Uses admin client to bypass RLS.
+ * [id] can be provider UUID or slug.
  */
 export async function GET(
   request: NextRequest,
@@ -14,24 +17,27 @@ export async function GET(
   try {
     await requireRoleInApi(['superadmin'], request);
 
-    const { id } = await params;
+    const { id: idOrSlug } = await params;
     const supabase = getSupabaseAdmin();
 
-    // Get provider (avoid FK-hint join which can fail; fetch owner separately)
+    const byId = UUID_REGEX.test(idOrSlug);
+
     const { data: provider, error } = await supabase
       .from("providers")
       .select(`
         *,
         locations:provider_locations(*),
         staff:provider_staff(*),
-        offerings:provider_offerings(*)
+        offerings(*)
       `)
-      .eq("id", id)
+      .eq(byId ? "id" : "slug", idOrSlug)
       .single();
 
     if (error || !provider) {
       return notFoundResponse("Provider not found");
     }
+
+    const providerId = (provider as Record<string, unknown> & { id: string }).id;
 
     const prov = provider as Record<string, unknown> & { user_id?: string };
     let owner: { id: string; full_name: string | null; email: string | null; phone: string | null; avatar_url: string | null } | null = null;
@@ -44,21 +50,21 @@ export async function GET(
       owner = ownerRow as typeof owner;
     }
 
-    // Get stats
+    // Get stats (use resolved provider id)
     const { count: bookingCount } = await supabase
       .from("bookings")
       .select("*", { count: "exact", head: true })
-      .eq("provider_id", id);
+      .eq("provider_id", providerId);
 
     const { count: reviewCount } = await supabase
       .from("reviews")
       .select("*", { count: "exact", head: true })
-      .eq("provider_id", id);
+      .eq("provider_id", providerId);
 
     const { data: reviews } = await supabase
       .from("reviews")
       .select("rating")
-      .eq("provider_id", id);
+      .eq("provider_id", providerId);
 
     const avgRating =
       reviews && reviews.length > 0
@@ -81,8 +87,8 @@ export async function GET(
 
 /**
  * PATCH /api/admin/providers/[id]
- * 
- * Update provider details
+ *
+ * Update provider details. [id] can be provider UUID or slug.
  */
 export async function PATCH(
   request: NextRequest,
@@ -90,20 +96,23 @@ export async function PATCH(
 ) {
   try {
     await requireRoleInApi(['superadmin'], request);
-    const { id } = await params;
+    const { id: idOrSlug } = await params;
     const supabase = getSupabaseAdmin();
     const body = await request.json();
 
-    // Verify provider exists
+    const byId = UUID_REGEX.test(idOrSlug);
+
     const { data: provider } = await supabase
       .from("providers")
       .select("id")
-      .eq("id", id)
+      .eq(byId ? "id" : "slug", idOrSlug)
       .single();
 
     if (!provider) {
       return notFoundResponse("Provider not found");
     }
+
+    const providerId = (provider as { id: string }).id;
 
     // Prepare update data (only allow specific fields)
     const updateData: any = {
@@ -119,8 +128,8 @@ export async function PATCH(
     const { data: updatedProvider, error: updateError } = await supabase
       .from("providers")
       .update(updateData)
-      .eq("id", id)
-      .select("*, locations:provider_locations(*), staff:provider_staff(*), offerings:provider_offerings(*)")
+      .eq("id", providerId)
+      .select("*, locations:provider_locations(*), staff:provider_staff(*), offerings(*)")
       .single();
 
     if (updateError || !updatedProvider) {

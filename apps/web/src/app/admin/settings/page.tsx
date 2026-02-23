@@ -250,18 +250,13 @@ export default function AdminSettings() {
     try {
       setIsSaving(true);
       
-      // Save main settings (excluding travel_fees and seo)
-      const { travel_fees, seo, ...mainSettings } = settings;
+      // Save main settings (including seo; travel_fees has its own endpoint)
+      const { travel_fees, ...mainSettings } = settings;
       await fetcher.patch("/api/admin/settings", mainSettings);
       
       // Save travel fees separately
       if (travel_fees) {
         await fetcher.patch("/api/admin/travel-fees", travel_fees);
-      }
-      
-      // Save SEO settings separately (if they exist)
-      if (seo) {
-        await fetcher.patch("/api/admin/settings", { seo });
       }
       
       toast.success("Settings saved successfully");
@@ -272,8 +267,9 @@ export default function AdminSettings() {
         // The cache will be cleared on next fetch
         window.dispatchEvent(new Event("platform-settings-updated"));
       }
-    } catch {
-      toast.error("Failed to save settings");
+    } catch (err) {
+      const msg = err instanceof FetchError ? err.message : "Failed to save settings";
+      toast.error(msg);
     } finally {
       setIsSaving(false);
     }
@@ -2575,7 +2571,7 @@ function SEOSettings({
       </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-sm text-blue-800">
+        <div className="text-sm text-blue-800">
           <strong>Note:</strong> After updating these settings, you may need to:
           <ul className="list-disc list-inside mt-2 space-y-1">
             <li>Upload OG and Twitter images to your public folder</li>
@@ -2583,7 +2579,7 @@ function SEOSettings({
             <li>Verify robots.txt at <code className="bg-blue-100 px-1 rounded">/robots.txt</code></li>
             <li>Submit your sitemap to Google Search Console</li>
           </ul>
-        </p>
+        </div>
       </div>
     </div>
   );

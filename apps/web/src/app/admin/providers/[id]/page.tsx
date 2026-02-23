@@ -117,15 +117,13 @@ export default function ProviderDetailPage() {
   useEffect(() => {
     if (providerId) {
       loadProvider();
-      loadPayoutAccounts();
     }
   }, [providerId]); // eslint-disable-line react-hooks/exhaustive-deps -- load when providerId changes
 
-  const loadPayoutAccounts = async () => {
-    if (!providerId) return;
+  const loadPayoutAccounts = async (id: string) => {
     try {
       const res = await fetcher.get<{ data: typeof payoutAccounts }>(
-        `/api/admin/providers/${providerId}/payout-accounts`
+        `/api/admin/providers/${id}/payout-accounts`
       );
       setPayoutAccounts(res.data || []);
     } catch {
@@ -143,6 +141,7 @@ export default function ProviderDetailPage() {
       );
       setProvider(response.data);
       setEditData(response.data);
+      await loadPayoutAccounts(response.data.id);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -151,7 +150,13 @@ export default function ProviderDetailPage() {
           ? err.message
           : "Failed to load provider";
       setError(errorMessage);
-      console.error("Error loading provider:", err);
+      // Don't log expected 404 (e.g. invalid id or deleted provider) as an error
+      const isNotFound =
+        err instanceof FetchError &&
+        (err.status === 404 || err.message === "Provider not found");
+      if (!isNotFound) {
+        console.error("Error loading provider:", err);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -163,7 +168,7 @@ export default function ProviderDetailPage() {
     try {
       setIsSaving(true);
 
-      await fetcher.patch(`/api/admin/providers/${providerId}`, editData);
+      await fetcher.patch(`/api/admin/providers/${provider.id}`, editData);
       
       toast.success("Provider updated successfully");
       setIsEditing(false);
@@ -203,7 +208,7 @@ export default function ProviderDetailPage() {
           break;
       }
 
-      await fetcher.patch(`/api/admin/providers/${providerId}/status`, {
+      await fetcher.patch(`/api/admin/providers/${provider.id}/status`, {
         status: newStatus,
         reason: statusReason || undefined,
       });
@@ -221,7 +226,7 @@ export default function ProviderDetailPage() {
     if (!provider) return;
 
     try {
-      await fetcher.patch(`/api/admin/providers/${providerId}/verify`, {
+      await fetcher.patch(`/api/admin/providers/${provider.id}/verify`, {
         verified,
       });
 
@@ -605,25 +610,25 @@ export default function ProviderDetailPage() {
                   >
                     <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
                     <div className="space-y-2">
-                      <Link href={`/admin/bookings?provider_id=${providerId}`}>
+                      <Link href={`/admin/bookings?provider_id=${provider.id}`}>
                         <Button variant="outline" className="w-full justify-start">
                           <Calendar className="w-4 h-4 mr-2" />
                           View Bookings
                         </Button>
                       </Link>
-                      <Link href={`/admin/reviews?provider_id=${providerId}`}>
+                      <Link href={`/admin/reviews?provider_id=${provider.id}`}>
                         <Button variant="outline" className="w-full justify-start">
                           <Star className="w-4 h-4 mr-2" />
                           View Reviews
                         </Button>
                       </Link>
-                      <Link href={`/admin/finance?provider_id=${providerId}`}>
+                      <Link href={`/admin/finance?provider_id=${provider.id}`}>
                         <Button variant="outline" className="w-full justify-start">
                           <DollarSign className="w-4 h-4 mr-2" />
                           View Finance
                         </Button>
                       </Link>
-                      <Link href={`/admin/payouts?provider_id=${providerId}`}>
+                      <Link href={`/admin/payouts?provider_id=${provider.id}`}>
                         <Button variant="outline" className="w-full justify-start">
                           <CreditCard className="w-4 h-4 mr-2" />
                           View Payouts

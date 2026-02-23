@@ -79,6 +79,10 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
       }
       return;
     }
+    if (metadata?.ads_budget_order_id) {
+      await handleAdsBudgetOrderSuccess({ reference, metadata, amount, fees, customer }, supabase);
+      return;
+    }
     console.error("Missing reference or booking_id in payment data");
     return;
   }
@@ -450,6 +454,12 @@ async function processFailedPayment(data: any, supabase: SupabaseClient) {
     }
     if (metadata?.provider_subscription_order_id) {
       await handleProviderSubscriptionOrderFailed({ reference, metadata, message }, supabase);
+      return;
+    }
+    if (metadata?.ads_budget_order_id) {
+      await (supabase.from("ads_budget_orders") as any)
+        .update({ status: "failed", updated_at: new Date().toISOString() })
+        .eq("id", metadata.ads_budget_order_id);
       return;
     }
     console.error("Missing reference or booking_id in payment data");
@@ -1299,6 +1309,82 @@ async function handleProviderSubscriptionOrderFailed(
   await (supabase.from("provider_subscription_orders") as any)
     .update({ status: "failed", updated_at: new Date().toISOString() })
     .eq("id", orderId);
+}
+
+// ─── Ads budget order (pre-pay for campaign) ──────────────────────────────────
+
+async function handleAdsBudgetOrderSuccess(
+  payload: { reference: string; metadata: any; amount: number; fees: number },
+  supabase: SupabaseClient,
+) {
+  const orderId = payload.metadata.ads_budget_order_id as string;
+  const providerId = payload.metadata.provider_id as string;
+  const campaignId = payload.metadata.campaign_id as string;
+  if (!orderId || !providerId || !campaignId) {
+    console.error("Missing ads_budget_order_id, provider_id or campaign_id in metadata");
+    return;
+  }
+
+  const { data: order } = await supabase
+    .from("ads_budget_orders")
+    .select("id, amount, status, campaign_id, provider_id")
+    .eq("id", orderId)
+    .single();
+
+  if (!order || (order as any).status === "paid") {
+    return;
+  }
+
+  const amountInCurrency = convertFromSmallestUnit(payload.amount || 0);
+  const feesInCurrency = convertFromSmallestUnit(payload.fees || 0);
+  const netAmount = amountInCurrency - feesInCurrency;
+
+  await (supabase.from("ads_budget_orders") as any)
+    .update({
+      status: "paid",
+      paystack_reference: payload.reference,
+      paid_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", orderId);
+
+  await (supabase.from("ads_campaigns") as any)
+    .update({
+      budget: amountInCurrency,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", campaignId)
+    .eq("provider_id", providerId);
+
+  await (supabase.from("payment_transactions") as any).insert({
+    booking_id: null,
+    reference: payload.reference,
+    amount: amountInCurrency,
+    fees: feesInCurrency,
+    net_amount: netAmount,
+    status: "success",
+    provider: "paystack",
+    transaction_type: "charge",
+    metadata: {
+      kind: "ads_budget_order",
+      ads_budget_order_id: orderId,
+      provider_id: providerId,
+      campaign_id: campaignId,
+    },
+    created_at: new Date().toISOString(),
+  });
+
+  await (supabase.from("finance_transactions") as any).insert({
+    booking_id: null,
+    provider_id: providerId,
+    transaction_type: "provider_ads_payment",
+    amount: amountInCurrency,
+    fees: feesInCurrency,
+    commission: 0,
+    net: netAmount,
+    description: "Ads campaign budget (pre-pay)",
+    created_at: new Date().toISOString(),
+  });
 }
 
 // ─── Subscription Authorization ──────────────────────────────────────────────

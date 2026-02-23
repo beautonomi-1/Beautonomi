@@ -95,7 +95,7 @@ const settingsCategories = [
     title: "Marketing Integrations",
     description: "Connect third-party services to run effective marketing campaigns",
     items: [
-      { title: "Paid ads (boosted listings)", description: "Create campaigns to appear in sponsored slots", href: "/provider/settings/ads" },
+      { title: "Paid ads (boosted listings)", description: "Create campaigns, set budget and targeting, track impressions and sales", href: "/provider/settings/ads" },
       { title: "Email Integration", description: "Connect SendGrid or Mailchimp for email marketing campaigns", href: "/provider/settings/integrations/email" },
       { title: "Twilio Integration", description: "Connect Twilio for SMS and WhatsApp marketing campaigns", href: "/provider/settings/integrations/twilio" },
     ],

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { writeAuditLog } from "@/lib/audit/audit";
 
@@ -144,19 +144,8 @@ interface PlatformSettings {
   };
 }
 
-/**
- * GET /api/admin/settings
- * 
- * Get platform settings
- */
-export async function GET(request: NextRequest) {
-  try {
-    await requireRoleInApi(['superadmin'], request);
-
-    const supabase = await getSupabaseServer(request);
-
-    // Get settings from database, upsert defaults if not found
-    const defaultSettings: PlatformSettings = {
+function getDefaultPlatformSettings(): PlatformSettings {
+  return {
       branding: {
         site_name: "Beautonomi",
         logo_url: "/images/logo.svg",
@@ -295,30 +284,30 @@ export async function GET(request: NextRequest) {
         },
       },
     };
+}
 
-    // Try to get from database, upsert defaults if not found
+/**
+ * GET /api/admin/settings
+ *
+ * Get platform settings
+ */
+export async function GET(request: NextRequest) {
+  try {
+    await requireRoleInApi(['superadmin'], request);
+
+    const supabase = getSupabaseAdmin();
+    const defaultSettings = getDefaultPlatformSettings();
+
+    // Get latest platform_settings row (table has id, settings, is_active; no key/value)
     try {
       const { data: settings, error: settingsError } = await (supabase
         .from("platform_settings") as any)
         .select("*")
-        .single();
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      // If no settings found, upsert defaults into the database
       if (settingsError || !settings) {
-        const { data, error } = await (supabase
-          .from("platform_settings") as any)
-          .upsert(
-            { key: "platform", value: defaultSettings, updated_at: new Date().toISOString() },
-            { onConflict: "key" }
-          )
-          .select()
-          .single();
-
-        if (error || !data) {
-          // If upsert fails (e.g. table doesn't exist yet), return defaults
-          return successResponse(defaultSettings);
-        }
-
         return successResponse(defaultSettings);
       }
 
@@ -367,13 +356,24 @@ export async function PATCH(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['superadmin'], request);
 
-    const supabase = await getSupabaseServer(request);
-    const body = await request.json();
-    const settings: PlatformSettings = body;
+    const supabase = getSupabaseAdmin();
+    const body = (await request.json()) as Partial<PlatformSettings>;
 
-    // Validate settings structure
+    // Load existing settings and merge with defaults + body so partial payloads always validate
+    const { data: existingRow } = await (supabase
+      .from("platform_settings") as any)
+      .select("id, settings")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const defaults = getDefaultPlatformSettings();
+    const existing = (existingRow as any)?.settings || {};
+    const settings: PlatformSettings = { ...defaults, ...existing, ...body } as PlatformSettings;
+
+    // Validate required top-level sections after merge
     if (!settings.branding || !settings.localization || !settings.payouts || !settings.notifications || !settings.payment_types || !settings.paystack || !settings.onesignal || !settings.mapbox || !settings.amplitude || !settings.google || !settings.calendar_integrations || !settings.apps || !settings.features) {
-      return errorResponse("Invalid settings structure", "VALIDATION_ERROR", 400);
+      return errorResponse("Invalid settings structure: missing required section (branding, localization, payouts, notifications, payment_types, paystack, onesignal, mapbox, amplitude, google, calendar_integrations, apps, features)", "VALIDATION_ERROR", 400);
     }
 
     // Store sensitive secrets in platform_secrets (NOT in public platform_settings JSON)
@@ -432,13 +432,9 @@ export async function PATCH(request: NextRequest) {
     settings.calendar_integrations.outlook.client_id = "";
     settings.calendar_integrations.outlook.client_secret = "";
 
-    // Upsert settings (create or update)
-    const { data: existingSettings } = await (supabase
-      .from("platform_settings") as any)
-      .select("id")
-      .single();
+    const existingSettings = existingRow;
 
-    if (existingSettings) {
+    if (existingSettings && (existingSettings as any).id) {
       // Update
       const { data: updatedSettings, error: updateError } = await (supabase
         .from("platform_settings") as any)

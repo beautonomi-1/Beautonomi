@@ -56,6 +56,7 @@ export async function PUT(request: NextRequest) {
       model: body.model ?? null,
       disclosure_label: body.disclosure_label ?? null,
       max_sponsored_slots: body.max_sponsored_slots ?? null,
+      cost_per_impression_ratio: body.cost_per_impression_ratio != null ? Number(body.cost_per_impression_ratio) : null,
       updated_at: new Date().toISOString(),
     };
 

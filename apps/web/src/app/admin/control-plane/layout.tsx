@@ -16,6 +16,7 @@ import {
   Megaphone,
   TrendingUp,
   MapPin,
+  ShieldAlert,
 } from "lucide-react";
 
 const controlPlaneNav = [

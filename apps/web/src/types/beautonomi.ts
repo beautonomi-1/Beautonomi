@@ -116,6 +116,10 @@ export interface PublicProviderCard {
   supports_salon?: boolean;
   current_badge?: ProviderBadge | null;
   total_points?: number;
+  /** True when provider appears in search due to sponsored/boosted campaign */
+  is_sponsored?: boolean;
+  /** Set when is_sponsored; used for click attribution */
+  campaign_id?: string | null;
 }
 
 export interface PublicProviderDetail extends PublicProviderCard {

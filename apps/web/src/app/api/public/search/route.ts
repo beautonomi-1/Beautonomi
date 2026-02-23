@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { runAdsAuction, recordAdImpressions } from "@/lib/ads/auction";
 import type { SearchFilters, SearchResult } from "@/types/beautonomi";
 
 export const dynamic = "force-dynamic";
@@ -263,8 +265,80 @@ export async function GET(request: Request) {
         currency: priceInfo?.currency || provider.currency || "ZAR",
       };
     });
-    
-    console.log(`Returning ${transformedProviders.length} transformed providers`);
+
+    // Sponsored slots: run auction and merge winners at top
+    let finalProviders = transformedProviders;
+    const sponsoredProviderIds = new Set<string>();
+    try {
+      const winners = await runAdsAuction({
+        categorySlug: filters.category || undefined,
+        maxSlots: 5,
+        excludeProviderIds: [],
+      });
+      if (winners.length > 0) {
+        const supabaseAdmin = getSupabaseAdmin();
+        const winnerProviderIds = [...new Set(winners.map((w) => w.provider_id))];
+        const winnerToCampaign = new Map(winners.map((w) => [w.provider_id, w.campaign_id]));
+        const { data: sponsoredProviders } = await supabaseAdmin
+          .from("providers")
+          .select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, is_featured, is_verified, currency")
+          .in("id", winnerProviderIds)
+          .eq("status", "active");
+        const { data: sponsoredLocations } = await supabaseAdmin
+          .from("provider_locations")
+          .select("provider_id, city, country, is_primary")
+          .in("provider_id", winnerProviderIds)
+          .eq("is_active", true)
+          .order("is_primary", { ascending: false });
+        const { data: sponsoredOfferings } = await supabaseAdmin
+          .from("offerings")
+          .select("provider_id, price, currency")
+          .in("provider_id", winnerProviderIds)
+          .eq("is_active", true);
+        const locMap = new Map<string, { city: string; country: string }>();
+        (sponsoredLocations ?? []).forEach((loc: any) => {
+          if (!locMap.has(loc.provider_id)) locMap.set(loc.provider_id, { city: loc.city || "", country: loc.country || "" });
+        });
+        const priceMapSponsored = new Map<string, { price: number; currency: string }>();
+        (sponsoredOfferings ?? []).forEach((o: any) => {
+          const ex = priceMapSponsored.get(o.provider_id);
+          if (!ex || o.price < ex.price) priceMapSponsored.set(o.provider_id, { price: o.price, currency: o.currency || "ZAR" });
+        });
+        const sponsoredCards = (sponsoredProviders ?? []).map((p: any) => {
+          sponsoredProviderIds.add(p.id);
+          const loc = locMap.get(p.id);
+          const priceInfo = priceMapSponsored.get(p.id);
+          return {
+            id: p.id,
+            slug: p.slug,
+            business_name: p.business_name,
+            business_type: p.business_type || "salon",
+            rating: p.rating_average || 0,
+            review_count: p.review_count || 0,
+            thumbnail_url: p.thumbnail_url,
+            city: loc?.city ?? "",
+            country: loc?.country ?? "",
+            is_featured: p.is_featured ?? false,
+            is_verified: p.is_verified ?? false,
+            starting_price: priceInfo?.price,
+            currency: priceInfo?.currency ?? p.currency ?? "ZAR",
+            is_sponsored: true,
+            campaign_id: winnerToCampaign.get(p.id) ?? null,
+          };
+        });
+        // Order sponsored by auction order (winners order)
+        const order = new Map(winners.map((w, i) => [w.provider_id, i]));
+        sponsoredCards.sort((a, b) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99));
+        const organicOnly = transformedProviders.filter((p: any) => !sponsoredProviderIds.has(p.id));
+        finalProviders = [...sponsoredCards, ...organicOnly];
+        const idempotencyPrefix = `search:${Date.now()}:${filters.category ?? "all"}:${page}`;
+        await recordAdImpressions(winners, idempotencyPrefix);
+      }
+    } catch (e) {
+      console.warn("Ads auction failed, returning organic only:", e);
+    }
+
+    console.log(`Returning ${finalProviders.length} providers (${sponsoredProviderIds.size} sponsored)`);
 
     // Also search services/offerings
     let serviceResults: any[] = [];
@@ -282,7 +356,7 @@ export async function GET(request: Request) {
     const services: any[] = serviceResults;
 
     const result: SearchResult = {
-      providers: transformedProviders,
+      providers: finalProviders,
       services: services,
       total: count || 0,
       page: page,

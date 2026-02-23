@@ -90,10 +90,13 @@ export default function ControlPlaneFeatureFlagsPage() {
             </div>
             <div>
               <Label>Role</Label>
-              <Select value={previewForm.role} onValueChange={(v) => setPreviewForm((p) => ({ ...p, role: v }))}>
+              <Select
+                value={previewForm.role || "__any__"}
+                onValueChange={(v) => setPreviewForm((p) => ({ ...p, role: v === "__any__" ? "" : v }))}
+              >
                 <SelectTrigger><SelectValue placeholder="Any" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any</SelectItem>
+                  <SelectItem value="__any__">Any</SelectItem>
                   <SelectItem value="superadmin">superadmin</SelectItem>
                   <SelectItem value="provider_owner">provider_owner</SelectItem>
                   <SelectItem value="provider_staff">provider_staff</SelectItem>

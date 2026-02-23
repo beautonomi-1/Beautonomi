@@ -37,6 +37,9 @@ interface FinanceSummary {
   subscription_collected_gross: number;
   subscription_net: number;
   subscription_gateway_fees: number;
+  ads_net: number;
+  ads_gross: number;
+  ads_gateway_fees: number;
   total_platform_take_net: number;
 
   provider_earnings: number;
@@ -411,6 +414,13 @@ export default function AdminFinance() {
                   format="currency"
                 />
                 <SummaryCard
+                  title="Ads Revenue (Net)"
+                  value={summary.ads_net ?? 0}
+                  icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  format="currency"
+                  infoTooltip="Provider pre-pay for ad campaign budget. Platform receives this when providers fund campaigns."
+                />
+                <SummaryCard
                   title="Subscription Fees (Gross)"
                   value={summary.subscription_collected_gross}
                   icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
@@ -438,7 +448,7 @@ export default function AdminFinance() {
                   value={summary.total_platform_take_net}
                   icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
                   format="currency"
-                  infoTooltip="Commission (net) + Subscription revenue, before wallet top-up and referral payouts. Use the card below for true platform net."
+                  infoTooltip="Commission (net) + Subscription revenue + Ads revenue, before wallet top-up and referral payouts. Use the card below for true platform net."
                 />
                 <SummaryCard
                   title="Total Platform Take (after referrals & wallet)"

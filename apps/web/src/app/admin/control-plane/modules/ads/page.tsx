@@ -10,34 +10,44 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Package } from "lucide-react";
 import RoleGuard from "@/components/auth/RoleGuard";
+
+type Pack = { id: string; impressions: number; price_zar: number; display_order: number; is_active: boolean };
 
 export default function AdsModulePage() {
   const [env, setEnv] = useState("production");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [packs, setPacks] = useState<Pack[]>([]);
+  const [packsSaving, setPacksSaving] = useState(false);
   const [form, setForm] = useState({
     enabled: false,
     model: "",
     disclosure_label: "",
     max_sponsored_slots: "",
+    cost_per_impression_ratio: "",
   });
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetcher.get<{ data: Record<string, unknown> | null }>(`/api/admin/control-plane/modules/ads?environment=${env}`);
-        const d = res.data;
+        const [configRes, packsRes] = await Promise.all([
+          fetcher.get<{ data: Record<string, unknown> | null }>(`/api/admin/control-plane/modules/ads?environment=${env}`),
+          fetcher.get<{ data: Pack[] }>("/api/admin/control-plane/modules/ads/packs"),
+        ]);
+        const d = configRes.data;
         if (d) {
           setForm({
             enabled: Boolean(d.enabled),
             model: String(d.model ?? ""),
             disclosure_label: String(d.disclosure_label ?? ""),
             max_sponsored_slots: d.max_sponsored_slots != null ? String(d.max_sponsored_slots) : "",
+            cost_per_impression_ratio: d.cost_per_impression_ratio != null ? String(d.cost_per_impression_ratio) : "",
           });
         }
+        setPacks(Array.isArray(packsRes.data) ? packsRes.data : []);
       } catch {
         toast.error("Failed to load config");
       } finally {
@@ -55,6 +65,7 @@ export default function AdsModulePage() {
         model: form.model || null,
         disclosure_label: form.disclosure_label || null,
         max_sponsored_slots: form.max_sponsored_slots ? parseInt(form.max_sponsored_slots, 10) : null,
+        cost_per_impression_ratio: form.cost_per_impression_ratio ? parseFloat(form.cost_per_impression_ratio) : null,
       });
       toast.success("Saved");
     } catch {
@@ -112,7 +123,84 @@ export default function AdsModulePage() {
               <Label>Max sponsored slots</Label>
               <Input type="number" min={0} value={form.max_sponsored_slots} onChange={(e) => setForm((p) => ({ ...p, max_sponsored_slots: e.target.value }))} placeholder="5" />
             </div>
+            <div>
+              <Label>Cost per impression (ratio of bid)</Label>
+              <Input type="number" min={0} max={1} step={0.01} value={form.cost_per_impression_ratio} onChange={(e) => setForm((p) => ({ ...p, cost_per_impression_ratio: e.target.value }))} placeholder="0.05" />
+              <p className="text-xs text-muted-foreground mt-1">e.g. 0.05 = 5% of bid_cpc per impression. Leave empty for default 5%.</p>
+            </div>
             <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {!loading && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Impression packs
+            </CardTitle>
+            <CardDescription>
+              Providers can buy fixed impression amounts (e.g. 50, 100, 500, 1000). Set price (ZAR) and active state.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {packs.length === 0 ? (
+              <p className="text-muted-foreground text-sm">No packs. Seed migration adds 50, 100, 500, 1000 by default.</p>
+            ) : (
+              <div className="space-y-3">
+                {packs.map((pack) => (
+                  <div key={pack.id} className="flex flex-wrap items-center gap-4 rounded-lg border p-3">
+                    <span className="font-medium">{pack.impressions} impressions</span>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs">Price (ZAR)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        className="w-24"
+                        value={pack.price_zar}
+                        onChange={(e) =>
+                          setPacks((prev) =>
+                            prev.map((p) => (p.id === pack.id ? { ...p, price_zar: parseFloat(e.target.value) || 0 } : p))
+                          )
+                        }
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-sm">
+                      <Switch
+                        checked={pack.is_active}
+                        onCheckedChange={(v) =>
+                          setPacks((prev) =>
+                            prev.map((p) => (p.id === pack.id ? { ...p, is_active: v } : p))
+                          )
+                        }
+                      />
+                      Active
+                    </label>
+                  </div>
+                ))}
+                <Button
+                  onClick={async () => {
+                    setPacksSaving(true);
+                    try {
+                      const updated = await fetcher.patch<{ data: Pack[] }>("/api/admin/control-plane/modules/ads/packs", {
+                        packs: packs.map((p) => ({ id: p.id, price_zar: p.price_zar, is_active: p.is_active })),
+                      });
+                      setPacks(updated.data ?? []);
+                      toast.success("Packs updated");
+                    } catch {
+                      toast.error("Failed to update packs");
+                    } finally {
+                      setPacksSaving(false);
+                    }
+                  }}
+                  disabled={packsSaving}
+                >
+                  {packsSaving ? "Saving…" : "Save packs"}
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

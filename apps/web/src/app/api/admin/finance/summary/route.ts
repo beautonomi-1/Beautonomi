@@ -74,6 +74,11 @@ export async function GET(request: Request) {
     const subscriptionGatewayFees = sum(["provider_subscription_payment"], "fees");
     const subscriptionGross = subscriptionNet + subscriptionGatewayFees;
 
+    // Ads revenue (provider pre-pay for campaign budget; platform earns when they pay)
+    const adsNet = sum(["provider_ads_payment"], "net");
+    const adsGatewayFees = sum(["provider_ads_payment"], "fees");
+    const adsGross = adsNet + adsGatewayFees;
+
     const providerEarnings = sum(["provider_earnings"], "net");
 
     // Other provider-linked sales (gross)
@@ -111,9 +116,9 @@ export async function GET(request: Request) {
       console.warn("Wallet/referral counts failed:", e);
     }
 
-    // Total platform take including wallet top-up revenue, minus referral payouts
+    // Total platform take including subscription, ads, wallet top-up, minus referral payouts
     const totalPlatformTakeAfterReferrals =
-      platformTakeNet + subscriptionNet + walletTopupRevenue - referralPayouts;
+      platformTakeNet + subscriptionNet + adsNet + walletTopupRevenue - referralPayouts;
 
     // Get period comparison (previous period)
     const period = startDate && endDate ? "custom" : "month";
@@ -188,7 +193,10 @@ export async function GET(request: Request) {
         subscription_collected_gross: subscriptionGross,
         subscription_net: subscriptionNet,
         subscription_gateway_fees: subscriptionGatewayFees,
-        total_platform_take_net: platformTakeNet + subscriptionNet,
+        ads_net: adsNet,
+        ads_gross: adsGross,
+        ads_gateway_fees: adsGatewayFees,
+        total_platform_take_net: platformTakeNet + subscriptionNet + adsNet,
 
         provider_earnings: providerEarnings,
         refunds_gross: refundsGross,
