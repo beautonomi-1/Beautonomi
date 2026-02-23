@@ -20,6 +20,7 @@ import type {
   SafeDistanceModuleConfig,
   SafeSumsubModuleConfig,
   SafeAuraModuleConfig,
+  SafeSafetyModuleConfig,
 } from "./types";
 
 const DEFAULT_AMPLITUDE: SafeAmplitudeConfig = {
@@ -182,6 +183,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     supabase.from("distance_module_config").select("*").eq("environment", environment).maybeSingle(),
     supabase.from("sumsub_integration_config").select("enabled, level_name").eq("environment", environment).maybeSingle(),
     supabase.from("aura_integration_config").select("enabled").eq("environment", environment).maybeSingle(),
+    supabase.from("safety_module_config").select("*").eq("environment", environment).maybeSingle(),
   ]);
 
   const amplitudeRes = results[0].status === "fulfilled" ? results[0].value : { data: null, error: new Error("failed") };
@@ -194,6 +196,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
   const distanceRes = results[7].status === "fulfilled" ? results[7].value : { data: null, error: null };
   const sumsubRes = results[8].status === "fulfilled" ? results[8].value : { data: null, error: null };
   const auraRes = results[9].status === "fulfilled" ? results[9].value : { data: null, error: null };
+  const safetyRes = results[10].status === "fulfilled" ? results[10].value : { data: null, error: null };
 
   const amplitude: SafeAmplitudeConfig = amplitudeRes.data
     ? {
@@ -312,6 +315,17 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
   const auraRow = auraRes.data as Record<string, unknown> | null;
   const aura: SafeAuraModuleConfig = auraRow ? { enabled: Boolean(auraRow.enabled) } : { enabled: false };
 
+  const safetyRow = safetyRes.data as Record<string, unknown> | null;
+  const safety: SafeSafetyModuleConfig = safetyRow
+    ? {
+        enabled: Boolean(safetyRow.enabled),
+        check_in_enabled: Boolean(safetyRow.check_in_enabled ?? true),
+        escalation_enabled: Boolean(safetyRow.escalation_enabled ?? true),
+        cooldown_seconds: Number(safetyRow.cooldown_seconds ?? 300),
+        ui_copy: (typeof safetyRow.ui_copy === "object" && safetyRow.ui_copy !== null ? safetyRow.ui_copy : {}) as Record<string, unknown>,
+      }
+    : { enabled: false, check_in_enabled: true, escalation_enabled: true, cooldown_seconds: 300, ui_copy: {} };
+
   return {
     meta: {
       env: environment,
@@ -331,6 +345,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       distance,
       sumsub,
       aura,
+      safety,
     },
   };
 }

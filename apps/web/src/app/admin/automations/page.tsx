@@ -218,7 +218,7 @@ export default function AdminAutomationsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  ${stats.revenue_from_automations.toLocaleString()}
+                  R {stats.revenue_from_automations.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   From automation-enabled plans

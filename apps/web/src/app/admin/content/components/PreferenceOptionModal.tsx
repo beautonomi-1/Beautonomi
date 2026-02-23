@@ -164,7 +164,7 @@ export function PreferenceOptionModal({
                   ...formData,
                   metadata: { ...formData.metadata, symbol: e.target.value }
                 })}
-                placeholder="e.g., $, €, £"
+                placeholder="e.g., R, €, £"
               />
             </div>
           )}

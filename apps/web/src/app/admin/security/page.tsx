@@ -64,46 +64,49 @@ export default function AdminSecurity() {
   const loadSettings = async () => {
     try {
       setIsLoading(true);
-      const data = await fetcher.get<{
-        password_policy?: { min_length?: number; require_uppercase?: boolean; require_lowercase?: boolean; require_numbers?: boolean; require_special_chars?: boolean; max_age_days?: number };
-        two_factor?: { enabled?: boolean; required_for_admins?: boolean };
-        rate_limiting?: { enabled?: boolean; max_attempts?: number; window_minutes?: number };
-        data_retention?: { enabled?: boolean; retention_days?: number };
+      const res = await fetcher.get<{
+        data?: {
+          password_policy?: { min_length?: number; require_uppercase?: boolean; require_lowercase?: boolean; require_numbers?: boolean; require_special_chars?: boolean; max_age_days?: number };
+          two_factor?: { enabled?: boolean; required_for_admins?: boolean };
+          rate_limiting?: { enabled?: boolean; max_attempts?: number; window_minutes?: number };
+          data_retention?: { enabled?: boolean; retention_days?: number };
+        };
       }>("/api/admin/security");
+      const data = res?.data;
       setSettings({
         passwordPolicy: {
-          minLength: data.password_policy?.min_length ?? 8,
-          requireUppercase: data.password_policy?.require_uppercase ?? true,
-          requireLowercase: data.password_policy?.require_lowercase ?? true,
-          requireNumbers: data.password_policy?.require_numbers ?? true,
-          requireSpecialChars: data.password_policy?.require_special_chars ?? false,
-          maxAge: data.password_policy?.max_age_days ?? 90,
+          minLength: data?.password_policy?.min_length ?? 8,
+          requireUppercase: data?.password_policy?.require_uppercase ?? true,
+          requireLowercase: data?.password_policy?.require_lowercase ?? true,
+          requireNumbers: data?.password_policy?.require_numbers ?? true,
+          requireSpecialChars: data?.password_policy?.require_special_chars ?? false,
+          maxAge: data?.password_policy?.max_age_days ?? 90,
         },
         twoFactor: {
-          enabled: data.two_factor?.enabled ?? false,
-          required: data.two_factor?.required_for_admins ?? false,
+          enabled: data?.two_factor?.enabled ?? false,
+          required: data?.two_factor?.required_for_admins ?? false,
         },
         rateLimiting: {
-          enabled: data.rate_limiting?.enabled ?? true,
-          maxAttempts: data.rate_limiting?.max_attempts ?? 5,
-          windowMinutes: data.rate_limiting?.window_minutes ?? 15,
+          enabled: data?.rate_limiting?.enabled ?? true,
+          maxAttempts: data?.rate_limiting?.max_attempts ?? 5,
+          windowMinutes: data?.rate_limiting?.window_minutes ?? 15,
         },
         dataRetention: {
-          enabled: data.data_retention?.enabled ?? false,
-          retentionDays: data.data_retention?.retention_days ?? 365,
+          enabled: data?.data_retention?.enabled ?? false,
+          retentionDays: data?.data_retention?.retention_days ?? 365,
         },
       });
-      setIsLoading(false);
     } catch {
       toast.error("Failed to load security settings");
+    } finally {
       setIsLoading(false);
     }
   };
 
   const loadAccountCopy = async () => {
     try {
-      const data = await fetcher.get<{ data?: typeof accountCopy }>("/api/admin/account-security-copy");
-      if (data?.data) setAccountCopy(data.data);
+      const res = await fetcher.get<{ data?: typeof accountCopy }>("/api/admin/account-security-copy");
+      if (res?.data) setAccountCopy(res.data);
     } catch {
       // use defaults
     }
@@ -126,7 +129,7 @@ export default function AdminSecurity() {
       const res = await fetcher.get<{ data?: typeof paymentCopy }>("/api/admin/payment-safety-copy");
       if (res?.data) setPaymentCopy(res.data);
     } catch {
-      // use defaults
+      // keep defaults
     }
   };
 

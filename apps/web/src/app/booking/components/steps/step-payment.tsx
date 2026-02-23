@@ -16,6 +16,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { fetcher } from "@/lib/http/fetcher";
 import { useTranslation } from "@beautonomi/i18n";
 import LoginModal from "@/components/global/login-modal";
+import { useMultipleFeatureFlags } from "@/hooks/useFeatureFlag";
 
 interface SavedCard {
   id: string;
@@ -69,9 +70,22 @@ export default function StepPayment({
   const [walletCurrency, setWalletCurrency] = useState<string>("ZAR");
   const [walletLoading, setWalletLoading] = useState(false);
   const useWallet = bookingState.useWallet ?? false;
+  const { features: featureFlags, loading: flagsLoading } = useMultipleFeatureFlags(["payment_paystack", "gift_cards", "payment_wallet"]);
+  const paystackEnabled = flagsLoading ? true : (featureFlags["payment_paystack"] ?? false);
+  const giftCardsEnabled = flagsLoading ? true : (featureFlags["gift_cards"] ?? false);
+  const walletEnabled = flagsLoading ? true : (featureFlags["payment_wallet"] ?? false);
 
   const SAVE_CARD_INFO =
     "We'll save your card securely when you pay. To verify your card, Paystack may place a small temporary charge (e.g. R1) and reverse it—this confirms your card for future use.";
+
+  // When Paystack or gift cards are disabled, switch away from that method
+  useEffect(() => {
+    if (paymentMethod === "card" && !paystackEnabled) {
+      setPaymentMethod(giftCardsEnabled ? "giftcard" : "cash");
+    } else if (paymentMethod === "giftcard" && !giftCardsEnabled) {
+      setPaymentMethod(paystackEnabled ? "card" : "cash");
+    }
+  }, [paystackEnabled, giftCardsEnabled, paymentMethod]);
 
   const handleSetDefaultCard = async (cardId: string) => {
     setSettingDefaultId(cardId);
@@ -642,21 +656,23 @@ export default function StepPayment({
       <div className="space-y-4">
         <h3 className="text-lg font-semibold text-gray-900">Payment Method</h3>
         
-        {/* Method toggle: Card / Cash / Gift Card */}
-        <div className="grid grid-cols-3 gap-3">
-          <button
-            type="button"
-            onClick={() => setPaymentMethod("card")}
-            className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
-              paymentMethod === "card"
-                ? "border-[#FF0077] bg-pink-50"
-                : "border-gray-200 hover:border-gray-300 bg-white"
-            }`}
-          >
-            <CreditCard className={`w-5 h-5 ${paymentMethod === "card" ? "text-[#FF0077]" : "text-gray-500"}`} />
-            <span className={`text-sm font-medium ${paymentMethod === "card" ? "text-[#FF0077]" : "text-gray-700"}`}>Card</span>
-            {paymentMethod === "card" && <Check className="w-4 h-4 text-[#FF0077]" />}
-          </button>
+        {/* Method toggle: Card / Cash / Gift Card (each gated by feature flags) */}
+        <div className={`grid gap-3 ${paystackEnabled && giftCardsEnabled ? "grid-cols-3" : paystackEnabled || giftCardsEnabled ? "grid-cols-2" : "grid-cols-1"}`}>
+          {paystackEnabled && (
+            <button
+              type="button"
+              onClick={() => setPaymentMethod("card")}
+              className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                paymentMethod === "card"
+                  ? "border-[#FF0077] bg-pink-50"
+                  : "border-gray-200 hover:border-gray-300 bg-white"
+              }`}
+            >
+              <CreditCard className={`w-5 h-5 ${paymentMethod === "card" ? "text-[#FF0077]" : "text-gray-500"}`} />
+              <span className={`text-sm font-medium ${paymentMethod === "card" ? "text-[#FF0077]" : "text-gray-700"}`}>Card</span>
+              {paymentMethod === "card" && <Check className="w-4 h-4 text-[#FF0077]" />}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setPaymentMethod("cash")}
@@ -670,23 +686,25 @@ export default function StepPayment({
             <span className={`text-sm font-medium ${paymentMethod === "cash" ? "text-[#FF0077]" : "text-gray-700"}`}>Cash</span>
             {paymentMethod === "cash" && <Check className="w-4 h-4 text-[#FF0077]" />}
           </button>
-          <button
-            type="button"
-            onClick={() => setPaymentMethod("giftcard")}
-            className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
-              paymentMethod === "giftcard"
-                ? "border-[#FF0077] bg-pink-50"
-                : "border-gray-200 hover:border-gray-300 bg-white"
-            }`}
-          >
-            <Gift className={`w-5 h-5 ${paymentMethod === "giftcard" ? "text-[#FF0077]" : "text-gray-500"}`} />
-            <span className={`text-sm font-medium ${paymentMethod === "giftcard" ? "text-[#FF0077]" : "text-gray-700"}`}>Gift Card</span>
-            {paymentMethod === "giftcard" && <Check className="w-4 h-4 text-[#FF0077]" />}
-          </button>
+          {giftCardsEnabled && (
+            <button
+              type="button"
+              onClick={() => setPaymentMethod("giftcard")}
+              className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                paymentMethod === "giftcard"
+                  ? "border-[#FF0077] bg-pink-50"
+                  : "border-gray-200 hover:border-gray-300 bg-white"
+              }`}
+            >
+              <Gift className={`w-5 h-5 ${paymentMethod === "giftcard" ? "text-[#FF0077]" : "text-gray-500"}`} />
+              <span className={`text-sm font-medium ${paymentMethod === "giftcard" ? "text-[#FF0077]" : "text-gray-700"}`}>Gift Card</span>
+              {paymentMethod === "giftcard" && <Check className="w-4 h-4 text-[#FF0077]" />}
+            </button>
+          )}
         </div>
 
-        {/* Use wallet balance (when card selected and user has balance) */}
-        {paymentMethod === "card" && user && (
+        {/* Use wallet balance (when card selected, user has balance, and wallet feature enabled) */}
+        {paymentMethod === "card" && user && walletEnabled && (
           <div className="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50/50">
             <Checkbox
               id="use-wallet"

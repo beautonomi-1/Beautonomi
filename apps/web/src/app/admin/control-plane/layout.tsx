@@ -13,6 +13,9 @@ import {
   FileText,
   ListChecks,
   BarChart3,
+  Megaphone,
+  TrendingUp,
+  MapPin,
 } from "lucide-react";
 
 const controlPlaneNav = [
@@ -24,6 +27,11 @@ const controlPlaneNav = [
   { title: "AI Templates", href: "/admin/control-plane/modules/ai/templates", icon: FileText },
   { title: "AI Usage", href: "/admin/control-plane/modules/ai/usage", icon: BarChart3 },
   { title: "AI Entitlements", href: "/admin/control-plane/modules/ai/entitlements", icon: ListChecks },
+  { title: "Ads Module", href: "/admin/control-plane/modules/ads", icon: Megaphone },
+  { title: "Ranking Module", href: "/admin/control-plane/modules/ranking", icon: TrendingUp },
+  { title: "Distance Module", href: "/admin/control-plane/modules/distance", icon: MapPin },
+  { title: "Safety Module", href: "/admin/control-plane/modules/safety", icon: ShieldAlert },
+  { title: "Safety Logs", href: "/admin/control-plane/safety-logs", icon: ShieldAlert },
   { title: "Audit Log", href: "/admin/control-plane/audit-log", icon: ListChecks },
 ];
 

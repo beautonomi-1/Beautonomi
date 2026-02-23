@@ -287,7 +287,7 @@ export default function UserDetailPage() {
                       <div>
                         <p className="text-sm text-gray-500">Total Spent</p>
                         <p className="font-medium text-2xl">
-                          ${(user.stats.total_spent || 0).toLocaleString()}
+                          R {(user.stats.total_spent || 0).toLocaleString()}
                         </p>
                       </div>
                     </div>

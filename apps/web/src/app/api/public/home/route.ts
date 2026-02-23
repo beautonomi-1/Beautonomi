@@ -1665,7 +1665,76 @@ export async function GET(request: Request) {
       { revalidate: 60 }
     )();
 
-    const response = NextResponse.json(result);
+    // Post-process: ranking, distance radius filter, sponsored ads (gated by module config)
+    const env = process.env.NODE_ENV === "production" ? "production" : "development";
+    const supabaseAdmin = getSupabaseAdmin();
+    const [adsRow, rankingRow, distanceRow] = await Promise.all([
+      supabaseAdmin.from("ads_module_config").select("enabled, max_sponsored_slots").eq("environment", env).maybeSingle(),
+      supabaseAdmin.from("ranking_module_config").select("enabled").eq("environment", env).maybeSingle(),
+      supabaseAdmin.from("distance_module_config").select("enabled").eq("environment", env).maybeSingle(),
+    ]);
+    const radiusKmParam = new URL(request.url).searchParams.get("radius_km");
+    const radiusKm = radiusKmParam ? parseFloat(radiusKmParam) : null;
+
+    let data = result?.data ?? { all: [], topRated: [], nearest: [], hottest: [], upcoming: [], browseByCity: [] };
+    const sponsored: PublicProviderCard[] = [];
+
+    if (distanceRow?.data?.enabled && radiusKm != null && radiusKm > 0 && Array.isArray(data.nearest)) {
+      data = {
+        ...data,
+        nearest: (data.nearest as PublicProviderCard[]).filter((p) => p.distance_km != null && p.distance_km <= radiusKm),
+      };
+    }
+
+    if (rankingRow?.data?.enabled && (data.topRated?.length > 0 || data.hottest?.length > 0)) {
+      const providerIds = [...new Set([...(data.topRated ?? []).map((p: PublicProviderCard) => p.id), ...(data.hottest ?? []).map((p: PublicProviderCard) => p.id)])];
+      const { data: scores } = await supabaseAdmin.from("provider_quality_score").select("provider_id, computed_score").in("provider_id", providerIds);
+      const scoreMap = new Map<string, number>((scores ?? []).map((s: { provider_id: string; computed_score: number }) => [s.provider_id, Number(s.computed_score)]));
+      const sortByScore = (a: PublicProviderCard, b: PublicProviderCard) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0);
+      data = {
+        ...data,
+        topRated: [...(data.topRated ?? [])].sort(sortByScore),
+        hottest: [...(data.hottest ?? [])].sort(sortByScore),
+      };
+    }
+
+    if (adsRow?.data?.enabled && adsRow.data.max_sponsored_slots) {
+      const maxSlots = Math.min(Number(adsRow.data.max_sponsored_slots) || 5, 10);
+      const { data: campaigns } = await supabaseAdmin.from("ads_campaigns").select("provider_id").eq("status", "active").limit(maxSlots * 2);
+      const providerIds = [...new Set((campaigns ?? []).map((c: { provider_id: string }) => c.provider_id))].slice(0, maxSlots);
+      if (providerIds.length > 0) {
+        const { data: providersRaw } = await supabaseAdmin.from("providers").select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, is_featured, is_verified, description, currency").in("id", providerIds).eq("status", "active");
+        if (providersRaw?.length) {
+          const allMap = new Map((data.all ?? []).map((p: PublicProviderCard) => [p.id, p]));
+          for (const p of providersRaw as any[]) {
+            const card = allMap.get(p.id) ?? {
+              id: p.id,
+              slug: p.slug,
+              business_name: p.business_name,
+              business_type: p.business_type || "salon",
+              rating: p.rating_average ?? 0,
+              review_count: p.review_count ?? 0,
+              thumbnail_url: p.thumbnail_url,
+              city: "",
+              country: "",
+              is_featured: p.is_featured ?? false,
+              is_verified: p.is_verified ?? false,
+              starting_price: null,
+              currency: p.currency ?? "ZAR",
+              description: p.description ?? null,
+              distance_km: null,
+              supports_house_calls: false,
+              supports_salon: false,
+              current_badge: null,
+            };
+            sponsored.push(card);
+          }
+        }
+      }
+      data = { ...data, sponsored };
+    }
+
+    const response = NextResponse.json({ ...result, data });
     response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     return response;
   } catch (error: any) {

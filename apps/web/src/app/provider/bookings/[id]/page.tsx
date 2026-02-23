@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import Link from "next/link";
 import { BookingAuditLog } from "@/components/provider/BookingAuditLog";
 import { BookingConflictAlert } from "@/components/provider/BookingConflictAlert";
+import { SafetyPanicButton } from "@/components/safety/SafetyPanicButton";
 
 export default function ProviderBookingDetail() {
   const params = useParams();
@@ -278,14 +279,17 @@ export default function ProviderBookingDetail() {
   return (
     <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
       <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex items-center justify-between flex-wrap gap-2">
           <Link
             href="/provider/bookings"
             className="text-sm text-gray-600 hover:text-gray-900"
           >
             ← Back to Bookings
           </Link>
-          <BookingAuditLog bookingId={bookingId} />
+          <div className="flex items-center gap-2">
+            <SafetyPanicButton bookingId={bookingId} variant="outline" size="sm" />
+            <BookingAuditLog bookingId={bookingId} />
+          </div>
         </div>
 
         {/* Conflict Alert */}

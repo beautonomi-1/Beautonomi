@@ -10,6 +10,9 @@ import { useEffect } from "react";
  */
 export default function SuppressConsoleWarnings() {
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/89f3cdbd-444d-401b-9bce-c59a37625210',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'50ed8b'},body:JSON.stringify({sessionId:'50ed8b',location:'suppress-console-warnings.tsx:useEffect',message:'SuppressConsoleWarnings mounted',data:{},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
     // Store original console methods
     const originalError = console.error;
     const originalWarn = console.warn;
@@ -45,7 +48,11 @@ export default function SuppressConsoleWarnings() {
          lowerMessage.includes("signal is aborted") ||
          lowerMessage.includes("signal is aborted without reason") ||
          lowerMessage.includes("request was cancelled") ||
-         (lowerMessage.includes("fetchtimeouterror") && lowerMessage.includes("cancelled")))
+         (lowerMessage.includes("fetchtimeouterror") && lowerMessage.includes("cancelled"))) ||
+        // Browser uses Google as network location provider for navigator.geolocation (not our API call)
+        (lowerMessage.includes("network location provider") && lowerMessage.includes("googleapis")) ||
+        // Next.js LCP image suggestion (noise in dev when using external images)
+        (lowerMessage.includes("largest contentful paint") && lowerMessage.includes("loading"))
       );
     };
     

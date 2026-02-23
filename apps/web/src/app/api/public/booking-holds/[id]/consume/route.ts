@@ -8,7 +8,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { z } from "zod";
 
 const consumeBodySchema = z.object({
@@ -26,6 +27,10 @@ const consumeBodySchema = z.object({
   use_wallet: z.boolean().optional(),
   gift_card_code: z.string().optional(),
   custom_field_values: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+  addons: z.array(z.string().uuid()).optional(),
+  special_requests: z.string().optional().nullable(),
+  tip_amount: z.number().min(0).optional(),
+  promotion_code: z.string().optional().nullable(),
 });
 
 export async function POST(
@@ -65,6 +70,21 @@ export async function POST(
     const useWallet = parsed.success ? parsed.data.use_wallet : undefined;
     const giftCardCode = parsed.success ? parsed.data.gift_card_code : undefined;
     const customFieldValues = parsed.success ? parsed.data.custom_field_values : undefined;
+    const addons = parsed.success ? parsed.data.addons : undefined;
+    const specialRequests = parsed.success ? parsed.data.special_requests : undefined;
+    const tipAmount = parsed.success ? parsed.data.tip_amount : undefined;
+    const promotionCode = parsed.success ? parsed.data.promotion_code : undefined;
+
+    if (giftCardCode?.trim()) {
+      const giftCardsEnabled = await isFeatureEnabledServer("gift_cards");
+      if (!giftCardsEnabled) {
+        return errorResponse(
+          "Gift cards are currently unavailable.",
+          "FEATURE_DISABLED",
+          400
+        );
+      }
+    }
 
     const adminSupabase = getSupabaseAdmin();
 
@@ -178,6 +198,10 @@ export async function POST(
       gift_card_code: giftCardCode ?? null,
       booking_source: "online" as const,
       hold_id: holdId,
+      addons: addons ?? undefined,
+      special_requests: specialRequests ?? undefined,
+      tip_amount: tipAmount ?? undefined,
+      promotion_code: promotionCode ?? undefined,
     };
 
     const baseUrl =

@@ -106,7 +106,7 @@ export const FEATURE_FLAGS = {
   BOOKING_ONLINE: 'booking_online',
   BOOKING_AT_HOME: 'booking_at_home',
   BOOKING_GROUP: 'booking_group',
-  PAYMENT_STRIPE: 'payment_stripe',
+  PAYMENT_PAYSTACK: 'payment_paystack',
   PAYMENT_WALLET: 'payment_wallet',
   NOTIFICATIONS_EMAIL: 'notifications_email',
   NOTIFICATIONS_SMS: 'notifications_sms',

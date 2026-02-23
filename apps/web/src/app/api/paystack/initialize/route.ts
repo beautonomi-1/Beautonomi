@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { successResponse, handleApiError, errorResponse, requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { z } from "zod";
 
 const initializeSchema = z.object({
@@ -16,6 +17,15 @@ const initializeSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
+    const paystackEnabled = await isFeatureEnabledServer("payment_paystack");
+    if (!paystackEnabled) {
+      return errorResponse(
+        "Online card payment is currently unavailable.",
+        "FEATURE_DISABLED",
+        403
+      );
+    }
+
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
     const body = initializeSchema.parse(await request.json());
     

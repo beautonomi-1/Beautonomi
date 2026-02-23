@@ -14,6 +14,7 @@
  * method functions, we can import and invoke them directly.
  */
 
+import type { NextRequest } from "next/server";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   createMockNextRequest,
@@ -137,7 +138,7 @@ describe("Paystack routes – authentication", () => {
       body: { email: "test@example.com", amount: 5000, metadata: { bookingData: "{}" } },
     });
 
-    const res = await POST(req as any);
+    const res = await POST(req as NextRequest);
     await expectAuthError(res);
   });
 
@@ -156,7 +157,7 @@ describe("Paystack routes – authentication", () => {
 
     // This will fail at the Paystack API call level (env var missing),
     // but NOT at the auth level — which is what we're testing.
-    const res = await POST(req as any);
+    const res = await POST(req as NextRequest);
     // Even though it errors, it should not be a 401
     const body = await safeJson(res);
     if (res.status >= 400) {
@@ -177,7 +178,7 @@ describe("Paystack routes – authentication", () => {
       searchParams: { reference: "ref_12345" },
     });
 
-    const res = await GET(req as any);
+    const res = await GET(req as NextRequest);
     await expectAuthError(res);
   });
 });
@@ -211,7 +212,7 @@ describe("Notification send routes – authentication", () => {
       body: { to: "user@example.com", subject: "Test", body: "Hello" },
     });
 
-    const res = await POST(req as any);
+    const res = await POST(req as NextRequest);
     await expectAuthError(res);
   });
 
@@ -228,7 +229,7 @@ describe("Notification send routes – authentication", () => {
       body: { to: "user@example.com", subject: "Test", body: "Hello" },
     });
 
-    const res = await POST(req as any);
+    const res = await POST(req as NextRequest);
     await expectAuthError(res);
   });
 
@@ -245,7 +246,7 @@ describe("Notification send routes – authentication", () => {
       body: { to: "+27123456789", message: "Test SMS" },
     });
 
-    const res = await POST(req as any);
+    const res = await POST(req as NextRequest);
     await expectAuthError(res);
   });
 });
@@ -269,7 +270,7 @@ describe("Admin routes – superadmin requirement", () => {
       url: "http://localhost:3000/api/admin/users",
     });
 
-    const res = await GET(req as any);
+    const res = await GET(req as NextRequest);
     await expectAuthError(res);
   });
 
@@ -283,7 +284,7 @@ describe("Admin routes – superadmin requirement", () => {
       url: "http://localhost:3000/api/admin/users",
     });
 
-    const res = await GET(req as any);
+    const res = await GET(req as NextRequest);
     await expectAuthError(res);
   });
 
@@ -297,7 +298,7 @@ describe("Admin routes – superadmin requirement", () => {
       url: "http://localhost:3000/api/admin/users",
     });
 
-    const res = await GET(req as any);
+    const res = await GET(req as NextRequest);
     // Should succeed (200) or at least not be an auth error
     expect(res.status).not.toBe(401);
     expect(res.status).not.toBe(403);
@@ -313,7 +314,7 @@ describe("Admin routes – superadmin requirement", () => {
       url: "http://localhost:3000/api/admin/bookings",
     });
 
-    const res = await GET(req as any);
+    const res = await GET(req as NextRequest);
     await expectAuthError(res);
   });
 
@@ -327,7 +328,7 @@ describe("Admin routes – superadmin requirement", () => {
       url: "http://localhost:3000/api/admin/audit-logs",
     });
 
-    const res = await GET(req as any);
+    const res = await GET(req as NextRequest);
     await expectAuthError(res);
   });
 
@@ -342,7 +343,7 @@ describe("Admin routes – superadmin requirement", () => {
       url: "http://localhost:3000/api/admin/platform-fees",
     });
 
-    const res = await GET(req as any);
+    const res = await GET(req as NextRequest);
     await expectAuthError(res);
   });
 });
@@ -366,7 +367,7 @@ describe("requireRoleInApi – contract", () => {
       url: "http://localhost:3000/api/admin/users",
     });
 
-    await GET(req as any);
+    await GET(req as NextRequest);
 
     expect(mockRequireRoleInApi).toHaveBeenCalled();
     const firstArg = mockRequireRoleInApi.mock.calls[0]?.[0];
@@ -392,7 +393,7 @@ describe("requireRoleInApi – contract", () => {
       body: { to: "x@y.com", subject: "Hi", body: "test" },
     });
 
-    await POST(req as any);
+    await POST(req as NextRequest);
 
     expect(mockRequireRoleInApi).toHaveBeenCalled();
     const firstArg = mockRequireRoleInApi.mock.calls[0]?.[0];

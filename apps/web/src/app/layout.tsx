@@ -1,21 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
 // Country restriction modal removed - not needed
-import { AuthProvider } from "@/providers/AuthProvider";
-import { PlatformSettingsProvider } from "@/providers/PlatformSettingsProvider";
-import AccountStatusGuard from "@/components/auth/AccountStatusGuard";
-import { Toaster } from "sonner";
-import SuppressConsoleWarnings from "@/components/global/suppress-console-warnings";
-import OneSignalProvider from "@/components/global/OneSignalProvider";
-import AmplitudeProviderWrapper from "@/components/analytics/AmplitudeProvider";
-import SessionTracker from "@/components/analytics/SessionTracker";
-import DynamicBranding from "@/components/platform/DynamicBranding";
-import { ImpersonationBanner } from "@/components/admin/ImpersonationBanner";
+import SuppressConsoleWarningsWrapper from "@/components/global/suppress-console-warnings-wrapper";
 import { OrganizationSchema } from "@/components/seo/structured-data";
-import FaviconSpinner from "@/components/global/favicon-spinner";
-import AuthLoadingSpinner from "@/components/global/auth-loading-spinner";
-import I18nInit from "@/components/i18n/I18nInit";
-import { ConfigBundleProvider } from "@/providers/ConfigBundleProvider";
+import { RootErrorBoundary } from "@/components/global/RootErrorBoundary";
+import GlobalErrorLogger from "@/components/global/GlobalErrorLogger";
+import ClientAppShellLoader from "@/components/global/ClientAppShellLoader";
 
 export const metadata: Metadata = {
   title: {
@@ -91,26 +81,11 @@ export default function RootLayout({
     <html lang="en" className="overflow-x-hidden max-w-full">
       <body className="font-beautonomi overflow-x-hidden max-w-full" suppressHydrationWarning>
         <OrganizationSchema />
-        <SuppressConsoleWarnings />
-        <AuthProvider>
-            <I18nInit />
-          <AuthLoadingSpinner />
-          <PlatformSettingsProvider>
-            <ConfigBundleProvider platform="web" environment={process.env.NODE_ENV === "development" ? "development" : "production"}>
-              <FaviconSpinner />
-              <DynamicBranding />
-              <OneSignalProvider />
-              <AmplitudeProviderWrapper>
-                <SessionTracker />
-                <ImpersonationBanner />
-                <AccountStatusGuard>
-                  {children}
-                </AccountStatusGuard>
-                <Toaster position="top-center" />
-              </AmplitudeProviderWrapper>
-            </ConfigBundleProvider>
-          </PlatformSettingsProvider>
-        </AuthProvider>
+        <GlobalErrorLogger />
+        <SuppressConsoleWarningsWrapper />
+        <RootErrorBoundary>
+          <ClientAppShellLoader>{children}</ClientAppShellLoader>
+        </RootErrorBoundary>
       </body>
     </html>
   );

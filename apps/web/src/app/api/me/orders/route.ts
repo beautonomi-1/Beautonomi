@@ -6,6 +6,7 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { z } from "zod";
 
 const createOrderSchema = z.object({
@@ -94,6 +95,28 @@ export async function POST(request: NextRequest) {
     }
     if (parsed.fulfillment_type === "collection" && !parsed.collection_location_id) {
       return errorResponse("Collection location is required", "VALIDATION", 400);
+    }
+
+    const paymentMethod = parsed.payment_method ?? "paystack";
+    if (paymentMethod === "paystack") {
+      const paystackEnabled = await isFeatureEnabledServer("payment_paystack");
+      if (!paystackEnabled) {
+        return errorResponse(
+          "Online card payment is currently unavailable. Please choose pay on delivery or another method.",
+          "FEATURE_DISABLED",
+          400
+        );
+      }
+    }
+    if (parsed.use_wallet === true) {
+      const walletEnabled = await isFeatureEnabledServer("payment_wallet");
+      if (!walletEnabled) {
+        return errorResponse(
+          "Wallet payment is currently unavailable.",
+          "FEATURE_DISABLED",
+          400
+        );
+      }
     }
 
     // Get cart items for this provider

@@ -18,6 +18,11 @@ export async function GET(request: NextRequest) {
       supportTicketsResult,
       refundsResult,
       disputesResult,
+      providersPendingResult,
+      bookingsPendingResult,
+      userReportsResult,
+      productOrdersPendingResult,
+      productReturnsResult,
     ] = await Promise.all([
       supabase
         .from("user_verifications")
@@ -40,6 +45,26 @@ export async function GET(request: NextRequest) {
         .from("booking_disputes")
         .select("id", { count: "exact", head: true })
         .eq("status", "open"),
+      supabase
+        .from("providers")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending_approval"),
+      supabase
+        .from("bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending"),
+      supabase
+        .from("user_reports")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending"),
+      supabase
+        .from("product_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending"),
+      supabase
+        .from("product_return_requests")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["pending", "escalated"]),
     ]);
 
     const counts: Record<string, number> = {
@@ -48,6 +73,11 @@ export async function GET(request: NextRequest) {
       "/admin/support-tickets": supportTicketsResult.count ?? 0,
       "/admin/refunds": refundsResult.count ?? 0,
       "/admin/disputes": disputesResult.count ?? 0,
+      "/admin/providers": providersPendingResult.count ?? 0,
+      "/admin/bookings": bookingsPendingResult.count ?? 0,
+      "/admin/user-reports": userReportsResult.count ?? 0,
+      "/admin/ecommerce/orders": productOrdersPendingResult.count ?? 0,
+      "/admin/ecommerce/returns": productReturnsResult.count ?? 0,
     };
 
     return successResponse(counts);

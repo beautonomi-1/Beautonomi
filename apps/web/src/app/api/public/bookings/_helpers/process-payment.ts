@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { handleApiError } from "@/lib/supabase/api-helpers";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { chargeAuthorization } from "@/lib/payments/paystack-complete";
@@ -54,6 +55,15 @@ export async function processPayment(
   let giftCardId: string | null = null;
 
   if (giftCardCode && amountToCollect > 0) {
+    const giftCardsEnabled = await isFeatureEnabledServer("gift_cards");
+    if (!giftCardsEnabled) {
+      return handleApiError(
+        new Error("Gift cards are currently unavailable"),
+        "Gift cards are currently unavailable.",
+        "FEATURE_DISABLED",
+        400
+      );
+    }
     const applyAmount = Math.max(0, amountToCollect);
     if (applyAmount > 0) {
       const { data: reserved, error: reserveError } = await (supabase.rpc as any)(
@@ -100,6 +110,15 @@ export async function processPayment(
   let walletAmountApplied = 0;
 
   if (useWallet && amountToCollect > 0) {
+    const walletEnabled = await isFeatureEnabledServer("payment_wallet");
+    if (!walletEnabled) {
+      return handleApiError(
+        new Error("Wallet payments are currently unavailable"),
+        "Wallet payments are currently unavailable.",
+        "FEATURE_DISABLED",
+        400
+      );
+    }
     try {
       const { data: wallet } = await supabase
         .from("user_wallets")
@@ -163,6 +182,16 @@ export async function processPayment(
   let paymentUrl: string | null = null;
 
   if (paymentMethod === "card") {
+    const paystackEnabled = await isFeatureEnabledServer("payment_paystack");
+    if (!paystackEnabled) {
+      return handleApiError(
+        new Error("Online card payment is currently unavailable"),
+        "Online card payment is currently unavailable. Please choose cash or another method.",
+        "FEATURE_DISABLED",
+        400
+      );
+    }
+
     const { data: userEmailRow } = await supabase
       .from("users")
       .select("email")

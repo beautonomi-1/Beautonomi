@@ -14,9 +14,10 @@ interface PageContent {
 
 interface GiftsHeroProps {
   content?: PageContent | null;
+  giftCardsEnabled?: boolean;
 }
 
-const GiftsHero = ({ content }: GiftsHeroProps) => {
+const GiftsHero = ({ content, giftCardsEnabled = true }: GiftsHeroProps) => {
   // Get content from CMS or use defaults
   const heroTitle = content?.hero_title?.content || "Beautonomi gift cards";
   const heroSubtitle = content?.hero_subtitle?.content || "You give. They glow.";
@@ -41,11 +42,15 @@ const GiftsHero = ({ content }: GiftsHeroProps) => {
           {heroTitle}
         </h2>
         <div className="text-center mb-14 lg:mb-20">
-          <Link href={purchaseUrl}>
-            <Button variant="secondary" size="rounded">
-              {buyNowButtonText}
-            </Button>
-          </Link>
+          {giftCardsEnabled ? (
+            <Link href={purchaseUrl}>
+              <Button variant="secondary" size="rounded">
+                {buyNowButtonText}
+              </Button>
+            </Link>
+          ) : (
+            <p className="text-gray-500 text-sm">Gift cards are currently unavailable.</p>
+          )}
         </div>
         <div className="relative mx-auto">
           {cardBackgroundImage && cardOverlayImage ? (
@@ -79,12 +84,16 @@ const GiftsHero = ({ content }: GiftsHeroProps) => {
         <p className="tex-sm md:text-base lg:text-lg  text-secondary font-normal max-w-2xl mx-auto mb-3 lg:mb-5">
           {heroDescription}
         </p>
-        <p className="text-sm md:text-base lg:text-lg  text-secondary font-normal mb-1 lg:mb-3">
-          {businessText}
-        </p>
-        <Link className="underline" href={bulkPurchaseUrl}>
-          {bulkLinkText}
-        </Link>
+        {giftCardsEnabled && (
+          <>
+            <p className="text-sm md:text-base lg:text-lg  text-secondary font-normal mb-1 lg:mb-3">
+              {businessText}
+            </p>
+            <Link className="underline" href={bulkPurchaseUrl}>
+              {bulkLinkText}
+            </Link>
+          </>
+        )}
       </div>
     </div>
     </div>

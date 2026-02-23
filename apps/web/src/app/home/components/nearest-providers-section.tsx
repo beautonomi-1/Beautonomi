@@ -8,12 +8,21 @@ import EmptyState from "@/components/ui/empty-state";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import ProviderCard from "./provider-card";
 import { useUserLocation } from "@/hooks/useUserLocation";
+import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 const NearestProvidersSection = () => {
   const [providers, setProviders] = useState<PublicProviderCard[]>([]);
   const [isLoading, setIsLoading] = useState(false); // Start false to render immediately
   const [error, setError] = useState<string | null>(null);
   const { location: userLocation, isLoading: locationLoading } = useUserLocation();
+  const distanceConfig = useModuleConfig("distance") as { enabled?: boolean; default_radius_km?: number; max_radius_km?: number; step_km?: number } | undefined;
+  const distanceFilterEnabled = useFeatureFlag("distance.filter.enabled");
+  const useRadius = Boolean(distanceConfig?.enabled) || distanceFilterEnabled;
+  const defaultRadius = distanceConfig?.default_radius_km ?? 25;
+  const maxRadius = distanceConfig?.max_radius_km ?? 50;
+  const [radiusKm, setRadiusKm] = useState(defaultRadius);
 
   useEffect(() => {
     const loadData = async () => {
@@ -38,7 +47,8 @@ const NearestProvidersSection = () => {
             country = addressParts[addressParts.length - 1];
           }
         } else if (!locationLoading) {
-          // If no location from hook and not loading, try browser geolocation as fallback
+          // If no location from hook and not loading, try browser geolocation as fallback.
+          // Note: The browser may use Google's network location service; a 403 in the console is from the browser, not our app.
           if (navigator.geolocation) {
             try {
               const position = await new Promise<GeolocationPosition>((resolve, reject) => {
@@ -61,6 +71,7 @@ const NearestProvidersSection = () => {
         }
         if (city) params.set("city", city);
         if (country) params.set("country", country || "ZA");
+        if (useRadius) params.set("radius_km", String(radiusKm));
 
         const response = await fetcher.get<{
           data: { nearest: PublicProviderCard[] };
@@ -90,7 +101,7 @@ const NearestProvidersSection = () => {
     if (!locationLoading) {
       loadData();
     }
-  }, [userLocation, locationLoading]);
+  }, [userLocation, locationLoading, useRadius, radiusKm]);
 
   const handleRetry = () => {
     setError(null);
@@ -141,15 +152,32 @@ const NearestProvidersSection = () => {
   return (
     <div className="mb-8 md:mb-12">
       <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
-        <div className="flex justify-between items-center mb-4 md:mb-6">
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-4 md:mb-6">
           <div className="flex items-center gap-2">
             <MapPin className="h-5 w-5 md:h-6 md:w-6 text-gray-600" />
             <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">Nearest Providers</h2>
           </div>
-          <Link href="/more-nearest-providers-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-[#FF0077]">
-            View More
-            <ArrowRight className="ml-1 h-3 w-3 md:h-4 md:w-4" />
-          </Link>
+          <div className="flex items-center gap-2">
+            {useRadius && (
+              <div className="flex items-center gap-2">
+                <Label htmlFor="radius-select" className="text-sm text-muted-foreground whitespace-nowrap">Within</Label>
+                <Select value={String(radiusKm)} onValueChange={(v) => setRadiusKm(Number(v))}>
+                  <SelectTrigger id="radius-select" className="w-[100px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[5, 10, 15, 25, 50].filter((r) => r <= maxRadius).map((r) => (
+                      <SelectItem key={r} value={String(r)}>{r} km</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <Link href="/more-nearest-providers-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-[#FF0077]">
+              View More
+              <ArrowRight className="ml-1 h-3 w-3 md:h-4 md:w-4" />
+            </Link>
+          </div>
         </div>
         {/* Mobile: Horizontal scroll with peek effect, Desktop: Grid */}
         {/* Mobile horizontal scroll container */}

@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ToggleLeft, Plug, Music, Sparkles, ListChecks } from "lucide-react";
+import { ToggleLeft, Plug, Music, Sparkles, ListChecks, Megaphone, TrendingUp, MapPin } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -18,6 +18,10 @@ const links = [
   { title: "Integrations", href: "/admin/control-plane/integrations", icon: Plug, description: "Amplitude, OneSignal, Mapbox, Sumsub, Aura, Gemini" },
   { title: "On-Demand Module", href: "/admin/control-plane/modules/on-demand", icon: Music, description: "Ringtone, waiting screen, UI copy" },
   { title: "AI Module", href: "/admin/control-plane/modules/ai", icon: Sparkles, description: "Budgets, templates, usage, entitlements" },
+  { title: "Ads Module", href: "/admin/control-plane/modules/ads", icon: Megaphone, description: "Boosted listings, sponsored slots" },
+  { title: "Ranking Module", href: "/admin/control-plane/modules/ranking", icon: TrendingUp, description: "Quality scoring, discoverability" },
+  { title: "Distance Module", href: "/admin/control-plane/modules/distance", icon: MapPin, description: "Radius filter, service area" },
+  { title: "Safety Module", href: "/admin/control-plane/modules/safety", icon: ShieldAlert, description: "Panic, check-in, Aura escalation" },
   { title: "Audit Log", href: "/admin/control-plane/audit-log", icon: ListChecks, description: "Config change history" },
 ];
 

@@ -39,5 +39,17 @@ export async function getOneSignalRestApiKey(): Promise<string | null> {
 }
 
 export async function getMapboxAccessToken(): Promise<string | null> {
-  return process.env.MAPBOX_ACCESS_TOKEN ?? null;
+  const fromEnv = process.env.MAPBOX_ACCESS_TOKEN ?? null;
+  if (fromEnv) return fromEnv;
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const admin = getSupabaseAdmin();
+    const { data } = await (admin.from("platform_secrets") as any)
+      .select("mapbox_access_token")
+      .limit(1)
+      .maybeSingle();
+    return (data?.mapbox_access_token as string) || null;
+  } catch {
+    return null;
+  }
 }

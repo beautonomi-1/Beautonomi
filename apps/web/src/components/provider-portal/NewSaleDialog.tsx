@@ -60,6 +60,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 
 interface Client {
   id: string;
@@ -124,7 +125,18 @@ export function NewSaleDialog({
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("cash");
   const [activeTab, setActiveTab] = useState<"services" | "products">("services");
-  
+  const { enabled: giftCardsEnabled } = useFeatureFlag("gift_cards");
+  const visiblePaymentMethods = giftCardsEnabled
+    ? paymentMethods
+    : paymentMethods.filter((m) => m.id !== "gift_card");
+
+  // When gift cards are disabled, switch away from gift_card payment
+  useEffect(() => {
+    if (!giftCardsEnabled && selectedPaymentMethod === "gift_card") {
+      setSelectedPaymentMethod("cash");
+    }
+  }, [giftCardsEnabled, selectedPaymentMethod]);
+
   // Client search
   const [clientSearchQuery, setClientSearchQuery] = useState("");
   const [clientSearchResults, setClientSearchResults] = useState<Client[]>([]);
@@ -1474,24 +1486,26 @@ export function NewSaleDialog({
                       {isValidatingCoupon ? "..." : appliedCoupon ? <Check className="w-4 h-4" /> : <Tag className="w-4 h-4" />}
                     </Button>
                   </div>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Gift card code"
-                      value={giftCardCode}
-                      onChange={(e) => setGiftCardCode(e.target.value)}
-                      className="flex-1 h-10 text-sm"
-                      disabled={giftCardBalance > 0 || isValidatingGiftCard}
-                    />
-                    <Button
-                      onClick={handleApplyGiftCard}
-                      disabled={!giftCardCode.trim() || giftCardBalance > 0 || isValidatingGiftCard}
-                      variant="outline"
-                      size="sm"
-                      className="h-10"
-                    >
-                      {isValidatingGiftCard ? "..." : giftCardBalance > 0 ? <Check className="w-4 h-4" /> : <Gift className="w-4 h-4" />}
-                    </Button>
-                  </div>
+                  {giftCardsEnabled && (
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Gift card code"
+                        value={giftCardCode}
+                        onChange={(e) => setGiftCardCode(e.target.value)}
+                        className="flex-1 h-10 text-sm"
+                        disabled={giftCardBalance > 0 || isValidatingGiftCard}
+                      />
+                      <Button
+                        onClick={handleApplyGiftCard}
+                        disabled={!giftCardCode.trim() || giftCardBalance > 0 || isValidatingGiftCard}
+                        variant="outline"
+                        size="sm"
+                        className="h-10"
+                      >
+                        {isValidatingGiftCard ? "..." : giftCardBalance > 0 ? <Check className="w-4 h-4" /> : <Gift className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1530,7 +1544,7 @@ export function NewSaleDialog({
                 <div>
                   <Label className="text-sm font-semibold mb-3 block">Payment Method</Label>
                   <div className="grid grid-cols-2 gap-2">
-                    {paymentMethods.map((method) => {
+                    {visiblePaymentMethods.map((method) => {
                       const Icon = method.icon;
                       const isSelected = selectedPaymentMethod === method.id;
                       return (

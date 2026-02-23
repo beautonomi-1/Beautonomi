@@ -218,7 +218,7 @@ export default function RevenueReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ${data.totalRevenue.toLocaleString()}
+                R {data.totalRevenue.toLocaleString()}
               </div>
             </CardContent>
           </Card>
@@ -240,7 +240,7 @@ export default function RevenueReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ${(data.totalRevenue / Math.max(1, data.revenueByDay.reduce((sum, day) => sum + day.bookings, 0))).toFixed(2)}
+                R {(data.totalRevenue / Math.max(1, data.revenueByDay.reduce((sum, day) => sum + day.bookings, 0))).toFixed(2)}
               </div>
             </CardContent>
           </Card>
@@ -259,9 +259,9 @@ export default function RevenueReportPage() {
                   dataKey="date"
                   tickFormatter={(value) => format(new Date(value), "MMM d")}
                 />
-                <YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} />
+                <YAxis tickFormatter={(value) => `R ${value.toLocaleString()}`} />
                 <Tooltip
-                  formatter={(value: number) => `$${value.toLocaleString()}`}
+                  formatter={(value: number) => `R ${value.toLocaleString()}`}
                   labelFormatter={(label) => format(new Date(label), "PP")}
                 />
                 <Legend />
@@ -293,8 +293,8 @@ export default function RevenueReportPage() {
                     textAnchor="end"
                     height={100}
                   />
-                  <YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} />
-                  <Tooltip formatter={(value: number) => `$${value.toLocaleString()}`} />
+                  <YAxis tickFormatter={(value) => `R ${value.toLocaleString()}`} />
+                  <Tooltip formatter={(value: number) => `R ${value.toLocaleString()}`} />
                   <Legend />
                   <Bar dataKey="revenue" fill="#00C49F" name="Revenue" />
                 </BarChart>
@@ -314,8 +314,8 @@ export default function RevenueReportPage() {
                 <BarChart data={data.revenueByStatus}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="status" />
-                  <YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} />
-                  <Tooltip formatter={(value: number) => `$${value.toLocaleString()}`} />
+                  <YAxis tickFormatter={(value) => `R ${value.toLocaleString()}`} />
+                  <Tooltip formatter={(value: number) => `R ${value.toLocaleString()}`} />
                   <Legend />
                   <Bar dataKey="revenue" fill="#FFBB28" name="Revenue" />
                 </BarChart>
@@ -335,7 +335,7 @@ export default function RevenueReportPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    ${data.giftCardMetrics.totalSales.toLocaleString()}
+                    R {data.giftCardMetrics.totalSales.toLocaleString()}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Cash received (liability)</p>
                 </CardContent>
@@ -347,7 +347,7 @@ export default function RevenueReportPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    ${data.giftCardMetrics.totalRedemptions.toLocaleString()}
+                    R {data.giftCardMetrics.totalRedemptions.toLocaleString()}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Value redeemed</p>
                 </CardContent>
@@ -359,7 +359,7 @@ export default function RevenueReportPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    ${data.giftCardMetrics.outstandingLiability.toLocaleString()}
+                    R {data.giftCardMetrics.outstandingLiability.toLocaleString()}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Unredeemed balance</p>
                 </CardContent>
@@ -401,9 +401,9 @@ export default function RevenueReportPage() {
                       dataKey="date"
                       tickFormatter={(value) => format(new Date(value), "MMM d")}
                     />
-                    <YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} />
+                    <YAxis tickFormatter={(value) => `R ${value.toLocaleString()}`} />
                     <Tooltip
-                      formatter={(value: number) => `$${value.toLocaleString()}`}
+                      formatter={(value: number) => `R ${value.toLocaleString()}`}
                       labelFormatter={(label) => format(new Date(label), "PP")}
                     />
                     <Legend />

@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/select";
 import { format } from "date-fns";
 
-const CURRENCY_CODE = "ZAR";
+const CURRENCY_CODE = "R";
 const formatCurrency = (value: number) =>
   `${CURRENCY_CODE} ${(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const formatGrowth = (growth: number | undefined | null) => {

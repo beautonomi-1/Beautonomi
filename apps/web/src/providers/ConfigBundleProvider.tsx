@@ -46,6 +46,7 @@ export interface PublicConfigBundle {
     distance: Record<string, unknown>;
     sumsub: Record<string, unknown>;
     aura: Record<string, unknown>;
+    safety: Record<string, unknown>;
   };
 }
 
@@ -85,6 +86,7 @@ const defaultBundle: PublicConfigBundle = {
     distance: {},
     sumsub: {},
     aura: {},
+    safety: {},
   },
 };
 

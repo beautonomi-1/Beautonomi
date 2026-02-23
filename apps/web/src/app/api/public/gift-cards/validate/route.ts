@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 
 /**
  * GET /api/public/gift-cards/validate?code=XXX
@@ -9,6 +10,11 @@ import { getSupabaseServer } from "@/lib/supabase/server";
  */
 export async function GET(request: Request) {
   try {
+    const giftCardsEnabled = await isFeatureEnabledServer("gift_cards");
+    if (!giftCardsEnabled) {
+      return NextResponse.json({ valid: false, message: "Gift cards are currently unavailable" }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const code = (searchParams.get("code") || "").trim().toUpperCase();
 

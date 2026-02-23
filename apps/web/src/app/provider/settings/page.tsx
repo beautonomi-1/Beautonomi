@@ -24,6 +24,8 @@ const settingsCategories = [
       { title: "Locations", description: "Manage your business locations", href: "/provider/settings/locations" },
       { title: "Operating Hours", description: "Set opening and closing times for your locations", href: "/provider/settings/operating-hours" },
       { title: "Distance Settings", description: "Configure service distance limits for house calls", href: "/provider/settings/distance" },
+      { title: "Service Area", description: "Set your service radius or zones for house calls (Tinder-style)", href: "/provider/settings/service-area" },
+      { title: "Identity verification", description: "Verify your identity with Sumsub (KYC) for payouts", href: "/provider/settings/verification" },
       { title: "Service Zones", description: "Define service areas and zones for at-home bookings", href: "/provider/settings/service-zones" },
       { title: "Online booking", description: "Configure online booking settings", href: "/provider/settings/appointment-activity/online-booking" },
       { title: "Note Templates", description: "Create reusable note templates", href: "/provider/settings/note-templates" },
@@ -93,6 +95,7 @@ const settingsCategories = [
     title: "Marketing Integrations",
     description: "Connect third-party services to run effective marketing campaigns",
     items: [
+      { title: "Paid ads (boosted listings)", description: "Create campaigns to appear in sponsored slots", href: "/provider/settings/ads" },
       { title: "Email Integration", description: "Connect SendGrid or Mailchimp for email marketing campaigns", href: "/provider/settings/integrations/email" },
       { title: "Twilio Integration", description: "Connect Twilio for SMS and WhatsApp marketing campaigns", href: "/provider/settings/integrations/twilio" },
     ],

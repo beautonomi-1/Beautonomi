@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
 
 export async function GET(request: NextRequest) {
@@ -7,10 +7,10 @@ export async function GET(request: NextRequest) {
     // Require superadmin role
     await requireRoleInApi(['superadmin'], request);
 
-    const supabase = await getSupabaseServer(request);
-    
+    const supabase = getSupabaseAdmin();
+
     if (!supabase) {
-      console.error("Failed to get Supabase client");
+      console.error("Failed to get Supabase admin client");
       return handleApiError(new Error("Database connection failed"), 'Failed to load Gods Eye data');
     }
 
@@ -88,51 +88,52 @@ export async function GET(request: NextRequest) {
       getRevenue(new Date(0).toISOString()), // All time
     ]);
 
-    // Get top providers (by revenue) - include rating_average from providers
-    const { data: topProvidersData } = await supabase
+    // Top providers: fetch all providers (any status) so list is never empty when providers exist
+    const { data: activeProvidersData } = await supabase
       .from('providers')
-      .select('id, business_name, owner_name, rating_average')
-      .eq('status', 'active')
-      .limit(10);
+      .select('id, business_name, owner_name, rating_average, status')
+      .limit(20);
 
-    const providerIds = (topProvidersData || []).map((p: any) => p.id);
+    const allProviderIds = (activeProvidersData || []).map((p: any) => p.id);
 
-    // Get bookings count per provider
+    // Revenue from finance_transactions (provider_earnings, travel_fee, tip)
+    const providerRevenue: Record<string, number> = {};
+    if (allProviderIds.length > 0) {
+      const { data: providerTxRows } = await supabase
+        .from('finance_transactions')
+        .select('provider_id, net, amount')
+        .in('provider_id', allProviderIds)
+        .in('transaction_type', ['provider_earnings', 'travel_fee', 'tip']);
+      (providerTxRows || []).forEach((t: any) => {
+        const id = t.provider_id;
+        if (!id) return;
+        if (!providerRevenue[id]) providerRevenue[id] = 0;
+        providerRevenue[id] += Number(t.net ?? t.amount ?? 0);
+      });
+    }
+
+    // Bookings count per provider
     const bookingsCounts: Record<string, number> = {};
-    if (providerIds.length > 0) {
+    if (allProviderIds.length > 0) {
       const { data: bookingRows } = await supabase
         .from('bookings')
         .select('provider_id')
-        .in('provider_id', providerIds);
+        .in('provider_id', allProviderIds);
       (bookingRows || []).forEach((b: any) => {
         bookingsCounts[b.provider_id] = (bookingsCounts[b.provider_id] || 0) + 1;
       });
     }
 
-    // Provider revenue = earnings (provider_earnings, travel_fee, tip)
-    const { data: allProviderTransactions } = providerIds.length > 0
-      ? await supabase
-          .from('finance_transactions')
-          .select('provider_id, net, amount')
-          .in('provider_id', providerIds)
-          .in('transaction_type', ['provider_earnings', 'travel_fee', 'tip'])
-      : { data: [] };
-
-    const providerRevenue: Record<string, number> = {};
-    (allProviderTransactions || []).forEach((t: any) => {
-      if (!providerRevenue[t.provider_id]) {
-        providerRevenue[t.provider_id] = 0;
-      }
-      providerRevenue[t.provider_id] += Number(t.net ?? t.amount ?? 0);
-    });
-
-    const topProviders = (topProvidersData || []).map((provider: any) => ({
-      id: provider.id,
-      name: provider.business_name || provider.owner_name || 'Unknown',
-      bookings_count: bookingsCounts[provider.id] || 0,
-      revenue: providerRevenue[provider.id] || 0,
-      rating: Number(provider.rating_average) || 0,
-    })).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+    const topProviders = (activeProvidersData || [])
+      .map((provider: any) => ({
+        id: provider.id,
+        name: provider.business_name || provider.owner_name || 'Unknown',
+        bookings_count: bookingsCounts[provider.id] || 0,
+        revenue: providerRevenue[provider.id] ?? 0,
+        rating: Number(provider.rating_average) || 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
 
     // Get top customers (by total spent) - finance_transactions has booking_id not customer_id, so derive via bookings
     const { data: topCustomersData } = await supabase

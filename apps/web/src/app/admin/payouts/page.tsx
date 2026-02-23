@@ -280,7 +280,7 @@ export default function AdminPayouts() {
                           )}
                         </td>
                         <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          ZAR {payout.amount.toLocaleString()}
+                          R {payout.amount.toLocaleString()}
                         </td>
                         <td className="px-4 lg:px-6 py-4 whitespace-nowrap">{getStatusBadge(payout.status)}</td>
                         <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -376,7 +376,7 @@ export default function AdminPayouts() {
                         {getStatusBadge(payout.status)}
                       </div>
                       <div className="text-lg sm:text-xl font-bold text-gray-900 mb-2">
-                        ZAR {payout.amount.toLocaleString()}
+                        R {payout.amount.toLocaleString()}
                       </div>
                       {payout.bank_account ? (
                         <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded mb-2">

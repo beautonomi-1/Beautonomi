@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRole } from '@/lib/supabase/auth-server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
 import { writeAuditLog } from "@/lib/audit/audit";
-import { handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/admin/feature-flags
@@ -10,8 +9,8 @@ import { handleApiError } from "@/lib/supabase/api-helpers";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer(request);
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = getSupabaseAdmin();
 
     const { data: featureFlags, error } = await supabase
       .from('feature_flags')
@@ -38,8 +37,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer(request);
+    const { user } = await requireRoleInApi(['superadmin'], request);
+    const supabase = getSupabaseAdmin();
 
     const body = await request.json();
     const { feature_key, feature_name, description, enabled, category, metadata } = body;

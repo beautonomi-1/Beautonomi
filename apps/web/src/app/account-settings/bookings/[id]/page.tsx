@@ -20,6 +20,7 @@ import OrderDetailsDynamic from "@/app/checkout/components/order-details-dynamic
 import Breadcrumb from "../../components/breadcrumb";
 import BackButton from "../../components/back-button";
 import AuthGuard from "@/components/auth/auth-guard";
+import { SafetyPanicButton } from "@/components/safety/SafetyPanicButton";
 
 export default function BookingDetailPage() {
   const params = useParams();
@@ -435,7 +436,8 @@ export default function BookingDetailPage() {
       )}
 
       {/* Actions */}
-      <div className="flex flex-col sm:flex-row gap-3 md:gap-4">
+      <div className="flex flex-col sm:flex-row gap-3 md:gap-4 flex-wrap">
+        <SafetyPanicButton bookingId={bookingId} />
         {canReschedule && (
           <Button
             variant="outline"

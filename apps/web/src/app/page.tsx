@@ -9,6 +9,7 @@ import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import TopRatedSection from "./home/components/top-rated-section";
 import NearestProvidersSection from "./home/components/nearest-providers-section";
 import HottestPicksSection from "./home/components/hottest-picks-section";
+import SponsoredSection from "./home/components/sponsored-section";
 import UpcomingTalentSection from "./home/components/upcoming-talent-section";
 import BrowseByCitySection from "./home/components/browse-by-city-section";
 import Footer from "@/components/layout/footer";
@@ -42,6 +43,7 @@ const Page = () => {
       <BeautonomiHeader />
       <div className="pt-4 md:pt-6 w-full max-w-full overflow-x-hidden">
         <TopRatedSection />
+        <SponsoredSection />
         <NearestProvidersSection />
         <HottestPicksSection />
         <UpcomingTalentSection />

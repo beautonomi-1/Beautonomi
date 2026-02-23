@@ -163,8 +163,8 @@ export default function GiftCardReportPage() {
                 <h3 className="font-semibold text-blue-900 mb-1">Accounting Note</h3>
                 <p className="text-sm text-blue-800">{data.accounting.note}</p>
                 <p className="text-xs text-blue-700 mt-2">
-                  <strong>Outstanding Liability:</strong> ZAR {data.accounting.liability.toLocaleString()} | 
-                  <strong> Value Redeemed:</strong> ZAR {data.accounting.recognizedRevenue.toLocaleString()}
+                  <strong>Outstanding Liability:</strong> R {data.accounting.liability.toLocaleString()} | 
+                  <strong> Value Redeemed:</strong> R {data.accounting.recognizedRevenue.toLocaleString()}
                 </p>
               </div>
             </div>
@@ -180,7 +180,7 @@ export default function GiftCardReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ZAR {data.summary.totalSales.toLocaleString()}
+                R {data.summary.totalSales.toLocaleString()}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 {data.summary.totalOrders} cards sold
@@ -194,7 +194,7 @@ export default function GiftCardReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ZAR {data.summary.totalRedemptions.toLocaleString()}
+                R {data.summary.totalRedemptions.toLocaleString()}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 {data.summary.totalRedemptionCount} redemptions
@@ -208,7 +208,7 @@ export default function GiftCardReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ZAR {data.summary.outstandingLiability.toLocaleString()}
+                R {data.summary.outstandingLiability.toLocaleString()}
               </div>
               <p className="text-xs text-muted-foreground mt-1">Unredeemed balance</p>
             </CardContent>
@@ -223,7 +223,7 @@ export default function GiftCardReportPage() {
                 {data.summary.redemptionRate.toFixed(1)}%
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Avg: ZAR {data.summary.averageRedemptionValue.toFixed(2)}
+                Avg: R {data.summary.averageRedemptionValue.toFixed(2)}
               </p>
             </CardContent>
           </Card>
@@ -238,7 +238,7 @@ export default function GiftCardReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ZAR {data.summary.averageSaleValue.toFixed(2)}
+                R {data.summary.averageSaleValue.toFixed(2)}
               </div>
             </CardContent>
           </Card>
@@ -249,7 +249,7 @@ export default function GiftCardReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ZAR {data.summary.totalIssued.toLocaleString()}
+                R {data.summary.totalIssued.toLocaleString()}
               </div>
             </CardContent>
           </Card>
@@ -260,7 +260,7 @@ export default function GiftCardReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ZAR {data.summary.totalSalesNet.toLocaleString()}
+                R {data.summary.totalSalesNet.toLocaleString()}
               </div>
             </CardContent>
           </Card>
@@ -290,9 +290,9 @@ export default function GiftCardReportPage() {
                   dataKey="date"
                   tickFormatter={(value) => format(new Date(value), "MMM d")}
                 />
-                <YAxis tickFormatter={(value) => `ZAR ${value.toLocaleString()}`} />
+                <YAxis tickFormatter={(value) => `R ${value.toLocaleString()}`} />
                 <Tooltip
-                  formatter={(value: number) => `ZAR ${value.toLocaleString()}`}
+                  formatter={(value: number) => `R ${value.toLocaleString()}`}
                   labelFormatter={(label) => format(new Date(label), "PP")}
                 />
                 <Legend />
@@ -335,11 +335,11 @@ export default function GiftCardReportPage() {
                   tickFormatter={(value) => format(new Date(value), "MMM d")}
                 />
                 <YAxis yAxisId="left" tickFormatter={(value) => value.toString()} />
-                <YAxis yAxisId="right" orientation="right" tickFormatter={(value) => `ZAR ${value.toLocaleString()}`} />
+                <YAxis yAxisId="right" orientation="right" tickFormatter={(value) => `R ${value.toLocaleString()}`} />
                 <Tooltip
                   formatter={(value: number, name: string) => {
                     if (name === "count") return value;
-                    return `ZAR ${value.toLocaleString()}`;
+                    return `R ${value.toLocaleString()}`;
                   }}
                   labelFormatter={(label) => format(new Date(label), "PP")}
                 />

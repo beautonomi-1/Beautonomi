@@ -501,13 +501,13 @@ export default function AdminFinance() {
                             {tx.transaction_type}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            ZAR {tx.amount.toLocaleString()}
+                            R {tx.amount.toLocaleString()}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            ZAR {tx.fees.toLocaleString()}
+                            R {tx.fees.toLocaleString()}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            ZAR {tx.net.toLocaleString()}
+                            R {tx.net.toLocaleString()}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {tx.booking?.booking_number || "N/A"}
@@ -547,18 +547,18 @@ export default function AdminFinance() {
                           </div>
                           <div className="text-right">
                             <div className="text-sm font-semibold text-gray-900">
-                              ZAR {tx.net.toLocaleString()}
+                              R {tx.net.toLocaleString()}
                             </div>
                             {tx.fees > 0 && (
                               <div className="text-xs text-gray-500">
-                                Fees: ZAR {tx.fees.toLocaleString()}
+                                Fees: R {tx.fees.toLocaleString()}
                               </div>
                             )}
                           </div>
                         </div>
                         {tx.amount !== tx.net && (
                           <div className="text-xs text-gray-500 pt-1 border-t">
-                            Gross: ZAR {tx.amount.toLocaleString()}
+                            Gross: R {tx.amount.toLocaleString()}
                           </div>
                         )}
                       </div>
@@ -619,7 +619,7 @@ function SummaryCard({
   infoTooltip?: string;
 }) {
   const formattedValue =
-    format === "currency" ? `ZAR ${value.toLocaleString()}` : value.toLocaleString();
+    format === "currency" ? `R ${value.toLocaleString()}` : value.toLocaleString();
 
   return (
     <div className="bg-white border rounded-lg p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
