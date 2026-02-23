@@ -7,6 +7,7 @@ import FloatingProgressOrbit from "@/components/profile/FloatingProgressOrbit";
 import PersonalInfoCard from "@/components/profile/PersonalInfoCard";
 import AboutSection from "@/components/profile/AboutSection";
 import BeautyPreferencesCard from "@/components/profile/BeautyPreferencesCard";
+import { CustomFieldsForm } from "@/components/custom-fields/CustomFieldsForm";
 import type { ProfileUser, ProfileData, CompletionData } from "@/types/profile";
 
 interface ProfilePageClientProps {
@@ -126,6 +127,19 @@ export default function ProfilePageClient({
         <BeautyPreferencesCard
           preferences={user.beauty_preferences || {}}
           onUpdate={handleUpdate}
+        />
+      </div>
+
+      {/* Platform custom fields (e.g. preferences, notes) */}
+      <div id="custom-fields-section" className="rounded-xl border border-zinc-200 bg-white p-4 md:p-6">
+        <h3 className="text-lg font-semibold text-zinc-900 mb-2">Additional details</h3>
+        <p className="text-sm text-zinc-500 mb-4">
+          Extra information the platform may ask for (e.g. skin type, accessibility needs).
+        </p>
+        <CustomFieldsForm
+          entityType="user"
+          entityId={user.id}
+          showSaveButton={true}
         />
       </div>
     </div>

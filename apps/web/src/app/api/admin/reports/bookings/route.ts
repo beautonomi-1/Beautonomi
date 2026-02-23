@@ -1,11 +1,11 @@
 import { NextRequest } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = getSupabaseAdmin();
     
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d';

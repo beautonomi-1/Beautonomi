@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { ArrowLeft } from "lucide-react";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface EntitlementRow {
   id: string;
@@ -74,6 +75,7 @@ export default function AiEntitlementsPage() {
   };
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Link href="/admin/control-plane/modules/ai">
@@ -156,5 +158,6 @@ export default function AiEntitlementsPage() {
         </CardContent>
       </Card>
     </div>
+    </RoleGuard>
   );
 }

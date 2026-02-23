@@ -5,13 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Save, Globe, CreditCard, Bell, Palette, MessageSquare, BarChart3, Smartphone, MapPin, Car, QrCode, Search, Calendar, Building2 } from "lucide-react";
+import { Save, Globe, CreditCard, Bell, Palette, MessageSquare, BarChart3, Smartphone, MapPin, Car, QrCode, Search, Calendar, Building2, Plug, ExternalLink } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import Link from "next/link";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { useAuth } from "@/providers/AuthProvider";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface PlatformSettings {
   branding: {
@@ -184,10 +186,15 @@ export default function AdminSettings() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("branding");
+  const { user, role } = useAuth();
 
   useEffect(() => {
-    loadSettings();
-  }, []);
+    if (user?.id && role === "superadmin") {
+      loadSettings();
+    } else if (role != null && role !== "superadmin") {
+      setIsLoading(false);
+    }
+  }, [user?.id, role]);
 
   const loadSettings = async () => {
     try {
@@ -243,18 +250,13 @@ export default function AdminSettings() {
     try {
       setIsSaving(true);
       
-      // Save main settings (excluding travel_fees and seo)
-      const { travel_fees, seo, ...mainSettings } = settings;
+      // Save main settings (including seo; travel_fees has its own endpoint)
+      const { travel_fees, ...mainSettings } = settings;
       await fetcher.patch("/api/admin/settings", mainSettings);
       
       // Save travel fees separately
       if (travel_fees) {
         await fetcher.patch("/api/admin/travel-fees", travel_fees);
-      }
-      
-      // Save SEO settings separately (if they exist)
-      if (seo) {
-        await fetcher.patch("/api/admin/settings", { seo });
       }
       
       toast.success("Settings saved successfully");
@@ -265,8 +267,9 @@ export default function AdminSettings() {
         // The cache will be cleared on next fetch
         window.dispatchEvent(new Event("platform-settings-updated"));
       }
-    } catch {
-      toast.error("Failed to save settings");
+    } catch (err) {
+      const msg = err instanceof FetchError ? err.message : "Failed to save settings";
+      toast.error(msg);
     } finally {
       setIsSaving(false);
     }
@@ -284,28 +287,33 @@ export default function AdminSettings() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading settings..." />
-      </div>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
+        <div className="container mx-auto px-4 py-8">
+          <LoadingTimeout loadingMessage="Loading settings..." />
+        </div>
+      </RoleGuard>
     );
   }
 
   if (error || !settings) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <EmptyState
-          title="Failed to load settings"
-          description={error || "Unable to load platform settings"}
-          action={{
-            label: "Retry",
-            onClick: loadSettings,
-          }}
-        />
-      </div>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
+        <div className="container mx-auto px-4 py-8">
+          <EmptyState
+            title="Failed to load settings"
+            description={error || "Unable to load platform settings"}
+            action={{
+              label: "Retry",
+              onClick: loadSettings,
+            }}
+          />
+        </div>
+      </RoleGuard>
     );
   }
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="container mx-auto px-4 py-8">
         <div className="mb-4 sm:mb-6">
           <h1 className="text-2xl sm:text-3xl font-semibold mb-2">Platform Settings</h1>
@@ -334,25 +342,9 @@ export default function AdminSettings() {
               <Bell className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               <span className="hidden sm:inline">Notifications</span>
             </TabsTrigger>
-            <TabsTrigger value="paystack" className="text-xs sm:text-sm">
-              <CreditCard className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Paystack</span>
-            </TabsTrigger>
-            <TabsTrigger value="onesignal" className="text-xs sm:text-sm">
-              <MessageSquare className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">OneSignal</span>
-            </TabsTrigger>
-            <TabsTrigger value="mapbox" className="text-xs sm:text-sm">
-              <MapPin className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Mapbox</span>
-            </TabsTrigger>
-            <TabsTrigger value="amplitude" className="text-xs sm:text-sm">
-              <BarChart3 className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Amplitude</span>
-            </TabsTrigger>
-            <TabsTrigger value="google" className="text-xs sm:text-sm">
-              <Globe className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Google</span>
+            <TabsTrigger value="integrations" className="text-xs sm:text-sm">
+              <Plug className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Integrations</span>
             </TabsTrigger>
             <TabsTrigger value="apps" className="text-xs sm:text-sm">
               <Smartphone className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
@@ -414,35 +406,62 @@ export default function AdminSettings() {
               onChange={(updates) => updateSettings("notifications", updates)}
             />
           </TabsContent>
-          <TabsContent value="paystack">
-            <PaystackSettings
-              settings={settings?.paystack}
-              onChange={(updates) => updateSettings("paystack", updates)}
-            />
-          </TabsContent>
-          <TabsContent value="onesignal">
-            <OneSignalSettings
-              settings={settings?.onesignal}
-              onChange={(updates) => updateSettings("onesignal", updates)}
-            />
-          </TabsContent>
-          <TabsContent value="mapbox">
-            <MapboxSettings
-              settings={settings?.mapbox}
-              onChange={(updates) => updateSettings("mapbox", updates)}
-            />
-          </TabsContent>
-          <TabsContent value="amplitude">
-            <AmplitudeSettings
-              settings={settings?.amplitude}
-              onChange={(updates) => updateSettings("amplitude", updates)}
-            />
-          </TabsContent>
-          <TabsContent value="google">
-            <GoogleSettings
-              settings={settings?.google}
-              onChange={(updates) => updateSettings("google", updates)}
-            />
+          <TabsContent value="integrations" className="space-y-8">
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 mb-2">Payment</h3>
+              <PaystackSettings
+                settings={settings?.paystack}
+                onChange={(updates) => updateSettings("paystack", updates)}
+              />
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 mb-2">Push notifications</h3>
+              <OneSignalSettings
+                settings={settings?.onesignal}
+                onChange={(updates) => updateSettings("onesignal", updates)}
+              />
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 mb-2">Maps &amp; analytics</h3>
+              <p className="text-sm text-gray-600 mb-3">
+                Enable/keys below feed client config. For service zones (Mapbox) and advanced options (Amplitude), use the menu under <strong>Integrations &amp; dev</strong>.
+              </p>
+              <div className="mb-4 flex flex-wrap gap-3">
+                <Link
+                  href="/admin/mapbox"
+                  className="inline-flex items-center gap-2 rounded-lg border bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                >
+                  <MapPin className="w-4 h-4" />
+                  Mapbox (zones)
+                  <ExternalLink className="w-3 h-3 text-gray-400" />
+                </Link>
+                <Link
+                  href="/admin/integrations/amplitude"
+                  className="inline-flex items-center gap-2 rounded-lg border bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  Amplitude (full config)
+                  <ExternalLink className="w-3 h-3 text-gray-400" />
+                </Link>
+              </div>
+              <div className="grid gap-6 sm:grid-cols-2">
+                <MapboxSettings
+                  settings={settings?.mapbox}
+                  onChange={(updates) => updateSettings("mapbox", updates)}
+                />
+                <AmplitudeSettings
+                  settings={settings?.amplitude}
+                  onChange={(updates) => updateSettings("amplitude", updates)}
+                />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 mb-2">Google (Maps, Places, Analytics)</h3>
+              <GoogleSettings
+                settings={settings?.google}
+                onChange={(updates) => updateSettings("google", updates)}
+              />
+            </div>
           </TabsContent>
           <TabsContent value="apps">
             <AppsSettings
@@ -487,6 +506,7 @@ export default function AdminSettings() {
           </Button>
         </div>
       </div>
+    </RoleGuard>
   );
 }
 
@@ -497,13 +517,12 @@ function BrandingSettings({
   settings: PlatformSettings["branding"] | undefined;
   onChange: (updates: Partial<PlatformSettings["branding"]>) => void;
 }) {
-  // Provide default values if settings is undefined
-  const safeSettings = settings || {
-    site_name: "",
-    logo_url: "",
-    favicon_url: "",
-    primary_color: "#000000",
-    secondary_color: "#FF0077",
+  const safeSettings = {
+    site_name: settings?.site_name ?? "",
+    logo_url: settings?.logo_url ?? "",
+    favicon_url: settings?.favicon_url ?? "",
+    primary_color: settings?.primary_color ?? "#000000",
+    secondary_color: settings?.secondary_color ?? "#FF0077",
   };
 
   return (
@@ -593,13 +612,13 @@ function LocalizationSettings({
   settings: PlatformSettings["localization"] | undefined;
   onChange: (updates: Partial<PlatformSettings["localization"]>) => void;
 }) {
-  // Provide default values if settings is undefined
-  const safeSettings = settings || {
-    default_language: "en",
-    supported_languages: [],
-    default_currency: "ZAR",
-    supported_currencies: [],
-    timezone: "Africa/Johannesburg",
+  const { user, role } = useAuth();
+  const safeSettings = {
+    default_language: settings?.default_language ?? "en",
+    supported_languages: settings?.supported_languages ?? [],
+    default_currency: settings?.default_currency ?? "ZAR",
+    supported_currencies: settings?.supported_currencies ?? [],
+    timezone: settings?.timezone ?? "Africa/Johannesburg",
   };
 
   const [currencies, setCurrencies] = useState<Array<{ code: string; name: string }>>([]);
@@ -608,8 +627,8 @@ function LocalizationSettings({
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    loadIsoCodes();
-  }, []);
+    if (user?.id && role === "superadmin") loadIsoCodes();
+  }, [user?.id, role]);
 
   const loadIsoCodes = async () => {
     try {
@@ -712,17 +731,16 @@ function PayoutSettings({
   settings: PlatformSettings["payouts"] | undefined;
   onChange: (updates: Partial<PlatformSettings["payouts"]>) => void;
 }) {
-  // Provide default values if settings is undefined
-  const safeSettings = settings || {
-    provider_payout_percentage: 80,
-    payout_schedule: "weekly" as const,
-    minimum_payout_amount: 100,
-    platform_service_fee_type: "percentage" as const,
-    platform_service_fee_percentage: 5,
-    platform_service_fee_fixed: 0,
-    commission_enabled: true,
-    platform_commission_percentage: 20,
-    show_service_fee_to_customer: true,
+  const safeSettings = {
+    provider_payout_percentage: settings?.provider_payout_percentage ?? 80,
+    payout_schedule: (settings?.payout_schedule ?? "weekly") as "daily" | "weekly" | "monthly",
+    minimum_payout_amount: settings?.minimum_payout_amount ?? 100,
+    platform_service_fee_type: (settings?.platform_service_fee_type ?? "percentage") as "percentage" | "fixed",
+    platform_service_fee_percentage: settings?.platform_service_fee_percentage ?? 5,
+    platform_service_fee_fixed: settings?.platform_service_fee_fixed ?? 0,
+    commission_enabled: settings?.commission_enabled ?? true,
+    platform_commission_percentage: settings?.platform_commission_percentage ?? 20,
+    show_service_fee_to_customer: settings?.show_service_fee_to_customer ?? true,
   };
   
   const _platformCommission = 100 - safeSettings.provider_payout_percentage;
@@ -975,15 +993,14 @@ function PaystackSettings({
   settings: PlatformSettings["paystack"] | undefined;
   onChange: (updates: Partial<PlatformSettings["paystack"]>) => void;
 }) {
-  // Provide default values if settings is undefined or missing properties
   const safeSettings = {
-    secret_key: settings?.secret_key || "",
-    public_key: settings?.public_key || "",
-    use_transaction_splits: settings?.use_transaction_splits || false,
-    transfer_otp_required: settings?.transfer_otp_required || false,
+    secret_key: settings?.secret_key ?? "",
+    public_key: settings?.public_key ?? "",
+    use_transaction_splits: settings?.use_transaction_splits ?? false,
+    transfer_otp_required: settings?.transfer_otp_required ?? false,
     skip_payout_account_verification: settings?.skip_payout_account_verification ?? false,
-    webhook_secret: settings?.webhook_secret || "",
-    default_split_code: settings?.default_split_code || "",
+    webhook_secret: settings?.webhook_secret ?? "",
+    default_split_code: settings?.default_split_code ?? "",
   };
 
   return (
@@ -1060,7 +1077,7 @@ function PaystackSettings({
               <Input
                 id="default_split_code"
                 type="text"
-                value={safeSettings.default_split_code || ""}
+                value={safeSettings.default_split_code}
                 onChange={(e) => onChange({ default_split_code: e.target.value })}
                 placeholder="SPL_..."
                 className="mt-1 font-mono text-xs sm:text-sm"
@@ -1123,7 +1140,7 @@ function PaystackSettings({
           <Input
             id="webhook_secret"
             type="password"
-            value={safeSettings.webhook_secret || ""}
+            value={safeSettings.webhook_secret}
             onChange={(e) => onChange({ webhook_secret: e.target.value })}
             placeholder="Webhook signature secret"
             className="mt-1 font-mono text-xs sm:text-sm"
@@ -1144,12 +1161,11 @@ function OneSignalSettings({
   settings: PlatformSettings["onesignal"] | undefined;
   onChange: (updates: Partial<PlatformSettings["onesignal"]>) => void;
 }) {
-  // Provide default values if settings is undefined or missing properties
   const safeSettings = {
-    app_id: settings?.app_id || "",
-    rest_api_key: settings?.rest_api_key || "",
-    safari_web_id: settings?.safari_web_id || "",
-    enabled: settings?.enabled || false,
+    app_id: settings?.app_id ?? "",
+    rest_api_key: settings?.rest_api_key ?? "",
+    safari_web_id: settings?.safari_web_id ?? "",
+    enabled: settings?.enabled ?? false,
   };
 
   return (
@@ -1222,7 +1238,7 @@ function OneSignalSettings({
         <Input
           id="onesignal_safari_web_id"
           type="text"
-          value={safeSettings.safari_web_id || ""}
+          value={safeSettings.safari_web_id}
           onChange={(e) => onChange({ safari_web_id: e.target.value })}
           placeholder="web.onesignal.auto.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
           className="mt-1 font-mono text-xs sm:text-sm"
@@ -1242,11 +1258,10 @@ function MapboxSettings({
   settings: PlatformSettings["mapbox"] | undefined;
   onChange: (updates: Partial<PlatformSettings["mapbox"]>) => void;
 }) {
-  // Provide default values if settings is undefined or missing properties
   const safeSettings = {
-    access_token: settings?.access_token || "",
-    public_token: settings?.public_token || "",
-    enabled: settings?.enabled || false,
+    access_token: settings?.access_token ?? "",
+    public_token: settings?.public_token ?? "",
+    enabled: settings?.enabled ?? false,
   };
 
   return (
@@ -1322,11 +1337,10 @@ function AmplitudeSettings({
   settings: PlatformSettings["amplitude"] | undefined;
   onChange: (updates: Partial<PlatformSettings["amplitude"]>) => void;
 }) {
-  // Provide default values if settings is undefined
-  const safeSettings = settings || {
-    api_key: "",
-    secret_key: "",
-    enabled: false,
+  const safeSettings = {
+    api_key: settings?.api_key ?? "",
+    secret_key: settings?.secret_key ?? "",
+    enabled: settings?.enabled ?? false,
   };
 
   return (
@@ -1401,12 +1415,11 @@ function GoogleSettings({
   settings: PlatformSettings["google"] | undefined;
   onChange: (updates: Partial<PlatformSettings["google"]>) => void;
 }) {
-  // Provide default values if settings is undefined
-  const safeSettings = settings || {
-    maps_api_key: "",
-    places_api_key: "",
-    analytics_id: "",
-    enabled: false,
+  const safeSettings = {
+    maps_api_key: settings?.maps_api_key ?? "",
+    places_api_key: settings?.places_api_key ?? "",
+    analytics_id: settings?.analytics_id ?? "",
+    enabled: settings?.enabled ?? false,
   };
 
   return (
@@ -1498,17 +1511,58 @@ function AppsSettings({
   settings: PlatformSettings["apps"] | undefined;
   onChange: (updates: Partial<PlatformSettings["apps"]>) => void;
 }) {
-  // Provide default values if settings is undefined
-  const safeSettings = settings || {
+  const ca = settings?.customer?.android;
+  const ci = settings?.customer?.ios;
+  const ch = settings?.customer?.huawei;
+  const pa = settings?.provider?.android;
+  const pi = settings?.provider?.ios;
+  const ph = settings?.provider?.huawei;
+  const safeSettings = {
     customer: {
-      android: { package_name: "", version: "", min_version: "", download_url: "", enabled: false },
-      ios: { bundle_id: "", version: "", min_version: "", app_store_url: "", enabled: false },
-      huawei: { package_name: "", version: "", min_version: "", app_gallery_url: "", enabled: false },
+      android: {
+        package_name: ca?.package_name ?? "",
+        version: ca?.version ?? "",
+        min_version: ca?.min_version ?? "",
+        download_url: ca?.download_url ?? "",
+        enabled: ca?.enabled ?? false,
+      },
+      ios: {
+        bundle_id: ci?.bundle_id ?? "",
+        version: ci?.version ?? "",
+        min_version: ci?.min_version ?? "",
+        app_store_url: ci?.app_store_url ?? "",
+        enabled: ci?.enabled ?? false,
+      },
+      huawei: {
+        package_name: ch?.package_name ?? "",
+        version: ch?.version ?? "",
+        min_version: ch?.min_version ?? "",
+        app_gallery_url: ch?.app_gallery_url ?? "",
+        enabled: ch?.enabled ?? false,
+      },
     },
     provider: {
-      android: { package_name: "", version: "", min_version: "", download_url: "", enabled: false },
-      ios: { bundle_id: "", version: "", min_version: "", app_store_url: "", enabled: false },
-      huawei: { package_name: "", version: "", min_version: "", app_gallery_url: "", enabled: false },
+      android: {
+        package_name: pa?.package_name ?? "",
+        version: pa?.version ?? "",
+        min_version: pa?.min_version ?? "",
+        download_url: pa?.download_url ?? "",
+        enabled: pa?.enabled ?? false,
+      },
+      ios: {
+        bundle_id: pi?.bundle_id ?? "",
+        version: pi?.version ?? "",
+        min_version: pi?.min_version ?? "",
+        app_store_url: pi?.app_store_url ?? "",
+        enabled: pi?.enabled ?? false,
+      },
+      huawei: {
+        package_name: ph?.package_name ?? "",
+        version: ph?.version ?? "",
+        min_version: ph?.min_version ?? "",
+        app_gallery_url: ph?.app_gallery_url ?? "",
+        enabled: ph?.enabled ?? false,
+      },
     },
   };
 
@@ -1870,11 +1924,10 @@ function NotificationSettings({
   settings: PlatformSettings["notifications"] | undefined;
   onChange: (updates: Partial<PlatformSettings["notifications"]>) => void;
 }) {
-  // Provide default values if settings is undefined
-  const safeSettings = settings || {
-    email_enabled: true,
-    sms_enabled: false,
-    push_enabled: true,
+  const safeSettings = {
+    email_enabled: settings?.email_enabled ?? true,
+    sms_enabled: settings?.sms_enabled ?? false,
+    push_enabled: settings?.push_enabled ?? true,
   };
 
   return (
@@ -1942,11 +1995,11 @@ function PaymentTypesSettings({
     gift_card: "Gift Card",
   };
 
-  const safeSettings = settings || {
-    cash: true,
-    card: true,
-    mobile: true,
-    gift_card: false,
+  const safeSettings = {
+    cash: settings?.cash ?? true,
+    card: settings?.card ?? true,
+    mobile: settings?.mobile ?? true,
+    gift_card: settings?.gift_card ?? false,
   };
 
   return (
@@ -2136,17 +2189,16 @@ function TravelFeesSettings({
   settings: PlatformSettings["travel_fees"] | undefined;
   onChange: (updates: Partial<PlatformSettings["travel_fees"]>) => void;
 }) {
-  // Provide default values if settings is undefined
-  const safeSettings = settings || {
-    default_rate_per_km: 8.00,
-    default_minimum_fee: 20.00,
-    default_maximum_fee: null,
-    default_currency: 'ZAR',
-    allow_provider_customization: true,
-    provider_min_rate_per_km: 0.00,
-    provider_max_rate_per_km: 50.00,
-    provider_min_minimum_fee: 0.00,
-    provider_max_minimum_fee: 100.00,
+  const safeSettings = {
+    default_rate_per_km: settings?.default_rate_per_km ?? 8.00,
+    default_minimum_fee: settings?.default_minimum_fee ?? 20.00,
+    default_maximum_fee: settings?.default_maximum_fee ?? null,
+    default_currency: settings?.default_currency ?? "ZAR",
+    allow_provider_customization: settings?.allow_provider_customization ?? true,
+    provider_min_rate_per_km: settings?.provider_min_rate_per_km ?? 0.00,
+    provider_max_rate_per_km: settings?.provider_max_rate_per_km ?? 50.00,
+    provider_min_minimum_fee: settings?.provider_min_minimum_fee ?? 0.00,
+    provider_max_minimum_fee: settings?.provider_max_minimum_fee ?? 100.00,
   };
 
   return (
@@ -2309,18 +2361,18 @@ function SEOSettings({
   settings: PlatformSettings["seo"] | undefined;
   onChange: (updates: Partial<PlatformSettings["seo"]>) => void;
 }) {
-  const safeSettings = settings || {
-    site_url: "",
-    default_meta_description: "",
-    default_keywords: [],
-    og_image_url: "",
-    twitter_image_url: "",
-    google_verification_code: "",
-    facebook_url: "",
-    instagram_url: "",
-    twitter_url: "",
-    linkedin_url: "",
-    youtube_url: "",
+  const safeSettings = {
+    site_url: settings?.site_url ?? "",
+    default_meta_description: settings?.default_meta_description ?? "",
+    default_keywords: settings?.default_keywords ?? [],
+    og_image_url: settings?.og_image_url ?? "",
+    twitter_image_url: settings?.twitter_image_url ?? "",
+    google_verification_code: settings?.google_verification_code ?? "",
+    facebook_url: settings?.facebook_url ?? "",
+    instagram_url: settings?.instagram_url ?? "",
+    twitter_url: settings?.twitter_url ?? "",
+    linkedin_url: settings?.linkedin_url ?? "",
+    youtube_url: settings?.youtube_url ?? "",
   };
 
   const keywordsString = Array.isArray(safeSettings.default_keywords)
@@ -2519,7 +2571,7 @@ function SEOSettings({
       </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-sm text-blue-800">
+        <div className="text-sm text-blue-800">
           <strong>Note:</strong> After updating these settings, you may need to:
           <ul className="list-disc list-inside mt-2 space-y-1">
             <li>Upload OG and Twitter images to your public folder</li>
@@ -2527,7 +2579,7 @@ function SEOSettings({
             <li>Verify robots.txt at <code className="bg-blue-100 px-1 rounded">/robots.txt</code></li>
             <li>Submit your sitemap to Google Search Console</li>
           </ul>
-        </p>
+        </div>
       </div>
     </div>
   );
@@ -2540,19 +2592,19 @@ function CalendarIntegrationsSettings({
   settings: PlatformSettings["calendar_integrations"] | undefined;
   onChange: (updates: Partial<PlatformSettings["calendar_integrations"]>) => void;
 }) {
-  const safeSettings = settings || {
+  const safeSettings = {
     google: {
-      client_id: "",
-      client_secret: "",
-      enabled: false,
+      client_id: settings?.google?.client_id ?? "",
+      client_secret: settings?.google?.client_secret ?? "",
+      enabled: settings?.google?.enabled ?? false,
     },
     outlook: {
-      client_id: "",
-      client_secret: "",
-      enabled: false,
+      client_id: settings?.outlook?.client_id ?? "",
+      client_secret: settings?.outlook?.client_secret ?? "",
+      enabled: settings?.outlook?.enabled ?? false,
     },
     apple: {
-      enabled: true, // iCal doesn't need OAuth, enabled by default
+      enabled: settings?.apple?.enabled ?? true,
     },
   };
 

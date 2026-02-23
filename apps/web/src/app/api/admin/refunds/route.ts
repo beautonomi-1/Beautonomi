@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/admin/refunds
- * 
- * Fetch all refunds with filtering and pagination
+ *
+ * Fetch payment_transactions that are either refund-related (type refund or already have refund_amount)
+ * or successful charges (status=success) so superadmin can process refunds. Uses admin client to bypass RLS.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get("status"); // all, success, failed, pending, refunded, partially_refunded
@@ -37,9 +38,7 @@ export async function GET(request: NextRequest) {
         refunded_at,
         refunded_by,
         status,
-        gateway_response,
         created_at,
-        updated_at,
         booking:bookings(
           id,
           booking_number,
@@ -48,11 +47,11 @@ export async function GET(request: NextRequest) {
           customer_id,
           provider_id,
           customer:users!bookings_customer_id_fkey(id, full_name, email),
-          provider:providers!bookings_provider_id_fkey(id, business_name, owner_name, owner_email)
+          provider:providers!bookings_provider_id_fkey(id, business_name)
         ),
         refunded_by_user:users!payment_transactions_refunded_by_fkey(id, full_name, email)
       `)
-      .or("transaction_type.eq.refund,refund_amount.not.is.null")
+      .or("transaction_type.eq.refund,refund_amount.not.is.null,status.eq.success")
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -75,7 +74,7 @@ export async function GET(request: NextRequest) {
     let countQuery = supabase
       .from("payment_transactions")
       .select("*", { count: "exact", head: true })
-      .or("transaction_type.eq.refund,refund_amount.not.is.null");
+      .or("transaction_type.eq.refund,refund_amount.not.is.null,status.eq.success");
 
     if (status && status !== "all") {
       countQuery = countQuery.eq("status", status);
@@ -91,7 +90,7 @@ export async function GET(request: NextRequest) {
     const { data: stats } = await supabase
       .from("payment_transactions")
       .select("status, transaction_type, refund_amount, amount")
-      .or("transaction_type.eq.refund,refund_amount.not.is.null");
+      .or("transaction_type.eq.refund,refund_amount.not.is.null,status.eq.success");
 
     const totalRefunded = stats?.reduce((sum, t) => sum + (parseFloat(t.refund_amount || "0") || 0), 0) || 0;
     const totalRefundCount = stats?.length || 0;

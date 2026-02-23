@@ -22,6 +22,7 @@ import {
 import { Plus, Edit, Trash2, Bell, Mail, MessageSquare, Smartphone } from "lucide-react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface NotificationTemplate {
   id: string;
@@ -35,6 +36,14 @@ interface NotificationTemplate {
   variables?: string[];
   created_at: string;
   updated_at: string;
+  key?: string;
+  title?: string;
+  body?: string;
+  email_subject?: string | null;
+  email_body?: string | null;
+  sms_body?: string | null;
+  url?: string | null;
+  description?: string | null;
 }
 
 export default function NotificationTemplatesPage() {
@@ -43,6 +52,7 @@ export default function NotificationTemplatesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<NotificationTemplate | null>(null);
   const [formData, setFormData] = useState({
+    key: "",
     name: "",
     type: "",
     title_template: "",
@@ -60,8 +70,9 @@ export default function NotificationTemplatesPage() {
   const loadTemplates = async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<{ templates: NotificationTemplate[] }>('/api/admin/notification-templates');
-      setTemplates(response.templates || []);
+      const response = await fetcher.get<{ data?: { templates?: NotificationTemplate[] }; templates?: NotificationTemplate[] }>('/api/admin/notification-templates');
+      const list = response.data?.templates ?? response.templates ?? [];
+      setTemplates(Array.isArray(list) ? list : []);
     } catch {
       toast.error("Failed to load notification templates");
     } finally {
@@ -72,6 +83,7 @@ export default function NotificationTemplatesPage() {
   const handleCreate = () => {
     setEditingTemplate(null);
     setFormData({
+      key: "",
       name: "",
       type: "",
       title_template: "",
@@ -87,12 +99,13 @@ export default function NotificationTemplatesPage() {
   const handleEdit = (template: NotificationTemplate) => {
     setEditingTemplate(template);
     setFormData({
+      key: template.key ?? template.name ?? "",
       name: template.name,
       type: template.type,
-      title_template: template.title_template,
-      message_template: template.message_template,
+      title_template: template.title_template ?? template.title ?? "",
+      message_template: template.message_template ?? template.body ?? "",
       priority: template.priority,
-      channels: template.channels,
+      channels: template.channels ?? [],
       enabled: template.enabled,
       variables: template.variables || [],
     });
@@ -114,10 +127,28 @@ export default function NotificationTemplatesPage() {
   const handleSave = async () => {
     try {
       if (editingTemplate) {
-        await fetcher.patch(`/api/admin/notification-templates/${editingTemplate.id}`, formData);
+        await fetcher.patch(`/api/admin/notification-templates/${editingTemplate.id}`, {
+          title: formData.title_template,
+          body: formData.message_template,
+          channels: formData.channels,
+          enabled: formData.enabled,
+          variables: formData.variables,
+        });
         toast.success("Template updated successfully");
       } else {
-        await fetcher.post('/api/admin/notification-templates', formData);
+        const key = (formData.key || formData.type || "").trim().replace(/\s+/g, "_").toLowerCase();
+        if (!key) {
+          toast.error("Key is required (e.g. my_notification_type)");
+          return;
+        }
+        await fetcher.post('/api/admin/notification-templates', {
+          key,
+          title: formData.title_template,
+          body: formData.message_template,
+          channels: formData.channels.length ? formData.channels : ["push"],
+          enabled: formData.enabled,
+          variables: formData.variables,
+        });
         toast.success("Template created successfully");
       }
       setIsDialogOpen(false);
@@ -164,12 +195,16 @@ export default function NotificationTemplatesPage() {
   ];
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <SettingsDetailLayout
       title="Notification Templates"
-      subtitle="Manage notification templates for providers and clients"
+      subtitle="Single place for all notification content: push, email, and SMS. Each template has a key and channel-specific text (title, body, email_subject/email_body, sms_body)."
       showCloseButton={false}
     >
       <div className="space-y-4 sm:space-y-6">
+        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+          <strong>Note:</strong> Email Templates and SMS Templates (legacy) are no longer in the menu. Edit email and SMS copy here per template (email_subject, email_body, sms_body). Sending uses only this table.
+        </p>
         <div className="flex justify-end">
           <Button
             onClick={handleCreate}
@@ -283,14 +318,32 @@ export default function NotificationTemplatesPage() {
 
           <div className="space-y-4 sm:space-y-6">
             <div>
-              <Label htmlFor="name" className="text-sm sm:text-base">Template Name *</Label>
+              <Label htmlFor="key" className="text-sm sm:text-base">Key (unique identifier) *</Label>
+              <Input
+                id="key"
+                value={formData.key}
+                onChange={(e) => setFormData({ ...formData, key: e.target.value })}
+                className="mt-1.5 min-h-[44px] touch-manipulation"
+                placeholder="e.g. booking_confirmed or my_custom_alert"
+                required
+                readOnly={!!editingTemplate}
+                disabled={!!editingTemplate}
+              />
+              {editingTemplate ? (
+                <p className="text-xs text-gray-500 mt-1.5">Key cannot be changed when editing.</p>
+              ) : (
+                <p className="text-xs text-gray-500 mt-1.5">Lowercase, use underscores. Must be unique.</p>
+              )}
+            </div>
+
+            <div>
+              <Label htmlFor="name" className="text-sm sm:text-base">Template Name (display)</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 className="mt-1.5 min-h-[44px] touch-manipulation"
                 placeholder="e.g., Appointment Reminder"
-                required
               />
             </div>
 
@@ -422,5 +475,6 @@ export default function NotificationTemplatesPage() {
         </DialogContent>
       </Dialog>
     </SettingsDetailLayout>
+    </RoleGuard>
   );
 }

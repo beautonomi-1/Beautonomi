@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Port-safe Expo dev launcher for monorepo.
- * Finds an available port and spawns Expo with --non-interactive --go --lan.
+ * Finds an available port and spawns Expo with --non-interactive --go --lan --web
+ * so the app is available in the browser at http://localhost:<port> as well as in Expo Go.
  * No prompts. Works on Windows. Uses Node net module.
  *
  * Usage: node port-safe-expo-dev.js <preferredPort> <fallbackPort>
@@ -57,7 +58,7 @@ async function main() {
 
   const proc = spawn(
     "npx",
-    ["expo", "start", "--port", String(port), "--non-interactive", "--go", "--lan"],
+    ["expo", "start", "--port", String(port), "--non-interactive", "--go", "--lan", "--web"],
     {
       stdio: "inherit",
       shell: process.platform === "win32",

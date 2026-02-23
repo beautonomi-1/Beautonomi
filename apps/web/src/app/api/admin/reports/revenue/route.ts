@@ -1,12 +1,11 @@
 import { NextRequest } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = getSupabaseAdmin();
     
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d';
@@ -112,10 +111,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Get gift card metrics
-    const supabaseAdmin = getSupabaseAdmin();
-
     // Gift card sales
-    const { data: salesTransactions } = await supabaseAdmin
+    const { data: salesTransactions } = await supabase
       .from("finance_transactions")
       .select("amount, created_at")
       .eq("transaction_type", "gift_card_sale")
@@ -123,7 +120,7 @@ export async function GET(request: NextRequest) {
       .lte("created_at", endDate.toISOString());
 
     // Gift card redemptions
-    const { data: redemptions } = await supabaseAdmin
+    const { data: redemptions } = await supabase
       .from("gift_card_redemptions")
       .select("amount, captured_at, created_at")
       .eq("status", "captured")
@@ -132,7 +129,7 @@ export async function GET(request: NextRequest) {
       .lte("captured_at", endDate.toISOString());
 
     // Active gift cards (outstanding liability)
-    const { data: activeGiftCards } = await supabaseAdmin
+    const { data: activeGiftCards } = await supabase
       .from("gift_cards")
       .select("balance")
       .eq("is_active", true)
@@ -143,7 +140,7 @@ export async function GET(request: NextRequest) {
     const outstandingLiability = (activeGiftCards || []).reduce((sum, g) => sum + Number(g.balance || 0), 0);
     
     // Get total orders for redemption rate
-    const { data: orders } = await supabaseAdmin
+    const { data: orders } = await supabase
       .from("gift_card_orders")
       .select("id")
       .eq("status", "paid")

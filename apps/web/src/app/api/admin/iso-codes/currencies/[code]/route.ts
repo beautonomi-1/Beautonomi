@@ -28,7 +28,7 @@ export async function GET(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: currency, error } = await supabase
       .from("iso_currencies")
@@ -84,7 +84,7 @@ export async function PUT(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validationResult = updateCurrencySchema.safeParse(body);
@@ -181,7 +181,7 @@ export async function DELETE(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Check if currency is default
     const { data: currency } = await supabase

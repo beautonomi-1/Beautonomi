@@ -4,7 +4,7 @@ import { requireRole } from "@/lib/auth/requireRole";
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const result = await requireRole(["superadmin", "support_agent"]);
     
     if (!result) {
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       .from("support_tickets")
       .select(`
         *,
-        user:users(id, email, full_name),
+        user:users!support_tickets_user_id_fkey(id, email, full_name),
         provider:providers(id, business_name),
         assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name)
       `)
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const result = await requireRole(["superadmin", "support_agent", "customer", "provider_owner"]);
     
     if (!result) {

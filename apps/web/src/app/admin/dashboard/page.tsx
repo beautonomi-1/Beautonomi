@@ -16,11 +16,13 @@ import {
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { useAuth } from "@/providers/AuthProvider";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface DashboardStats {
   total_users: number;
@@ -56,10 +58,15 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { user, role } = useAuth();
 
   useEffect(() => {
-    loadDashboard();
-  }, []);
+    if (user?.id && role === "superadmin") {
+      loadDashboard();
+    } else if (role != null && role !== "superadmin") {
+      setIsLoading(false);
+    }
+  }, [user?.id, role]);
 
   const loadDashboard = async () => {
     try {
@@ -87,16 +94,19 @@ export default function AdminDashboard() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading dashboard..." />
-      </div>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
+        <div className="container mx-auto px-4 py-8">
+          <LoadingTimeout loadingMessage="Loading dashboard..." />
+        </div>
+      </RoleGuard>
     );
   }
 
   if (error || !stats) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <EmptyState
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
+        <div className="container mx-auto px-4 py-8">
+          <EmptyState
           title="Failed to load dashboard"
           description={error || "Unable to load dashboard data"}
           action={{
@@ -104,11 +114,13 @@ export default function AdminDashboard() {
             onClick: loadDashboard,
           }}
         />
-      </div>
+        </div>
+      </RoleGuard>
     );
   }
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
     <div className="container mx-auto px-4 py-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -197,7 +209,7 @@ export default function AdminDashboard() {
               />
               <StatCard
                 title="Platform Take (Net)"
-                value={`ZAR ${stats.platform_net_total.toLocaleString()}`}
+                value={`R ${stats.platform_net_total.toLocaleString()}`}
                 icon={<DollarSign className="w-6 h-6" />}
                 color="orange"
                 trend={stats.revenue_growth !== 0 ? `${stats.revenue_growth >= 0 ? '+' : ''}${stats.revenue_growth}%` : undefined}
@@ -210,26 +222,26 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <StatCard
             title="GMV (Services)"
-            value={`ZAR ${stats.gmv_total.toLocaleString()}`}
+            value={`R ${stats.gmv_total.toLocaleString()}`}
             icon={<DollarSign className="w-6 h-6" />}
             color="purple"
           />
           <StatCard
             title="Commission (Gross)"
-            value={`ZAR ${stats.platform_commission_gross_total.toLocaleString()}`}
+            value={`R ${stats.platform_commission_gross_total.toLocaleString()}`}
             icon={<DollarSign className="w-6 h-6" />}
             color="orange"
           />
           <StatCard
             title="Gateway Fees"
-            value={`ZAR ${stats.gateway_fees_total.toLocaleString()}`}
+            value={`R ${stats.gateway_fees_total.toLocaleString()}`}
             icon={<DollarSign className="w-6 h-6" />}
             color="blue"
             infoTooltip="Total payment processing fees charged by payment gateways. These fees reduce your platform revenue (Platform Take = Commission - Gateway Fees). Gateway fees do not affect provider earnings."
           />
           <StatCard
             title="Refund Impact (Commission)"
-            value={`ZAR ${stats.platform_refund_impact_total.toLocaleString()}`}
+            value={`R ${stats.platform_refund_impact_total.toLocaleString()}`}
             icon={<DollarSign className="w-6 h-6" />}
             color="orange"
           />
@@ -238,37 +250,37 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <StatCard
             title="Subscription Revenue (Net)"
-            value={`ZAR ${stats.subscription_net_total.toLocaleString()}`}
+            value={`R ${stats.subscription_net_total.toLocaleString()}`}
             icon={<DollarSign className="w-6 h-6" />}
             color="green"
           />
           <StatCard
             title="Tips (Gross)"
-            value={`ZAR ${stats.tips_total.toLocaleString()}`}
+            value={`R ${stats.tips_total.toLocaleString()}`}
             icon={<DollarSign className="w-6 h-6" />}
             color="purple"
           />
           <StatCard
             title="Taxes (Gross)"
-            value={`ZAR ${stats.taxes_total.toLocaleString()}`}
+            value={`R ${stats.taxes_total.toLocaleString()}`}
             icon={<DollarSign className="w-6 h-6" />}
             color="blue"
           />
           <StatCard
             title="Gift Card Sales"
-            value={`ZAR ${stats.gift_card_sales_total.toLocaleString()}`}
+            value={`R ${stats.gift_card_sales_total.toLocaleString()}`}
             icon={<DollarSign className="w-6 h-6" />}
             color="green"
           />
           <StatCard
             title="Membership Sales"
-            value={`ZAR ${stats.membership_sales_total.toLocaleString()}`}
+            value={`R ${stats.membership_sales_total.toLocaleString()}`}
             icon={<DollarSign className="w-6 h-6" />}
             color="blue"
           />
           <StatCard
             title="Refunds"
-            value={`ZAR ${stats.refunds_total.toLocaleString()}`}
+            value={`R ${stats.refunds_total.toLocaleString()}`}
             icon={<DollarSign className="w-6 h-6" />}
             color="orange"
           />
@@ -320,7 +332,7 @@ export default function AdminDashboard() {
                 <DollarSign className="w-5 h-5 text-gray-400" />
               </div>
               <p className="text-2xl font-semibold">
-                ZAR {stats.gift_card_sales_total.toLocaleString()}
+                R {stats.gift_card_sales_total.toLocaleString()}
               </p>
               <p className="text-xs text-gray-500 mt-1">Cash received (liability)</p>
             </div>
@@ -368,7 +380,7 @@ export default function AdminDashboard() {
               <DollarSign className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-2xl font-semibold">
-              ZAR {stats.revenue_today.toLocaleString()}
+              R {stats.revenue_today.toLocaleString()}
             </p>
           </div>
           <div className="bg-white border rounded-lg p-6">
@@ -377,7 +389,7 @@ export default function AdminDashboard() {
               <TrendingUp className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-2xl font-semibold">
-              ZAR {stats.revenue_this_month.toLocaleString()}
+              R {stats.revenue_this_month.toLocaleString()}
             </p>
           </div>
         </div>
@@ -435,6 +447,7 @@ export default function AdminDashboard() {
           />
         </div>
       </div>
+    </RoleGuard>
   );
 }
 

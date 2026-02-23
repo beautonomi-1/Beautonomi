@@ -8,9 +8,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { id } = await params;
 

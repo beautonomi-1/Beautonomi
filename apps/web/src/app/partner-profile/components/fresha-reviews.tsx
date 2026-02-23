@@ -1,8 +1,10 @@
 "use client";
 import React, { useState } from "react";
-import Image from "next/image";
+import Image, { type StaticImageData } from "next/image";
 import { Star } from "lucide-react";
 import UserImage from "./../../../../public/images/8aa5cbca-b607-4a45-bd0c-2d63a663aa30.webp";
+
+type ImgSrc = StaticImageData | string;
 
 type Review = {
   id: number;
@@ -11,7 +13,7 @@ type Review = {
   date: string;
   rating: number;
   text: string;
-  avatar?: string;
+  avatar?: ImgSrc;
 };
 
 const reviews: Review[] = [
@@ -22,7 +24,7 @@ const reviews: Review[] = [
     date: "Sun, Jan 18, 2026 at 4:25 PM",
     rating: 5,
     text: "I appreciate Q's attention to detail so much!!",
-    avatar: UserImage.src,
+    avatar: UserImage,
   },
   {
     id: 2,
@@ -31,7 +33,7 @@ const reviews: Review[] = [
     date: "Sat, Jan 17, 2026 at 9:23 AM",
     rating: 5,
     text: "Professional yet friendly environment and staff. Quaqamba takes care of my bio sculpture routine and...",
-    avatar: UserImage.src,
+    avatar: UserImage,
   },
   {
     id: 3,
@@ -40,7 +42,7 @@ const reviews: Review[] = [
     date: "Thu, Jan 15, 2026 at 5:59 PM",
     rating: 5,
     text: "An amazing experience, thank you",
-    avatar: UserImage.src,
+    avatar: UserImage,
   },
   {
     id: 4,
@@ -49,7 +51,7 @@ const reviews: Review[] = [
     date: "Wed, Jan 14, 2026 at 8:06 PM",
     rating: 5,
     text: "Awesome! I got a fabulous pedicure and the colour is amazing, great service too. Will be back!",
-    avatar: UserImage.src,
+    avatar: UserImage,
   },
   {
     id: 5,
@@ -58,7 +60,7 @@ const reviews: Review[] = [
     date: "Wed, Jan 14, 2026 at 9:15 AM",
     rating: 5,
     text: "Fabulous",
-    avatar: UserImage.src,
+    avatar: UserImage,
   },
   {
     id: 6,
@@ -67,7 +69,7 @@ const reviews: Review[] = [
     date: "Tue, Jan 13, 2026 at 12:16 PM",
     rating: 5,
     text: "My nails look amazing, and the foot massage was amazing - almost fell asleep!",
-    avatar: UserImage.src,
+    avatar: UserImage,
   },
 ];
 

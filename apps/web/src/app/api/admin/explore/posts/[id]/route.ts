@@ -16,7 +16,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
     const supabaseAdmin = await getSupabaseAdmin();
     const { id } = await params;
 

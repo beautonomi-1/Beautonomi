@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface SystemStats {
   api_requests: {
@@ -44,9 +45,19 @@ interface HealthMetric {
   recorded_at: string;
 }
 
+interface ErrorLogEntry {
+  id?: string;
+  error_type?: string;
+  error_message?: string;
+  endpoint?: string;
+  severity?: string;
+  created_at?: string;
+}
+
 export default function SystemHealthPage() {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [metrics, setMetrics] = useState<HealthMetric[]>([]);
+  const [recentErrorLogs, setRecentErrorLogs] = useState<ErrorLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -68,54 +79,58 @@ export default function SystemHealthPage() {
     try {
       setIsLoading(true);
       const [healthResponse, errorsResponse] = await Promise.all([
-        fetcher.get<{ data: any }>("/api/admin/monitoring/health?hours=24"),
-        fetcher.get<{ data: any }>("/api/admin/monitoring/errors?timeframe=24h"),
+        fetcher.get<{ data?: Record<string, unknown> }>("/api/admin/monitoring/health?hours=24"),
+        fetcher.get<{ data?: { stats?: { total?: number; recent_errors?: Array<{ id?: string; error_type?: string; error_message?: string; endpoint?: string; severity?: string; created_at?: string }> }; logs?: unknown[] } }>("/api/admin/monitoring/errors?timeframe=24h"),
       ]);
 
-      const healthData = healthResponse.data;
-      const errorsData = errorsResponse.data;
+      const healthData = healthResponse?.data ?? {};
+      const errorsData = errorsResponse?.data ?? {};
+      const errorsTotal = (errorsData as { stats?: { total?: number } }).stats?.total ?? 0;
+      const recentErrors = (errorsData as { stats?: { recent_errors?: unknown[] }; logs?: unknown[] }).stats?.recent_errors ?? (errorsData as { logs?: unknown[] }).logs ?? [];
 
-      // Transform health data to match existing interface
+      // Transform health data to match existing interface (health = endpoint checks, not request counts)
       setStats({
         api_requests: {
-          total: healthData.total_endpoints || 0,
-          successful: healthData.healthy_endpoints || 0,
-          failed: healthData.down_endpoints || 0,
-          avg_response_time: healthData.average_response_time_ms || 0,
+          total: Number((healthData as { total_endpoints?: number }).total_endpoints) || 0,
+          successful: Number((healthData as { healthy_endpoints?: number }).healthy_endpoints) || 0,
+          failed: Number((healthData as { down_endpoints?: number }).down_endpoints) || 0,
+          avg_response_time: Number((healthData as { average_response_time_ms?: number }).average_response_time_ms) || 0,
         },
         database: {
-          connections: 0, // Not tracked yet
+          connections: 0,
           query_time: 0,
           slow_queries: 0,
         },
         server: {
-          cpu_usage: 0, // Not tracked yet
+          cpu_usage: 0,
           memory_usage: 0,
           disk_usage: 0,
         },
         errors: {
-          total: errorsData.stats?.total || 0,
-          rate: 0,
+          total: errorsTotal,
+          rate: errorsTotal / 24, // errors per hour for 24h window
         },
       });
 
-      // Transform endpoints to metrics
-      const metrics: HealthMetric[] = (healthData.endpoints || []).map((endpoint: any) => ({
-        id: `${endpoint.endpoint}-${endpoint.method}`,
+      // Transform endpoints to metrics for API tab
+      const endpoints = (healthData as { endpoints?: Array<{ endpoint?: string; method?: string; average_response_time_ms?: number; last_status?: string; last_check?: string }> }).endpoints ?? [];
+      const metrics: HealthMetric[] = endpoints.map((endpoint: { endpoint?: string; method?: string; average_response_time_ms?: number; last_status?: string; last_check?: string }) => ({
+        id: `${endpoint.endpoint ?? ""}-${endpoint.method ?? ""}`,
         metric_type: "api_endpoint",
-        metric_name: `${endpoint.method} ${endpoint.endpoint}`,
-        value: endpoint.average_response_time_ms,
+        metric_name: `${endpoint.method ?? "GET"} ${endpoint.endpoint ?? ""}`,
+        value: endpoint.average_response_time_ms ?? 0,
         unit: "ms",
-        status: endpoint.last_status,
-        recorded_at: endpoint.last_check,
+        status: endpoint.last_status ?? "unknown",
+        recorded_at: endpoint.last_check ?? "",
       }));
 
       setMetrics(metrics);
+      setRecentErrorLogs(Array.isArray(recentErrors) ? recentErrors : []);
       setLastUpdated(new Date());
       setError(null);
-    } catch (error) {
-      console.error("Failed to load system health:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to load system health data";
+    } catch (err) {
+      console.error("Failed to load system health:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to load system health data";
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -128,10 +143,16 @@ export default function SystemHealthPage() {
       case "healthy":
         return "bg-green-100 text-green-800";
       case "warning":
+      case "degraded":
+      case "medium":
         return "bg-yellow-100 text-yellow-800";
       case "error":
       case "critical":
+      case "high":
+      case "down":
         return "bg-red-100 text-red-800";
+      case "low":
+        return "bg-gray-100 text-gray-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -140,41 +161,48 @@ export default function SystemHealthPage() {
   const getStatusIcon = (status: string) => {
     switch (status.toLowerCase()) {
       case "healthy":
-        return <CheckCircle2 className="w-4 h-4" />;
+        return <CheckCircle2 className="w-4 h-4 text-green-600" />;
       case "warning":
-        return <AlertTriangle className="w-4 h-4" />;
+      case "degraded":
+        return <AlertTriangle className="w-4 h-4 text-yellow-600" />;
       case "error":
       case "critical":
-        return <XCircle className="w-4 h-4" />;
+      case "down":
+        return <XCircle className="w-4 h-4 text-red-600" />;
       default:
-        return <Clock className="w-4 h-4" />;
+        return <Clock className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
   if (isLoading && !stats) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading system health..." />
-      </div>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
+        <div className="container mx-auto px-4 py-8">
+          <LoadingTimeout loadingMessage="Loading system health..." />
+        </div>
+      </RoleGuard>
     );
   }
 
   if (error && !stats) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <EmptyState
-          title="Failed to load system health data"
-          description={error}
-          action={{
-            label: "Retry",
-            onClick: loadHealthData,
-          }}
-        />
-      </div>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
+        <div className="container mx-auto px-4 py-8">
+          <EmptyState
+            title="Failed to load system health data"
+            description={error}
+            action={{
+              label: "Retry",
+              onClick: loadHealthData,
+            }}
+          />
+        </div>
+      </RoleGuard>
     );
   }
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
           <div>
@@ -221,17 +249,17 @@ export default function SystemHealthPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">API Requests</CardTitle>
+                    <CardTitle className="text-sm font-medium">API Endpoints</CardTitle>
                     <Activity className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{stats.api_requests.total}</div>
                     <div className="flex items-center gap-2 mt-2">
                       <Badge className="bg-green-100 text-green-800">
-                        {stats.api_requests.successful} success
+                        {stats.api_requests.successful} healthy
                       </Badge>
                       <Badge className="bg-red-100 text-red-800">
-                        {stats.api_requests.failed} failed
+                        {stats.api_requests.failed} down
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">
@@ -250,10 +278,12 @@ export default function SystemHealthPage() {
                     <p className="text-xs text-muted-foreground mt-2">
                       Connections active
                     </p>
-                    {stats.database.slow_queries > 0 && (
+                    {stats.database.slow_queries > 0 ? (
                       <Badge className="bg-yellow-100 text-yellow-800 mt-2">
                         {stats.database.slow_queries} slow queries
                       </Badge>
+                    ) : (
+                      <p className="text-xs text-muted-foreground mt-2">Metrics not yet collected</p>
                     )}
                   </CardContent>
                 </Card>
@@ -264,6 +294,9 @@ export default function SystemHealthPage() {
                     <Server className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
+                    {stats.server.cpu_usage === 0 && stats.server.memory_usage === 0 ? (
+                      <p className="text-xs text-muted-foreground">Metrics not yet collected</p>
+                    ) : (
                     <div className="space-y-2">
                       <div>
                         <div className="flex justify-between text-sm">
@@ -302,6 +335,7 @@ export default function SystemHealthPage() {
                         </div>
                       </div>
                     </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -329,11 +363,12 @@ export default function SystemHealthPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>API Performance</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">Public endpoints monitored (24h)</p>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
-                      <span>Total Requests (24h)</span>
+                      <span>Endpoints Monitored</span>
                       <span className="font-bold">{stats.api_requests.total}</span>
                     </div>
                     <div className="flex justify-between items-center">
@@ -365,15 +400,47 @@ export default function SystemHealthPage() {
                   </div>
                 </CardContent>
               </Card>
+              {metrics.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Endpoint breakdown</CardTitle>
+                    <p className="text-sm text-muted-foreground mt-1">Per-endpoint status and avg response time (24h)</p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {metrics.map((m) => (
+                        <div
+                          key={m.id}
+                          className="flex items-center justify-between p-2 border rounded"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {getStatusIcon(m.status)}
+                            <span className="text-sm truncate">{m.metric_name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-sm text-muted-foreground">{m.value} ms</span>
+                            <Badge className={getStatusColor(m.status)}>{m.status}</Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
             <TabsContent value="database" className="space-y-4">
               <Card>
                 <CardHeader>
                   <CardTitle>Database Metrics</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">Connection and query metrics (when available)</p>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
+                    {stats.database.connections === 0 && stats.database.query_time === 0 && stats.database.slow_queries === 0 ? (
+                      <p className="text-sm text-muted-foreground">Database metrics are not yet collected. Configure monitoring to populate this tab.</p>
+                    ) : (
+                    <>
                     <div className="flex justify-between items-center">
                       <span>Active Connections</span>
                       <span className="font-bold">{stats.database.connections}</span>
@@ -394,6 +461,8 @@ export default function SystemHealthPage() {
                         {stats.database.slow_queries}
                       </Badge>
                     </div>
+                    </>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -403,8 +472,12 @@ export default function SystemHealthPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Server Resources</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">CPU, memory, disk (when available)</p>
                 </CardHeader>
                 <CardContent>
+                  {stats.server.cpu_usage === 0 && stats.server.memory_usage === 0 && stats.server.disk_usage === 0 ? (
+                    <p className="text-sm text-muted-foreground">Server metrics are not yet collected. Configure monitoring to populate this tab.</p>
+                  ) : (
                   <div className="space-y-4">
                     <div>
                       <div className="flex justify-between text-sm mb-2">
@@ -461,6 +534,7 @@ export default function SystemHealthPage() {
                       </div>
                     </div>
                   </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -499,30 +573,37 @@ export default function SystemHealthPage() {
                 </CardContent>
               </Card>
 
-              {metrics.filter((m) => m.metric_type === "error").length > 0 && (
+              {(recentErrorLogs.length > 0) && (
                 <Card>
                   <CardHeader>
                     <CardTitle>Recent Errors</CardTitle>
+                    <p className="text-sm text-muted-foreground mt-1">From error_logs (24h)</p>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {metrics
-                        .filter((m) => m.metric_type === "error")
-                        .slice(0, 10)
-                        .map((metric) => (
-                          <div
-                            key={metric.id}
-                            className="flex items-center justify-between p-2 border rounded"
-                          >
-                            <div className="flex items-center gap-2">
-                              {getStatusIcon(metric.status)}
-                              <span className="text-sm">{metric.metric_name}</span>
-                            </div>
-                            <Badge className={getStatusColor(metric.status)}>
-                              {metric.status}
-                            </Badge>
+                      {recentErrorLogs.slice(0, 15).map((log, idx) => (
+                        <div
+                          key={(log as { id?: string }).id ?? idx}
+                          className="flex items-center justify-between p-2 border rounded text-left"
+                        >
+                          <div className="flex flex-col gap-0.5 min-w-0">
+                            <span className="text-sm font-medium truncate">
+                              {log.error_type ?? "Error"} {log.endpoint ? `— ${log.endpoint}` : ""}
+                            </span>
+                            <span className="text-xs text-muted-foreground truncate" title={log.error_message}>
+                              {log.error_message}
+                            </span>
+                            {log.created_at && (
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(log.created_at).toLocaleString()}
+                              </span>
+                            )}
                           </div>
-                        ))}
+                          <Badge className={getStatusColor(log.severity ?? "unknown")}>
+                            {log.severity ?? "—"}
+                          </Badge>
+                        </div>
+                      ))}
                     </div>
                   </CardContent>
                 </Card>
@@ -531,5 +612,6 @@ export default function SystemHealthPage() {
           </Tabs>
         )}
       </div>
+    </RoleGuard>
   );
 }

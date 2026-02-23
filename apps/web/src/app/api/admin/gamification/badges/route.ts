@@ -1,16 +1,16 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/admin/gamification/badges
- * 
- * Get all badges (admin only)
+ *
+ * Get all badges (superadmin only). Uses admin client to bypass RLS.
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
     const includeInactive = searchParams.get('include_inactive') === 'true';
@@ -42,13 +42,13 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/admin/gamification/badges
- * 
- * Create a new badge (admin only)
+ *
+ * Create a new badge (superadmin only). Uses admin client to bypass RLS.
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = getSupabaseAdmin();
 
     const body = await request.json();
     const {

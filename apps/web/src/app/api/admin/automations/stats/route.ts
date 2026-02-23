@@ -7,9 +7,9 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  * 
  * Get automation statistics for admin dashboard
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
     const supabaseAdmin = getSupabaseAdmin();
 

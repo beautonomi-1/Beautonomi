@@ -637,7 +637,7 @@ export default function ProviderOnboarding() {
                           </p>
                         </div>
                       </div>
-                      {index < filteredSteps.length - 1 && (
+                      {index < totalVisibleSteps - 1 && (
                         <div
                           className={`h-1 flex-1 mx-2 transition-all duration-300 ${
                             isCompleted ? "bg-[#FF0077]" : "bg-gray-300"

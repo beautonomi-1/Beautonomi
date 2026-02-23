@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface Provider {
   id: string;
@@ -87,10 +88,15 @@ export default function AdminDistanceSettingsPage() {
   );
 
   if (isLoading) {
-    return <LoadingTimeout loadingMessage="Loading providers..." />;
+    return (
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
+        <LoadingTimeout loadingMessage="Loading providers..." />
+      </RoleGuard>
+    );
   }
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -246,5 +252,6 @@ export default function AdminDistanceSettingsPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </RoleGuard>
   );
 }

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { handleApiError, successResponse } from "@/lib/supabase/api-helpers";
+import { handleApiError, successResponse, errorResponse } from "@/lib/supabase/api-helpers";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 
@@ -20,6 +21,17 @@ const purchaseSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
+    const [giftCardsEnabled, paystackEnabled] = await Promise.all([
+      isFeatureEnabledServer("gift_cards"),
+      isFeatureEnabledServer("payment_paystack"),
+    ]);
+    if (!giftCardsEnabled) {
+      return errorResponse("Gift cards are currently unavailable.", "FEATURE_DISABLED", 403);
+    }
+    if (!paystackEnabled) {
+      return errorResponse("Online payment for gift cards is currently unavailable.", "FEATURE_DISABLED", 403);
+    }
+
     const supabase = await getSupabaseServer();
     const body = await request.json();
     const parsed = purchaseSchema.safeParse(body);

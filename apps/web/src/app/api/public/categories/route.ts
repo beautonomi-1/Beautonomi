@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
 // Cache categories for 1 hour (they don't change often)
 export const revalidate = 3600;
 

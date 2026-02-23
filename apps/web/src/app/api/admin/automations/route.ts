@@ -9,7 +9,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
     const supabaseAdmin = getSupabaseAdmin();
     const searchParams = request.nextUrl.searchParams;

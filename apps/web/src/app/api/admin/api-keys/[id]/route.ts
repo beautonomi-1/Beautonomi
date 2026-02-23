@@ -10,7 +10,7 @@ export async function GET(
   try {
     const { id } = await params;
     await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data, error } = await supabase
       .from("api_keys")
@@ -64,7 +64,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const { user } = await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
     const {
@@ -129,7 +129,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     const { user } = await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { error } = await supabase
       .from("api_keys")

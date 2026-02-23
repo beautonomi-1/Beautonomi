@@ -1,10 +1,11 @@
-import Image from "next/image";
+import Image, { type StaticImageData } from "next/image";
 import Image1 from "./../../../../public/images/live-and-work-2_74bcec.webp";
 import House from "./../../../../public/images/house_07efa3.webp";
 import { PlusIcon } from "lucide-react";
 import Image2 from "./../../../../public/images/departments_f410e4.webp";
-import { StaticImageData } from "next/image";
 import { Button } from "@/components/ui/button";
+
+type ImgSrc = StaticImageData | string;
 
 const items: Array<{
   type: string;
@@ -12,7 +13,7 @@ const items: Array<{
   textColor?: string;
   text?: string;
   icon?: boolean;
-  imageSrc?: StaticImageData;
+  imageSrc?: ImgSrc;
   imageAlt?: string;
   imageWidth?: number;
   imageHeight?: number;

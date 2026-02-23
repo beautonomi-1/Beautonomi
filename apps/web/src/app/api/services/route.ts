@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse } from "@/lib/supabase/api-helpers";
 
+export const dynamic = "force-dynamic";
 // Cache services for 2 minutes (they don't change often during booking)
 export const revalidate = 120;
 

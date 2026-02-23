@@ -96,6 +96,18 @@ interface FeatureGating {
   };
 }
 
+interface PricingPlanLink {
+  id: string;
+  name: string;
+  price: string;
+  period: string | null;
+  description: string | null;
+  cta_text: string;
+  is_popular: boolean;
+  display_order: number;
+  subscription_plan_id: string | null;
+}
+
 interface SubscriptionPlan {
   id: string;
   name: string;
@@ -115,6 +127,7 @@ interface SubscriptionPlan {
   paystack_plan_code_yearly?: string;
   created_at: string;
   updated_at: string;
+  pricing_plan?: PricingPlanLink | null;
 }
 
 // Default feature structure
@@ -182,7 +195,9 @@ const MARKETING_CHANNELS = ["email", "sms", "whatsapp"];
 const CALENDAR_PROVIDERS = ["google", "outlook", "ical"];
 const REPORT_TYPES = ["sales", "bookings", "staff", "clients", "products", "payments", "gift_cards", "packages"];
 
-export default function SubscriptionPlansPage() {
+type PlansPageProps = { useMergedPlans?: boolean };
+
+export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansPageProps) {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -206,6 +221,13 @@ export default function SubscriptionPlansPage() {
     max_locations: "1",
     paystack_plan_code_monthly: "",
     paystack_plan_code_yearly: "",
+    // Pricing page (public) - when useMergedPlans
+    show_on_pricing_page: false,
+    price_display: "",
+    period_display: "month",
+    description_display: "",
+    cta_text: "Get started",
+    display_order_pricing: 0,
   });
 
   // Helper to normalize features from API (handle both legacy array and complex object)
@@ -237,9 +259,8 @@ export default function SubscriptionPlansPage() {
   const fetchPlans = async () => {
     try {
       setLoading(true);
-      const response = await fetcher.get<{ data: SubscriptionPlan[] }>(
-        "/api/admin/subscription-plans"
-      );
+      const url = useMergedPlans ? "/api/admin/plans" : "/api/admin/subscription-plans";
+      const response = await fetcher.get<{ data: SubscriptionPlan[] }>(url);
       setPlans(response.data || []);
     } catch (error) {
       console.error("Error fetching plans:", error);
@@ -271,6 +292,12 @@ export default function SubscriptionPlansPage() {
       max_locations: "1",
       paystack_plan_code_monthly: "",
       paystack_plan_code_yearly: "",
+      show_on_pricing_page: false,
+      price_display: "",
+      period_display: "month",
+      description_display: "",
+      cta_text: "Get started",
+      display_order_pricing: plans.length,
     });
     setIsCreateDialogOpen(true);
   };
@@ -278,6 +305,7 @@ export default function SubscriptionPlansPage() {
   const handleEdit = (plan: SubscriptionPlan) => {
     setSelectedPlan(plan);
     const normalizedFeatures = normalizeFeatures(plan.features);
+    const pp = plan.pricing_plan;
     setFormData({
       name: plan.name,
       description: plan.description || "",
@@ -294,6 +322,12 @@ export default function SubscriptionPlansPage() {
       max_locations: plan.max_locations?.toString() || "1",
       paystack_plan_code_monthly: plan.paystack_plan_code_monthly || "",
       paystack_plan_code_yearly: plan.paystack_plan_code_yearly || "",
+      show_on_pricing_page: !!pp,
+      price_display: pp?.price || "",
+      period_display: pp?.period || "month",
+      description_display: pp?.description || "",
+      cta_text: pp?.cta_text || "Get started",
+      display_order_pricing: pp?.display_order ?? plan.display_order,
     });
     setIsEditDialogOpen(true);
   };
@@ -307,7 +341,7 @@ export default function SubscriptionPlansPage() {
         price_monthly: formData.is_free ? undefined : parseFloat(formData.price_monthly) || undefined,
         price_yearly: formData.is_free ? undefined : parseFloat(formData.price_yearly) || undefined,
         currency: formData.currency,
-        features: formData.features, // Send complex structure
+        features: formData.features,
         is_free: formData.is_free,
         is_active: formData.is_active,
         is_popular: formData.is_popular,
@@ -319,12 +353,45 @@ export default function SubscriptionPlansPage() {
         paystack_plan_code_yearly: formData.paystack_plan_code_yearly || null,
       };
 
+      let savedPlan: SubscriptionPlan;
       if (selectedPlan) {
-        await fetcher.put("/api/admin/subscription-plans", payload);
-        toast.success("Subscription plan updated successfully");
+        const res = await fetcher.put<{ data: SubscriptionPlan }>("/api/admin/subscription-plans", payload);
+        savedPlan = res.data;
+        toast.success("Plan updated successfully");
       } else {
-        await fetcher.post("/api/admin/subscription-plans", payload);
-        toast.success("Subscription plan created successfully");
+        const res = await fetcher.post<{ data: SubscriptionPlan }>("/api/admin/subscription-plans", payload);
+        savedPlan = res.data;
+        toast.success("Plan created successfully");
+      }
+
+      // When consolidated view: sync pricing page entry so public pricing and onboarding use it
+      if (useMergedPlans && formData.show_on_pricing_page && savedPlan?.id) {
+        const pricingPayload = {
+          ...(selectedPlan?.pricing_plan ? { id: selectedPlan.pricing_plan.id } : {}),
+          name: formData.name,
+          price: formData.price_display || (savedPlan.price_monthly != null ? String(savedPlan.price_monthly) : "0"),
+          period: formData.period_display || null,
+          description: formData.description_display || null,
+          cta_text: formData.cta_text,
+          is_popular: formData.is_popular,
+          display_order: formData.display_order_pricing,
+          is_active: savedPlan.is_active,
+          subscription_plan_id: savedPlan.id,
+          paystack_plan_code_monthly: savedPlan.paystack_plan_code_monthly || null,
+          paystack_plan_code_yearly: savedPlan.paystack_plan_code_yearly || null,
+        };
+        if (selectedPlan?.pricing_plan) {
+          await fetcher.put("/api/admin/pricing-plans", pricingPayload);
+        } else {
+          await fetcher.post("/api/admin/pricing-plans", pricingPayload);
+        }
+      } else if (useMergedPlans && !formData.show_on_pricing_page && selectedPlan?.pricing_plan) {
+        // Unlink: deactivate or delete pricing plan so it no longer appears on public page
+        await fetcher.put("/api/admin/pricing-plans", {
+          id: selectedPlan.pricing_plan.id,
+          is_active: false,
+          subscription_plan_id: null,
+        });
       }
 
       setIsCreateDialogOpen(false);
@@ -336,7 +403,7 @@ export default function SubscriptionPlansPage() {
           ? "Request timed out. Please try again."
           : error instanceof FetchError
           ? error.message
-          : "Failed to save subscription plan";
+          : "Failed to save plan";
       toast.error(errorMessage);
       console.error("Error saving plan:", error);
     }
@@ -379,7 +446,7 @@ export default function SubscriptionPlansPage() {
   if (loading) {
     return (
       <RoleGuard allowedRoles={["superadmin"]}>
-        <LoadingTimeout loadingMessage="Loading subscription plans..." />
+        <LoadingTimeout loadingMessage={useMergedPlans ? "Loading plans..." : "Loading subscription plans..."} />
       </RoleGuard>
     );
   }
@@ -389,9 +456,13 @@ export default function SubscriptionPlansPage() {
       <div className="container mx-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold">Subscription Plans</h1>
+            <h1 className="text-3xl font-bold">
+              {useMergedPlans ? "Plans" : "Subscription Plans"}
+            </h1>
             <p className="text-gray-600 mt-1">
-              Manage subscription tiers and feature access with granular controls
+              {useMergedPlans
+                ? "Manage subscription tiers, feature access, and public pricing page in one place"
+                : "Manage subscription tiers and feature access with granular controls"}
             </p>
           </div>
           <Button onClick={handleCreate}>
@@ -402,8 +473,8 @@ export default function SubscriptionPlansPage() {
 
         {plans.length === 0 ? (
           <EmptyState
-            title="No subscription plans"
-            description="Create your first subscription plan to get started"
+            title={useMergedPlans ? "No plans" : "No subscription plans"}
+            description={useMergedPlans ? "Create your first plan to get started" : "Create your first subscription plan to get started"}
             action={{
               label: "Create Plan",
               onClick: handleCreate,
@@ -415,6 +486,7 @@ export default function SubscriptionPlansPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
+                  {useMergedPlans && <TableHead>On pricing page</TableHead>}
                   <TableHead>Type</TableHead>
                   <TableHead>Pricing</TableHead>
                   <TableHead>Features</TableHead>
@@ -437,6 +509,15 @@ export default function SubscriptionPlansPage() {
                         )}
                       </div>
                     </TableCell>
+                    {useMergedPlans && (
+                      <TableCell>
+                        {plan.pricing_plan ? (
+                          <Badge variant="outline" className="bg-green-50 text-green-800">Yes</Badge>
+                        ) : (
+                          <span className="text-gray-400 text-sm">No</span>
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell>
                       {plan.is_free ? (
                         <Badge className="bg-green-100 text-green-800">
@@ -535,10 +616,12 @@ export default function SubscriptionPlansPage() {
           <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
-                {selectedPlan ? "Edit Subscription Plan" : "Create Subscription Plan"}
+                {selectedPlan ? (useMergedPlans ? "Edit Plan" : "Edit Subscription Plan") : (useMergedPlans ? "Create Plan" : "Create Subscription Plan")}
               </DialogTitle>
               <DialogDescription>
-                Configure subscription tier with pricing, Paystack integration, and granular feature access
+                {useMergedPlans
+                  ? "Configure billing, feature access, and optional public pricing page entry"
+                  : "Configure subscription tier with pricing, Paystack integration, and granular feature access"}
               </DialogDescription>
             </DialogHeader>
 
@@ -710,6 +793,89 @@ export default function SubscriptionPlansPage() {
                   />
                 </div>
 
+                {/* Public pricing page (consolidated Plans only) */}
+                {useMergedPlans && (
+                  <div className="space-y-4 border-t pt-4 mt-4">
+                    <h4 className="font-semibold text-base">Public pricing page</h4>
+                    <p className="text-sm text-gray-500">
+                      When enabled, this plan appears on the public pricing page and in provider onboarding. Paystack codes are synced from this plan.
+                    </p>
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="show_on_pricing_page"
+                        checked={formData.show_on_pricing_page}
+                        onCheckedChange={(checked) =>
+                          setFormData({ ...formData, show_on_pricing_page: checked })
+                        }
+                      />
+                      <Label htmlFor="show_on_pricing_page">Show on public pricing page</Label>
+                    </div>
+                    {formData.show_on_pricing_page && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="price_display">Price (display text)</Label>
+                          <Input
+                            id="price_display"
+                            value={formData.price_display}
+                            onChange={(e) =>
+                              setFormData({ ...formData, price_display: e.target.value })
+                            }
+                            placeholder="e.g. R199 or Free"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="period_display">Period (display)</Label>
+                          <Input
+                            id="period_display"
+                            value={formData.period_display}
+                            onChange={(e) =>
+                              setFormData({ ...formData, period_display: e.target.value })
+                            }
+                            placeholder="e.g. month, year"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Label htmlFor="description_display">Short description (pricing page)</Label>
+                          <Textarea
+                            id="description_display"
+                            value={formData.description_display}
+                            onChange={(e) =>
+                              setFormData({ ...formData, description_display: e.target.value })
+                            }
+                            placeholder="Optional"
+                            rows={2}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="cta_text">Button text</Label>
+                          <Input
+                            id="cta_text"
+                            value={formData.cta_text}
+                            onChange={(e) =>
+                              setFormData({ ...formData, cta_text: e.target.value })
+                            }
+                            placeholder="Get started"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="display_order_pricing">Order on pricing page</Label>
+                          <Input
+                            id="display_order_pricing"
+                            type="number"
+                            value={formData.display_order_pricing}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                display_order_pricing: parseInt(e.target.value) || 0,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Paystack Plan Codes */}
                 <div className="space-y-4 border-t pt-4 mt-4">
                   <h4 className="font-semibold text-base">Paystack Integration</h4>
@@ -757,21 +923,22 @@ export default function SubscriptionPlansPage() {
                       setExpandedFeatures({ ...expandedFeatures, marketing_campaigns: open })
                     }
                   >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
-                      <div className="flex items-center space-x-2">
-                        {expandedFeatures.marketing_campaigns ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <Label className="font-medium">Marketing Campaigns</Label>
-                      </div>
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.marketing_campaigns ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <Label className="font-medium">Marketing Campaigns</Label>
+                        </div>
+                      </CollapsibleTrigger>
                       <Switch
                         checked={formData.features.marketing_campaigns?.enabled || false}
                         onCheckedChange={() => toggleFeatureCategory("marketing_campaigns")}
-                        onClick={(e) => e.stopPropagation()}
                       />
-                    </CollapsibleTrigger>
+                    </div>
                     <CollapsibleContent className="pl-6 pr-2 pb-2 space-y-3">
                       <div>
                         <Label className="text-sm">Channels</Label>
@@ -845,21 +1012,22 @@ export default function SubscriptionPlansPage() {
                       setExpandedFeatures({ ...expandedFeatures, chat_messages: open })
                     }
                   >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
-                      <div className="flex items-center space-x-2">
-                        {expandedFeatures.chat_messages ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <Label className="font-medium">Chat Messages</Label>
-                      </div>
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.chat_messages ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <Label className="font-medium">Chat Messages</Label>
+                        </div>
+                      </CollapsibleTrigger>
                       <Switch
                         checked={formData.features.chat_messages?.enabled || false}
                         onCheckedChange={() => toggleFeatureCategory("chat_messages")}
-                        onClick={(e) => e.stopPropagation()}
                       />
-                    </CollapsibleTrigger>
+                    </div>
                     <CollapsibleContent className="pl-6 pr-2 pb-2 space-y-3">
                       <div>
                         <Label className="text-sm">Max Messages/Month</Label>
@@ -902,21 +1070,22 @@ export default function SubscriptionPlansPage() {
                       setExpandedFeatures({ ...expandedFeatures, yoco_integration: open })
                     }
                   >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
-                      <div className="flex items-center space-x-2">
-                        {expandedFeatures.yoco_integration ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <Label className="font-medium">Yoco Integration</Label>
-                      </div>
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.yoco_integration ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <Label className="font-medium">Yoco Integration</Label>
+                        </div>
+                      </CollapsibleTrigger>
                       <Switch
                         checked={formData.features.yoco_integration?.enabled || false}
                         onCheckedChange={() => toggleFeatureCategory("yoco_integration")}
-                        onClick={(e) => e.stopPropagation()}
                       />
-                    </CollapsibleTrigger>
+                    </div>
                     <CollapsibleContent className="pl-6 pr-2 pb-2 space-y-3">
                       <div>
                         <Label className="text-sm">Max Devices</Label>
@@ -950,21 +1119,22 @@ export default function SubscriptionPlansPage() {
                       setExpandedFeatures({ ...expandedFeatures, staff_management: open })
                     }
                   >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
-                      <div className="flex items-center space-x-2">
-                        {expandedFeatures.staff_management ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <Label className="font-medium">Staff Management</Label>
-                      </div>
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.staff_management ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <Label className="font-medium">Staff Management</Label>
+                        </div>
+                      </CollapsibleTrigger>
                       <Switch
                         checked={formData.features.staff_management?.enabled || false}
                         onCheckedChange={() => toggleFeatureCategory("staff_management")}
-                        onClick={(e) => e.stopPropagation()}
                       />
-                    </CollapsibleTrigger>
+                    </div>
                     <CollapsibleContent className="pl-6 pr-2 pb-2">
                       <div>
                         <Label className="text-sm">Max Staff Members</Label>
@@ -989,21 +1159,22 @@ export default function SubscriptionPlansPage() {
                       setExpandedFeatures({ ...expandedFeatures, multi_location: open })
                     }
                   >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
-                      <div className="flex items-center space-x-2">
-                        {expandedFeatures.multi_location ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <Label className="font-medium">Multi Location</Label>
-                      </div>
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.multi_location ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <Label className="font-medium">Multi Location</Label>
+                        </div>
+                      </CollapsibleTrigger>
                       <Switch
                         checked={formData.features.multi_location?.enabled || false}
                         onCheckedChange={() => toggleFeatureCategory("multi_location")}
-                        onClick={(e) => e.stopPropagation()}
                       />
-                    </CollapsibleTrigger>
+                    </div>
                     <CollapsibleContent className="pl-6 pr-2 pb-2">
                       <div>
                         <Label className="text-sm">Max Locations</Label>
@@ -1028,21 +1199,22 @@ export default function SubscriptionPlansPage() {
                       setExpandedFeatures({ ...expandedFeatures, booking_limits: open })
                     }
                   >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
-                      <div className="flex items-center space-x-2">
-                        {expandedFeatures.booking_limits ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <Label className="font-medium">Booking Limits</Label>
-                      </div>
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.booking_limits ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <Label className="font-medium">Booking Limits</Label>
+                        </div>
+                      </CollapsibleTrigger>
                       <Switch
                         checked={formData.features.booking_limits?.enabled || false}
                         onCheckedChange={() => toggleFeatureCategory("booking_limits")}
-                        onClick={(e) => e.stopPropagation()}
                       />
-                    </CollapsibleTrigger>
+                    </div>
                     <CollapsibleContent className="pl-6 pr-2 pb-2">
                       <div>
                         <Label className="text-sm">Max Bookings/Month</Label>
@@ -1067,21 +1239,22 @@ export default function SubscriptionPlansPage() {
                       setExpandedFeatures({ ...expandedFeatures, advanced_analytics: open })
                     }
                   >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
-                      <div className="flex items-center space-x-2">
-                        {expandedFeatures.advanced_analytics ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <Label className="font-medium">Advanced Analytics</Label>
-                      </div>
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.advanced_analytics ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <Label className="font-medium">Advanced Analytics</Label>
+                        </div>
+                      </CollapsibleTrigger>
                       <Switch
                         checked={formData.features.advanced_analytics?.enabled || false}
                         onCheckedChange={() => toggleFeatureCategory("advanced_analytics")}
-                        onClick={(e) => e.stopPropagation()}
                       />
-                    </CollapsibleTrigger>
+                    </div>
                     <CollapsibleContent className="pl-6 pr-2 pb-2 space-y-3">
                       <div className="flex items-center space-x-2">
                         <Switch
@@ -1145,21 +1318,22 @@ export default function SubscriptionPlansPage() {
                       setExpandedFeatures({ ...expandedFeatures, marketing_automations: open })
                     }
                   >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
-                      <div className="flex items-center space-x-2">
-                        {expandedFeatures.marketing_automations ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <Label className="font-medium">Marketing Automations</Label>
-                      </div>
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.marketing_automations ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <Label className="font-medium">Marketing Automations</Label>
+                        </div>
+                      </CollapsibleTrigger>
                       <Switch
                         checked={formData.features.marketing_automations?.enabled || false}
                         onCheckedChange={() => toggleFeatureCategory("marketing_automations")}
-                        onClick={(e) => e.stopPropagation()}
                       />
-                    </CollapsibleTrigger>
+                    </div>
                     <CollapsibleContent className="pl-6 pr-2 pb-2">
                       <div>
                         <Label className="text-sm">Max Automations</Label>
@@ -1184,21 +1358,22 @@ export default function SubscriptionPlansPage() {
                       setExpandedFeatures({ ...expandedFeatures, recurring_appointments: open })
                     }
                   >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
-                      <div className="flex items-center space-x-2">
-                        {expandedFeatures.recurring_appointments ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <Label className="font-medium">Recurring Appointments</Label>
-                      </div>
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.recurring_appointments ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <Label className="font-medium">Recurring Appointments</Label>
+                        </div>
+                      </CollapsibleTrigger>
                       <Switch
                         checked={formData.features.recurring_appointments?.enabled || false}
                         onCheckedChange={() => toggleFeatureCategory("recurring_appointments")}
-                        onClick={(e) => e.stopPropagation()}
                       />
-                    </CollapsibleTrigger>
+                    </div>
                     <CollapsibleContent className="pl-6 pr-2 pb-2">
                       <div className="flex items-center space-x-2">
                         <Switch
@@ -1219,21 +1394,22 @@ export default function SubscriptionPlansPage() {
                       setExpandedFeatures({ ...expandedFeatures, express_booking: open })
                     }
                   >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
-                      <div className="flex items-center space-x-2">
-                        {expandedFeatures.express_booking ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <Label className="font-medium">Express Booking</Label>
-                      </div>
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.express_booking ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <Label className="font-medium">Express Booking</Label>
+                        </div>
+                      </CollapsibleTrigger>
                       <Switch
                         checked={formData.features.express_booking?.enabled || false}
                         onCheckedChange={() => toggleFeatureCategory("express_booking")}
-                        onClick={(e) => e.stopPropagation()}
                       />
-                    </CollapsibleTrigger>
+                    </div>
                     <CollapsibleContent className="pl-6 pr-2 pb-2">
                       <div>
                         <Label className="text-sm">Max Links</Label>
@@ -1258,21 +1434,22 @@ export default function SubscriptionPlansPage() {
                       setExpandedFeatures({ ...expandedFeatures, calendar_sync: open })
                     }
                   >
-                    <CollapsibleTrigger className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
-                      <div className="flex items-center space-x-2">
-                        {expandedFeatures.calendar_sync ? (
-                          <ChevronDown className="w-4 h-4" />
-                        ) : (
-                          <ChevronRight className="w-4 h-4" />
-                        )}
-                        <Label className="font-medium">Calendar Sync</Label>
-                      </div>
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.calendar_sync ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <Label className="font-medium">Calendar Sync</Label>
+                        </div>
+                      </CollapsibleTrigger>
                       <Switch
                         checked={formData.features.calendar_sync?.enabled || false}
                         onCheckedChange={() => toggleFeatureCategory("calendar_sync")}
-                        onClick={(e) => e.stopPropagation()}
                       />
-                    </CollapsibleTrigger>
+                    </div>
                     <CollapsibleContent className="pl-6 pr-2 pb-2 space-y-3">
                       <div>
                         <Label className="text-sm">Providers</Label>

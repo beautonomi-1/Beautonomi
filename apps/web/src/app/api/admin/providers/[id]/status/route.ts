@@ -1,4 +1,4 @@
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   handleApiError,
@@ -12,7 +12,7 @@ import { z } from "zod";
 /**
  * PATCH /api/admin/providers/[id]/status
  * 
- * Update provider status (approve, reject, suspend, reactivate)
+ * Update provider status (approve, reject, suspend, reactivate). Uses admin client to bypass RLS.
  */
 const updateProviderStatusSchema = z.object({
   status: z.enum(["pending", "active", "suspended", "rejected", "approved"]),
@@ -24,8 +24,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const auth = await requireRoleInApi(["superadmin"], request);
+    if (!auth) throw new Error("Authentication required");
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
     const body = await request.json();
 

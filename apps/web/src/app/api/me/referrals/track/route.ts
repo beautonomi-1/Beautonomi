@@ -7,16 +7,17 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 
+const REFERRAL_SETTINGS_ID = "00000000-0000-0000-0000-000000000001";
+
 /**
  * POST /api/me/referrals/track
  *
  * Records a referral conversion when a referred user makes their first
- * booking. Updates the referrer's referral count and awards loyalty points
- * based on `referral_settings`.
+ * booking. Uses referral_settings (single-row). Awards loyalty points to referrer.
  *
  * Body:
- *   - referral_code: string  — the referral code used at signup
- *   - booking_id: string     — the newly-created booking ID
+ *   - booking_id: string       — the newly-created booking ID (required)
+ *   - referral_code?: string   — optional; if omitted, uses current user's referred_by
  */
 export async function POST(request: NextRequest) {
   try {
@@ -29,15 +30,8 @@ export async function POST(request: NextRequest) {
     const supabaseAdmin = await getSupabaseAdmin();
 
     const body = await request.json();
-    const { referral_code, booking_id } = body;
+    const { referral_code: codeFromBody, booking_id } = body;
 
-    if (!referral_code) {
-      return errorResponse(
-        "referral_code is required",
-        "VALIDATION_ERROR",
-        400
-      );
-    }
     if (!booking_id) {
       return errorResponse(
         "booking_id is required",
@@ -46,22 +40,53 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Look up the referrer by code (handle or short-id)
-    const { data: referrerUser, error: referrerError } = await supabaseAdmin
-      .from("users")
-      .select("id, handle")
-      .or(`handle.eq.${referral_code},id.ilike.${referral_code}%`)
-      .limit(1)
-      .maybeSingle();
+    let referrerUser: { id: string; handle: string } | null = null;
+    let referralCode: string;
 
-    if (referrerError) {
-      console.error("[referrals/track] Referrer lookup error:", referrerError);
-      return handleApiError(referrerError, "Failed to look up referral code");
+    if (codeFromBody) {
+      // Look up referrer by code (handle or short-id)
+      const { data, error: referrerError } = await supabaseAdmin
+        .from("users")
+        .select("id, handle")
+        .or(`handle.eq.${codeFromBody},id.ilike.${codeFromBody}%`)
+        .limit(1)
+        .maybeSingle();
+
+      if (referrerError) {
+        console.error("[referrals/track] Referrer lookup error:", referrerError);
+        return handleApiError(referrerError, "Failed to look up referral code");
+      }
+      referrerUser = data;
+      referralCode = codeFromBody;
+    } else {
+      // Use current user's referred_by (set at signup via ref=)
+      const { data: me } = await supabaseAdmin
+        .from("users")
+        .select("referred_by")
+        .eq("id", user.id)
+        .single();
+
+      if (!me?.referred_by) {
+        return errorResponse(
+          "No referral to attribute. Use referral_code or sign up with a referral link.",
+          "VALIDATION_ERROR",
+          400
+        );
+      }
+
+      const { data: referrer } = await supabaseAdmin
+        .from("users")
+        .select("id, handle")
+        .eq("id", (me as any).referred_by)
+        .single();
+
+      referrerUser = referrer;
+      referralCode = referrer?.handle || (referrer as any)?.id?.slice(0, 8) || String((me as any).referred_by);
     }
 
     if (!referrerUser) {
       return errorResponse(
-        "Invalid referral code",
+        "Invalid referral code or referrer not found",
         "NOT_FOUND",
         404
       );
@@ -75,48 +100,62 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Load referral reward settings
-    let rewardAmount = 50; // default ZAR
+    // Load referral reward settings (single-row table; column is referral_amount not reward_amount)
+    let rewardAmount = 50;
     let rewardCurrency = "ZAR";
-
     try {
       const { data: settings } = await supabaseAdmin
         .from("referral_settings")
-        .select("reward_amount, reward_currency")
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(1)
+        .select("referral_amount, referral_currency")
+        .eq("id", REFERRAL_SETTINGS_ID)
         .maybeSingle();
 
       if (settings) {
-        rewardAmount = Number(settings.reward_amount) || 50;
-        rewardCurrency = settings.reward_currency || "ZAR";
+        rewardAmount = Number((settings as any).referral_amount) || 50;
+        rewardCurrency = (settings as any).referral_currency || "ZAR";
       }
     } catch {
-      // Table may not exist — use defaults
+      // use defaults
     }
 
-    // Check for duplicate conversion on this booking
+    // Uniqueness: one reward per referred user (first booking only). No double-credit on later bookings.
     try {
-      const { data: existing } = await supabaseAdmin
+      const { data: existingForUser } = await supabaseAdmin
+        .from("user_referrals")
+        .select("id")
+        .eq("referred_user_id", user.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingForUser) {
+        return successResponse(
+          { referral_id: existingForUser.id, status: "already_converted" },
+          200
+        );
+      }
+    } catch {
+      // proceed
+    }
+
+    // Optional: same booking already tracked (idempotent)
+    try {
+      const { data: existingForBooking } = await supabaseAdmin
         .from("user_referrals")
         .select("id")
         .eq("referred_user_id", user.id)
         .eq("booking_id", booking_id)
         .maybeSingle();
-
-      if (existing) {
-        return errorResponse(
-          "Referral already tracked for this booking",
-          "CONFLICT",
-          409
+      if (existingForBooking) {
+        return successResponse(
+          { referral_id: existingForBooking.id, status: "already_tracked" },
+          200
         );
       }
     } catch {
-      // Table may not exist, proceed anyway
+      // proceed
     }
 
-    // Insert referral record
+    // Insert referral record (booking_id column added in migration 241)
     let referralRecord: any = null;
     try {
       const { data, error: insertError } = await supabaseAdmin
@@ -124,8 +163,8 @@ export async function POST(request: NextRequest) {
         .insert({
           referrer_id: referrerUser.id,
           referred_user_id: user.id,
-          referral_code,
-          booking_id,
+          referral_code: referralCode,
+          booking_id: booking_id,
           reward_amount: rewardAmount,
           reward_currency: rewardCurrency,
           status: "completed",
@@ -148,17 +187,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Award loyalty points to the referrer
+    // Credit referrer's wallet (platform pays this; see revenue impact in admin referral settings)
     try {
-      await supabaseAdmin.from("loyalty_points").insert({
+      await supabaseAdmin.rpc("wallet_credit_admin", {
+        p_user_id: referrerUser.id,
+        p_amount: rewardAmount,
+        p_currency: rewardCurrency,
+        p_description: `Referral reward — referred user completed first booking`,
+        p_reference_id: referralRecord?.id ?? null,
+        p_reference_type: "referral",
+      });
+    } catch (walletErr) {
+      console.warn("[referrals/track] Could not credit wallet:", walletErr);
+    }
+
+    // Optional: record in loyalty_point_transactions for audit (points = reward amount)
+    try {
+      await supabaseAdmin.from("loyalty_point_transactions").insert({
         user_id: referrerUser.id,
-        points: rewardAmount,
-        reason: "referral_reward",
-        reference_id: referralRecord?.id ?? booking_id,
+        points: Math.round(rewardAmount),
+        transaction_type: "earned",
+        description: "Referral reward",
+        reference_id: referralRecord?.id ?? null,
+        reference_type: "referral",
       });
     } catch {
-      // loyalty_points table may not exist — non-fatal
-      console.warn("[referrals/track] Could not award loyalty points");
+      // Non-fatal
     }
 
     return successResponse(

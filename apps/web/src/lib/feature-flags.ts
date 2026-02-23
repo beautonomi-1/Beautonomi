@@ -95,14 +95,18 @@ export async function getAllFeatureFlags(): Promise<FeatureFlag[]> {
     const response = await fetch('/api/admin/feature-flags', {
       method: 'GET',
       cache: 'no-store',
+      credentials: 'same-origin',
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch feature flags');
+      const errBody = await response.json().catch(() => ({}));
+      const message = errBody?.error?.message ?? `Failed to fetch feature flags (${response.status})`;
+      throw new Error(message);
     }
 
     const data = await response.json();
-    return data.featureFlags ?? [];
+    if (data.error) throw new Error(data.error.message ?? 'Failed to fetch feature flags');
+    return data.data ?? [];
   } catch (error) {
     console.error('Error fetching feature flags:', error);
     throw error;
@@ -126,11 +130,16 @@ export async function updateFeatureFlag(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(updates),
+      credentials: 'same-origin',
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to update feature flag');
+      const err = await response.json().catch(() => ({}));
+      const message =
+        typeof err?.error === 'string'
+          ? err.error
+          : err?.error?.message ?? err?.message ?? `Failed to update feature flag (${response.status})`;
+      throw new Error(message);
     }
 
     const data = await response.json();
@@ -158,13 +167,12 @@ export async function createFeatureFlag(
       body: JSON.stringify(featureFlag),
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to create feature flag');
-    }
-
     const data = await response.json();
-    return data.featureFlag;
+    if (!response.ok) {
+      throw new Error(data.error?.message || data.error || 'Failed to create feature flag');
+    }
+    if (data.error) throw new Error(data.error.message ?? 'Failed to create feature flag');
+    return data.data;
   } catch (error) {
     console.error('Error creating feature flag:', error);
     throw error;

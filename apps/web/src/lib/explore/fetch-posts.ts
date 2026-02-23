@@ -13,7 +13,12 @@ function getMediaPublicUrl(path: string): string {
  * Server-side fetch of published explore posts. Use for initial page load.
  */
 export async function fetchExplorePosts(limit = 20): Promise<ExplorePost[]> {
-  const supabase = await getSupabaseAdmin();
+  let supabase;
+  try {
+    supabase = getSupabaseAdmin();
+  } catch {
+    return [];
+  }
   const { data: rows, error } = await supabase
     .from("explore_posts")
     .select(
@@ -32,7 +37,8 @@ export async function fetchExplorePosts(limit = 20): Promise<ExplorePost[]> {
     .from("providers")
     .select("id, business_name, slug")
     .in("id", providerIds);
-  const provMap = new Map((provData || []).map((p: any) => [p.id, p]));
+  type ProvRow = { id: string; business_name?: string; slug?: string };
+  const provMap = new Map<string, ProvRow>((provData || []).map((p: ProvRow) => [p.id, p]));
 
   return rows.map((r: any) => {
     const p = provMap.get(r.provider_id);
@@ -62,7 +68,12 @@ export async function fetchExplorePosts(limit = 20): Promise<ExplorePost[]> {
  * Server-side fetch of a single published explore post.
  */
 export async function fetchExplorePost(id: string): Promise<ExplorePost | null> {
-  const supabase = await getSupabaseAdmin();
+  let supabase;
+  try {
+    supabase = getSupabaseAdmin();
+  } catch {
+    return null;
+  }
   const { data: row, error } = await supabase
     .from("explore_posts")
     .select(
@@ -109,7 +120,12 @@ export async function fetchRelatedPosts(
   excludeId: string,
   limit = 12
 ): Promise<ExplorePost[]> {
-  const supabase = await getSupabaseAdmin();
+  let supabase;
+  try {
+    supabase = getSupabaseAdmin();
+  } catch {
+    return [];
+  }
   const { data: rows, error } = await supabase
     .from("explore_posts")
     .select(
@@ -129,7 +145,8 @@ export async function fetchRelatedPosts(
     .from("providers")
     .select("id, business_name, slug")
     .in("id", providerIds);
-  const provMap = new Map((provData || []).map((p: any) => [p.id, p]));
+  type ProvRow = { id: string; business_name?: string; slug?: string };
+  const provMap = new Map<string, ProvRow>((provData || []).map((p: ProvRow) => [p.id, p]));
 
   return rows.map((r: any) => {
     const p = provMap.get(r.provider_id);

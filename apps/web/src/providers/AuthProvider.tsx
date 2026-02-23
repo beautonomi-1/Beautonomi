@@ -153,7 +153,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Mark refresh as in progress
     refreshInProgress.current = true;
     lastRefreshTime.current = Date.now();
-    
+
+    // Supabase client is null during SSR; skip and clear loading when on client
+    if (!supabase) {
+      setIsLoading(false);
+      refreshInProgress.current = false;
+      const result = userRef.current;
+      pendingRefreshCallbacks.current.forEach((cb) => cb.resolve(result));
+      pendingRefreshCallbacks.current = [];
+      return result;
+    }
+
     // Don't clear user state immediately - wait until we confirm no session
     // This prevents the flash of logout during rebuilds
 
@@ -231,6 +241,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn("Error creating session promise, Supabase client may be stale:", error);
         // If Supabase client is stale, try to get a fresh one
         const freshSupabase = getSupabaseClient();
+        if (!freshSupabase) throw error;
         sessionPromise = freshSupabase.auth.getSession();
       }
 
@@ -510,6 +521,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, isLoading, session]);
 
   useEffect(() => {
+    // Supabase client is null during SSR; effect runs on client so we need it
+    if (!supabase) {
+      setIsLoading(false);
+      return;
+    }
     let isMounted = true;
     let safetyTimeout: NodeJS.Timeout | null = null;
     let subscription: { unsubscribe: () => void } | null = null;
@@ -695,6 +711,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshUser, supabase, checkEmailVerification]);
 
   const signOut = useCallback(async () => {
+    if (!supabase) return;
     try {
       // Clear local state first
       setSession(null);
@@ -728,6 +745,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase, router]);
 
   const signIn = useCallback(async (email: string, password: string) => {
+    if (!supabase) return;
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -753,6 +771,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fullName?: string,
     phone?: string
   ) => {
+    if (!supabase) return;
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -790,6 +809,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase, refreshUser, checkEmailVerification]);
 
   const resendVerificationEmail = useCallback(async () => {
+    if (!supabase) return;
     try {
       const { error } = await supabase.auth.resend({
         type: 'signup',

@@ -32,6 +32,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Edit, KeyRound } from "lucide-react";
 
 interface StaffMember {
   id: string;
@@ -41,6 +51,7 @@ interface StaffMember {
   email: string | null;
   phone: string | null;
   role: "owner" | "manager" | "employee";
+  user_role: string | null; // from users.role: provider_owner | provider_staff
   avatar_url: string | null;
   bio: string | null;
   is_active: boolean;
@@ -57,10 +68,15 @@ interface StaffStatistics {
   total: number;
   active: number;
   inactive: number;
-  by_role: {
+  by_staff_role: {
     owner: number;
     manager: number;
     employee: number;
+  };
+  by_user_role: {
+    provider_owner: number;
+    provider_staff: number;
+    no_account: number;
   };
 }
 
@@ -70,12 +86,17 @@ export default function AdminStaff() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [staffRoleFilter, setStaffRoleFilter] = useState<string>("all");
+  const [userRoleFilter, setUserRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [editingMember, setEditingMember] = useState<StaffMember | null>(null);
+  const [editForm, setEditForm] = useState<{ name: string; email: string; phone: string; role: string; commission_percentage: number; bio: string }>({ name: "", email: "", phone: "", role: "employee", commission_percentage: 0, bio: "" });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState<string | null>(null);
 
   useEffect(() => {
     loadStaff();
-  }, [roleFilter, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps -- load when filters change
+  }, [staffRoleFilter, userRoleFilter, statusFilter]); // eslint-disable-line react-hooks/exhaustive-deps -- load when filters change
 
   const loadStaff = async () => {
     try {
@@ -83,16 +104,17 @@ export default function AdminStaff() {
       setError(null);
 
       const params = new URLSearchParams();
-      if (roleFilter !== "all") params.set("role", roleFilter);
+      if (staffRoleFilter !== "all") params.set("role", staffRoleFilter);
+      if (userRoleFilter !== "all") params.set("user_role", userRoleFilter);
       if (statusFilter !== "all") params.set("is_active", statusFilter === "active" ? "true" : "false");
 
       const response = await fetcher.get<{
-        staff: StaffMember[];
-        statistics: StaffStatistics;
+        data: { staff: StaffMember[]; statistics: StaffStatistics };
       }>(`/api/admin/staff?${params.toString()}`);
 
-      setStaff(response.staff || []);
-      setStatistics(response.statistics);
+      const data = (response as { data?: { staff?: StaffMember[]; statistics?: StaffStatistics } }).data;
+      setStaff(data?.staff || []);
+      setStatistics(data?.statistics ?? null);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -119,7 +141,57 @@ export default function AdminStaff() {
     }
   };
 
-  const getRoleBadgeColor = (role: string) => {
+  const openEditModal = (member: StaffMember) => {
+    setEditingMember(member);
+    setEditForm({
+      name: member.name ?? "",
+      email: member.email ?? "",
+      phone: member.phone ?? "",
+      role: member.role ?? "employee",
+      commission_percentage: member.commission_percentage ?? 0,
+      bio: member.bio ?? "",
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingMember) return;
+    try {
+      setIsSavingEdit(true);
+      await fetcher.patch(`/api/admin/staff/${editingMember.id}`, {
+        name: editForm.name,
+        email: editForm.email || null,
+        phone: editForm.phone || null,
+        role: editForm.role,
+        commission_percentage: editForm.commission_percentage,
+        bio: editForm.bio || null,
+      });
+      toast.success("Staff details updated");
+      setEditingMember(null);
+      loadStaff();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleSendPasswordReset = async (member: StaffMember) => {
+    if (!member.email && !member.user_id) {
+      toast.error("Add an email for this staff member first");
+      return;
+    }
+    try {
+      setIsSendingReset(member.id);
+      await fetcher.post(`/api/admin/staff/${member.id}/reset-password`, {});
+      toast.success("Password reset email sent");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to send reset email");
+    } finally {
+      setIsSendingReset(null);
+    }
+  };
+
+  const getStaffRoleBadgeColor = (role: string) => {
     switch (role) {
       case "owner":
         return "bg-purple-100 text-purple-800";
@@ -130,6 +202,20 @@ export default function AdminStaff() {
       default:
         return "bg-gray-100 text-gray-800";
     }
+  };
+
+  const getUserRoleLabel = (userRole: string | null) => {
+    if (!userRole) return "—";
+    if (userRole === "provider_owner") return "Provider owner";
+    if (userRole === "provider_staff") return "Provider staff";
+    return userRole;
+  };
+
+  const getUserRoleBadgeColor = (userRole: string | null) => {
+    if (!userRole) return "bg-gray-100 text-gray-500";
+    if (userRole === "provider_owner") return "bg-amber-100 text-amber-800";
+    if (userRole === "provider_staff") return "bg-sky-100 text-sky-800";
+    return "bg-gray-100 text-gray-800";
   };
 
   const filteredStaff = staff.filter((member) => {
@@ -162,7 +248,7 @@ export default function AdminStaff() {
 
         {/* Statistics */}
         {statistics && (
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
             <div className="bg-white border rounded-lg p-4">
               <p className="text-sm text-gray-600 mb-1">Total Staff</p>
               <p className="text-2xl font-semibold">{statistics.total}</p>
@@ -172,16 +258,20 @@ export default function AdminStaff() {
               <p className="text-2xl font-semibold text-green-600">{statistics.active}</p>
             </div>
             <div className="bg-white border rounded-lg p-4">
-              <p className="text-sm text-gray-600 mb-1">Inactive</p>
-              <p className="text-2xl font-semibold text-red-600">{statistics.inactive}</p>
+              <p className="text-sm text-gray-600 mb-1">Provider owners</p>
+              <p className="text-2xl font-semibold">{statistics.by_user_role?.provider_owner ?? 0}</p>
             </div>
             <div className="bg-white border rounded-lg p-4">
-              <p className="text-sm text-gray-600 mb-1">Managers</p>
-              <p className="text-2xl font-semibold">{statistics.by_role.manager}</p>
+              <p className="text-sm text-gray-600 mb-1">Provider staff</p>
+              <p className="text-2xl font-semibold">{statistics.by_user_role?.provider_staff ?? 0}</p>
             </div>
             <div className="bg-white border rounded-lg p-4">
-              <p className="text-sm text-gray-600 mb-1">Employees</p>
-              <p className="text-2xl font-semibold">{statistics.by_role.employee}</p>
+              <p className="text-sm text-gray-600 mb-1">Staff role: Manager</p>
+              <p className="text-2xl font-semibold">{statistics.by_staff_role?.manager ?? 0}</p>
+            </div>
+            <div className="bg-white border rounded-lg p-4">
+              <p className="text-sm text-gray-600 mb-1">Staff role: Employee</p>
+              <p className="text-2xl font-semibold">{statistics.by_staff_role?.employee ?? 0}</p>
             </div>
           </div>
         )}
@@ -199,11 +289,22 @@ export default function AdminStaff() {
               />
             </div>
             <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
+              value={userRoleFilter}
+              onChange={(e) => setUserRoleFilter(e.target.value)}
               className="px-4 py-2 border rounded-md bg-white"
+              title="Account role (users table)"
             >
-              <option value="all">All Roles</option>
+              <option value="all">All account roles</option>
+              <option value="provider_owner">Provider owner</option>
+              <option value="provider_staff">Provider staff</option>
+            </select>
+            <select
+              value={staffRoleFilter}
+              onChange={(e) => setStaffRoleFilter(e.target.value)}
+              className="px-4 py-2 border rounded-md bg-white"
+              title="Staff role within provider"
+            >
+              <option value="all">All staff roles</option>
               <option value="owner">Owner</option>
               <option value="manager">Manager</option>
               <option value="employee">Employee</option>
@@ -240,7 +341,8 @@ export default function AdminStaff() {
                   <TableHead>Staff Member</TableHead>
                   <TableHead>Provider</TableHead>
                   <TableHead>Contact</TableHead>
-                  <TableHead>Role</TableHead>
+                  <TableHead>Account role</TableHead>
+                  <TableHead>Staff role</TableHead>
                   <TableHead>Commission</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
@@ -295,7 +397,12 @@ export default function AdminStaff() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge className={getRoleBadgeColor(member.role)}>
+                      <Badge className={getUserRoleBadgeColor(member.user_role ?? null)}>
+                        {getUserRoleLabel(member.user_role ?? null)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={getStaffRoleBadgeColor(member.role)}>
                         {member.role}
                       </Badge>
                     </TableCell>
@@ -327,6 +434,17 @@ export default function AdminStaff() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEditModal(member)}>
+                            <Edit className="w-4 h-4 mr-2" />
+                            Edit details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleSendPasswordReset(member)}
+                            disabled={(!member.email && !member.user_id) || isSendingReset === member.id}
+                          >
+                            <KeyRound className="w-4 h-4 mr-2" />
+                            {isSendingReset === member.id ? "Sending…" : "Send password reset"}
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => handleToggleActive(member.id, member.is_active)}
                           >
@@ -341,6 +459,90 @@ export default function AdminStaff() {
             </Table>
           </div>
         )}
+
+        {/* Edit staff dialog */}
+        <Dialog open={!!editingMember} onOpenChange={(open) => !open && setEditingMember(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit staff member</DialogTitle>
+            </DialogHeader>
+            {editingMember && (
+              <div className="space-y-4 py-2">
+                <div>
+                  <Label htmlFor="edit-name">Name</Label>
+                  <Input
+                    id="edit-name"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-email">Email</Label>
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-phone">Phone</Label>
+                  <Input
+                    id="edit-phone"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-role">Staff role</Label>
+                  <select
+                    id="edit-role"
+                    value={editForm.role}
+                    onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))}
+                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="owner">Owner</option>
+                    <option value="manager">Manager</option>
+                    <option value="employee">Employee</option>
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="edit-commission">Commission %</Label>
+                  <Input
+                    id="edit-commission"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.01}
+                    value={editForm.commission_percentage}
+                    onChange={(e) => setEditForm((f) => ({ ...f, commission_percentage: parseFloat(e.target.value) || 0 }))}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-bio">Bio</Label>
+                  <Textarea
+                    id="edit-bio"
+                    value={editForm.bio}
+                    onChange={(e) => setEditForm((f) => ({ ...f, bio: e.target.value }))}
+                    className="mt-1 min-h-[80px]"
+                  />
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditingMember(null)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveEdit} disabled={isSavingEdit}>
+                {isSavingEdit ? "Saving…" : "Save"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </RoleGuard>
   );

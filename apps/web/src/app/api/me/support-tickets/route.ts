@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
+import { notifySupportTicketCreated } from "@/lib/notifications/notification-service";
 import { z } from "zod";
 
 const createTicketSchema = z.object({
@@ -24,12 +25,13 @@ export async function POST(request: NextRequest) {
 
     const adminSupabase = getSupabaseAdmin();
 
-    // Create support ticket
+    // Create support ticket (description NOT NULL: use first message; ticket_number set by DB trigger if omitted)
     const { data: ticket, error: ticketError } = await adminSupabase
       .from("support_tickets")
       .insert({
         user_id: user.id,
         subject: validated.subject,
+        description: validated.message.slice(0, 10000) || "(No description)",
         priority: validated.priority,
         status: "open",
         category: validated.category || "general",
@@ -57,6 +59,19 @@ export async function POST(request: NextRequest) {
       // If message creation fails, delete the ticket
       await adminSupabase.from("support_tickets").delete().eq("id", ticket.id);
       throw messageError;
+    }
+
+    // Confirm to user via email (and push if enabled) that ticket was created
+    try {
+      await notifySupportTicketCreated(
+        user.id,
+        ticket.ticket_number || ticket.id,
+        validated.subject,
+        ticket.id,
+        ["email", "push"]
+      );
+    } catch (notifyErr) {
+      console.error("Support ticket created notification failed:", notifyErr);
     }
 
     return successResponse({

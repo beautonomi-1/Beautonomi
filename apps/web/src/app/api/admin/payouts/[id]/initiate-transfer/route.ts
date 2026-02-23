@@ -19,9 +19,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"]);
+    const { user } = await requireRoleInApi(["superadmin"], request);
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     if (!supabase) {
       return NextResponse.json(
@@ -52,12 +52,14 @@ export async function POST(
       );
     }
 
-    // Load active recipient_code for provider
+    // Load active recipient_code for provider (use latest if multiple active accounts)
     const { data: acct } = await (supabase.from("provider_payout_accounts") as any)
       .select("recipient_code, currency")
       .eq("provider_id", p.provider_id)
       .eq("active", true)
       .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (!acct?.recipient_code) {

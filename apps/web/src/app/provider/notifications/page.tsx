@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/providers/AuthProvider";
 import {
   Bell,
   Calendar,
@@ -107,6 +108,7 @@ export default function ProviderNotificationsPage() {
   const [totalUnread, setTotalUnread] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const { user } = useAuth();
 
   const loadNotifications = async () => {
     try {
@@ -128,8 +130,12 @@ export default function ProviderNotificationsPage() {
   };
 
   useEffect(() => {
-    loadNotifications();
-  }, []);
+    if (user?.id) {
+      loadNotifications();
+    } else {
+      setIsLoading(false);
+    }
+  }, [user?.id]);
 
   const handleNotificationClick = async (notification: Notification) => {
     if (!notification.read) {

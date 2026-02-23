@@ -4,8 +4,8 @@ import { requireRoleInApi, handleApiError, successResponse } from "@/lib/supabas
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
     const { data, error } = await supabase
@@ -39,8 +39,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
     
     if (!supabase) {
       return NextResponse.json(
@@ -236,8 +236,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
     const { error } = await supabase

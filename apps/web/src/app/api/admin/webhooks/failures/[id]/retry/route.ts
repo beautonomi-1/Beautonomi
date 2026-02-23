@@ -18,7 +18,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Get the failed webhook event
     const { data: webhookEvent, error: fetchError } = await supabase

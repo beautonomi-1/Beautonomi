@@ -88,15 +88,16 @@ export default function AdminUsers() {
       params.set("limit", "50");
 
       const response = await fetcher.get<{
-        data: UserData[];
+        data: { data: UserData[]; meta: { page: number; limit: number; total: number; has_more: boolean } };
         error: null;
-        meta: { page: number; limit: number; total: number; has_more: boolean };
       }>(`/api/admin/users?${params.toString()}`);
 
-      setUsers(response.data || []);
-      if (response.meta) {
-        setTotal(response.meta.total);
-        setHasMore(response.meta.has_more);
+      const inner = (response as { data?: { data?: UserData[]; meta?: { total: number; has_more: boolean } } })?.data;
+      const list = Array.isArray(inner?.data) ? inner.data : [];
+      setUsers(list);
+      if (inner?.meta) {
+        setTotal(inner.meta.total);
+        setHasMore(inner.meta.has_more ?? false);
       }
     } catch (err) {
       const errorMessage =
@@ -304,7 +305,7 @@ export default function AdminUsers() {
     }
   };
 
-  const filteredUsers = users.filter((user) => {
+  const filteredUsers = (Array.isArray(users) ? users : []).filter((user) => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (

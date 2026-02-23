@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, Loader2, RefreshCw } from "lucide-react";
-import { fetcher } from "@/lib/http/fetcher";
+import { CheckCircle2, XCircle, Loader2, RefreshCw, ExternalLink } from "lucide-react";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -48,11 +49,12 @@ export default function AdminUserReportsPage() {
       setIsLoading(true);
       const params = new URLSearchParams({ limit: "100" });
       if (statusFilter !== "all") params.set("status", statusFilter);
-      const res = await fetcher.get<{ data: { data: UserReport[] } }>(
+      const res = await fetcher.get<{ data: { data?: UserReport[] } }>(
         `/api/admin/user-reports?${params.toString()}`
       );
-      const data = (res as { data?: { data?: UserReport[] } })?.data;
-      setReports(Array.isArray(data?.data) ? data.data : []);
+      const inner = (res as { data?: { data?: UserReport[] } })?.data;
+      const list = Array.isArray(inner?.data) ? inner.data : [];
+      setReports(list);
     } catch {
       toast.error("Failed to load reports");
       setReports([]);
@@ -77,8 +79,8 @@ export default function AdminUserReportsPage() {
       setSelectedReport(null);
       setResolutionNotes("");
       loadReports();
-    } catch {
-      toast.error("Failed to update report");
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to update report");
     } finally {
       setSubmitting(false);
     }
@@ -139,11 +141,37 @@ export default function AdminUserReportsPage() {
                           {reportTypeLabel(r.report_type)}
                         </Badge>
                         <p className="text-sm text-gray-900 font-medium">
-                          Reporter: {r.reporter?.full_name || r.reporter?.email || r.reporter_id}
+                          Reporter:{" "}
+                          <Link
+                            href={`/admin/users/${r.reporter_id}`}
+                            className="text-[#FF0077] hover:underline inline-flex items-center gap-0.5"
+                          >
+                            {r.reporter?.full_name || r.reporter?.email || r.reporter_id}
+                            <ExternalLink className="w-3 h-3" />
+                          </Link>
                         </p>
                         <p className="text-sm text-gray-500">
-                          Reported: {r.reported?.full_name || r.reported?.email || r.reported_user_id}
+                          Reported:{" "}
+                          <Link
+                            href={`/admin/users/${r.reported_user_id}`}
+                            className="text-[#FF0077] hover:underline inline-flex items-center gap-0.5"
+                          >
+                            {r.reported?.full_name || r.reported?.email || r.reported_user_id}
+                            <ExternalLink className="w-3 h-3" />
+                          </Link>
                         </p>
+                        {r.booking_id && (
+                          <p className="text-sm text-gray-600 mt-1">
+                            Booking:{" "}
+                            <Link
+                              href={`/admin/bookings/${r.booking_id}`}
+                              className="text-[#FF0077] hover:underline inline-flex items-center gap-0.5"
+                            >
+                              View booking
+                              <ExternalLink className="w-3 h-3" />
+                            </Link>
+                          </p>
+                        )}
                         <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">{r.description}</p>
                         <p className="text-xs text-gray-400 mt-2">{formatDate(r.created_at)}</p>
                       </div>

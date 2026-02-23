@@ -19,10 +19,10 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['superadmin']);
+    const { user } = await requireRoleInApi(['superadmin'], request);
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     // Validate request body

@@ -6,6 +6,7 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { z } from "zod";
 
 const createOrderSchema = z.object({
@@ -96,6 +97,28 @@ export async function POST(request: NextRequest) {
       return errorResponse("Collection location is required", "VALIDATION", 400);
     }
 
+    const paymentMethod = parsed.payment_method ?? "paystack";
+    if (paymentMethod === "paystack") {
+      const paystackEnabled = await isFeatureEnabledServer("payment_paystack");
+      if (!paystackEnabled) {
+        return errorResponse(
+          "Online card payment is currently unavailable. Please choose pay on delivery or another method.",
+          "FEATURE_DISABLED",
+          400
+        );
+      }
+    }
+    if (parsed.use_wallet === true) {
+      const walletEnabled = await isFeatureEnabledServer("payment_wallet");
+      if (!walletEnabled) {
+        return errorResponse(
+          "Wallet payment is currently unavailable.",
+          "FEATURE_DISABLED",
+          400
+        );
+      }
+    }
+
     // Get cart items for this provider
     const { data: cartItems, error: cartErr } = await (supabase.from("cart_items") as any)
       .select(
@@ -184,15 +207,19 @@ export async function POST(request: NextRequest) {
     let platformFee = 0;
     const isOnline = !["cash", "yoco"].includes(parsed.payment_method ?? "paystack");
     if (isOnline) {
-      const { data: platformSettings } = await (supabase.from("platform_settings") as any)
-        .select("platform_service_fee_type, platform_service_fee_percentage, platform_service_fee_fixed")
-        .single();
+      const { data: settingsRow } = await (supabase.from("platform_settings") as any)
+        .select("settings")
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
 
-      if (platformSettings) {
-        if (platformSettings.platform_service_fee_type === "fixed") {
-          platformFee = parseFloat(platformSettings.platform_service_fee_fixed) || 0;
+      const payouts = (settingsRow?.settings as Record<string, unknown>)?.payouts as Record<string, unknown> | undefined;
+      if (payouts) {
+        const feeType = (payouts.platform_service_fee_type as string) || "percentage";
+        if (feeType === "fixed") {
+          platformFee = Number(payouts.platform_service_fee_fixed) || 0;
         } else {
-          const pct = parseFloat(platformSettings.platform_service_fee_percentage) || 5;
+          const pct = Number(payouts.platform_service_fee_percentage) || 5;
           platformFee = Math.round(subtotal * pct) / 100;
         }
       } else {

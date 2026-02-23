@@ -14,7 +14,7 @@ export async function GET(request: Request) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
 
     const source = searchParams.get("source");

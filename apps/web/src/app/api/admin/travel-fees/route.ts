@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
 import { z } from 'zod';
 
@@ -21,17 +21,19 @@ const travelFeesSchema = z.object({
  * Get platform travel fee settings
  * Allows providers to read limits (for validation), but only superadmins can modify
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     // Allow providers and superadmins to read platform limits
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin']);
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
 
     const { data: platformSettings, error } = await supabase
       .from('platform_settings')
       .select('settings')
       .eq('is_active', true)
-      .single();
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (error && error.code !== 'PGRST116') {
       throw error;
@@ -75,78 +77,73 @@ export async function GET(_request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
 
     const validatedData = travelFeesSchema.parse(body);
 
-    // Get existing settings
+    // Get latest platform_settings row
     const { data: existing, error: _fetchError } = await supabase
       .from('platform_settings')
-      .select('settings')
-      .eq('is_active', true)
-      .single();
+      .select('id, settings')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    const currentSettings = existing?.settings || {};
+    const currentSettings = (existing as any)?.settings || {};
     const currentTravelFees = currentSettings.travel_fees || {};
 
-    // Merge with validated data
     const updatedTravelFees = {
       ...currentTravelFees,
       ...validatedData,
     };
 
-    // Update settings JSONB
-    const { data: updated, error: updateError } = await supabase
-      .from('platform_settings')
-      .update({
-        settings: {
-          ...currentSettings,
-          travel_fees: updatedTravelFees,
-        },
-        updated_at: new Date().toISOString(),
-      })
-      .eq('is_active', true)
-      .select('settings')
-      .single();
+    const newSettings = {
+      ...currentSettings,
+      travel_fees: updatedTravelFees,
+    };
 
-    if (updateError && updateError.code === 'PGRST116') {
-      // Create new record if doesn't exist
-      const { data: created, error: createError } = await supabase
+    if (existing && (existing as any).id) {
+      const { data: updated, error: updateError } = await supabase
         .from('platform_settings')
-        .insert({
-          settings: {
-            travel_fees: {
-              default_rate_per_km: 8.00,
-              default_minimum_fee: 20.00,
-              default_maximum_fee: null,
-              default_currency: 'ZAR',
-              allow_provider_customization: true,
-              provider_min_rate_per_km: 0.00,
-              provider_max_rate_per_km: 50.00,
-              provider_min_minimum_fee: 0.00,
-              provider_max_minimum_fee: 100.00,
-              ...validatedData,
-            },
-          },
-          is_active: true,
+        .update({
+          settings: newSettings,
+          updated_at: new Date().toISOString(),
         })
+        .eq('id', (existing as any).id)
         .select('settings')
         .single();
 
-      if (createError) {
-        throw createError;
-      }
-
-      return successResponse(created.settings.travel_fees);
+      if (updateError) throw updateError;
+      return successResponse((updated as any).settings.travel_fees);
     }
 
-    if (updateError) {
-      throw updateError;
-    }
+    // No row: create one
+    const { data: created, error: createError } = await supabase
+      .from('platform_settings')
+      .insert({
+        settings: {
+          travel_fees: {
+            default_rate_per_km: 8.00,
+            default_minimum_fee: 20.00,
+            default_maximum_fee: null,
+            default_currency: 'ZAR',
+            allow_provider_customization: true,
+            provider_min_rate_per_km: 0.00,
+            provider_max_rate_per_km: 50.00,
+            provider_min_minimum_fee: 0.00,
+            provider_max_minimum_fee: 100.00,
+            ...validatedData,
+          },
+        },
+        is_active: true,
+      })
+      .select('settings')
+      .single();
 
-    return successResponse(updated.settings.travel_fees);
+    if (createError) throw createError;
+    return successResponse((created as any).settings.travel_fees);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(

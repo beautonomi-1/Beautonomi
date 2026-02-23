@@ -1,22 +1,24 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 /**
  * POST /api/admin/bookings/[id]/refund
  *
- * Process a refund for a booking. Uses booking_refunds (same as provider
- * refunds) so that update_booking_payment_status trigger keeps totals in sync.
+ * Process a refund for a booking. Refunds always credit the customer's wallet
+ * (use for next booking or request payout). Uses booking_refunds so
+ * update_booking_payment_status trigger keeps totals in sync.
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    const auth = await requireRoleInApi(["superadmin"], request);
+    if (!auth) throw new Error("Authentication required");
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
 
     const { amount, reason } = body;
@@ -25,7 +27,6 @@ export async function POST(
       return errorResponse("Invalid refund amount", "VALIDATION_ERROR", 400);
     }
 
-    // Verify booking exists and get payment totals
     const { data: booking } = await supabase
       .from("bookings")
       .select("id, total_amount, total_paid, total_refunded, customer_id, booking_number, currency, payment_status")
@@ -59,14 +60,29 @@ export async function POST(
       );
     }
 
-    // Create refund record in booking_refunds (triggers update_booking_payment_status)
+    // 1. Credit customer wallet (refunds always go to wallet)
+    const { error: walletError } = await (supabase.rpc as any)("wallet_credit_admin", {
+      p_user_id: b.customer_id,
+      p_amount: amount,
+      p_currency: b.currency || "ZAR",
+      p_description: `Refund for booking ${b.booking_number}: ${reason || "Admin refund"}`,
+      p_reference_id: id,
+      p_reference_type: "booking_refund",
+    });
+
+    if (walletError) {
+      console.error("Wallet credit failed:", walletError);
+      return errorResponse("Failed to credit customer wallet", "WALLET_ERROR", 500);
+    }
+
+    // 2. Create refund record in booking_refunds (triggers update_booking_payment_status)
     const { data: refund, error: refundError } = await supabase
       .from("booking_refunds")
       .insert({
         booking_id: id,
         amount,
         reason: reason || "Admin refund",
-        refund_method: "manual",
+        refund_method: "store_credit",
         status: "completed",
         created_by: auth.user.id,
       })
@@ -83,10 +99,9 @@ export async function POST(
       action: "admin.refund.create",
       entity_type: "refund",
       entity_id: (refund as { id: string }).id,
-      metadata: { booking_id: id, amount, reason },
+      metadata: { booking_id: id, amount, reason, wallet_credit: true },
     });
 
-    // Update booking if full refund
     if (amount >= b.total_amount) {
       await supabase
         .from("bookings")
@@ -97,18 +112,13 @@ export async function POST(
         .eq("id", id);
     }
 
-    // Notify customer
     try {
       const { sendToUser } = await import("@/lib/notifications/onesignal");
       await sendToUser(b.customer_id, {
-        title: "Refund Processed",
-        message: `A refund of ${b.currency || "ZAR"} ${amount.toFixed(2)} has been processed for booking ${b.booking_number}.`,
-        data: {
-          type: "refund_processed",
-          booking_id: id,
-          refund_id: refund.id,
-        },
-        url: `/account-settings/bookings/${id}`,
+        title: "Refund added to wallet",
+        message: `A refund of ${b.currency || "ZAR"} ${amount.toFixed(2)} for booking ${b.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
+        data: { type: "refund_processed", booking_id: id, refund_id: (refund as { id: string }).id },
+        url: "/account-settings/wallet",
       });
     } catch (notifError) {
       console.error("Error sending notification:", notifError);

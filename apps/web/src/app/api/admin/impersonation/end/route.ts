@@ -8,7 +8,7 @@ import { writeAuditLog } from "@/lib/audit/audit";
 export async function POST(request: NextRequest) {
   try {
     // Require authenticated session (during impersonation, session is the impersonated user)
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     if (!supabase) {
       return NextResponse.json(
         { error: "Authentication required" },

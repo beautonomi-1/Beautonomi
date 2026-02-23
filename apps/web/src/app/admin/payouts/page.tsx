@@ -201,7 +201,9 @@ export default function AdminPayouts() {
       <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         <div className="mb-4 sm:mb-6">
           <h1 className="text-2xl sm:text-3xl font-semibold mb-1 sm:mb-2">Payout Management</h1>
-          <p className="text-sm sm:text-base text-gray-600">Manage provider payout queue</p>
+          <p className="text-sm sm:text-base text-gray-600">
+            Manage provider payout queue. Provider payouts are paid to their linked bank account. Customer refunds are processed via payments/refunds, not this queue.
+          </p>
         </div>
 
         {/* Filters */}
@@ -278,7 +280,7 @@ export default function AdminPayouts() {
                           )}
                         </td>
                         <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          ZAR {payout.amount.toLocaleString()}
+                          R {payout.amount.toLocaleString()}
                         </td>
                         <td className="px-4 lg:px-6 py-4 whitespace-nowrap">{getStatusBadge(payout.status)}</td>
                         <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -374,7 +376,7 @@ export default function AdminPayouts() {
                         {getStatusBadge(payout.status)}
                       </div>
                       <div className="text-lg sm:text-xl font-bold text-gray-900 mb-2">
-                        ZAR {payout.amount.toLocaleString()}
+                        R {payout.amount.toLocaleString()}
                       </div>
                       {payout.bank_account ? (
                         <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded mb-2">

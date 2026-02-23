@@ -12,6 +12,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { FetchError } from "@/lib/http/fetcher";
 import {
   Dialog,
   DialogContent,
@@ -90,76 +91,61 @@ export default function AdminIsoCodes() {
     loadData();
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps -- load when tab changes
 
-  // Load dependencies (languages and countries) when needed
+  // Load languages and countries on mount so Locales/Timezones tabs and dialogs have dropdown data
   useEffect(() => {
-    if (activeTab === "locales" || activeTab === "timezones") {
-      loadDependencies();
-    }
-  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps -- load dependencies when tab is locales/timezones
-
-  const loadDependencies = async () => {
-    try {
-      // Load languages and countries if not already loaded
-      if (languages.length === 0) {
-        const langsResponse = await fetcher.get<{ data: any[] }>("/api/admin/iso-codes/languages");
-        setLanguages(langsResponse.data || []);
+    let cancelled = false;
+    (async () => {
+      try {
+        const [langsRes, countriesRes] = await Promise.all([
+          fetcher.get<{ data?: Language[] }>("/api/admin/iso-codes/languages"),
+          fetcher.get<{ data?: Country[] }>("/api/admin/iso-codes/countries"),
+        ]);
+        if (!cancelled) {
+          const langList = Array.isArray(langsRes?.data) ? langsRes.data : [];
+          const countryList = Array.isArray(countriesRes?.data) ? countriesRes.data : [];
+          setLanguages(langList as Language[]);
+          setCountries(countryList as Country[]);
+        }
+      } catch {
+        // Non-blocking; dropdowns will populate when user visits Languages/Countries tab
       }
-      if (countries.length === 0) {
-        const countriesResponse = await fetcher.get<{ data: any[] }>("/api/admin/iso-codes/countries");
-        setCountries(countriesResponse.data || []);
-      }
-    } catch {
-      // Don't show toast for dependency loading failures
-    }
-  };
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const loadData = async () => {
     try {
       setIsLoading(true);
       const endpoint = `/api/admin/iso-codes/${activeTab}`;
-      const response = await fetcher.get<{ data: any[]; error?: any }>(endpoint);
-      
-      // Handle response structure: { data: [...], error: null }
-      const data = response.data || [];
-      
+      const response = await fetcher.get<{ data?: unknown[]; error?: { message?: string } }>(endpoint);
+      const data = Array.isArray(response?.data) ? response.data : [];
+
       switch (activeTab) {
         case "currencies":
-          setCurrencies(data);
+          setCurrencies(data as Currency[]);
           break;
         case "languages":
-          setLanguages(data);
+          setLanguages(data as Language[]);
           break;
         case "countries":
-          setCountries(data);
+          setCountries(data as Country[]);
           break;
         case "locales":
-          setLocales(data);
+          setLocales(data as Locale[]);
           break;
         case "timezones":
-          setTimezones(data);
+          setTimezones(data as Timezone[]);
           break;
       }
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : "Failed to load data";
-      toast.error(errorMessage);
-      
-      // Set empty arrays on error to show empty state
+      const message = e instanceof FetchError ? e.message : e instanceof Error ? e.message : "Failed to load data";
+      toast.error(message);
       switch (activeTab) {
-        case "currencies":
-          setCurrencies([]);
-          break;
-        case "languages":
-          setLanguages([]);
-          break;
-        case "countries":
-          setCountries([]);
-          break;
-        case "locales":
-          setLocales([]);
-          break;
-        case "timezones":
-          setTimezones([]);
-          break;
+        case "currencies": setCurrencies([]); break;
+        case "languages": setLanguages([]); break;
+        case "countries": setCountries([]); break;
+        case "locales": setLocales([]); break;
+        case "timezones": setTimezones([]); break;
       }
     } finally {
       setIsLoading(false);
@@ -178,23 +164,33 @@ export default function AdminIsoCodes() {
     setShowDialog(true);
   };
 
-  const handleDelete = async (item: any) => {
-    if (!confirm(`Are you sure you want to delete ${item.code || item.name}?`)) return;
+  function formatFetchError(e: unknown, fallback: string): string {
+    if (!(e instanceof FetchError)) return e instanceof Error ? e.message : fallback;
+    const msg = e.message;
+    if (!e.details) return msg;
+    const details = Array.isArray(e.details)
+      ? (e.details as Array<{ path?: string; message?: string }>).map((d) => (d.path ? `${d.path}: ${d.message ?? ""}` : String(d.message ?? d))).join("; ")
+      : String(e.details);
+    return details ? `${msg}: ${details}` : msg;
+  }
 
+  const handleDelete = async (item: { code: string; name?: string }) => {
+    if (!confirm(`Are you sure you want to delete ${item.code || item.name}?`)) return;
     try {
-      const code = item.code;
+      const code = encodeURIComponent(item.code);
       await fetcher.delete(`/api/admin/iso-codes/${activeTab}/${code}`);
       toast.success("Deleted successfully");
       loadData();
-    } catch {
-      toast.error("Failed to delete");
+    } catch (e) {
+      toast.error(formatFetchError(e, "Failed to delete"));
     }
   };
 
-  const handleSave = async (formData: any) => {
+  const handleSave = async (formData: Record<string, unknown>) => {
     try {
       if (editingItem) {
-        await fetcher.put(`/api/admin/iso-codes/${activeTab}/${editingItem.code}`, formData);
+        const code = encodeURIComponent(String(editingItem.code));
+        await fetcher.put(`/api/admin/iso-codes/${activeTab}/${code}`, formData);
         toast.success("Updated successfully");
       } else {
         await fetcher.post(`/api/admin/iso-codes/${activeTab}`, formData);
@@ -204,7 +200,7 @@ export default function AdminIsoCodes() {
       setEditingItem(null);
       loadData();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to save");
+      toast.error(formatFetchError(e, "Failed to save"));
     }
   };
 
@@ -213,7 +209,7 @@ export default function AdminIsoCodes() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="mb-6">
           <h1 className="text-3xl font-semibold mb-2">ISO Codes Management</h1>
@@ -332,7 +328,11 @@ function CurrencyTab({
         </Button>
       </div>
       {currencies.length === 0 ? (
-        <EmptyState title="No currencies" description="Add your first currency" />
+        <EmptyState
+          title="No currencies"
+          description="Add your first currency to get started"
+          action={{ label: "Add currency", onClick: onCreate }}
+        />
       ) : (
         <div className="bg-white border rounded-lg overflow-hidden">
           <table className="w-full">
@@ -404,7 +404,11 @@ function LanguageTab({
         </Button>
       </div>
       {languages.length === 0 ? (
-        <EmptyState title="No languages" description="Add your first language" />
+        <EmptyState
+          title="No languages"
+          description="Add your first language to get started"
+          action={{ label: "Add language", onClick: onCreate }}
+        />
       ) : (
         <div className="bg-white border rounded-lg overflow-hidden">
           <table className="w-full">
@@ -476,7 +480,11 @@ function CountryTab({
         </Button>
       </div>
       {countries.length === 0 ? (
-        <EmptyState title="No countries" description="Add your first country" />
+        <EmptyState
+          title="No countries"
+          description="Add your first country to get started"
+          action={{ label: "Add country", onClick: onCreate }}
+        />
       ) : (
         <div className="bg-white border rounded-lg overflow-hidden">
           <table className="w-full">
@@ -548,7 +556,11 @@ function LocaleTab({
         </Button>
       </div>
       {locales.length === 0 ? (
-        <EmptyState title="No locales" description="Add your first locale" />
+        <EmptyState
+          title="No locales"
+          description="Add your first locale (e.g. en-ZA) to get started"
+          action={{ label: "Add locale", onClick: onCreate }}
+        />
       ) : (
         <div className="bg-white border rounded-lg overflow-hidden">
           <table className="w-full">
@@ -621,7 +633,11 @@ function TimezoneTab({
         </Button>
       </div>
       {timezones.length === 0 ? (
-        <EmptyState title="No timezones" description="Add your first timezone" />
+        <EmptyState
+          title="No timezones"
+          description="Add your first timezone (e.g. Africa/Johannesburg)"
+          action={{ label: "Add timezone", onClick: onCreate }}
+        />
       ) : (
         <div className="bg-white border rounded-lg overflow-hidden">
           <table className="w-full">
@@ -761,7 +777,7 @@ function IsoCodeDialog({
                   id="symbol"
                   value={formData.symbol || ""}
                   onChange={(e) => setFormData({ ...formData, symbol: e.target.value })}
-                  placeholder="$"
+                  placeholder="R"
                 />
               </div>
               <div>
@@ -947,9 +963,11 @@ function IsoCodeDialog({
               <div>
                 <Label htmlFor="language_code">Language Code (ISO 639-1) *</Label>
                 <Select
-                  value={formData.language_code}
+                  value={formData.language_code || ""}
                   onValueChange={(value) => {
-                    const newCode = item ? formData.code : `${value.toLowerCase()}-${formData.country_code.toUpperCase()}`;
+                    const lang = (value || "").toLowerCase();
+                    const country = (formData.country_code || "").toUpperCase();
+                    const newCode = item ? formData.code : (lang && country ? `${lang}-${country}` : formData.code || "");
                     setFormData({ ...formData, language_code: value, code: newCode });
                   }}
                 >
@@ -968,9 +986,11 @@ function IsoCodeDialog({
               <div>
                 <Label htmlFor="country_code">Country Code (ISO 3166-1) *</Label>
                 <Select
-                  value={formData.country_code}
+                  value={formData.country_code || ""}
                   onValueChange={(value) => {
-                    const newCode = item ? formData.code : `${formData.language_code.toLowerCase()}-${value.toUpperCase()}`;
+                    const lang = (formData.language_code || "").toLowerCase();
+                    const country = (value || "").toUpperCase();
+                    const newCode = item ? formData.code : (lang && country ? `${lang}-${country}` : formData.code || "");
                     setFormData({ ...formData, country_code: value, code: newCode });
                   }}
                 >

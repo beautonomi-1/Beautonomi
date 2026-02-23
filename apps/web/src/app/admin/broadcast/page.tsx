@@ -15,8 +15,10 @@ import {
   History,
   Users,
   Building2,
+  UserPlus,
 } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
+import { FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
@@ -30,6 +32,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { format } from "date-fns";
+
+const RECIPIENT_OPTIONS = [
+  { value: "all_users", label: "All Customers", icon: Users },
+  { value: "all_providers", label: "All Providers", icon: Building2 },
+  { value: "custom", label: "Specific recipients", icon: UserPlus },
+] as const;
+
+function parseUserIds(input: string): string[] {
+  return input
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function formatFetchError(e: unknown, fallback: string): string {
+  if (!(e instanceof FetchError)) return e instanceof Error ? e.message : fallback;
+  return e.details ? `${e.message}: ${Array.isArray(e.details) ? (e.details as Array<{ message?: string }>).map((d) => d.message).join("; ") : String(e.details)}` : e.message;
+}
 
 interface BroadcastLog {
   id: string;
@@ -53,16 +73,19 @@ export default function BroadcastPage() {
   // Email form
   const [emailSubject, setEmailSubject] = useState("");
   const [emailMessage, setEmailMessage] = useState("");
-  const [emailRecipientType, setEmailRecipientType] = useState("all_users");
+  const [emailRecipientType, setEmailRecipientType] = useState<string>("all_users");
+  const [emailSpecificIds, setEmailSpecificIds] = useState("");
 
   // SMS form
   const [smsMessage, setSmsMessage] = useState("");
-  const [smsRecipientType, setSmsRecipientType] = useState("all_users");
+  const [smsRecipientType, setSmsRecipientType] = useState<string>("all_users");
+  const [smsSpecificIds, setSmsSpecificIds] = useState("");
 
   // Push form
   const [pushTitle, setPushTitle] = useState("");
   const [pushMessage, setPushMessage] = useState("");
-  const [pushRecipientType, setPushRecipientType] = useState("all_users");
+  const [pushRecipientType, setPushRecipientType] = useState<string>("all_users");
+  const [pushSpecificIds, setPushSpecificIds] = useState("");
   const [pushUrl, setPushUrl] = useState("");
 
   useEffect(() => {
@@ -75,19 +98,24 @@ export default function BroadcastPage() {
     try {
       setIsLoadingHistory(true);
       const response = await fetcher.get<{
+        data?: { broadcasts?: BroadcastLog[]; meta?: { total: number } };
         broadcasts?: BroadcastLog[];
-        data?: BroadcastLog[];
-        meta: { total: number };
       }>("/api/admin/broadcast/history");
-      // Handle both response formats for compatibility
-      const broadcasts = (response as any).broadcasts || (response as any).data || [];
-      setHistory(Array.isArray(broadcasts) ? broadcasts : []);
+      const raw = (response as any)?.data ?? response;
+      const broadcasts = Array.isArray(raw?.broadcasts) ? raw.broadcasts : Array.isArray(raw) ? raw : [];
+      setHistory(broadcasts);
     } catch (error) {
       console.error("Error loading history:", error);
-      toast.error("Failed to load broadcast history");
+      toast.error(formatFetchError(error, "Failed to load broadcast history"));
     } finally {
       setIsLoadingHistory(false);
     }
+  };
+
+  const getRecipientLabel = (type: string) => {
+    if (type === "all_users") return "all customers";
+    if (type === "all_providers") return "all providers";
+    return "specific recipients";
   };
 
   const handleSendEmail = async () => {
@@ -95,33 +123,35 @@ export default function BroadcastPage() {
       toast.error("Subject and message are required");
       return;
     }
-
-    if (!confirm(`Send email to ${emailRecipientType === "all_users" ? "all users" : emailRecipientType === "all_providers" ? "all providers" : "selected users"}?`)) {
-      return;
+    if (emailRecipientType === "custom") {
+      const ids = parseUserIds(emailSpecificIds);
+      if (ids.length === 0) {
+        toast.error("Enter at least one user ID for specific recipients");
+        return;
+      }
     }
+    if (!confirm(`Send email to ${getRecipientLabel(emailRecipientType)}?`)) return;
 
     try {
       setIsSending(true);
-      const response = await fetcher.post<{
-        success: boolean;
-        recipients: number;
-        notification_id: string;
-      }>("/api/admin/broadcast/email", {
+      const payload: { subject: string; message: string; recipient_type: string; user_ids?: string[] } = {
         subject: emailSubject,
         message: emailMessage,
         recipient_type: emailRecipientType,
-      });
-
-      // Handle response format - fetcher may unwrap or return nested data
-      const responseData = (response as any).data || response;
-      toast.success(`Email sent to ${responseData.recipients || 0} recipients`);
+      };
+      if (emailRecipientType === "custom") payload.user_ids = parseUserIds(emailSpecificIds);
+      const response = await fetcher.post<{ success: boolean; recipients: number; notification_id: string }>(
+        "/api/admin/broadcast/email",
+        payload
+      );
+      const responseData = (response as any)?.data ?? response;
+      toast.success(`Email sent to ${responseData?.recipients ?? 0} recipients`);
       setEmailSubject("");
       setEmailMessage("");
-      if (activeTab === "history") {
-        loadHistory();
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to send email broadcast");
+      if (emailRecipientType === "custom") setEmailSpecificIds("");
+      if (activeTab === "history") loadHistory();
+    } catch (error) {
+      toast.error(formatFetchError(error, "Failed to send email broadcast"));
     } finally {
       setIsSending(false);
     }
@@ -132,31 +162,33 @@ export default function BroadcastPage() {
       toast.error("Message is required");
       return;
     }
-
-    if (!confirm(`Send SMS to ${smsRecipientType === "all_users" ? "all users" : smsRecipientType === "all_providers" ? "all providers" : "selected users"}?`)) {
-      return;
+    if (smsRecipientType === "custom") {
+      const ids = parseUserIds(smsSpecificIds);
+      if (ids.length === 0) {
+        toast.error("Enter at least one user ID for specific recipients");
+        return;
+      }
     }
+    if (!confirm(`Send SMS to ${getRecipientLabel(smsRecipientType)}?`)) return;
 
     try {
       setIsSending(true);
-      const response = await fetcher.post<{
-        success: boolean;
-        recipients: number;
-        notification_id: string;
-      }>("/api/admin/broadcast/sms", {
+      const payload: { message: string; recipient_type: string; user_ids?: string[] } = {
         message: smsMessage,
         recipient_type: smsRecipientType,
-      });
-
-      // Handle response format - fetcher may unwrap or return nested data
-      const responseData = (response as any).data || response;
-      toast.success(`SMS sent to ${responseData.recipients || 0} recipients`);
+      };
+      if (smsRecipientType === "custom") payload.user_ids = parseUserIds(smsSpecificIds);
+      const response = await fetcher.post<{ success: boolean; recipients: number; notification_id: string }>(
+        "/api/admin/broadcast/sms",
+        payload
+      );
+      const responseData = (response as any)?.data ?? response;
+      toast.success(`SMS sent to ${responseData?.recipients ?? 0} recipients`);
       setSmsMessage("");
-      if (activeTab === "history") {
-        loadHistory();
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to send SMS broadcast");
+      if (smsRecipientType === "custom") setSmsSpecificIds("");
+      if (activeTab === "history") loadHistory();
+    } catch (error) {
+      toast.error(formatFetchError(error, "Failed to send SMS broadcast"));
     } finally {
       setIsSending(false);
     }
@@ -167,35 +199,37 @@ export default function BroadcastPage() {
       toast.error("Title and message are required");
       return;
     }
-
-    if (!confirm(`Send push notification to ${pushRecipientType === "all_users" ? "all users" : pushRecipientType === "all_providers" ? "all providers" : "selected users"}?`)) {
-      return;
+    if (pushRecipientType === "custom") {
+      const ids = parseUserIds(pushSpecificIds);
+      if (ids.length === 0) {
+        toast.error("Enter at least one user ID for specific recipients");
+        return;
+      }
     }
+    if (!confirm(`Send push notification to ${getRecipientLabel(pushRecipientType)}?`)) return;
 
     try {
       setIsSending(true);
-      const response = await fetcher.post<{
-        success: boolean;
-        recipients: number;
-        notification_id: string;
-      }>("/api/admin/broadcast/push", {
+      const payload: { title: string; message: string; recipient_type: string; url?: string; user_ids?: string[] } = {
         title: pushTitle,
         message: pushMessage,
         recipient_type: pushRecipientType,
         url: pushUrl || undefined,
-      });
-
-      // Handle response format - fetcher may unwrap or return nested data
-      const responseData = (response as any).data || response;
-      toast.success(`Push notification sent to ${responseData.recipients || 0} recipients`);
+      };
+      if (pushRecipientType === "custom") payload.user_ids = parseUserIds(pushSpecificIds);
+      const response = await fetcher.post<{ success: boolean; recipients: number; notification_id: string }>(
+        "/api/admin/broadcast/push",
+        payload
+      );
+      const responseData = (response as any)?.data ?? response;
+      toast.success(`Push notification sent to ${responseData?.recipients ?? 0} recipients`);
       setPushTitle("");
       setPushMessage("");
       setPushUrl("");
-      if (activeTab === "history") {
-        loadHistory();
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to send push broadcast");
+      if (pushRecipientType === "custom") setPushSpecificIds("");
+      if (activeTab === "history") loadHistory();
+    } catch (error) {
+      toast.error(formatFetchError(error, "Failed to send push broadcast"));
     } finally {
       setIsSending(false);
     }
@@ -226,7 +260,7 @@ export default function BroadcastPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
       <div className="min-h-screen bg-zinc-50/50">
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
           <motion.div
@@ -272,24 +306,33 @@ export default function BroadcastPage() {
                       onValueChange={setEmailRecipientType}
                     >
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="Choose recipients" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all_users">
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4" />
-                            All Users
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="all_providers">
-                          <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4" />
-                            All Providers
-                          </div>
-                        </SelectItem>
+                        {RECIPIENT_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            <div className="flex items-center gap-2">
+                              <opt.icon className="w-4 h-4" />
+                              {opt.label}
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
+                  {emailRecipientType === "custom" && (
+                    <div>
+                      <Label htmlFor="email_specific_ids">User IDs (one per line or comma-separated)</Label>
+                      <Textarea
+                        id="email_specific_ids"
+                        value={emailSpecificIds}
+                        onChange={(e) => setEmailSpecificIds(e.target.value)}
+                        placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
+                        rows={3}
+                        className="font-mono text-sm"
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <Label htmlFor="email_subject">Subject *</Label>
@@ -314,7 +357,12 @@ export default function BroadcastPage() {
 
                   <Button
                     onClick={handleSendEmail}
-                    disabled={isSending || !emailSubject.trim() || !emailMessage.trim()}
+                    disabled={
+                      isSending ||
+                      !emailSubject.trim() ||
+                      !emailMessage.trim() ||
+                      (emailRecipientType === "custom" && parseUserIds(emailSpecificIds).length === 0)
+                    }
                     className="w-full"
                   >
                     <Send className="w-4 h-4 mr-2" />
@@ -332,24 +380,33 @@ export default function BroadcastPage() {
                       onValueChange={setSmsRecipientType}
                     >
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="Choose recipients" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all_users">
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4" />
-                            All Users
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="all_providers">
-                          <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4" />
-                            All Providers
-                          </div>
-                        </SelectItem>
+                        {RECIPIENT_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            <div className="flex items-center gap-2">
+                              <opt.icon className="w-4 h-4" />
+                              {opt.label}
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
+                  {smsRecipientType === "custom" && (
+                    <div>
+                      <Label htmlFor="sms_specific_ids">User IDs (one per line or comma-separated)</Label>
+                      <Textarea
+                        id="sms_specific_ids"
+                        value={smsSpecificIds}
+                        onChange={(e) => setSmsSpecificIds(e.target.value)}
+                        placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
+                        rows={3}
+                        className="font-mono text-sm"
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <Label htmlFor="sms_message">Message *</Label>
@@ -368,7 +425,11 @@ export default function BroadcastPage() {
 
                   <Button
                     onClick={handleSendSMS}
-                    disabled={isSending || !smsMessage.trim()}
+                    disabled={
+                      isSending ||
+                      !smsMessage.trim() ||
+                      (smsRecipientType === "custom" && parseUserIds(smsSpecificIds).length === 0)
+                    }
                     className="w-full"
                   >
                     <Send className="w-4 h-4 mr-2" />
@@ -386,24 +447,33 @@ export default function BroadcastPage() {
                       onValueChange={setPushRecipientType}
                     >
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="Choose recipients" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all_users">
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4" />
-                            All Users
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="all_providers">
-                          <div className="flex items-center gap-2">
-                            <Building2 className="w-4 h-4" />
-                            All Providers
-                          </div>
-                        </SelectItem>
+                        {RECIPIENT_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            <div className="flex items-center gap-2">
+                              <opt.icon className="w-4 h-4" />
+                              {opt.label}
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
+                  {pushRecipientType === "custom" && (
+                    <div>
+                      <Label htmlFor="push_specific_ids">User IDs (one per line or comma-separated)</Label>
+                      <Textarea
+                        id="push_specific_ids"
+                        value={pushSpecificIds}
+                        onChange={(e) => setPushSpecificIds(e.target.value)}
+                        placeholder="e.g. 550e8400-e29b-41d4-a716-446655440000"
+                        rows={3}
+                        className="font-mono text-sm"
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <Label htmlFor="push_title">Title *</Label>
@@ -439,7 +509,12 @@ export default function BroadcastPage() {
 
                   <Button
                     onClick={handleSendPush}
-                    disabled={isSending || !pushTitle.trim() || !pushMessage.trim()}
+                    disabled={
+                      isSending ||
+                      !pushTitle.trim() ||
+                      !pushMessage.trim() ||
+                      (pushRecipientType === "custom" && parseUserIds(pushSpecificIds).length === 0)
+                    }
                     className="w-full"
                   >
                     <Send className="w-4 h-4 mr-2" />
@@ -490,12 +565,18 @@ export default function BroadcastPage() {
                               </td>
                               <td className="px-4 py-4 whitespace-nowrap">
                                 <div className="flex items-center gap-2">
-                                  {broadcast.recipient_type === "all_users" ? (
-                                    <Users className="w-4 h-4 text-gray-400" />
-                                  ) : (
-                                    <Building2 className="w-4 h-4 text-gray-400" />
-                                  )}
-                                  <span>{broadcast.recipient_count}</span>
+                                  {broadcast.recipient_type === "all_users" && <Users className="w-4 h-4 text-gray-400" />}
+                                  {broadcast.recipient_type === "all_providers" && <Building2 className="w-4 h-4 text-gray-400" />}
+                                  {broadcast.recipient_type === "custom" && <UserPlus className="w-4 h-4 text-gray-400" />}
+                                  <span>
+                                    {broadcast.recipient_type === "all_users"
+                                      ? "All customers"
+                                      : broadcast.recipient_type === "all_providers"
+                                        ? "All providers"
+                                        : "Specific"}
+                                    {" · "}
+                                    {broadcast.recipient_count}
+                                  </span>
                                 </div>
                               </td>
                               <td className="px-4 py-4">

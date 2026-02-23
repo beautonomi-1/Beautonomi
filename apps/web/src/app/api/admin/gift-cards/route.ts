@@ -17,7 +17,7 @@ const createGiftCardSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
     const supabaseAdmin = getSupabaseAdmin();
 

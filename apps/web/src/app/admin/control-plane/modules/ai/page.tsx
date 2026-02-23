@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { ArrowLeft } from "lucide-react";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 export default function AiModulePage() {
   const [env, setEnv] = useState("production");
@@ -68,6 +69,7 @@ export default function AiModulePage() {
   };
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Link href="/admin/control-plane/overview"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
@@ -146,5 +148,6 @@ export default function AiModulePage() {
         </Card>
       )}
     </div>
+    </RoleGuard>
   );
 }

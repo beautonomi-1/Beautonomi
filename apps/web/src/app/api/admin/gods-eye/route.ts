@@ -1,16 +1,16 @@
 import { NextRequest } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     // Require superadmin role
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
-    const supabase = await getSupabaseServer();
-    
+    const supabase = getSupabaseAdmin();
+
     if (!supabase) {
-      console.error("Failed to get Supabase client");
+      console.error("Failed to get Supabase admin client");
       return handleApiError(new Error("Database connection failed"), 'Failed to load Gods Eye data');
     }
 
@@ -34,7 +34,7 @@ export async function GET(_request: NextRequest) {
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'customer'),
       supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'active'),
       supabase.from('bookings').select('*', { count: 'exact', head: true }),
-      supabase.from('bookings').select('*', { count: 'exact', head: true }).in('status', ['confirmed', 'pending']),
+      supabase.from('bookings').select('*', { count: 'exact', head: true }).in('status', ['confirmed', 'pending', 'in_progress']),
       supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'pending_approval'),
       supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('location_type', 'at_home'),
       supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('location_type', 'at_salon'),
@@ -53,29 +53,28 @@ export async function GET(_request: NextRequest) {
       supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('status', 'completed'),
     ]);
 
-    // Get revenue breakdown
+    // Get revenue breakdown (GMV = sum of amount for payment types)
     const getRevenue = async (startISO: string, endISO?: string) => {
       try {
         let query = supabase
           .from("finance_transactions")
-          .select("amount, net, fees")
+          .select("transaction_type, amount")
+          .in("transaction_type", ["payment", "additional_charge_payment"])
           .gte("created_at", startISO);
-        
+
         if (endISO) {
           query = query.lte("created_at", endISO);
         }
 
         const { data, error } = await query;
-        
+
         if (error) {
           console.error("Error fetching revenue:", error);
           return 0;
         }
 
         const rows = data || [];
-        return rows
-          .filter((r: any) => ['payment', 'additional_charge_payment'].includes(r.transaction_type))
-          .reduce((sum: number, r: any) => sum + Number(r.net || 0) - Number(r.fees || 0), 0);
+        return rows.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
       } catch (err) {
         console.error("Error calculating revenue:", err);
         return 0;
@@ -89,125 +88,96 @@ export async function GET(_request: NextRequest) {
       getRevenue(new Date(0).toISOString()), // All time
     ]);
 
-    // Get top providers (by revenue) - optimized query
-    const { data: topProvidersData } = await supabase
+    // Top providers: fetch all providers (any status) so list is never empty when providers exist
+    const { data: activeProvidersData } = await supabase
       .from('providers')
-      .select(`
-        id,
-        business_name,
-        owner_name
-      `)
-      .eq('status', 'active')
-      .limit(10);
+      .select('id, business_name, owner_name, rating_average, status')
+      .limit(20);
 
-    // Get bookings count and ratings in parallel
-    const providerIds = (topProvidersData || []).map((p: any) => p.id);
-    
-    const [bookingsCounts, ratingsData] = await Promise.all([
-      providerIds.length > 0
-        ? supabase
-            .from('bookings')
-            .select('provider_id')
-            .in('provider_id', providerIds)
-            .then(({ data }) => {
-              const counts: Record<string, number> = {};
-              (data || []).forEach((b: any) => {
-                counts[b.provider_id] = (counts[b.provider_id] || 0) + 1;
-              });
-              return counts;
-            })
-        : Promise.resolve({}),
-      providerIds.length > 0
-        ? supabase
-            .from('provider_ratings')
-            .select('provider_id, avg_rating')
-            .in('provider_id', providerIds)
-            .then(({ data }) => {
-              const ratings: Record<string, number> = {};
-              (data || []).forEach((r: any) => {
-                ratings[r.provider_id] = r.avg_rating || 0;
-              });
-              return ratings;
-            })
-        : Promise.resolve({}),
-    ]);
+    const allProviderIds = (activeProvidersData || []).map((p: any) => p.id);
 
-    // Get all provider transactions in one query
-    const { data: allProviderTransactions } = providerIds.length > 0
-      ? await supabase
-          .from('finance_transactions')
-          .select('provider_id, net, fees')
-          .in('provider_id', providerIds)
-          .in('transaction_type', ['payment', 'additional_charge_payment'])
-      : { data: [] };
-
-    // Calculate revenue per provider
+    // Revenue from finance_transactions (provider_earnings, travel_fee, tip)
     const providerRevenue: Record<string, number> = {};
-    (allProviderTransactions || []).forEach((t: any) => {
-      if (!providerRevenue[t.provider_id]) {
-        providerRevenue[t.provider_id] = 0;
-      }
-      providerRevenue[t.provider_id] += Number(t.net || 0) - Number(t.fees || 0);
-    });
+    if (allProviderIds.length > 0) {
+      const { data: providerTxRows } = await supabase
+        .from('finance_transactions')
+        .select('provider_id, net, amount')
+        .in('provider_id', allProviderIds)
+        .in('transaction_type', ['provider_earnings', 'travel_fee', 'tip']);
+      (providerTxRows || []).forEach((t: any) => {
+        const id = t.provider_id;
+        if (!id) return;
+        if (!providerRevenue[id]) providerRevenue[id] = 0;
+        providerRevenue[id] += Number(t.net ?? t.amount ?? 0);
+      });
+    }
 
-    const topProviders = (topProvidersData || []).map((provider: any) => ({
-      id: provider.id,
-      name: provider.business_name || provider.owner_name || 'Unknown',
-      bookings_count: (bookingsCounts as Record<string, number>)[provider.id as string] || 0,
-      revenue: providerRevenue[provider.id] || 0,
-      rating: (ratingsData as Record<string, number>)[provider.id] || 0,
-    })).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+    // Bookings count per provider
+    const bookingsCounts: Record<string, number> = {};
+    if (allProviderIds.length > 0) {
+      const { data: bookingRows } = await supabase
+        .from('bookings')
+        .select('provider_id')
+        .in('provider_id', allProviderIds);
+      (bookingRows || []).forEach((b: any) => {
+        bookingsCounts[b.provider_id] = (bookingsCounts[b.provider_id] || 0) + 1;
+      });
+    }
 
-    // Get top customers (by total spent) - optimized query
+    const topProviders = (activeProvidersData || [])
+      .map((provider: any) => ({
+        id: provider.id,
+        name: provider.business_name || provider.owner_name || 'Unknown',
+        bookings_count: bookingsCounts[provider.id] || 0,
+        revenue: providerRevenue[provider.id] ?? 0,
+        rating: Number(provider.rating_average) || 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+
+    // Get top customers (by total spent) - finance_transactions has booking_id not customer_id, so derive via bookings
     const { data: topCustomersData } = await supabase
       .from('users')
-      .select(`
-        id,
-        full_name,
-        email
-      `)
+      .select('id, full_name, email')
       .eq('role', 'customer')
-      .limit(10);
+      .limit(20);
 
     const customerIds = (topCustomersData || []).map((c: any) => c.id);
-
-    // Get bookings count and transactions in parallel
-    const [customerBookingsCounts, customerTransactions] = await Promise.all([
-      customerIds.length > 0
-        ? supabase
-            .from('bookings')
-            .select('customer_id')
-            .in('customer_id', customerIds)
-            .then(({ data }) => {
-              const counts: Record<string, number> = {};
-              (data || []).forEach((b: any) => {
-                counts[b.customer_id] = (counts[b.customer_id] || 0) + 1;
-              });
-              return counts;
-            })
-        : Promise.resolve({}),
-      customerIds.length > 0
-        ? supabase
-            .from('finance_transactions')
-            .select('customer_id, amount')
-            .in('customer_id', customerIds)
-            .in('transaction_type', ['payment', 'additional_charge_payment'])
-        : Promise.resolve({ data: [] }),
-    ]);
-
-    // Calculate total spent per customer
+    const customerBookingsCounts: Record<string, number> = {};
     const customerSpent: Record<string, number> = {};
-    ((customerTransactions as any)?.data || []).forEach((t: any) => {
-      if (!customerSpent[t.customer_id]) {
-        customerSpent[t.customer_id] = 0;
+
+    if (customerIds.length > 0) {
+      const { data: customerBookings } = await supabase
+        .from('bookings')
+        .select('id, customer_id')
+        .in('customer_id', customerIds);
+      (customerBookings || []).forEach((b: any) => {
+        customerBookingsCounts[b.customer_id] = (customerBookingsCounts[b.customer_id] || 0) + 1;
+      });
+      const bookingIds = (customerBookings || []).map((b: any) => b.id);
+      if (bookingIds.length > 0) {
+        const { data: txRows } = await supabase
+          .from('finance_transactions')
+          .select('booking_id, amount')
+          .in('booking_id', bookingIds)
+          .in('transaction_type', ['payment', 'additional_charge_payment']);
+        const bookingToCustomer: Record<string, string> = {};
+        (customerBookings || []).forEach((b: any) => {
+          bookingToCustomer[b.id] = b.customer_id;
+        });
+        (txRows || []).forEach((t: any) => {
+          const cid = bookingToCustomer[t.booking_id];
+          if (cid) {
+            customerSpent[cid] = (customerSpent[cid] || 0) + Number(t.amount || 0);
+          }
+        });
       }
-      customerSpent[t.customer_id] += Number(t.amount || 0);
-    });
+    }
 
     const topCustomers = (topCustomersData || []).map((customer: any) => ({
       id: customer.id,
       name: customer.full_name || customer.email || 'Unknown',
-      bookings_count: (customerBookingsCounts as Record<string, number>)[customer.id as string] || 0,
+      bookings_count: customerBookingsCounts[customer.id] || 0,
       total_spent: customerSpent[customer.id] || 0,
     })).sort((a, b) => b.total_spent - a.total_spent).slice(0, 5);
 

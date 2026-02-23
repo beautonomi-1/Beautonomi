@@ -24,7 +24,7 @@ export async function GET(
   try {
     const { id } = await params;
     await requireRoleInApi(["superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data, error } = await (supabase.from("product_return_requests") as any)
       .select(
@@ -55,7 +55,7 @@ export async function PATCH(
     const { user } = await requireRoleInApi(["superadmin"], request);
     const body = await request.json();
     const parsed = resolveSchema.parse(body);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: req } = await (supabase.from("product_return_requests") as any)
       .select("id, status, refund_amount")

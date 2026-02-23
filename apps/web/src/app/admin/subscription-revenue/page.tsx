@@ -32,6 +32,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import Link from "next/link";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface SubscriptionMetrics {
   mrr: number;
@@ -118,28 +119,33 @@ export default function SubscriptionRevenuePage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading subscription metrics..." />
-      </div>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
+        <div className="container mx-auto px-4 py-8">
+          <LoadingTimeout loadingMessage="Loading subscription metrics..." />
+        </div>
+      </RoleGuard>
     );
   }
 
   if (error || !metrics) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <EmptyState
-          title="Failed to load subscription revenue"
-          description={error || "Unable to load subscription revenue data"}
-          action={{
-            label: "Retry",
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
+        <div className="container mx-auto px-4 py-8">
+          <EmptyState
+            title="Failed to load subscription revenue"
+            description={error || "Unable to load subscription revenue data"}
+            action={{
+              label: "Retry",
             onClick: loadMetrics,
           }}
         />
-      </div>
+        </div>
+      </RoleGuard>
     );
   }
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="container mx-auto px-4 py-8 space-y-6" data-page="subscription-revenue">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -446,5 +452,6 @@ export default function SubscriptionRevenuePage() {
           </CardContent>
         </Card>
     </div>
+    </RoleGuard>
   );
 }

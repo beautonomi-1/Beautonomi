@@ -28,6 +28,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { fetcher } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/providers/AuthProvider";
 
 interface Activity {
   id: string;
@@ -108,25 +109,28 @@ export default function NotificationsDropdown() {
   const [totalUnread, setTotalUnread] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const { user } = useAuth();
 
   useEffect(() => {
-    // Load activities on mount
+    if (!user?.id) {
+      setIsLoading(false);
+      setActivities([]);
+      setTotalUnread(0);
+      return;
+    }
     loadActivities();
-    
-    // Refresh every 2 minutes
+
     const interval = setInterval(loadActivities, 120000);
-    
-    // If popover is open, refresh more frequently (every 30 seconds)
     let fastInterval: NodeJS.Timeout | null = null;
     if (open) {
       fastInterval = setInterval(loadActivities, 30000);
     }
-    
+
     return () => {
       clearInterval(interval);
       if (fastInterval) clearInterval(fastInterval);
     };
-  }, [open]);
+  }, [open, user?.id]);
 
   const loadActivities = async () => {
     try {

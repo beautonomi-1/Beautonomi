@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
-import { convertToCents, validateYocoAmount } from "@/lib/payments/yoco";
+import { convertToCents, validateYocoAmount, YOCO_ENDPOINTS } from "@/lib/payments/yoco";
 
 const createPaymentSchema = z.object({
   device_id: z.string().uuid().min(1, "Device ID is required"),

@@ -39,7 +39,7 @@ const sendNotificationSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"]);
+    const { user } = await requireRoleInApi(["superadmin"], request);
 
     const body = await request.json();
     const validationResult = sendNotificationSchema.safeParse(body);

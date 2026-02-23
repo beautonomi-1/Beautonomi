@@ -7,9 +7,10 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Breadcrumb, { BreadcrumbItem } from "@/components/ui/breadcrumb";
 
-interface SettingsDetailLayoutProps {
+export interface SettingsDetailLayoutProps {
   title?: string;
   subtitle?: string;
+  description?: string;
   children: ReactNode;
   onSave?: () => void;
   saveLabel?: string;
@@ -23,6 +24,7 @@ interface SettingsDetailLayoutProps {
 export function SettingsDetailLayout({
   title,
   subtitle,
+  description,
   children,
   onSave,
   saveLabel = "Save Changes",
@@ -32,6 +34,7 @@ export function SettingsDetailLayout({
   breadcrumbs,
   showCloseButton = true,
 }: SettingsDetailLayoutProps) {
+  const effectiveSubtitle = subtitle ?? description;
   // Use isSaving if provided, otherwise use saveDisabled
   const disabled = isSaving || saveDisabled;
   const label = isSaving ? "Saving..." : saveLabel;
@@ -77,7 +80,7 @@ export function SettingsDetailLayout({
             )}
             <div className="min-w-0 flex-1">
               {title && <h1 className="text-xl sm:text-2xl md:text-3xl font-semibold text-gray-900 truncate">{title}</h1>}
-              {subtitle && <p className="text-xs sm:text-sm text-gray-600 mt-1 break-words">{subtitle}</p>}
+              {effectiveSubtitle && <p className="text-xs sm:text-sm text-gray-600 mt-1 break-words">{effectiveSubtitle}</p>}
             </div>
           </div>
         </div>

@@ -102,7 +102,12 @@ export function ProviderTopbar() {
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuItem>Profile</DropdownMenuItem>
             <DropdownMenuItem>Settings</DropdownMenuItem>
-            <DropdownMenuItem>Help</DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/help">Help Centre</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/help/submit-ticket">Contact support</Link>
+            </DropdownMenuItem>
             <DropdownMenuItem className="text-red-600">Logout</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

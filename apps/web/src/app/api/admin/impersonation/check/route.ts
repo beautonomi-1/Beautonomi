@@ -3,10 +3,10 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     // Require authenticated session
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     if (!supabase) {
       return NextResponse.json(
         { error: "Authentication required", isImpersonating: false },

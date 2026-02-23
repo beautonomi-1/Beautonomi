@@ -5,7 +5,7 @@ import { requireRole } from "@/lib/supabase/auth-server";
 export async function GET(request: NextRequest) {
   try {
     await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { searchParams } = new URL(request.url);
     const category = searchParams.get("category");
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
     const { name, message_template, category, variables, enabled } = body;

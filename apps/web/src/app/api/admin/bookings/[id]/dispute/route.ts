@@ -27,7 +27,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     // Validate request body

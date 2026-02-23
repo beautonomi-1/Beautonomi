@@ -2,7 +2,7 @@
 
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import OnlineBookingFlow from "../components/OnlineBookingFlow";
+import OnlineBookingFlowNew from "../components/OnlineBookingFlowNew";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { Button } from "@/components/ui/button";
@@ -84,7 +84,7 @@ export default function BookProviderPage() {
   }
 
   return (
-    <OnlineBookingFlow
+    <OnlineBookingFlowNew
       provider={provider}
       queryParams={{
         service: searchParams?.get("service") ?? undefined,

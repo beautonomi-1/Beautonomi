@@ -28,7 +28,7 @@ export async function GET(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: city, error } = await supabase
       .from("featured_cities")
@@ -95,7 +95,7 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     // Validate request body
@@ -179,7 +179,7 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Soft delete by setting is_active to false
     const { data: city, error } = await (supabase

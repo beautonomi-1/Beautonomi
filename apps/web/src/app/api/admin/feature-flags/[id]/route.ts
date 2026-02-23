@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRole } from '@/lib/supabase/auth-server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { requireRoleInApi } from '@/lib/supabase/api-helpers';
 import { writeAuditLog } from "@/lib/audit/audit";
 import { writeConfigChangeLog } from "@/lib/config/config-change-log";
 
@@ -10,13 +10,13 @@ import { writeConfigChangeLog } from "@/lib/config/config-change-log";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = getSupabaseAdmin();
 
-    const { id } = params;
+    const { id } = await params;
 
     // Fetch feature flag
     const { data: featureFlag, error } = await supabase
@@ -49,13 +49,13 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const { user } = await requireRoleInApi(['superadmin'], request);
+    const supabase = getSupabaseAdmin();
 
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const {
       feature_name,
@@ -101,7 +101,7 @@ export async function PATCH(
     if (error) {
       console.error('Error updating feature flag:', error);
       return NextResponse.json(
-        { error: 'Failed to update feature flag' },
+        { error: { message: error.message || 'Failed to update feature flag', code: 'UPDATE_ERROR' } },
         { status: 500 }
       );
     }
@@ -150,13 +150,13 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const { user } = await requireRoleInApi(['superadmin'], request);
+    const supabase = getSupabaseAdmin();
 
-    const { id } = params;
+    const { id } = await params;
 
     // Delete feature flag
     const { error } = await supabase

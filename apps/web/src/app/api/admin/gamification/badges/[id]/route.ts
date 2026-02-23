@@ -1,19 +1,19 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/admin/gamification/badges/[id]
- * 
- * Get a specific badge (admin only)
+ *
+ * Get a specific badge (superadmin only). Uses admin client to bypass RLS.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
 
     const { data: badge, error } = await supabase
@@ -41,16 +41,16 @@ export async function GET(
 
 /**
  * PATCH /api/admin/gamification/badges/[id]
- * 
- * Update a badge (admin only)
+ *
+ * Update a badge (superadmin only). Uses admin client to bypass RLS.
  */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
 
     const body = await request.json();
@@ -106,16 +106,16 @@ export async function PATCH(
 
 /**
  * DELETE /api/admin/gamification/badges/[id]
- * 
- * Delete a badge (admin only)
+ *
+ * Delete a badge (superadmin only). Uses admin client to bypass RLS.
  */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
 
     // Check if badge is in use

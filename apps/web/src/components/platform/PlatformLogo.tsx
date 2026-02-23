@@ -21,14 +21,15 @@ export default function PlatformLogo({
 }: PlatformLogoProps) {
   const { branding, isLoading } = usePlatformSettings();
 
-  // Use platform logo if available, otherwise fallback to default
-  const logoUrl = branding?.logo_url || logo;
-  
+  // Use platform logo if available, otherwise fallback to default (normalize null to fallback)
+  const logoUrl = branding?.logo_url ?? logo;
+  const safeLogoUrl: string | typeof logo = (logoUrl ?? "/images/logo.svg") ?? "/images/logo.svg";
+
   // Determine if it's an external URL
-  const isExternalUrl = typeof logoUrl === "string" && (logoUrl.startsWith("http://") || logoUrl.startsWith("https://"));
-  
+  const isExternalUrl = typeof safeLogoUrl === "string" && (safeLogoUrl.startsWith("http://") || safeLogoUrl.startsWith("https://"));
+
   // Determine if it's an imported image object (has src property) or a string path
-  const isImportedImage = typeof logoUrl === "object" && logoUrl !== null && "src" in logoUrl;
+  const isImportedImage = typeof safeLogoUrl === "object" && safeLogoUrl !== null && "src" in (safeLogoUrl as object);
   
   // Default dimensions if not provided (w-44 = 176px, typical logo aspect ratio)
   const defaultWidth = width || 176;
@@ -52,7 +53,7 @@ export default function PlatformLogo({
     // For external URLs, use regular img tag
     return (
       <img
-        src={logoUrl as string}
+        src={safeLogoUrl as string}
         alt={alt}
         className={className}
         width={defaultWidth}
@@ -70,7 +71,7 @@ export default function PlatformLogo({
   if (isImportedImage) {
     return (
       <Image
-        src={logoUrl as any}
+        src={safeLogoUrl as any}
         alt={alt}
         className={className}
         width={defaultWidth}
@@ -83,7 +84,7 @@ export default function PlatformLogo({
   // For local string paths (starting with /), use Next.js Image with required dimensions
   return (
     <Image
-      src={logoUrl as string}
+      src={safeLogoUrl as string}
       alt={alt}
       className={className}
       width={defaultWidth}

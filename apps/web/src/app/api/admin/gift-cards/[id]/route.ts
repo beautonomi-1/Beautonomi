@@ -19,7 +19,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -68,7 +68,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -125,7 +125,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
     const supabaseAdmin = getSupabaseAdmin();
 

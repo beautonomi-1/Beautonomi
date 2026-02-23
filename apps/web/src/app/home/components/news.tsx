@@ -1,5 +1,7 @@
 import { Button } from "@/components/ui/button";
-import Image, { StaticImageData } from "next/image";
+import Image, { type StaticImageData } from "next/image";
+
+type ImgSrc = StaticImageData | string;
 import Image1 from './../../../../public/images/Group 7.svg';
 import Image2 from './../../../../public/images/Group 2 (3).png';
 import Image3 from './../../../../public/images/Frame 4.png';
@@ -26,7 +28,7 @@ export default function News() {
   );
 }
 
-function Card({ title, image }: { title: string; image: StaticImageData }) {
+function Card({ title, image }: { title: string; image: ImgSrc }) {
   return (
     <div className="bg-pink-100 rounded-xl px-4 py-7 flex flex-col justify-between h-full">
       <div>

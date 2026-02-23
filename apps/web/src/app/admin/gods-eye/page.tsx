@@ -120,7 +120,8 @@ export default function GodsEyePage() {
         "/api/admin/gods-eye",
         { timeoutMs: 30000 }
       );
-      setData(response.data);
+      const payload = (response as { data?: GodsEyeData }).data ?? response;
+      setData(payload as GodsEyeData);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -135,14 +136,14 @@ export default function GodsEyePage() {
     }
   };
 
-  const filteredActivity = data?.recent_activity.filter((activity) => {
+  const filteredActivity = (data?.recent_activity ?? []).filter((activity) => {
     if (filterType !== "all" && activity.type !== filterType) return false;
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       return (
-        activity.action.toLowerCase().includes(query) ||
-        activity.entity_name.toLowerCase().includes(query) ||
-        activity.entity_id.toLowerCase().includes(query)
+        (activity.action || "").toLowerCase().includes(query) ||
+        (activity.entity_name || "").toLowerCase().includes(query) ||
+        (activity.entity_id || "").toLowerCase().includes(query)
       );
     }
     return true;
@@ -199,15 +200,15 @@ export default function GodsEyePage() {
     // Top Providers
     rows.push("TOP PROVIDERS");
     rows.push("Name,Bookings,Revenue,Rating");
-    data.top_providers.forEach((p) => {
-      rows.push(`${p.name},${p.bookings_count},${p.revenue},${p.rating}`);
+    (data.top_providers ?? []).forEach((p) => {
+      rows.push(`${p.name},${p.bookings_count},${p.revenue},${p.rating ?? ""}`);
     });
     rows.push("");
     
     // Top Customers
     rows.push("TOP CUSTOMERS");
     rows.push("Name,Bookings,Total Spent");
-    data.top_customers.forEach((c) => {
+    (data.top_customers ?? []).forEach((c) => {
       rows.push(`${c.name},${c.bookings_count},${c.total_spent}`);
     });
     rows.push("");
@@ -336,7 +337,7 @@ export default function GodsEyePage() {
           />
           <OverviewCard
             title="Total Revenue"
-            value={`ZAR ${(data?.overview.total_revenue || 0).toLocaleString()}`}
+            value={`R ${(data?.overview.total_revenue || 0).toLocaleString()}`}
             icon={<DollarSign className="w-6 h-6" />}
             color="orange"
           />
@@ -479,44 +480,52 @@ export default function GodsEyePage() {
           <div className="bg-white border rounded-lg p-6">
             <h3 className="text-lg font-semibold mb-4">Top Providers</h3>
             <div className="space-y-3">
-              {data?.top_providers.slice(0, 5).map((provider) => (
-                <div
-                  key={provider.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                >
-                  <div>
-                    <p className="font-medium">{provider.name}</p>
-                    <p className="text-sm text-gray-600">
-                      {provider.bookings_count} bookings • Rating: {provider.rating}
+              {(data?.top_providers ?? []).slice(0, 5).length > 0 ? (
+                (data?.top_providers ?? []).slice(0, 5).map((provider) => (
+                  <div
+                    key={provider.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                  >
+                    <div>
+                      <p className="font-medium">{provider.name}</p>
+                      <p className="text-sm text-gray-600">
+                        {provider.bookings_count} bookings • Rating: {provider.rating ?? "—"}
+                      </p>
+                    </div>
+                    <p className="font-semibold text-green-600">
+                      R {(provider.revenue ?? 0).toLocaleString()}
                     </p>
                   </div>
-                  <p className="font-semibold text-green-600">
-                    ZAR {provider.revenue.toLocaleString()}
-                  </p>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-sm text-gray-500 py-4 text-center">No provider data yet</p>
+              )}
             </div>
           </div>
 
           <div className="bg-white border rounded-lg p-6">
             <h3 className="text-lg font-semibold mb-4">Top Customers</h3>
             <div className="space-y-3">
-              {data?.top_customers.slice(0, 5).map((customer) => (
-                <div
-                  key={customer.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                >
-                  <div>
-                    <p className="font-medium">{customer.name}</p>
-                    <p className="text-sm text-gray-600">
-                      {customer.bookings_count} bookings
+              {(data?.top_customers ?? []).slice(0, 5).length > 0 ? (
+                (data?.top_customers ?? []).slice(0, 5).map((customer) => (
+                  <div
+                    key={customer.id}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                  >
+                    <div>
+                      <p className="font-medium">{customer.name}</p>
+                      <p className="text-sm text-gray-600">
+                        {customer.bookings_count} bookings
+                      </p>
+                    </div>
+                    <p className="font-semibold text-blue-600">
+                      R {(customer.total_spent ?? 0).toLocaleString()}
                     </p>
                   </div>
-                  <p className="font-semibold text-blue-600">
-                    ZAR {customer.total_spent.toLocaleString()}
-                  </p>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-sm text-gray-500 py-4 text-center">No customer data yet</p>
+              )}
             </div>
           </div>
         </div>
@@ -667,7 +676,7 @@ function RevenueCard({ period, amount }: { period: string; amount: number }) {
   return (
     <div className="p-4 bg-gray-50 rounded-lg">
       <p className="text-sm text-gray-600 mb-2">{period}</p>
-      <p className="text-xl font-semibold">ZAR {amount.toLocaleString()}</p>
+      <p className="text-xl font-semibold">R {amount.toLocaleString()}</p>
     </div>
   );
 }

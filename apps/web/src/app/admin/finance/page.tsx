@@ -37,6 +37,9 @@ interface FinanceSummary {
   subscription_collected_gross: number;
   subscription_net: number;
   subscription_gateway_fees: number;
+  ads_net: number;
+  ads_gross: number;
+  ads_gateway_fees: number;
   total_platform_take_net: number;
 
   provider_earnings: number;
@@ -44,6 +47,11 @@ interface FinanceSummary {
   gmv_growth: number;
   gift_card_sales: number;
   membership_sales: number;
+
+  wallet_topup_revenue: number;
+  referral_payouts: number;
+  total_platform_take_after_referrals: number;
+
   period: {
     start_date: string | null;
     end_date: string | null;
@@ -193,6 +201,7 @@ export default function AdminFinance() {
                     <div>
                       <h4 className="font-medium text-xs mb-1">Platform Revenue Split:</h4>
                       <div className="text-xs text-gray-600 space-y-1">
+                        <p><strong>Commission</strong> = platform fees (the platform&apos;s share of booking revenue).</p>
                         <p><strong>Commission (Gross):</strong> Platform&apos;s % of booking revenue before refunds</p>
                         <p><strong>Refund Impact:</strong> Commission lost on refunded bookings</p>
                         <p><strong>Commission (Net):</strong> Gross Commission - Refund Impact</p>
@@ -218,6 +227,16 @@ export default function AdminFinance() {
                         <p>Platform Commission (20%): R197</p>
                         <p>Platform Take: R197 - R15 = R182</p>
                         <p>Provider Earnings: R985 - R197 = R788</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-medium text-xs mb-1">True platform financial picture:</h4>
+                      <div className="text-xs text-gray-600 space-y-1">
+                        <p><strong>Referrals:</strong> Payouts to referrers (wallet credits) are a platform expense and reduce net take.</p>
+                        <p><strong>Gift cards:</strong> Sales are platform revenue when sold; redemptions are part of booking GMV (no double count).</p>
+                        <p><strong>Wallet:</strong> Top-ups are cash in (revenue); spending from wallet on bookings is already in Services Collected.</p>
+                        <p><strong>Total Platform Take (after referrals &amp; wallet):</strong> Commission + Subscriptions + Wallet top-up − Referral payouts = true net platform revenue.</p>
                       </div>
                     </div>
                   </div>
@@ -353,18 +372,35 @@ export default function AdminFinance() {
                   value={summary.refunds_gross}
                   icon={<TrendingDown className="w-4 h-4 sm:w-5 sm:h-5" />}
                   format="currency"
+                  infoTooltip="Total amount refunded to customers in the period (gross refund value)."
                 />
                 <SummaryCard
                   title="Gift Card Sales"
                   value={summary.gift_card_sales}
                   icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
                   format="currency"
+                  infoTooltip="Revenue from gift card purchases (recorded in finance ledger when customer buys a card). Redemptions are part of booking GMV."
                 />
                 <SummaryCard
                   title="Membership Sales"
                   value={summary.membership_sales}
                   icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
                   format="currency"
+                  infoTooltip="Revenue from membership purchases (one-time or recurring)."
+                />
+                <SummaryCard
+                  title="Wallet Top-up Revenue"
+                  value={summary.wallet_topup_revenue ?? 0}
+                  icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  format="currency"
+                  infoTooltip="Cash received when customers top up their wallet balance (Paystack). When they spend wallet on bookings, that is already included in Services Collected."
+                />
+                <SummaryCard
+                  title="Referral Payouts"
+                  value={summary.referral_payouts ?? 0}
+                  icon={<TrendingDown className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  format="currency"
+                  infoTooltip="Total amount paid out to referrers (wallet credits when referred users complete a qualifying booking). This is a platform expense."
                 />
               </div>
             )}
@@ -376,6 +412,13 @@ export default function AdminFinance() {
                   value={summary.subscription_net}
                   icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
                   format="currency"
+                />
+                <SummaryCard
+                  title="Ads Revenue (Net)"
+                  value={summary.ads_net ?? 0}
+                  icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  format="currency"
+                  infoTooltip="Provider pre-pay for ad campaign budget. Platform receives this when providers fund campaigns."
                 />
                 <SummaryCard
                   title="Subscription Fees (Gross)"
@@ -405,6 +448,14 @@ export default function AdminFinance() {
                   value={summary.total_platform_take_net}
                   icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
                   format="currency"
+                  infoTooltip="Commission (net) + Subscription revenue + Ads revenue, before wallet top-up and referral payouts. Use the card below for true platform net."
+                />
+                <SummaryCard
+                  title="Total Platform Take (after referrals & wallet)"
+                  value={summary.total_platform_take_after_referrals ?? summary.total_platform_take_net}
+                  icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
+                  format="currency"
+                  infoTooltip="True platform net: Commission + Subscriptions + Wallet top-up revenue − Referral payouts. This is the full financial picture including gift-card-style revenue and referral expense."
                 />
               </div>
             )}
@@ -460,13 +511,13 @@ export default function AdminFinance() {
                             {tx.transaction_type}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            ZAR {tx.amount.toLocaleString()}
+                            R {tx.amount.toLocaleString()}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            ZAR {tx.fees.toLocaleString()}
+                            R {tx.fees.toLocaleString()}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            ZAR {tx.net.toLocaleString()}
+                            R {tx.net.toLocaleString()}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {tx.booking?.booking_number || "N/A"}
@@ -506,18 +557,18 @@ export default function AdminFinance() {
                           </div>
                           <div className="text-right">
                             <div className="text-sm font-semibold text-gray-900">
-                              ZAR {tx.net.toLocaleString()}
+                              R {tx.net.toLocaleString()}
                             </div>
                             {tx.fees > 0 && (
                               <div className="text-xs text-gray-500">
-                                Fees: ZAR {tx.fees.toLocaleString()}
+                                Fees: R {tx.fees.toLocaleString()}
                               </div>
                             )}
                           </div>
                         </div>
                         {tx.amount !== tx.net && (
                           <div className="text-xs text-gray-500 pt-1 border-t">
-                            Gross: ZAR {tx.amount.toLocaleString()}
+                            Gross: R {tx.amount.toLocaleString()}
                           </div>
                         )}
                       </div>
@@ -578,7 +629,7 @@ function SummaryCard({
   infoTooltip?: string;
 }) {
   const formattedValue =
-    format === "currency" ? `ZAR ${value.toLocaleString()}` : value.toLocaleString();
+    format === "currency" ? `R ${value.toLocaleString()}` : value.toLocaleString();
 
   return (
     <div className="bg-white border rounded-lg p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow">

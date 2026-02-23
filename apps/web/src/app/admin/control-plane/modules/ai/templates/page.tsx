@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { ArrowLeft, Plus, Pencil } from "lucide-react";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface TemplateRow {
   id: string;
@@ -184,6 +185,7 @@ export default function AiTemplatesPage() {
   };
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -406,5 +408,6 @@ export default function AiTemplatesPage() {
         </CardContent>
       </Card>
     </div>
+    </RoleGuard>
   );
 }

@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { BeautonomiGateModal } from "./BeautonomiGateModal";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import Link from "next/link";
+import Image from "next/image";
 import { ChevronLeft, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -287,6 +289,44 @@ export default function OnlineBookingFlow({
     }
     setCreatingHold(true);
     try {
+      let addressPayload: {
+        line1: string;
+        city: string;
+        country: string;
+        line2?: string;
+        state?: string;
+        postal_code?: string;
+        latitude?: number;
+        longitude?: number;
+      } | null = null;
+
+      if (
+        locationType === "at_home" &&
+        atHomeAddress.line1.trim() &&
+        atHomeAddress.city.trim()
+      ) {
+        addressPayload = {
+          line1: atHomeAddress.line1.trim(),
+          city: atHomeAddress.city.trim(),
+          country: atHomeAddress.country.trim() || "ZA",
+          line2: atHomeAddress.line2,
+          state: atHomeAddress.state,
+          postal_code: atHomeAddress.postal_code,
+        };
+        try {
+          const query = [atHomeAddress.line1.trim(), atHomeAddress.city.trim(), atHomeAddress.country.trim() || "ZA"].filter(Boolean).join(", ");
+          const geocodeRes = await fetcher.post<{ data: Array<{ center: [number, number] }> }>("/api/mapbox/geocode", { query, limit: 1 });
+          const results = (geocodeRes as any)?.data ?? [];
+          if (results.length > 0 && results[0].center) {
+            const [lng, lat] = results[0].center;
+            addressPayload.latitude = lat;
+            addressPayload.longitude = lng;
+          }
+        } catch {
+          // Proceed without coords; travel fee will be 0
+        }
+      }
+
       const res = await fetcher.post<{ data: { hold_id: string; expires_at: string } }>(
         "/api/public/booking-holds",
         {
@@ -297,19 +337,7 @@ export default function OnlineBookingFlow({
           end_at: slotEnd,
           location_type: locationType,
           location_id: locationType === "at_salon" ? selectedLocation?.id : null,
-          address:
-            locationType === "at_home" &&
-            atHomeAddress.line1.trim() &&
-            atHomeAddress.city.trim()
-              ? {
-                  line1: atHomeAddress.line1.trim(),
-                  city: atHomeAddress.city.trim(),
-                  country: atHomeAddress.country.trim() || "ZA",
-                  line2: atHomeAddress.line2,
-                  state: atHomeAddress.state,
-                  postal_code: atHomeAddress.postal_code,
-                }
-              : null,
+          address: addressPayload,
         }
       );
       const id = (res.data as any)?.hold_id ?? res.data?.hold_id;
@@ -344,6 +372,11 @@ export default function OnlineBookingFlow({
   return (
     <div className={`min-h-screen bg-background ${embed ? "p-2" : ""}`}>
       <div className={`mx-auto space-y-6 ${embed ? "max-w-md p-3" : "max-w-lg p-6"}`}>
+        <div className="flex items-center gap-3">
+          <Link href="/" className="shrink-0" aria-label="Beautonomi home">
+            <Image src="/images/logo.svg" alt="Beautonomi" width={120} height={32} className="h-8 w-auto" />
+          </Link>
+        </div>
         <h1 className={embed ? "text-lg font-semibold" : "text-2xl font-semibold"}>
           Book with {provider.business_name}
         </h1>

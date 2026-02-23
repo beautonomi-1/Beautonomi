@@ -22,10 +22,10 @@ const pricingPlanSchema = z.object({
  * GET /api/admin/pricing-plans
  * Get all pricing plans (admin only)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
 
     const { data: plans, error } = await supabase
       .from("pricing_plans")
@@ -48,8 +48,8 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validationResult = pricingPlanSchema.safeParse(body);
@@ -84,8 +84,8 @@ export async function POST(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validationResult = pricingPlanSchema.safeParse(body);

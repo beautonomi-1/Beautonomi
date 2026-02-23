@@ -26,9 +26,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: question, error } = await supabase
       .from("profile_questions")
@@ -58,10 +58,10 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['superadmin']);
+    const { user } = await requireRoleInApi(['superadmin'], request);
     const { id } = await params;
     const body = await request.json();
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const validationResult = profileQuestionUpdateSchema.safeParse(body);
     if (!validationResult.success) {
@@ -105,9 +105,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['superadmin']);
+    const { user } = await requireRoleInApi(['superadmin'], request);
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Soft delete by setting is_active = false
     const { data: question, error } = await supabase

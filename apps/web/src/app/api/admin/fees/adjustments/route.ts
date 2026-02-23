@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole } from "@/lib/supabase/auth-server";
+
+function isTableMissingError(e: unknown): boolean {
+  const msg = typeof (e as any)?.message === "string" ? (e as any).message : "";
+  return msg.includes("schema cache") || (msg.includes("relation ") && msg.includes("does not exist")) || msg.includes("Could not find the table");
+}
 
 export async function GET(request: NextRequest) {
   try {
     await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
     const paymentTransactionId = searchParams.get("payment_transaction_id");
@@ -20,8 +25,6 @@ export async function GET(request: NextRequest) {
       .select(
         `
         *,
-        created_by_user:created_by(id, email, full_name),
-        reconciled_by_user:reconciled_by(id, email, full_name),
         payment_transaction:payment_transaction_id(id, reference, amount, fees, provider),
         finance_transaction:finance_transaction_id(id, transaction_type, amount, fees)
       `,
@@ -36,13 +39,18 @@ export async function GET(request: NextRequest) {
     if (financeTransactionId) {
       query = query.eq("finance_transaction_id", financeTransactionId);
     }
-    if (reconciled !== null) {
+    if (reconciled !== null && reconciled !== undefined) {
       query = query.eq("reconciled", reconciled === "true");
     }
 
     const { data, error, count } = await query;
 
-    if (error) throw error;
+    if (error) {
+      if (isTableMissingError(error)) {
+        return NextResponse.json({ data: [], meta: { page, limit, total: 0, has_more: false }, error: null });
+      }
+      throw error;
+    }
 
     return NextResponse.json({
       data: data || [],
@@ -54,10 +62,14 @@ export async function GET(request: NextRequest) {
       },
       error: null,
     });
-  } catch (error: any) {
-    console.error("Error fetching fee adjustments:", error);
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    console.error("Error fetching fee adjustments:", err);
+    if (isTableMissingError(err)) {
+      return NextResponse.json({ data: [], meta: { page: 1, limit: 50, total: 0, has_more: false }, error: null });
+    }
     return NextResponse.json(
-      { error: error.message || "Failed to fetch fee adjustments" },
+      { error: err?.message || "Failed to fetch fee adjustments" },
       { status: 500 }
     );
   }
@@ -66,7 +78,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRole(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
 
     const body = await request.json();
     const {

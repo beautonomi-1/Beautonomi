@@ -4,8 +4,8 @@ import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const section = searchParams.get("section");
     const includeInactive = searchParams.get("include_inactive") === "true";
@@ -41,9 +41,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const { section, title, href, display_order, is_external, is_active } = body;

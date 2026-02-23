@@ -11,9 +11,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Get verification record
     const { data: verification, error: verificationError } = await supabase

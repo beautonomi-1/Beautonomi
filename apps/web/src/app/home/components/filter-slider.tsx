@@ -1,8 +1,10 @@
 "use client";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
-import Image, { StaticImageData } from "next/image";
+import Image, { type StaticImageData } from "next/image";
+
+type ImgSrc = StaticImageData | string;
 import Slider from "react-slick";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -44,8 +46,8 @@ import HairdyePink from "../../../../public/images/coloring_5498630 - Copy.svg";
 
 interface FilterItemProps {
   item: {
-    img: StaticImageData;
-    hoverImg: StaticImageData;
+    img: ImgSrc;
+    hoverImg: ImgSrc;
     title: string;
     link: string;
   };

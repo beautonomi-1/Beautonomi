@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
@@ -26,7 +26,7 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
 
     // Validate request body

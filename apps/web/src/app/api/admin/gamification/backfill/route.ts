@@ -7,9 +7,9 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  * 
  * Backfill point transactions for all providers based on historical bookings and reviews (admin only)
  */
-export async function POST(_request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
     const supabase = getSupabaseAdmin();
 
     // Call the backfill function
@@ -34,9 +34,9 @@ export async function POST(_request: NextRequest) {
  * 
  * Initialize points and backfill transactions for all providers (admin only)
  */
-export async function PUT(_request: NextRequest) {
+export async function PUT(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
     const supabase = getSupabaseAdmin();
 
     // Call the initialization function which now includes backfilling

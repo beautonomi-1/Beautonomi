@@ -41,6 +41,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { format } from "date-fns";
 import Link from "next/link";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface AutomationStats {
   total_automations: number;
@@ -70,7 +71,7 @@ interface Automation {
 export default function AdminAutomationsPage() {
   const [stats, setStats] = useState<AutomationStats | null>(null);
   const [automations, setAutomations] = useState<Automation[]>([]);
-  const [isLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [isLoadingAutomations, setIsLoadingAutomations] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -113,35 +114,13 @@ export default function AdminAutomationsPage() {
       toast.error(errorMessage);
     } finally {
       setIsLoadingAutomations(false);
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
     loadAutomations();
   }, [searchQuery, filterStatus, filterType]); // eslint-disable-line react-hooks/exhaustive-deps -- load when filters change
-
-  if (isLoading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading automations..." />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <EmptyState
-          title="Failed to load automations"
-          description={error}
-          action={{
-            label: "Retry",
-            onClick: loadAutomations,
-          }}
-        />
-      </div>
-    );
-  }
 
   const filteredAutomations = automations.filter((auto) => {
     if (filterStatus === "active" && !auto.is_active) return false;
@@ -151,6 +130,25 @@ export default function AdminAutomationsPage() {
   });
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
+      {isLoading && (
+        <div className="container mx-auto px-4 py-8">
+          <LoadingTimeout loadingMessage="Loading automations..." />
+        </div>
+      )}
+      {error && !isLoading && (
+        <div className="container mx-auto px-4 py-8">
+          <EmptyState
+            title="Failed to load automations"
+            description={error}
+            action={{
+              label: "Retry",
+              onClick: loadAutomations,
+            }}
+          />
+        </div>
+      )}
+      {!isLoading && !error && (
     <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Marketing Automations</h1>
@@ -220,7 +218,7 @@ export default function AdminAutomationsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  ${stats.revenue_from_automations.toLocaleString()}
+                  R {stats.revenue_from_automations.toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   From automation-enabled plans
@@ -358,5 +356,7 @@ export default function AdminAutomationsPage() {
           </CardContent>
         </Card>
       </div>
+      )}
+    </RoleGuard>
   );
 }

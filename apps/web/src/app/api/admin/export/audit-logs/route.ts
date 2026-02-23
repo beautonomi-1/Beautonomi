@@ -1,16 +1,16 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
  * GET /api/admin/export/audit-logs
- * 
- * Export audit logs to CSV (rate limited)
+ *
+ * Export audit logs to CSV (rate limited). Uses admin client so actor (user) is included.
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRoleInApi(['superadmin']);
+    const auth = await requireRoleInApi(["superadmin"], request);
     const { allowed, retryAfter } = checkRateLimit(auth.user.id, "export:audit-logs");
     if (!allowed) {
       return errorResponse(
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
     const action = searchParams.get("action");

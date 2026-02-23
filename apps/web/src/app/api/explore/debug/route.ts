@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 
@@ -7,10 +7,9 @@ import { requireRoleInApi } from "@/lib/supabase/api-helpers";
  * Returns raw counts from explore_posts for troubleshooting.
  * Protected: superadmin only.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Only superadmins can access debug endpoints
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
     const supabase = await getSupabaseAdmin();
     const [

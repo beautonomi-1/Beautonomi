@@ -33,7 +33,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     if (!supabase) {
       return NextResponse.json(
         {

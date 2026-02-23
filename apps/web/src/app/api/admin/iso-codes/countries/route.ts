@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
@@ -20,14 +20,14 @@ const countrySchema = z.object({
  * 
  * List all countries (ISO 3166-1) with phone codes (ITU-T E.164)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const auth = await requireRole(["superadmin"]);
     if (!auth) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: countries, error } = await supabase
       .from("iso_countries")
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validationResult = countrySchema.safeParse(body);

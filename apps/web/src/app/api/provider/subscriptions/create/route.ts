@@ -198,15 +198,22 @@ export async function POST(request: NextRequest) {
 
       const paystackSubscription = subscriptionData.data;
 
-      // Get subscription_plan_id if linked
+      // provider_subscriptions.plan_id must reference subscription_plans(id), not pricing_plans
       const subscriptionPlanId = (pricingPlan as any).subscription_plan_id;
+      if (!subscriptionPlanId) {
+        return errorResponse(
+          "This pricing plan is not linked to a subscription plan. Link it in Admin → Pricing Plans.",
+          "CONFIGURATION_ERROR",
+          400
+        );
+      }
 
       // Create provider_subscription record
       const { data: providerSubscription, error: subError } = await (supabaseAdmin
         .from("provider_subscriptions") as any)
         .insert({
           provider_id: providerId,
-          plan_id: subscriptionPlanId || plan_id, // Use subscription_plan_id if linked, otherwise pricing_plan_id
+          plan_id: subscriptionPlanId,
           status: paystackSubscription.status === "active" ? "active" : "trialing",
           paystack_subscription_code: paystackSubscription.subscription_code,
           paystack_customer_code: paystackCustomerCode,

@@ -9,7 +9,7 @@ import { subDays } from "date-fns";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
 
     const supabaseAdmin = getSupabaseAdmin();
 

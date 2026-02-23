@@ -222,6 +222,13 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
                 {provider.current_badge.name}
               </span>
             )}
+
+            {/* Sponsored (boosted listing) */}
+            {provider.is_sponsored && (
+              <span className="bg-amber-600 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block">
+                Sponsored
+              </span>
+            )}
           </div>
 
           {/* Heart Icon - Top Right */}

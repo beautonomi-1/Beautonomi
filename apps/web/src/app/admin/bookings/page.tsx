@@ -233,7 +233,7 @@ export default function AdminBookings() {
                 className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg"
               >
                 <p className="text-sm font-light text-gray-600 mb-1">Revenue</p>
-                <p className="text-2xl font-semibold tracking-tight text-gray-900">ZAR {stats.total_revenue.toLocaleString()}</p>
+                <p className="text-2xl font-semibold tracking-tight text-gray-900">R {stats.total_revenue.toLocaleString()}</p>
               </motion.div>
             </div>
 

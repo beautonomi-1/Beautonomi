@@ -14,10 +14,10 @@ const milestoneSchema = z.object({
   is_active: z.boolean().optional().default(true),
 });
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
 
     const { data, error } = await supabase
       .from("loyalty_milestones")
@@ -40,8 +40,8 @@ export async function GET(_request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const { user } = await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
     const body = milestoneSchema.parse(await request.json());
 
     const { data: row, error } = await (supabase.from("loyalty_milestones") as any)

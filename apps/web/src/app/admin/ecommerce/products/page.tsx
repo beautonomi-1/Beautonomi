@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Search, Package, ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
+import RoleGuard from "@/components/auth/RoleGuard";
 
 interface Product {
   id: string;
@@ -63,6 +64,7 @@ export default function AdminProductCatalogPage() {
   }, [fetchProducts]);
 
   return (
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Product Catalog</h1>
@@ -174,5 +176,6 @@ export default function AdminProductCatalogPage() {
         </div>
       )}
     </div>
+    </RoleGuard>
   );
 }

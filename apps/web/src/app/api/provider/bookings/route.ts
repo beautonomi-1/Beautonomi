@@ -464,6 +464,19 @@ export async function POST(request: NextRequest) {
     // Online bookings are created via /api/public/bookings or /api/me/bookings
     const bookingSource = body.booking_source || 'walk_in'; // Provider-created = walk_in
     
+    // Referral source (where did this client come from?) — must belong to this provider
+    let referralSourceId: string | null = body.referral_source_id ?? null;
+    if (referralSourceId) {
+      const { data: src } = await supabaseAdmin
+        .from("referral_sources")
+        .select("id")
+        .eq("id", referralSourceId)
+        .eq("provider_id", providerId)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (!src) referralSourceId = null; // Invalid or wrong provider, ignore
+    }
+
     // For walk-in bookings, set service fee to 0 (platform doesn't charge for direct customers)
     const isWalkIn = bookingSource === 'walk_in';
     const serviceFeeAmount = isWalkIn ? 0 : (body.service_fee_amount || 0);
@@ -504,6 +517,7 @@ export async function POST(request: NextRequest) {
       service_fee_percentage: serviceFeePercentage,
       service_fee_amount: serviceFeeAmount,
       service_fee_paid_by: isWalkIn ? null : (body.service_fee_paid_by || 'customer'),
+      referral_source_id: referralSourceId,
     };
 
     // Validate required fields

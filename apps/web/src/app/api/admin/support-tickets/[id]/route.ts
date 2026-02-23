@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth/requireRole";
+import { notifySupportTicketUpdated } from "@/lib/notifications/notification-service";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const result = await requireRole(["superadmin", "support_agent"]);
     
     if (!result) {
@@ -23,7 +24,7 @@ export async function GET(
       .from("support_tickets")
       .select(`
         *,
-        user:users(id, email, full_name),
+        user:users!support_tickets_user_id_fkey(id, email, full_name),
         provider:providers(id, business_name),
         assigned_user:users!support_tickets_assigned_to_fkey(id, email, full_name)
       `)
@@ -37,7 +38,7 @@ export async function GET(
       .from("support_ticket_messages")
       .select(`
         *,
-        user:users(id, email, full_name)
+        user:users!support_ticket_messages_user_id_fkey(id, email, full_name)
       `)
       .eq("ticket_id", id)
       .order("created_at", { ascending: true });
@@ -47,7 +48,7 @@ export async function GET(
       .from("support_ticket_notes")
       .select(`
         *,
-        user:users(id, email, full_name)
+        user:users!support_ticket_notes_user_id_fkey(id, email, full_name)
       `)
       .eq("ticket_id", id)
       .order("created_at", { ascending: true });
@@ -71,7 +72,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const result = await requireRole(["superadmin", "support_agent"]);
     
     if (!result) {
@@ -113,6 +114,24 @@ export async function PATCH(
       .single();
 
     if (error) throw error;
+
+    // Notify ticket owner when status is resolved or closed so they know the ticket is officially closed
+    if (
+      (updateData.status === "resolved" || updateData.status === "closed") &&
+      data.user_id
+    ) {
+      try {
+        await notifySupportTicketUpdated(
+          data.user_id,
+          data.ticket_number || id,
+          `Your ticket has been marked as ${updateData.status}.`,
+          id,
+          ["email", "push"]
+        );
+      } catch (notifyErr) {
+        console.error("Support ticket status notification failed:", notifyErr);
+      }
+    }
 
     return NextResponse.json({ ticket: data });
   } catch (error: any) {

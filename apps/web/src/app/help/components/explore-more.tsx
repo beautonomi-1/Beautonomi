@@ -67,8 +67,9 @@ export default function ExploreMore() {
                 variant="destructive"
                 className="w-72 mb-6 text-base"
                 size="md"
+                asChild
               >
-                Contact us
+                <Link href="/help/submit-ticket">Contact support</Link>
               </Button>
               <p className="text-base font-light ">
                 You can also{" "}

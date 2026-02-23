@@ -4,8 +4,8 @@ import { requireRoleInApi, handleApiError, successResponse } from "@/lib/supabas
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
     
     if (!supabase) {
       console.error("Supabase client not available in preference-options API");
@@ -41,8 +41,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
     
     if (!supabase) {
       return NextResponse.json(

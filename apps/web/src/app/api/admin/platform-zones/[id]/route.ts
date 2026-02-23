@@ -31,8 +31,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
     const { data: zone, error } = await supabase
@@ -60,8 +60,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
     const { data: existingZone, error: fetchError } = await supabase
@@ -142,8 +142,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
     // Check if any providers have selected this zone

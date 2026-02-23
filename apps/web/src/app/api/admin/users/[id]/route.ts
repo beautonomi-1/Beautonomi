@@ -14,10 +14,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin']);
+    await requireRoleInApi(['superadmin'], request);
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: userData, error } = await supabase
       .from("users")
@@ -96,7 +96,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['superadmin']);
+    const { user } = await requireRoleInApi(['superadmin'], request);
 
     const { id } = await params;
     const body = await request.json();
@@ -119,7 +119,7 @@ export async function PATCH(
       );
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Check if user exists
     const { data: existingUser, error: fetchError } = await supabase
@@ -229,10 +229,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['superadmin']);
+    const { user } = await requireRoleInApi(['superadmin'], request);
 
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Check if user exists
     const { data: existingUser, error: fetchError } = await supabase

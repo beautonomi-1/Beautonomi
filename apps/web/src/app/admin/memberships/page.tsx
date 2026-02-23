@@ -183,7 +183,10 @@ export default function MembershipsPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Membership Plans</h1>
             <p className="text-gray-600 mt-1">
-              Manage membership plans and subscription tiers for providers
+              Customer membership products (e.g. Gold, VIP) that customers can subscribe to for benefits and discounts. Not used for provider billing.
+            </p>
+            <p className="text-sm text-amber-700 mt-2">
+              <strong>Different from Provider Subscriptions:</strong> Provider Subscriptions (Plans / Provider Subscriptions) are what <em>providers</em> pay the platform for; limits and feature gating use those. These Memberships are for <em>customers</em> who buy a membership (e.g. loyalty discount).
             </p>
           </div>
           <Button onClick={handleCreate} className="bg-[#FF0077] hover:bg-[#D60565]">
@@ -196,7 +199,7 @@ export default function MembershipsPage() {
           <EmptyState
             icon={Crown}
             title="No membership plans yet"
-            description="Create membership plans to offer different subscription tiers to providers."
+            description="Create customer membership products that customers can subscribe to for benefits and discounts on bookings."
             action={{
               label: "Create Membership Plan",
               onClick: handleCreate,

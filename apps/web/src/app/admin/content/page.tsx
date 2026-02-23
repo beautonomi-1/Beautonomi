@@ -205,7 +205,7 @@ export default function AdminContent() {
         const response = await fetcher.get<{ data: PageContent[]; error: null }>("/api/admin/content/pages?page_slug=signup");
         setSignupPageContent(response.data || []);
       }
-    } catch {
+    } catch (err: unknown) {
       const errorMessage =
         err instanceof FetchTimeoutError
           ? "Request timed out. Please try again."

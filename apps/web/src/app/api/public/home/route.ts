@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import type { PublicProviderCard } from "@/types/beautonomi";
 
+export const dynamic = "force-dynamic";
 // Increase timeout for this route (Next.js default is 10s, we need more for parallel queries)
 export const maxDuration = 30;
 // Cache response for 60 seconds (revalidate every minute)
@@ -58,6 +60,9 @@ export async function GET(request: Request) {
     const country = searchParams.get("country") || "ZA"; // Default to South Africa
     const categorySlug = searchParams.get("category"); // Filter by category slug
 
+    const cacheKey = `home-${latitude ?? ""}-${longitude ?? ""}-${city ?? ""}-${country}-${categorySlug ?? "all"}`;
+    const result = await unstable_cache(
+      async () => {
     // Get category ID if category slug is provided (skip if "all")
     let categoryId: string | null = null;
     let providerIdsForCategory: string[] | null = null;
@@ -115,7 +120,7 @@ export async function GET(request: Request) {
     };
 
     // Helper function to add timeout to Supabase queries
-    const withTimeout = async (queryPromise: Promise<{ data: any; error: any }>, timeoutMs: number = 5000, _queryName: string = 'unknown') => {
+    const withTimeout = async (queryPromise: Promise<{ data: any; error: any }>, timeoutMs: number = 3000, _queryName: string = 'unknown') => {
       try {
         return await Promise.race([
           queryPromise,
@@ -288,7 +293,7 @@ export async function GET(request: Request) {
             .from("provider_locations")
             .select("city, country, provider_id")
             .eq("is_active", true)
-            .limit(1000); // Increased limit to capture more cities
+            .limit(400);
 
           if (locationsError || !locationsData) {
             console.error("Error fetching locations for browse by city:", locationsError);
@@ -409,21 +414,18 @@ export async function GET(request: Request) {
           const thirtyDaysAgo = new Date();
           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-          // Get booking counts per provider for the last 30 days
+          // Get booking counts per provider for the last 30 days (capped for performance)
           let bookingQuery = supabase
             .from("bookings")
             .select("provider_id")
             .gte("created_at", thirtyDaysAgo.toISOString())
-            .in("status", ["confirmed", "completed", "in_progress"]);
-          
-          // Apply category filter to bookings if needed
+            .in("status", ["confirmed", "completed", "in_progress"])
+            .limit(5000);
           if (providerIdsForCategory !== null && providerIdsForCategory.length > 0) {
             bookingQuery = bookingQuery.in("provider_id", providerIdsForCategory);
           } else if (providerIdsForCategory !== null && providerIdsForCategory.length === 0) {
-            // No providers in category, return empty
             return { data: [], error: null };
           }
-          
           const { data: bookingCounts, error: bookingError } = await bookingQuery;
 
           if (bookingError || !bookingCounts || bookingCounts.length === 0) {
@@ -1647,7 +1649,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const response = NextResponse.json({
+    return {
       data: {
         all: allProviders,
         topRated: topRated,
@@ -1657,11 +1659,83 @@ export async function GET(request: Request) {
         browseByCity: browseByCity,
       },
       error: null,
-    });
+    };
+      },
+      [cacheKey],
+      { revalidate: 60 }
+    )();
 
-    // Add caching headers for public content
+    // Post-process: ranking, distance radius filter, sponsored ads (gated by module config)
+    const env = process.env.NODE_ENV === "production" ? "production" : "development";
+    const supabaseAdmin = getSupabaseAdmin();
+    const [adsRow, rankingRow, distanceRow] = await Promise.all([
+      supabaseAdmin.from("ads_module_config").select("enabled, max_sponsored_slots").eq("environment", env).maybeSingle(),
+      supabaseAdmin.from("ranking_module_config").select("enabled").eq("environment", env).maybeSingle(),
+      supabaseAdmin.from("distance_module_config").select("enabled").eq("environment", env).maybeSingle(),
+    ]);
+    const radiusKmParam = new URL(request.url).searchParams.get("radius_km");
+    const radiusKm = radiusKmParam ? parseFloat(radiusKmParam) : null;
+
+    let data = result?.data ?? { all: [], topRated: [], nearest: [], hottest: [], upcoming: [], browseByCity: [], sponsored: [] as PublicProviderCard[] };
+    const sponsored: PublicProviderCard[] = [];
+
+    if (distanceRow?.data?.enabled && radiusKm != null && radiusKm > 0 && Array.isArray(data.nearest)) {
+      data = {
+        ...data,
+        nearest: (data.nearest as PublicProviderCard[]).filter((p) => p.distance_km != null && p.distance_km <= radiusKm),
+      };
+    }
+
+    if (rankingRow?.data?.enabled && (data.topRated?.length > 0 || data.hottest?.length > 0)) {
+      const providerIds = [...new Set([...(data.topRated ?? []).map((p: PublicProviderCard) => p.id), ...(data.hottest ?? []).map((p: PublicProviderCard) => p.id)])];
+      const { data: scores } = await supabaseAdmin.from("provider_quality_score").select("provider_id, computed_score").in("provider_id", providerIds);
+      const scoreMap = new Map<string, number>((scores ?? []).map((s: { provider_id: string; computed_score: number }) => [s.provider_id, Number(s.computed_score)]));
+      const sortByScore = (a: PublicProviderCard, b: PublicProviderCard) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0);
+      data = {
+        ...data,
+        topRated: [...(data.topRated ?? [])].sort(sortByScore),
+        hottest: [...(data.hottest ?? [])].sort(sortByScore),
+      };
+    }
+
+    if (adsRow?.data?.enabled && adsRow.data.max_sponsored_slots) {
+      const maxSlots = Math.min(Number(adsRow.data.max_sponsored_slots) || 5, 10);
+      const { data: campaigns } = await supabaseAdmin.from("ads_campaigns").select("provider_id").eq("status", "active").limit(maxSlots * 2);
+      const providerIds = [...new Set((campaigns ?? []).map((c: { provider_id: string }) => c.provider_id))].slice(0, maxSlots);
+      if (providerIds.length > 0) {
+        const { data: providersRaw } = await supabaseAdmin.from("providers").select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, is_featured, is_verified, description, currency").in("id", providerIds).eq("status", "active");
+        if (providersRaw?.length) {
+          const allMap = new Map((data.all ?? []).map((p: PublicProviderCard) => [p.id, p]));
+          for (const p of providersRaw as any[]) {
+            const card = allMap.get(p.id) ?? {
+              id: p.id,
+              slug: p.slug,
+              business_name: p.business_name,
+              business_type: p.business_type || "salon",
+              rating: p.rating_average ?? 0,
+              review_count: p.review_count ?? 0,
+              thumbnail_url: p.thumbnail_url,
+              city: "",
+              country: "",
+              is_featured: p.is_featured ?? false,
+              is_verified: p.is_verified ?? false,
+              starting_price: null,
+              currency: p.currency ?? "ZAR",
+              description: p.description ?? null,
+              distance_km: null,
+              supports_house_calls: false,
+              supports_salon: false,
+              current_badge: null,
+            };
+            sponsored.push(card);
+          }
+        }
+      }
+      data = { ...data, sponsored } as typeof data & { sponsored: PublicProviderCard[] };
+    }
+
+    const response = NextResponse.json({ ...result, data });
     response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
-    
     return response;
   } catch (error: any) {
     console.error("Unexpected error in /api/public/home:", error);

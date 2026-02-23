@@ -22,10 +22,10 @@ const profileQuestionSchema = z.object({
  * GET /api/admin/content/profile-questions
  * Get all profile questions (for admin)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
 
     const { data: questions, error } = await supabase
       .from("profile_questions")
@@ -47,9 +47,9 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['superadmin']);
+    const { user } = await requireRoleInApi(['superadmin'], request);
     const body = await request.json();
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const validationResult = profileQuestionSchema.safeParse(body);
     if (!validationResult.success) {

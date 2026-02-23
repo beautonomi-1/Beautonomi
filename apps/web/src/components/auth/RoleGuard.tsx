@@ -102,6 +102,8 @@ export default function RoleGuard({
   const hasRefreshed = useRef(false);
   const isRedirecting = useRef(false);
   const [hasTimedOut, setHasTimedOut] = useState(false);
+  // When user exists but role is null (profile still loading), wait before redirecting so superadmin role can load
+  const [roleLoadGraceExpired, setRoleLoadGraceExpired] = useState(false);
 
   // Avoid mutating the incoming array (allowedRoles.sort() mutates)
   const sortedAllowedRoles = useMemo(() => [...allowedRoles].sort(), [allowedRoles]);
@@ -168,6 +170,27 @@ export default function RoleGuard({
     }
   }, [isLoading, user, role, allowedRoles, refreshUser, cacheKey]);
 
+  // Grace period when user exists but role is null (profile/role still loading from API)
+  useEffect(() => {
+    if (!user || role != null) {
+      setRoleLoadGraceExpired(false);
+      return;
+    }
+    const t = setTimeout(() => setRoleLoadGraceExpired(true), 5000);
+    return () => clearTimeout(t);
+  }, [user, role]);
+
+  // Build redirect URL: when sending to home, preserve current path so login can return here (e.g. admin portal)
+  const redirectUrl =
+    finalRedirectTo === "/" && pathname
+      ? `/?login=true&redirect=${encodeURIComponent(pathname)}`
+      : finalRedirectTo;
+
+  // Reset redirect flag when user becomes available (so logout → login → admin works again)
+  useEffect(() => {
+    if (user) isRedirecting.current = false;
+  }, [user]);
+
   // Redirect if role still doesn't match after refresh, or if user is null (logged out)
   // IMPORTANT: Wait for hydration before redirecting (to check localStorage cache first)
   useEffect(() => {
@@ -177,15 +200,16 @@ export default function RoleGuard({
     // If we have a persistent session, don't redirect
     if (sessionCache && allowedRoles.includes(sessionCache.role)) return;
     
-    // If user is null and we're not already redirecting, redirect immediately
+    // If user is null and we're not already redirecting, redirect after a short delay
+    // (avoids redirecting when auth is briefly restoring session from cookie on admin)
     if (!isLoading && !user && !isRedirecting.current) {
       isRedirecting.current = true;
       permissionCache.clear(); // Clear all cache on logout
-      // Use setTimeout to ensure this happens after render completes
-      setTimeout(() => {
-        router.push(finalRedirectTo);
-      }, 0);
-      return;
+      const delay = pathname?.startsWith("/admin") ? 1500 : 0;
+      const id = setTimeout(() => {
+        router.push(redirectUrl);
+      }, delay);
+      return () => clearTimeout(id);
     }
 
     // If role doesn't match after refresh, redirect
@@ -194,10 +218,10 @@ export default function RoleGuard({
       permissionCache.delete(cacheKey);
       // Use setTimeout to ensure this happens after render completes
       setTimeout(() => {
-        router.push(finalRedirectTo);
+        router.push(redirectUrl);
       }, 0);
     }
-  }, [isLoading, user, role, allowedRoles, router, finalRedirectTo, cacheKey, isHydrated, sessionCache]);
+  }, [isLoading, user, role, allowedRoles, router, redirectUrl, cacheKey, isHydrated, sessionCache, pathname]);
 
   // Simple timeout - only triggers if we're stuck loading without any cached session
   // This is much less aggressive since we now trust cached sessions
@@ -246,9 +270,15 @@ export default function RoleGuard({
     return <>{children}</>;
   }
 
-  // If we have a user but no role (likely due to timeout), be lenient
-  // Allow rendering and let the API handle authorization
-  if (user && !role && (hasTimedOut || hasShownContent)) {
+  // If we have a user but no role (profile still loading or timeout), show loading during grace period then be lenient
+  if (user && !role) {
+    if (!roleLoadGraceExpired) {
+      if (showLoading) {
+        return <LoadingTimeout loadingMessage="Checking access..." timeoutMs={6000} onRetry={refreshUser} />;
+      }
+      return null;
+    }
+    // Grace expired: allow rendering and let the API handle authorization (avoids redirecting superadmin before role loads)
     return <>{children}</>;
   }
 

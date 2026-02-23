@@ -97,6 +97,14 @@ export interface SafeAuraModuleConfig {
   enabled: boolean;
 }
 
+export interface SafeSafetyModuleConfig {
+  enabled: boolean;
+  check_in_enabled: boolean;
+  escalation_enabled: boolean;
+  cooldown_seconds: number;
+  ui_copy: Record<string, unknown>;
+}
+
 export interface PublicConfigBundle {
   meta: ConfigBundleMeta;
   amplitude: SafeAmplitudeConfig;
@@ -111,6 +119,7 @@ export interface PublicConfigBundle {
     distance: SafeDistanceModuleConfig;
     sumsub: SafeSumsubModuleConfig;
     aura: SafeAuraModuleConfig;
+    safety: SafeSafetyModuleConfig;
   };
 }
 

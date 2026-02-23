@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 
 /**
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
@@ -38,10 +39,23 @@ export async function GET(request: Request) {
         .filter((r: any) => types.includes(r.transaction_type))
         .reduce((s: number, r: any) => s + Number(r[field] || 0), 0);
 
-    // Services (bookings + additional charges)
-    const serviceCollectedNetOfFees = sum(["payment", "additional_charge_payment"], "amount");
+    // Gateway fees (only on payment and additional_charge_payment)
     const gatewayFeesServices = sum(["payment", "additional_charge_payment"], "fees");
-    const serviceCollectedGross = serviceCollectedNetOfFees + gatewayFeesServices;
+
+    // Services collected (GMV): full customer payment for bookings + additional charges.
+    // - payment row: amount = commission base (not full booking); full booking = commission base + provider_earnings + tip + tax + travel_fee + service_fee.
+    // - additional_charge_payment: amount = net after gateway, so gross = amount + fees.
+    const bookingGmv =
+      sum(["payment"], "amount") +
+      sum(["provider_earnings"], "amount") +
+      sum(["tip"], "amount") +
+      sum(["tax"], "amount") +
+      sum(["travel_fee"], "amount") +
+      sum(["service_fee"], "amount");
+    const additionalChargeGross =
+      sum(["additional_charge_payment"], "amount") + sum(["additional_charge_payment"], "fees");
+    const serviceCollectedGross = bookingGmv + additionalChargeGross;
+    const serviceCollectedNet = serviceCollectedGross - gatewayFeesServices;
 
     // Platform commission (gross and net of refunds)
     const platformCommissionGross = sum(["payment", "additional_charge_payment"], "net");
@@ -60,14 +74,51 @@ export async function GET(request: Request) {
     const subscriptionGatewayFees = sum(["provider_subscription_payment"], "fees");
     const subscriptionGross = subscriptionNet + subscriptionGatewayFees;
 
+    // Ads revenue (provider pre-pay for campaign budget; platform earns when they pay)
+    const adsNet = sum(["provider_ads_payment"], "net");
+    const adsGatewayFees = sum(["provider_ads_payment"], "fees");
+    const adsGross = adsNet + adsGatewayFees;
+
     const providerEarnings = sum(["provider_earnings"], "net");
 
     // Other provider-linked sales (gross)
     const giftCardSales = sum(["gift_card_sale"], "amount");
     const membershipSales = sum(["membership_sale"], "amount");
 
-    // Refund gross (customer cash-out)
-    const refundsGross = -sum(["refund"], "amount"); // positive number
+    // Refund gross: total amount refunded to customers (positive number for display)
+    const refundsGross = sum(["refund"], "amount");
+
+    // Wallet top-up revenue (cash in from customers; not in finance_transactions)
+    const supabaseAdmin = getSupabaseAdmin();
+    let walletTopupRevenue = 0;
+    let referralPayouts = 0;
+    try {
+      let topupQuery = supabaseAdmin
+        .from("wallet_topups")
+        .select("amount")
+        .eq("status", "paid");
+      if (startDate) topupQuery = topupQuery.gte("paid_at", startDate);
+      if (endDate) topupQuery = topupQuery.lte("paid_at", endDate);
+      const { data: topups } = await topupQuery;
+      walletTopupRevenue = (topups || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+
+      // Referral payouts (platform expense: credits to referrers' wallets)
+      let refQuery = supabaseAdmin
+        .from("wallet_transactions")
+        .select("amount")
+        .eq("type", "credit")
+        .eq("reference_type", "referral");
+      if (startDate) refQuery = refQuery.gte("created_at", startDate);
+      if (endDate) refQuery = refQuery.lte("created_at", endDate);
+      const { data: refTxs } = await refQuery;
+      referralPayouts = (refTxs || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+    } catch (e) {
+      console.warn("Wallet/referral counts failed:", e);
+    }
+
+    // Total platform take including subscription, ads, wallet top-up, minus referral payouts
+    const totalPlatformTakeAfterReferrals =
+      platformTakeNet + subscriptionNet + adsNet + walletTopupRevenue - referralPayouts;
 
     // Get period comparison (previous period)
     const period = startDate && endDate ? "custom" : "month";
@@ -103,13 +154,24 @@ export async function GET(request: Request) {
     if (previousStart && previousEnd) {
       const prevQuery = supabase
         .from("finance_transactions")
-        .select("transaction_type, amount")
+        .select("transaction_type, amount, fees")
         .gte("created_at", previousStart)
         .lte("created_at", previousEnd);
       const { data: prevRows } = await prevQuery;
-      previousGmv = (prevRows || [])
-        .filter((r: any) => ["payment", "additional_charge_payment"].includes(r.transaction_type))
-        .reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+      const prev = prevRows || [];
+      const prevSum = (types: string[], field: "amount" | "fees") =>
+        prev
+          .filter((r: any) => types.includes(r.transaction_type))
+          .reduce((s: number, r: any) => s + Number(r[field] || 0), 0);
+      previousGmv =
+        prevSum(["payment"], "amount") +
+        prevSum(["provider_earnings"], "amount") +
+        prevSum(["tip"], "amount") +
+        prevSum(["tax"], "amount") +
+        prevSum(["travel_fee"], "amount") +
+        prevSum(["service_fee"], "amount") +
+        prevSum(["additional_charge_payment"], "amount") +
+        prevSum(["additional_charge_payment"], "fees");
     }
 
     const gmvGrowth = previousGmv > 0 ? ((serviceCollectedGross - previousGmv) / previousGmv) * 100 : 0;
@@ -117,7 +179,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       data: {
         service_collected_gross: serviceCollectedGross,
-        service_collected_net: serviceCollectedNetOfFees,
+        service_collected_net: serviceCollectedNet,
         gateway_fees: gatewayFeesServices,
 
         platform_commission_gross: platformCommissionGross,
@@ -131,12 +193,19 @@ export async function GET(request: Request) {
         subscription_collected_gross: subscriptionGross,
         subscription_net: subscriptionNet,
         subscription_gateway_fees: subscriptionGatewayFees,
-        total_platform_take_net: platformTakeNet + subscriptionNet,
+        ads_net: adsNet,
+        ads_gross: adsGross,
+        ads_gateway_fees: adsGatewayFees,
+        total_platform_take_net: platformTakeNet + subscriptionNet + adsNet,
 
         provider_earnings: providerEarnings,
         refunds_gross: refundsGross,
         gift_card_sales: giftCardSales,
         membership_sales: membershipSales,
+
+        wallet_topup_revenue: walletTopupRevenue,
+        referral_payouts: referralPayouts,
+        total_platform_take_after_referrals: totalPlatformTakeAfterReferrals,
 
         gmv_growth: gmvGrowth,
         period: {

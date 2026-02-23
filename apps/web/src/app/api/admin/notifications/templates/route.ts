@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
@@ -30,14 +30,14 @@ const _updateTemplateSchema = templateSchema.partial();
  * 
  * Get all notification templates
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const auth = await requireRole(["superadmin"]);
     if (!auth) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     if (!supabase) {
       return NextResponse.json(
         {
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     
     if (!supabase) {
       return NextResponse.json(

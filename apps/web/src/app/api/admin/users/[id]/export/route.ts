@@ -7,8 +7,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
 
     if (!supabase) {
       return NextResponse.json(

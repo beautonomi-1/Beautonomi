@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { fetcher } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useAuth } from "@/providers/AuthProvider";
 
 interface Notification {
   id: string;
@@ -99,8 +100,16 @@ export function CustomerNotificationsDropdown() {
   const [totalUnread, setTotalUnread] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const { user } = useAuth();
 
   useEffect(() => {
+    // Only fetch when user is authenticated (avoids 401 from API)
+    if (!user?.id) {
+      setIsLoading(false);
+      setNotifications([]);
+      setTotalUnread(0);
+      return;
+    }
     loadNotifications();
 
     // Refresh every 2 minutes
@@ -116,7 +125,7 @@ export function CustomerNotificationsDropdown() {
       clearInterval(interval);
       if (fastInterval) clearInterval(fastInterval);
     };
-  }, [open]);
+  }, [open, user?.id]);
 
   const loadNotifications = async () => {
     try {

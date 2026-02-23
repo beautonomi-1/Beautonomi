@@ -10,40 +10,41 @@ const platformFeesSchema = z.object({
   show_service_fee_to_customer: z.boolean().optional(),
 });
 
+const DEFAULT_PLATFORM_FEES = {
+  platform_service_fee_type: 'percentage' as const,
+  platform_service_fee_percentage: 5,
+  platform_service_fee_fixed: 0,
+  show_service_fee_to_customer: true,
+};
+
 /**
  * GET /api/admin/platform-fees
- * 
- * Get platform fee settings
+ *
+ * Get platform fee settings from platform_settings.settings.payouts (JSONB)
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
 
-    const { data: platformSettings, error } = await supabase
+    const { data: row, error } = await supabase
       .from('platform_settings')
-      .select('platform_service_fee_type, platform_service_fee_percentage, platform_service_fee_fixed, show_service_fee_to_customer')
-      .single();
-
-    // Return default if not found (PGRST116 is "not found" error)
-    if (error && error.code === 'PGRST116') {
-      return successResponse({
-        platform_service_fee_type: 'percentage',
-        platform_service_fee_percentage: 5,
-        platform_service_fee_fixed: 0,
-        show_service_fee_to_customer: true,
-      });
-    }
+      .select('id, settings')
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
 
     if (error) {
-      throw error;
+      console.warn('Platform fees query error (returning defaults):', error.code, error.message);
+      return successResponse(DEFAULT_PLATFORM_FEES);
     }
 
+    const payouts = (row?.settings as Record<string, unknown>)?.payouts as Record<string, unknown> | undefined;
     return successResponse({
-      platform_service_fee_type: platformSettings?.platform_service_fee_type || 'percentage',
-      platform_service_fee_percentage: platformSettings?.platform_service_fee_percentage || 5,
-      platform_service_fee_fixed: platformSettings?.platform_service_fee_fixed || 0,
-      show_service_fee_to_customer: platformSettings?.show_service_fee_to_customer !== false,
+      platform_service_fee_type: (payouts?.platform_service_fee_type as string) || 'percentage',
+      platform_service_fee_percentage: (payouts?.platform_service_fee_percentage as number) ?? 5,
+      platform_service_fee_fixed: (payouts?.platform_service_fee_fixed as number) ?? 0,
+      show_service_fee_to_customer: (payouts?.show_service_fee_to_customer as boolean) !== false,
     });
   } catch (error) {
     return handleApiError(error, 'Failed to fetch platform fee settings');
@@ -52,58 +53,83 @@ export async function GET(_request: NextRequest) {
 
 /**
  * PATCH /api/admin/platform-fees
- * 
- * Update platform fee settings
+ *
+ * Update platform fee settings in platform_settings.settings.payouts (JSONB)
  */
 export async function PATCH(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validatedData = platformFeesSchema.parse(body);
 
-    // Try update first
-    const { data: updated, error: updateError } = await supabase
+    const { data: existingRow, error: fetchError } = await supabase
       .from('platform_settings')
-      .update({
-        platform_service_fee_type: validatedData.platform_service_fee_type || 'percentage',
-        platform_service_fee_percentage: validatedData.platform_service_fee_percentage ?? 0,
-        platform_service_fee_fixed: validatedData.platform_service_fee_fixed ?? 0,
-        show_service_fee_to_customer: validatedData.show_service_fee_to_customer !== false,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', 1)
-      .select()
-      .single();
+      .select('id, settings')
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle();
 
-    if (updateError && updateError.code === 'PGRST116') {
-      // Try upsert if update fails (record doesn't exist)
-      const { data: upserted, error: upsertError } = await supabase
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    const currentSettings = (existingRow?.settings as Record<string, unknown>) || {};
+    const payouts = { ...(currentSettings.payouts as Record<string, unknown> || {}) };
+    payouts.platform_service_fee_type = validatedData.platform_service_fee_type ?? payouts.platform_service_fee_type ?? 'percentage';
+    payouts.platform_service_fee_percentage = validatedData.platform_service_fee_percentage ?? (payouts.platform_service_fee_percentage as number) ?? 0;
+    payouts.platform_service_fee_fixed = validatedData.platform_service_fee_fixed ?? (payouts.platform_service_fee_fixed as number) ?? 0;
+    if (validatedData.show_service_fee_to_customer !== undefined) {
+      payouts.show_service_fee_to_customer = validatedData.show_service_fee_to_customer;
+    }
+    const updatedSettings = { ...currentSettings, payouts };
+
+    if (existingRow?.id) {
+      const { data: updated, error: updateError } = await supabase
         .from('platform_settings')
-        .upsert({
-          id: 1,
-          platform_service_fee_type: validatedData.platform_service_fee_type || 'percentage',
-          platform_service_fee_percentage: validatedData.platform_service_fee_percentage ?? 0,
-          platform_service_fee_fixed: validatedData.platform_service_fee_fixed ?? 0,
-          show_service_fee_to_customer: validatedData.show_service_fee_to_customer !== false,
+        .update({
+          settings: updatedSettings,
           updated_at: new Date().toISOString(),
         })
-        .select()
+        .eq('id', existingRow.id)
+        .select('settings')
         .single();
 
-      if (upsertError) {
-        throw upsertError;
+      if (updateError || !updated) {
+        throw updateError || new Error('Failed to update platform fee settings');
       }
 
-      return successResponse(upserted);
+      const outPayouts = (updated?.settings as Record<string, unknown>)?.payouts as Record<string, unknown> | undefined;
+      return successResponse({
+        platform_service_fee_type: (outPayouts?.platform_service_fee_type as string) || 'percentage',
+        platform_service_fee_percentage: (outPayouts?.platform_service_fee_percentage as number) ?? 5,
+        platform_service_fee_fixed: (outPayouts?.platform_service_fee_fixed as number) ?? 0,
+        show_service_fee_to_customer: (outPayouts?.show_service_fee_to_customer as boolean) !== false,
+      });
     }
 
-    if (updateError) {
-      throw updateError;
+    // No row yet: insert one with payouts and minimal defaults
+    const { data: inserted, error: insertError } = await supabase
+      .from('platform_settings')
+      .insert({
+        settings: updatedSettings,
+        is_active: true,
+      })
+      .select('settings')
+      .single();
+
+    if (insertError || !inserted) {
+      throw insertError || new Error('Failed to create platform fee settings');
     }
 
-    return successResponse(updated);
+    const outPayouts = (inserted?.settings as Record<string, unknown>)?.payouts as Record<string, unknown> | undefined;
+    return successResponse({
+      platform_service_fee_type: (outPayouts?.platform_service_fee_type as string) || 'percentage',
+      platform_service_fee_percentage: (outPayouts?.platform_service_fee_percentage as number) ?? 5,
+      platform_service_fee_fixed: (outPayouts?.platform_service_fee_fixed as number) ?? 0,
+      show_service_fee_to_customer: (outPayouts?.show_service_fee_to_customer as boolean) !== false,
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(

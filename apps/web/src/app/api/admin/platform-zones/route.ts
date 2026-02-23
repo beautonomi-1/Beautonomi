@@ -25,10 +25,10 @@ const platformZoneSchema = z.object({
  * GET /api/admin/platform-zones
  * Get all platform zones (superadmin only)
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
 
     const { data: zones, error } = await supabase
       .from("platform_zones")
@@ -51,8 +51,8 @@ export async function GET(_request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    const { user } = await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
     const validationResult = platformZoneSchema.safeParse(body);

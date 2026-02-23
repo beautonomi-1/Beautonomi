@@ -185,6 +185,7 @@ interface CreateFormData {
   travelFeeOverride: number | null;
   travelOverrideReason: string;
   hasTravelOverride: boolean;
+  referralSourceId: string;
 }
 
 type CancelReason = "normal" | "late_cancel" | "no_show";
@@ -278,7 +279,11 @@ export function AppointmentSidebar({
     travelFeeOverride: null,
     travelOverrideReason: "",
     hasTravelOverride: false,
+    referralSourceId: "",
   });
+
+  // Referral sources (for "Where did this client come from?")
+  const [referralSources, setReferralSources] = useState<Array<{ id: string; name: string; description?: string | null; is_active: boolean }>>([]);
 
   // Cancel dialog
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -431,7 +436,24 @@ export function AppointmentSidebar({
       loadProducts();
     }
   }, [isOpen, mode, loadPackages, loadProducts]);
-  
+
+  // Load referral sources when sidebar is open (create or edit) for "Where did this client come from?"
+  useEffect(() => {
+    if (!isOpen) return;
+    const loadReferralSources = async () => {
+      try {
+        const { fetcher } = await import("@/lib/http/fetcher");
+        const res = await fetcher.get<{ data?: Array<{ id: string; name: string; description?: string | null; is_active: boolean }> }>("/api/provider/referral-sources");
+        const list = Array.isArray(res?.data) ? res.data : [];
+        setReferralSources(list.filter((s) => s.is_active !== false));
+      } catch (e) {
+        console.warn("Failed to load referral sources:", e);
+        setReferralSources([]);
+      }
+    };
+    loadReferralSources();
+  }, [isOpen, mode]);
+
   // Client search
   useEffect(() => {
     const searchClients = async () => {
@@ -1662,6 +1684,7 @@ export function AppointmentSidebar({
         travelFeeOverride: null,
         travelOverrideReason: "",
         hasTravelOverride: false,
+        referralSourceId: "",
       }));
     } else if ((mode === "view" || mode === "edit") && selectedAppointment) {
       const kind = selectedAppointment.location_type === "at_home" 
@@ -1867,6 +1890,7 @@ export function AppointmentSidebar({
         travelFeeOverride: travelOverride?.overrideTravelFee ?? null,
         travelOverrideReason: travelOverride?.reason || "",
         hasTravelOverride: !!travelOverride,
+        referralSourceId: (selectedAppointment as any).referral_source_id ?? "",
       });
     }
   }, [mode, draftSlot, selectedAppointment, locations, services, calculatePricing, defaultTaxRate]);
@@ -1981,6 +2005,7 @@ export function AppointmentSidebar({
       (appointmentData as any).products = formData.products;
       // Mark as provider-created (not from client portal)
       (appointmentData as any).booking_source = 'walk_in';
+      (appointmentData as any).referral_source_id = formData.referralSourceId || null;
 
       // Add at-home fields if applicable
       if (formData.kind === AppointmentKind.AT_HOME) {
@@ -2078,6 +2103,7 @@ export function AppointmentSidebar({
         updates.address_postal_code = formData.addressPostalCode;
         updates.travel_fee = formData.travelFee;
       }
+      (updates as any).referral_source_id = formData.referralSourceId || null;
 
       // Check if time/date changed for notification
       const timeChanged = 
@@ -4458,6 +4484,40 @@ export function AppointmentSidebar({
                 
                 <Separator />
               </>
+            )}
+
+            {/* Referral source (Where did this client come from?) */}
+            {(mode === "create" || mode === "edit") && (
+              <div className="space-y-3">
+                <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  Where did this client come from?
+                </Label>
+                <Select
+                  value={formData.referralSourceId || "none"}
+                  onValueChange={(v) => setFormData(prev => ({ ...prev, referralSourceId: v === "none" ? "" : v }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select referral source (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— None / Not specified —</SelectItem>
+                    {referralSources.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {mode === "view" && (formData.referralSourceId && referralSources.length > 0) && (
+              <div className="space-y-3">
+                <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  Referral source
+                </Label>
+                <p className="text-sm text-gray-700">
+                  {referralSources.find(s => s.id === formData.referralSourceId)?.name ?? "—"}
+                </p>
+              </div>
             )}
 
             {/* Notes */}

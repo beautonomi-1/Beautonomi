@@ -130,7 +130,7 @@ const isEnabled = await isFeatureEnabled("booking_online");
 // Check multiple features
 const features = await areFeaturesEnabled([
   "booking_online",
-  "payment_stripe",
+  "payment_paystack",
   "notifications_sms"
 ]);
 ```

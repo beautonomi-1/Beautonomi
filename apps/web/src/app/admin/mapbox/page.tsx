@@ -11,7 +11,7 @@ export default function AdminMapbox() {
   const [activeTab, setActiveTab] = useState<"config" | "zones">("config");
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="mb-6">
           <h1 className="text-3xl font-semibold mb-2">Mapbox Management</h1>

@@ -7,7 +7,10 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
-import { CreditCard, Banknote, Loader2 } from "lucide-react";
+import { CreditCard, Banknote, Loader2, Tag, Heart } from "lucide-react";
+import { CustomFieldsForm } from "@/components/custom-fields/CustomFieldsForm";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface HoldData {
   hold_id: string;
@@ -29,6 +32,9 @@ interface HoldData {
   address_snapshot: Record<string, unknown> | null;
   hold_status: string;
   expires_at: string;
+  metadata?: Record<string, unknown>;
+  travel_fee?: number;
+  travel_distance_km?: number;
 }
 
 function BookContinueContent() {
@@ -41,6 +47,15 @@ function BookContinueContent() {
   const [allowPayInPerson, setAllowPayInPerson] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "cash">("card");
   const [paymentOption, setPaymentOption] = useState<"deposit" | "full">("deposit");
+  const [bookingCustomValues, setBookingCustomValues] = useState<Record<string, string | number | boolean | null>>({});
+  const [clientInfo, setClientInfo] = useState<{ firstName: string; lastName: string; email: string; phone: string } | null>(null);
+  const [addonIds, setAddonIds] = useState<string[]>([]);
+  const [specialRequests, setSpecialRequests] = useState("");
+  const [promotionCode, setPromotionCode] = useState("");
+  const [promoDiscount, setPromoDiscount] = useState<number | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [tipAmount, setTipAmount] = useState(0);
+  const [validatingPromo, setValidatingPromo] = useState(false);
 
   useEffect(() => {
     if (!holdId) {
@@ -68,8 +83,33 @@ function BookContinueContent() {
           address_snapshot: data.address_snapshot,
           hold_status: data.hold_status,
           expires_at: data.expires_at,
+          metadata: data.metadata,
+          travel_fee: data.travel_fee != null ? Number(data.travel_fee) : undefined,
+          travel_distance_km: data.travel_distance_km != null ? Number(data.travel_distance_km) : undefined,
         };
         setHold(holdData);
+
+        try {
+          const savedClient = sessionStorage.getItem("beautonomi_booking_client");
+          const savedAddons = sessionStorage.getItem("beautonomi_booking_addons");
+          const savedRequests = sessionStorage.getItem("beautonomi_booking_special_requests");
+          if (savedClient) {
+            const parsed = JSON.parse(savedClient) as { firstName?: string; lastName?: string; email?: string; phone?: string };
+            setClientInfo({
+              firstName: parsed.firstName ?? "",
+              lastName: parsed.lastName ?? "",
+              email: parsed.email ?? "",
+              phone: parsed.phone ?? "",
+            });
+          }
+          if (savedAddons) {
+            const parsed = JSON.parse(savedAddons) as string[];
+            setAddonIds(Array.isArray(parsed) ? parsed : []);
+          }
+          if (savedRequests != null) setSpecialRequests(savedRequests);
+        } catch {
+          // ignore
+        }
 
         // Fetch provider online booking settings for allow_pay_in_person
         try {
@@ -101,16 +141,30 @@ function BookContinueContent() {
     if (!holdId || !hold) return;
     setStatus("consuming");
     try {
+      const payload: Record<string, unknown> = {
+        payment_method: paymentMethod,
+        payment_option: paymentOption,
+        custom_field_values: Object.keys(bookingCustomValues).length > 0 ? bookingCustomValues : undefined,
+        addons: addonIds.length > 0 ? addonIds : undefined,
+        special_requests: specialRequests.trim() || undefined,
+        tip_amount: tipAmount > 0 ? tipAmount : undefined,
+        promotion_code: promotionCode.trim() || undefined,
+      };
+      if (clientInfo && (clientInfo.firstName || clientInfo.lastName || clientInfo.email || clientInfo.phone)) {
+        payload.client_info = {
+          firstName: clientInfo.firstName.trim() || "Guest",
+          lastName: clientInfo.lastName.trim() || "User",
+          email: clientInfo.email.trim() || undefined,
+          phone: clientInfo.phone.trim() || undefined,
+        };
+      }
       const res = await fetcher.post<{
         data?: {
           booking_id?: string;
           booking_number?: string;
           payment_url?: string | null;
         };
-      }>(`/api/public/booking-holds/${holdId}/consume`, {
-        payment_method: paymentMethod,
-        payment_option: paymentOption,
-      });
+      }>(`/api/public/booking-holds/${holdId}/consume`, payload);
 
       const data = (res as any)?.data ?? res;
       const paymentUrl = data?.payment_url;
@@ -123,6 +177,11 @@ function BookContinueContent() {
         return;
       }
 
+      try {
+        sessionStorage.removeItem("beautonomi_booking_client");
+        sessionStorage.removeItem("beautonomi_booking_addons");
+        sessionStorage.removeItem("beautonomi_booking_special_requests");
+      } catch {}
       const successUrl = bookingId
         ? `/checkout/success?booking_id=${bookingId}${bookingNumber ? `&booking_number=${bookingNumber}` : ""}`
         : "/checkout/success";
@@ -167,11 +226,40 @@ function BookContinueContent() {
     );
   }
 
+  const handleValidatePromo = async () => {
+    if (!promotionCode.trim() || !hold) return;
+    setPromoError(null);
+    setValidatingPromo(true);
+    try {
+      const servicesTotal = hold.booking_services_snapshot.reduce((sum, s) => sum + (s.price || 0), 0);
+      const amount = servicesTotal + (hold.travel_fee ?? 0);
+      const res = await fetcher.get<{ valid?: boolean; discount_value?: number; message?: string }>(
+        `/api/public/promo-codes/validate?code=${encodeURIComponent(promotionCode.trim())}&amount=${amount}`
+      );
+      const data = res as any;
+      if (data?.valid && data?.discount_value != null) {
+        setPromoDiscount(Number(data.discount_value));
+      } else {
+        setPromoDiscount(null);
+        setPromoError(data?.message ?? "Invalid or expired code");
+      }
+    } catch {
+      setPromoDiscount(null);
+      setPromoError("Could not validate code");
+    } finally {
+      setValidatingPromo(false);
+    }
+  };
+
   if (status === "review" && hold) {
-    const totalAmount = hold.booking_services_snapshot.reduce(
+    const servicesTotal = hold.booking_services_snapshot.reduce(
       (sum, s) => sum + (s.price || 0),
       0
     );
+    const travelFee = hold.travel_fee ?? 0;
+    const promoDiscountAmount = promoDiscount ?? 0;
+    const subtotalAfterPromo = Math.max(0, servicesTotal + travelFee - promoDiscountAmount);
+    const totalAmount = subtotalAfterPromo + tipAmount;
     const currency = hold.booking_services_snapshot[0]?.currency ?? "ZAR";
     const startDate = new Date(hold.start_at);
     const timeStr = startDate.toLocaleTimeString([], {
@@ -200,9 +288,28 @@ function BookContinueContent() {
                 </span>
               </div>
             ))}
-            <div className="border-t pt-3 flex justify-between font-medium">
-              <span>Total</span>
-              <span>{formatCurrency(totalAmount, currency)}</span>
+            {travelFee > 0 && (
+              <div className="flex justify-between text-sm">
+                <span>Travel fee{hold.travel_distance_km != null ? ` (${hold.travel_distance_km.toFixed(1)} km)` : ""}</span>
+                <span className="font-medium">{formatCurrency(travelFee, currency)}</span>
+              </div>
+            )}
+            {promoDiscountAmount > 0 && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Promo discount</span>
+                <span>-{formatCurrency(promoDiscountAmount, currency)}</span>
+              </div>
+            )}
+            <div className="border-t pt-3 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Tip (optional)</span>
+                <span className="font-medium">{formatCurrency(tipAmount, currency)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Final total may include add-ons and tax at checkout.</p>
+              <div className="flex justify-between font-medium pt-1">
+                <span>Total</span>
+                <span>{formatCurrency(totalAmount, currency)}</span>
+              </div>
             </div>
           </div>
 
@@ -218,6 +325,87 @@ function BookContinueContent() {
                 ? String(hold.address_snapshot.line1)
                 : "At your location"}
             </p>
+          </div>
+
+          {(clientInfo || addonIds.length > 0 || specialRequests) && (
+            <div className="rounded-lg border bg-card p-4 space-y-3">
+              <h2 className="font-medium">Your details</h2>
+              {clientInfo && (clientInfo.firstName || clientInfo.lastName || clientInfo.email || clientInfo.phone) && (
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  {(clientInfo.firstName || clientInfo.lastName) && (
+                    <p><span className="text-muted-foreground">Name:</span> {[clientInfo.firstName, clientInfo.lastName].filter(Boolean).join(" ")}</p>
+                  )}
+                  {clientInfo.email && <p><span className="text-muted-foreground">Email:</span> {clientInfo.email}</p>}
+                  {clientInfo.phone && <p><span className="text-muted-foreground">Phone:</span> {clientInfo.phone}</p>}
+                </div>
+              )}
+              {specialRequests && <p className="text-sm text-muted-foreground">Notes: {specialRequests}</p>}
+              {addonIds.length > 0 && <p className="text-sm text-muted-foreground">Add-ons: {addonIds.length} selected</p>}
+            </div>
+          )}
+
+          <div className="rounded-lg border bg-card p-4 space-y-3">
+            <h2 className="font-medium flex items-center gap-2">
+              <Tag className="h-4 w-4" /> Promo code
+            </h2>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Enter code"
+                value={promotionCode}
+                onChange={(e) => { setPromotionCode(e.target.value.toUpperCase()); setPromoError(null); }}
+                className="flex-1"
+              />
+              <Button type="button" variant="outline" onClick={handleValidatePromo} disabled={!promotionCode.trim() || validatingPromo}>
+                {validatingPromo ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
+              </Button>
+            </div>
+            {promoError && <p className="text-sm text-destructive">{promoError}</p>}
+            {promoDiscount != null && promoDiscount > 0 && <p className="text-sm text-green-600">Discount applied.</p>}
+          </div>
+
+          <div className="rounded-lg border bg-card p-4 space-y-3">
+            <h2 className="font-medium flex items-center gap-2">
+              <Heart className="h-4 w-4" /> Add a tip (optional)
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {[0, 50, 100, 150, 200].map((n) => (
+                <Button
+                  key={n}
+                  type="button"
+                  variant={tipAmount === n ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setTipAmount(n)}
+                >
+                  {n === 0 ? "None" : formatCurrency(n, currency)}
+                </Button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="tip-custom" className="text-sm">Custom</Label>
+              <Input
+                id="tip-custom"
+                type="number"
+                min={0}
+                step={10}
+                placeholder="0"
+                value={tipAmount > 0 && ![50, 100, 150, 200].includes(tipAmount) ? tipAmount : ""}
+                onChange={(e) => setTipAmount(Math.max(0, Number(e.target.value) || 0))}
+                className="w-24"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-card p-4 space-y-3">
+            <h2 className="font-medium">Additional details</h2>
+            <p className="text-sm text-muted-foreground">
+              Optional information for this booking (e.g. notes, preferences).
+            </p>
+            <CustomFieldsForm
+              entityType="booking"
+              initialValues={bookingCustomValues}
+              onChange={setBookingCustomValues}
+              showSaveButton={false}
+            />
           </div>
 
           <div className="space-y-3">

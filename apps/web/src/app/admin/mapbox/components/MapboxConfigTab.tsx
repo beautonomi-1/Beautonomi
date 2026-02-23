@@ -5,9 +5,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fetcher } from "@/lib/http/fetcher";
+import { FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { toast } from "sonner";
 import { Save, Eye, EyeOff } from "lucide-react";
+
+function formatFetchError(e: unknown, fallback: string): string {
+  if (!(e instanceof FetchError)) return e instanceof Error ? e.message : fallback;
+  const msg = e.message;
+  if (!e.details) return msg;
+  const details = Array.isArray(e.details)
+    ? (e.details as Array<{ path?: string; message?: string }>)
+        .map((d) => (d.path ? `${d.path}: ${d.message ?? ""}` : String(d.message ?? d)))
+        .join("; ")
+    : String(e.details);
+  return details ? `${msg}: ${details}` : msg;
+}
 
 interface MapboxConfig {
   access_token: string;
@@ -17,7 +30,7 @@ interface MapboxConfig {
 }
 
 export default function MapboxConfigTab() {
-  const [, setConfig] = useState<MapboxConfig | null>(null);
+  const [config, setConfig] = useState<MapboxConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showAccessToken, setShowAccessToken] = useState(false);
@@ -37,11 +50,13 @@ export default function MapboxConfigTab() {
     try {
       setIsLoading(true);
       const response = await fetcher.get<{ data: MapboxConfig | null }>("/api/admin/mapbox/config");
-      if (response.data) {
+      if (response?.data) {
         setConfig(response.data);
+        const pub = response.data.public_access_token || "";
+        const isMasked = pub === "***" || pub.length <= 12 || pub.endsWith("...");
         setFormData({
-          access_token: response.data.access_token || "",
-          public_access_token: response.data.public_access_token || "",
+          access_token: "",
+          public_access_token: isMasked ? "" : pub,
           style_url: response.data.style_url || "",
           is_enabled: response.data.is_enabled,
         });
@@ -56,13 +71,20 @@ export default function MapboxConfigTab() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    const payload: Record<string, unknown> = {
+      is_enabled: formData.is_enabled,
+      style_url: formData.style_url || null,
+    };
+    if (formData.access_token.trim()) payload.access_token = formData.access_token;
+    const pub = formData.public_access_token.trim();
+    if (pub && pub !== "***" && !pub.endsWith("...")) payload.public_access_token = pub;
     try {
       setIsSaving(true);
-      await fetcher.put("/api/admin/mapbox/config", formData);
+      await fetcher.put("/api/admin/mapbox/config", payload);
       toast.success("Mapbox configuration saved successfully");
       await loadConfig();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to save configuration");
+    } catch (error) {
+      toast.error(formatFetchError(error, "Failed to save configuration"));
     } finally {
       setIsSaving(false);
     }
@@ -92,15 +114,15 @@ export default function MapboxConfigTab() {
         </div>
 
         <div>
-          <Label htmlFor="access_token">Server Access Token *</Label>
+          <Label htmlFor="access_token">Server Access Token {config ? "" : "*"}</Label>
           <div className="relative mt-1">
             <Input
               id="access_token"
               type={showAccessToken ? "text" : "password"}
               value={formData.access_token}
               onChange={(e) => setFormData({ ...formData, access_token: e.target.value })}
-              placeholder="pk.eyJ1Ijoi..."
-              required
+              placeholder={config ? "Leave blank to keep current" : "pk.eyJ1Ijoi..."}
+              required={!config}
               className="pr-10"
             />
             <button
@@ -112,20 +134,22 @@ export default function MapboxConfigTab() {
             </button>
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            Server-side token for geocoding, routing, and distance calculations. Keep this secret.
+            Server-side token for geocoding, routing, and distance calculations. Keep this secret. {config && "Leave blank to keep current."}
           </p>
         </div>
 
         <div>
-          <Label htmlFor="public_access_token">Public Access Token *</Label>
+          <Label htmlFor="public_access_token">
+            Public Access Token {config ? "" : "*"}
+          </Label>
           <div className="relative mt-1">
             <Input
               id="public_access_token"
               type={showPublicToken ? "text" : "password"}
               value={formData.public_access_token}
               onChange={(e) => setFormData({ ...formData, public_access_token: e.target.value })}
-              placeholder="pk.eyJ1Ijoi..."
-              required
+              placeholder={config ? "Leave blank to keep current" : "pk.eyJ1Ijoi..."}
+              required={!config}
               className="pr-10"
             />
             <button
@@ -137,7 +161,7 @@ export default function MapboxConfigTab() {
             </button>
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            Public token for client-side map rendering. Can be exposed in frontend code.
+            Public token for client-side map rendering (web, customer & provider apps). {config && "Leave blank to keep current token."}
           </p>
         </div>
 

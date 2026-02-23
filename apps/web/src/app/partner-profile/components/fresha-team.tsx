@@ -1,24 +1,26 @@
 "use client";
 import React from "react";
-import Image from "next/image";
+import Image, { type StaticImageData } from "next/image";
 import UserImage from "./../../../../public/images/8aa5cbca-b607-4a45-bd0c-2d63a663aa30.webp";
+
+type ImgSrc = StaticImageData | string;
 
 type TeamMember = {
   name: string;
   role: string;
-  avatar?: string;
+  avatar?: ImgSrc;
 };
 
 const teamMembers: TeamMember[] = [
-  { name: "Zimasa", role: "Nail Technician", avatar: UserImage.src },
-  { name: "Shannen", role: "Nail Technician", avatar: UserImage.src },
-  { name: "Qaqamba", role: "Nail Technician", avatar: UserImage.src },
-  { name: "Laurraine", role: "Pedicure Technician", avatar: UserImage.src },
-  { name: "Agness", role: "Pedicure Technician", avatar: UserImage.src },
-  { name: "Prunella", role: "Pedicure Technician", avatar: UserImage.src },
-  { name: "Farllon", role: "Nail Technician", avatar: UserImage.src },
-  { name: "Natasha", role: "Pedicure Technician", avatar: UserImage.src },
-  { name: "Memory", role: "Nail Technician", avatar: UserImage.src },
+  { name: "Zimasa", role: "Nail Technician", avatar: UserImage },
+  { name: "Shannen", role: "Nail Technician", avatar: UserImage },
+  { name: "Qaqamba", role: "Nail Technician", avatar: UserImage },
+  { name: "Laurraine", role: "Pedicure Technician", avatar: UserImage },
+  { name: "Agness", role: "Pedicure Technician", avatar: UserImage },
+  { name: "Prunella", role: "Pedicure Technician", avatar: UserImage },
+  { name: "Farllon", role: "Nail Technician", avatar: UserImage },
+  { name: "Natasha", role: "Pedicure Technician", avatar: UserImage },
+  { name: "Memory", role: "Nail Technician", avatar: UserImage },
 ];
 
 const PartnerTeam: React.FC = () => {

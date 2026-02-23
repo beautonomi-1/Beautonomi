@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     // Validate request body

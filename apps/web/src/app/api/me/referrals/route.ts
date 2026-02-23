@@ -53,12 +53,25 @@ export async function GET(request: NextRequest) {
       console.warn("user_referrals table not found, using default stats");
     }
 
-    // Get referral settings (public endpoint would be better, but using defaults for now)
-    const referralSettings = {
-      referral_amount: 50,
-      referral_currency: "ZAR",
-      is_enabled: true,
-    };
+    // Load referral settings from DB so mobile and web get same is_enabled and amount
+    const REFERRAL_SETTINGS_ID = "00000000-0000-0000-0000-000000000001";
+    let referralSettings = { referral_amount: 50, referral_currency: "ZAR", is_enabled: true };
+    try {
+      const { data: rs } = await supabase
+        .from("referral_settings")
+        .select("referral_amount, referral_currency, is_enabled")
+        .eq("id", REFERRAL_SETTINGS_ID)
+        .maybeSingle();
+      if (rs) {
+        referralSettings = {
+          referral_amount: Number(rs.referral_amount) ?? 50,
+          referral_currency: rs.referral_currency || "ZAR",
+          is_enabled: rs.is_enabled !== false,
+        };
+      }
+    } catch {
+      // use defaults
+    }
 
     // Generate referral link
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";

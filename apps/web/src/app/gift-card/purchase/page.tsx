@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Navbar4 from "@/components/global/Navbar4";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { toast } from "sonner";
 
 export default function GiftCardPurchasePage() {
@@ -17,9 +19,10 @@ export default function GiftCardPurchasePage() {
   const [recipientEmail, setRecipientEmail] = useState("");
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { enabled: giftCardsEnabled, loading: flagsLoading } = useFeatureFlag("gift_cards");
 
   // Check if coming from bulk purchase link
-  React.useEffect(() => {
+  useEffect(() => {
     if (searchParams.get("bulk") === "true") {
       setIsBulkMode(true);
     }
@@ -61,6 +64,23 @@ export default function GiftCardPurchasePage() {
   };
   
   const totalAmount = Number(amount) * Number(quantity) || 0;
+
+  if (!flagsLoading && !giftCardsEnabled) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navbar4 />
+        <div className="max-w-2xl mx-auto px-4 py-10">
+          <div className="border border-amber-200 bg-amber-50 rounded-lg p-6 text-center">
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Gift cards are currently unavailable</h2>
+            <p className="text-gray-600 mb-4">This feature is temporarily disabled. Please check back later.</p>
+            <Button asChild variant="outline">
+              <Link href="/">Return home</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white">

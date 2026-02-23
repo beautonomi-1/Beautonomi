@@ -1,5 +1,7 @@
 "use client";
-import Image, { StaticImageData } from "next/image";
+import Image, { type StaticImageData } from "next/image";
+
+type ImgSrc = StaticImageData | string;
 import React, { useState } from "react";
 import Arrow from "./../../../../public/images/Arrow.svg";
 import CloseIcon from "./../../../../public/images/close-icon.svg";
@@ -23,7 +25,7 @@ interface RefundPolicy {
 
 interface PopupContentItem {
   text: string;
-  image: StaticImageData; 
+  image: ImgSrc;
 }
 
 interface PopupContent {

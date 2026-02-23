@@ -113,6 +113,7 @@ export async function GET(request: NextRequest) {
           distance: { enabled: false },
           sumsub: { enabled: false },
           aura: { enabled: false },
+          safety: { enabled: false, check_in_enabled: true, escalation_enabled: true, cooldown_seconds: 300, ui_copy: {} },
         },
       };
     const body = JSON.stringify(fallback);

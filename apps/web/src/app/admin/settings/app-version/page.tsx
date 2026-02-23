@@ -123,6 +123,14 @@ export default function AppVersionSettingsPage() {
           <p className="text-sm sm:text-base text-gray-600">
             Configure minimum app versions and force update settings for iOS and Android
           </p>
+          <div className="mt-4 p-4 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-700 space-y-2">
+            <p className="font-medium text-gray-900">How this works with Expo &amp; OTA</p>
+            <ul className="list-disc list-inside space-y-1 text-gray-600">
+              <li><strong>This page</strong> controls <strong>native app version</strong> checks: min required version, latest store version, store URLs, and whether to force an update when the user is below the minimum. The customer and provider Expo apps call <code className="bg-gray-200 px-1 rounded">/api/public/app-version</code> on launch and show &quot;Update required&quot; or &quot;Update available&quot; using these values.</li>
+              <li><strong>OTA (Over-The-Air) updates</strong> are separate: they deliver new JavaScript bundles without a new store build. OTA is configured in EAS (e.g. <code className="bg-gray-200 px-1 rounded">eas update --branch production</code>) and in each app&apos;s <code className="bg-gray-200 px-1 rounded">app.config</code> / <code className="bg-gray-200 px-1 rounded">eas.json</code> (channels: development, preview, production). This admin page does <em>not</em> control OTA—only store version checks and force-update prompts.</li>
+              <li>When you release a new <strong>store build</strong>, update the &quot;Latest available version&quot; and optionally the &quot;Minimum required version&quot; and &quot;Force update&quot; here so devices know to prompt users to update.</li>
+            </ul>
+          </div>
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "ios" | "android")}>

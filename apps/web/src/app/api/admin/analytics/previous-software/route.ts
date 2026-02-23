@@ -12,10 +12,10 @@ import {
  * Get analytics on previous salon software used by providers
  * Superadmin only - provides competitor analysis data
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = await getSupabaseServer(request);
     if (!supabase) {
       return handleApiError(new Error("Server error"), "Database connection failed");
     }

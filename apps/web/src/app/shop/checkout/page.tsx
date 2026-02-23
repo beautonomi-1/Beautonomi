@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { fetcher } from "@/lib/http/fetcher";
 import { useAuth } from "@/providers/AuthProvider";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import {
   Store,
   Truck,
@@ -69,6 +70,8 @@ export default function ProductCheckoutPage() {
   const [useWallet, setUseWallet] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
   const [platformFeeConfig, setPlatformFeeConfig] = useState({ type: "percentage", percentage: 5, fixed: 0, show: true });
+  const { enabled: paystackEnabled } = useFeatureFlag("payment_paystack");
+  const { enabled: walletEnabled } = useFeatureFlag("payment_wallet");
 
   useEffect(() => {
     if (!providerId) return;
@@ -136,6 +139,13 @@ export default function ProductCheckoutPage() {
       setLoading(false);
     })();
   }, [providerId, user]);
+
+  // When Paystack is disabled, default to pay on delivery
+  useEffect(() => {
+    if (!paystackEnabled && paymentMethod === "paystack") {
+      setPaymentMethod("card_on_delivery");
+    }
+  }, [paystackEnabled, paymentMethod]);
 
   const subtotal = items.reduce(
     (s, i) => s + (i.product?.retail_price ?? 0) * i.quantity,
@@ -366,25 +376,32 @@ export default function ProductCheckoutPage() {
           {/* Payment method */}
           <div className="bg-white rounded-xl border p-6">
             <h3 className="font-semibold text-gray-900 mb-4">Payment Method</h3>
+            {!paystackEnabled && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                Online payment is currently unavailable. Please pay when you receive your order.
+              </p>
+            )}
             <div className="space-y-3">
-              <label
-                className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                  paymentMethod === "paystack" ? "border-pink-500 bg-pink-50" : "border-gray-200 hover:bg-gray-50"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="payment"
-                  checked={paymentMethod === "paystack"}
-                  onChange={() => setPaymentMethod("paystack")}
-                  className="accent-pink-600"
-                />
-                <div>
-                  <p className="font-medium text-gray-900">Pay Online</p>
-                  <p className="text-xs text-gray-500">Secure payment via Paystack (card, EFT, etc.)</p>
-                </div>
-              </label>
-              {paymentMethod === "paystack" && user && walletBalance > 0 && (
+              {paystackEnabled && (
+                <label
+                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    paymentMethod === "paystack" ? "border-pink-500 bg-pink-50" : "border-gray-200 hover:bg-gray-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="payment"
+                    checked={paymentMethod === "paystack"}
+                    onChange={() => setPaymentMethod("paystack")}
+                    className="accent-pink-600"
+                  />
+                  <div>
+                    <p className="font-medium text-gray-900">Pay Online</p>
+                    <p className="text-xs text-gray-500">Secure payment via Paystack (card, EFT, etc.)</p>
+                  </div>
+                </label>
+              )}
+              {paymentMethod === "paystack" && user && walletBalance > 0 && walletEnabled && (
                 <label className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50/50 cursor-pointer">
                   <input
                     type="checkbox"

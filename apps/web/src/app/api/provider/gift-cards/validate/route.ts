@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { createClient } from "@supabase/supabase-js";
 
 /**
@@ -19,6 +20,11 @@ export async function GET(request: NextRequest) {
     const permissionCheck = await requirePermission('view_sales', request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
+    }
+
+    const giftCardsEnabled = await isFeatureEnabledServer("gift_cards");
+    if (!giftCardsEnabled) {
+      return errorResponse("Gift cards are currently unavailable.", "FEATURE_DISABLED", 403);
     }
 
     const supabaseAdmin = createClient(

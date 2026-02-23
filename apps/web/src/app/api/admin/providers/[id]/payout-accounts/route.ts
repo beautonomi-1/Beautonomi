@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -10,16 +10,15 @@ import {
 /**
  * GET /api/admin/providers/[id]/payout-accounts
  *
- * List a provider's payout accounts (bank accounts).
- * Superadmin only. Used when viewing provider details in admin.
+ * List a provider's payout accounts (bank accounts). Superadmin only. Uses admin client to bypass RLS.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = getSupabaseAdmin();
     const { id: providerId } = await params;
 
     if (!providerId) {

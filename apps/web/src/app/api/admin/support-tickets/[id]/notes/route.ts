@@ -7,7 +7,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const result = await requireRole(["superadmin", "support_agent"]);
     
     if (!result) {

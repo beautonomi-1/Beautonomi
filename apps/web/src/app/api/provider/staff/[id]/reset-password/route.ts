@@ -34,37 +34,40 @@ export async function POST(
       return notFoundResponse("Staff member not found");
     }
 
-    // Use Supabase Auth to send password reset email
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      throw new Error("Service role key not configured");
+    const email = staff.email?.trim();
+    if (!email) {
+      return handleApiError(
+        new Error("Staff member has no email address set. Add an email in the staff profile first."),
+        "Staff member has no email set",
+        "VALIDATION_ERROR",
+        400
+      );
     }
 
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    // Trigger Supabase Auth to send the built-in password reset email via the recover endpoint
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !anonKey) {
+      throw new Error("Supabase URL or anon key not configured");
+    }
 
-    // Send password reset email
-    const { error: resetError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'recovery',
-      email: staff.email,
+    const recoverRes = await fetch(`${supabaseUrl}/auth/v1/recover`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": anonKey,
+      },
+      body: JSON.stringify({
+        email,
+        redirect_to: `${process.env.NEXT_PUBLIC_APP_URL || ""}/auth/callback?next=/provider`,
+      }),
     });
 
-    if (resetError) {
-      throw resetError;
+    if (!recoverRes.ok) {
+      const errBody = await recoverRes.json().catch(() => ({}));
+      const msg = errBody?.msg ?? errBody?.message ?? "Failed to send reset email";
+      return handleApiError(new Error(msg), msg, "RESET_FAILED", recoverRes.status);
     }
-
-    // In a real implementation, you might want to:
-    // 1. Log the password reset request
-    // 2. Send a custom email with your branding
-    // 3. Track password reset attempts
 
     return successResponse({
       success: true,

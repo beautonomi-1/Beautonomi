@@ -27,7 +27,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
     const { id } = await params;
     const adminSupabase = getSupabaseAdmin();
 
@@ -57,7 +57,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
     const { id } = await params;
     const body = await request.json();
     const validated = updateCustomFieldSchema.parse(body);
@@ -142,7 +142,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"]);
+    await requireRoleInApi(["superadmin"], request);
     const { id } = await params;
     const adminSupabase = getSupabaseAdmin();
 

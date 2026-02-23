@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   handleApiError,
@@ -8,13 +8,14 @@ import {
 
 /**
  * GET /api/admin/audit-logs
- * 
- * Get audit logs with filters and search
+ *
+ * Get audit logs with filters and search. Uses admin client so the actor join
+ * to users returns data (RLS would otherwise hide other users from the actor column).
  */
 export async function GET(request: Request) {
   try {
-    await requireRoleInApi(["superadmin"]);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(["superadmin"], request);
+    const supabase = getSupabaseAdmin();
     
     // Validate request URL
     if (!request.url) {

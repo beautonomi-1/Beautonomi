@@ -36,7 +36,7 @@ export async function GET(request: Request) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const providerId = searchParams.get("provider_id");
 
@@ -146,7 +146,7 @@ export async function POST(request: Request) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validationResult = serviceZoneSchema.safeParse(body);

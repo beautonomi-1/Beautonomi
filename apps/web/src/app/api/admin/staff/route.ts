@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { writeAuditLog } from "@/lib/audit/audit";
@@ -22,10 +22,11 @@ export async function GET(request: NextRequest) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
     const providerId = searchParams.get("provider_id");
-    const role = searchParams.get("role");
+    const role = searchParams.get("role"); // staff role: owner | manager | employee
+    const userRole = searchParams.get("user_role"); // account role: provider_owner | provider_staff
     const isActive = searchParams.get("is_active");
 
     let query = supabase
@@ -44,7 +45,8 @@ export async function GET(request: NextRequest) {
         commission_percentage,
         created_at,
         updated_at,
-        provider:providers(id, business_name, slug)
+        provider:providers(id, business_name, slug),
+        users(role)
       `)
       .order("created_at", { ascending: false });
 
@@ -56,110 +58,50 @@ export async function GET(request: NextRequest) {
       query = query.eq("role", role);
     }
 
-    if (isActive !== null) {
+    if (isActive !== null && isActive !== undefined && isActive !== "") {
       query = query.eq("is_active", isActive === "true");
     }
 
-    const { data: staff, error } = await query;
+    const { data: staffRows, error } = await query;
 
     if (error) throw error;
 
-    // Get statistics
-    const { data: allStaff } = await supabase
-      .from("provider_staff")
-      .select("id, role, is_active");
+    // Normalize: users comes as { role } or null from FK; attach user_role (account role from users table)
+    let staff = (staffRows || []).map((s: any) => {
+      const { users: _u, ...rest } = s;
+      return { ...rest, user_role: _u?.role ?? null };
+    });
+    if (userRole) {
+      staff = staff.filter((s: any) => s.user_role === userRole);
+    }
 
+    // Get statistics (include user_role from users for account-level counts)
+    const { data: allStaffWithUser } = await supabase
+      .from("provider_staff")
+      .select("id, role, is_active, users(role)");
+
+    const allStaff = allStaffWithUser || [];
     const stats = {
-      total: allStaff?.length || 0,
-      active: allStaff?.filter((s) => s.is_active).length || 0,
-      inactive: allStaff?.filter((s) => !s.is_active).length || 0,
-      by_role: {
-        owner: allStaff?.filter((s) => s.role === "owner").length || 0,
-        manager: allStaff?.filter((s) => s.role === "manager").length || 0,
-        employee: allStaff?.filter((s) => s.role === "employee").length || 0,
+      total: allStaff.length,
+      active: allStaff.filter((s: any) => s.is_active).length,
+      inactive: allStaff.filter((s: any) => !s.is_active).length,
+      by_staff_role: {
+        owner: allStaff.filter((s: any) => s.role === "owner").length,
+        manager: allStaff.filter((s: any) => s.role === "manager").length,
+        employee: allStaff.filter((s: any) => s.role === "employee").length,
+      },
+      by_user_role: {
+        provider_owner: allStaff.filter((s: any) => s.users?.role === "provider_owner").length,
+        provider_staff: allStaff.filter((s: any) => s.users?.role === "provider_staff").length,
+        no_account: allStaff.filter((s: any) => !s.users?.role).length,
       },
     };
 
     return successResponse({
-      staff: staff || [],
+      staff,
       statistics: stats,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch staff");
-  }
-}
-
-/**
- * PATCH /api/admin/staff/[id]
- * 
- * Update staff member
- */
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
-
-    const supabase = await getSupabaseServer();
-    const body = await request.json();
-    const { id } = params;
-
-    const { error } = await supabase
-      .from("provider_staff")
-      .update(body)
-      .eq("id", id);
-
-    if (error) throw error;
-
-    await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
-      action: "admin.staff.update",
-      entity_type: "provider_staff",
-      entity_id: id,
-      metadata: body,
-    });
-
-    return successResponse({ success: true });
-  } catch (error) {
-    return handleApiError(error, "Failed to update staff");
-  }
-}
-
-/**
- * DELETE /api/admin/staff/[id]
- * 
- * Delete staff member
- */
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
-
-    const supabase = await getSupabaseServer();
-    const { id } = params;
-
-    const { error } = await supabase
-      .from("provider_staff")
-      .delete()
-      .eq("id", id);
-
-    if (error) throw error;
-
-    await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
-      action: "admin.staff.delete",
-      entity_type: "provider_staff",
-      entity_id: id,
-      metadata: {},
-    });
-
-    return successResponse({ success: true });
-  } catch (error) {
-    return handleApiError(error, "Failed to delete staff");
   }
 }
