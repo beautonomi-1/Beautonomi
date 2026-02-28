@@ -73,7 +73,11 @@ Builds (including on Vercel) will then upload source maps to Sentry.
 
 ## 6. Mobile (Customer & Provider Expo apps)
 
-Both Expo apps use `@sentry/react-native` and init Sentry from `src/lib/sentry.ts`. Set `EXPO_PUBLIC_SENTRY_DSN` in each app’s `.env.local`; it is exposed via `app.config.js` → `extra` so the DSN is available at runtime. See `docs/ENVIRONMENT_MATRIX.md` for the variable table.
+Both Expo apps use `@sentry/react-native` and init Sentry from `src/lib/sentry.ts`. Set `EXPO_PUBLIC_SENTRY_DSN` in each app’s `.env.local`; it is exposed via `app.config.js` → `extra` so the DSN is available at runtime.
+
+- **Customer app (mobile-customer):** See [docs/SENTRY_MOBILE_CUSTOMER_SETUP.md](SENTRY_MOBILE_CUSTOMER_SETUP.md) for DSN and verification.
+- **Provider app (mobile-provider):** See [docs/SENTRY_MOBILE_PROVIDER_SETUP.md](SENTRY_MOBILE_PROVIDER_SETUP.md) for DSN and verification.
+- See `docs/ENVIRONMENT_MATRIX.md` for the variable table.
 
 ## Reference
 
