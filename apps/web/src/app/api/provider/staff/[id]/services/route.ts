@@ -2,8 +2,9 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser, notFoundResponse } from "@/lib/supabase/api-helpers";
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const { user } = await requireRoleInApi(["provider_owner", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -12,7 +13,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const { data: staff } = await supabase
       .from("provider_staff")
       .select("id")
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
@@ -28,11 +29,11 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     await supabase
       .from("staff_service_assignments")
       .delete()
-      .eq("staff_id", params.id);
+      .eq("staff_id", id);
 
     if (service_ids.length > 0) {
       const inserts = service_ids.map((sid: string) => ({
-        staff_id: params.id,
+        staff_id: id,
         service_id: sid,
       }));
 
@@ -46,7 +47,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const { error: updateError } = await supabase
       .from("provider_staff")
       .update({ assigned_service_ids: service_ids })
-      .eq("id", params.id);
+      .eq("id", id);
 
     if (updateError) {
       console.warn("Could not update assigned_service_ids column:", updateError);

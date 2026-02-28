@@ -40,6 +40,9 @@ export async function GET(request: NextRequest) {
           business_name,
           slug
         ),
+        group_bookings (
+          ref_number
+        ),
         booking_services (
           id,
           offering_id,
@@ -236,6 +239,8 @@ export async function GET(request: NextRequest) {
         customer_status: customerStatus, // Customer portal status (upcoming, past, cancelled)
         provider_name: booking.provider?.business_name || "Provider",
         provider_slug: booking.provider?.slug || null,
+        is_group_booking: !!booking.group_booking_id,
+        group_booking_ref: booking.group_bookings?.ref_number ?? null,
         services,
         addons,
         products,

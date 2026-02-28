@@ -2,8 +2,9 @@ import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
 
     const supabaseAdmin = createClient(
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const { data: bookingServiceIds } = await supabaseAdmin
       .from("booking_services")
       .select("booking_id")
-      .eq("staff_id", params.id);
+      .eq("staff_id", id);
 
     const bookingIds = [...new Set((bookingServiceIds || []).map((bs: any) => bs.booking_id))];
 

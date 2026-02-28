@@ -8,6 +8,7 @@ import type { Booking } from "@/types/beautonomi";
 import { determineAppointmentStatusFromDB } from "@/lib/provider-portal/appointment-settings";
 
 import { mapStatusToProvider } from "@/lib/utils/booking-status";
+import { checkBookingConflict, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
 
 // Map frontend status to database enum values
 // Frontend: booked, started, completed, cancelled, no_show
@@ -81,6 +82,7 @@ export async function GET(request: NextRequest) {
         version,
         customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
         locations:provider_locations(id, name, address_line1, city),
+        group_bookings!bookings_group_booking_id_fkey(ref_number),
         booking_services(
           id,
           offering_id,
@@ -90,6 +92,7 @@ export async function GET(request: NextRequest) {
           currency,
           scheduled_start_at,
           scheduled_end_at,
+          guest_name,
           offering:offerings(
             id,
             title,
@@ -161,7 +164,7 @@ export async function GET(request: NextRequest) {
 
     // Transform to match Booking type
     const transformedBookings = (bookings || []).map((booking: any) => {
-      // Transform booking_services to include staff info for calendar filtering
+      // Transform booking_services to include staff info and guest_name for group bookings
       const services = (booking.booking_services || []).map((bs: any) => ({
         id: bs.offering_id || bs.id,
         offering_id: bs.offering_id,
@@ -175,6 +178,7 @@ export async function GET(request: NextRequest) {
         currency: bs.currency || "ZAR",
         scheduled_start_at: bs.scheduled_start_at,
         scheduled_end_at: bs.scheduled_end_at,
+        guest_name: bs.guest_name || null,
       }));
 
       // Transform booking_products for front desk and calendar display
@@ -241,6 +245,13 @@ export async function GET(request: NextRequest) {
         customer_name: booking.customers?.full_name || null,
         location_name: booking.locations?.name || null,
         staff_name: services[0]?.staff_name || null,
+        // Group booking: show on calendar and list
+        is_group_booking: Boolean(booking.is_group_booking),
+        group_booking_id: booking.group_booking_id || null,
+        group_booking_ref: (() => {
+          const gb = (booking as { group_bookings?: { ref_number?: string } | Array<{ ref_number?: string }> }).group_bookings;
+          return Array.isArray(gb) ? gb[0]?.ref_number ?? null : gb?.ref_number ?? null;
+        })(),
       };
     });
 
@@ -251,6 +262,7 @@ export async function GET(request: NextRequest) {
     
     return response;
   } catch (error) {
+    console.error("[GET /api/provider/bookings]", error);
     return handleApiError(error, "Failed to fetch bookings");
   }
 }
@@ -443,20 +455,27 @@ export async function POST(request: NextRequest) {
       effectiveTaxRate = await getEffectiveTaxRate(providerId);
     }
 
-    // Determine location_id: use provided value, or default to provider's first location for at_salon bookings
+    // Determine location_id: use provided value, or default to provider's first salon location for at_salon bookings
+    // Only salon locations (location_type = 'salon') accept at_salon/walk-in; base-only is for distance/travel.
     let locationId = body.location_id || null;
-    if (!locationId && (body.location_type === "at_salon" || !body.location_type)) {
-      // For at_salon bookings, try to get the provider's default location or first location
-      const { data: providerLocations } = await supabaseAdmin
+    if (body.location_type === "at_salon" || !body.location_type) {
+      const { data: salonLocations } = await supabaseAdmin
         .from("provider_locations")
-        .select("id")
+        .select("id, location_type")
         .eq("provider_id", providerId)
-        .order("created_at", { ascending: true })
-        .limit(1);
-      
-      if (providerLocations && providerLocations.length > 0) {
-        locationId = providerLocations[0].id;
-        console.log(`Using default location ${locationId} for walk-in booking`);
+        .eq("is_active", true)
+        .order("is_primary", { ascending: false })
+        .order("created_at", { ascending: true });
+
+      const firstSalon = salonLocations?.find((l: { location_type?: string }) => (l.location_type || "salon") === "salon");
+      if (!locationId) {
+        if (firstSalon) locationId = firstSalon.id;
+      } else {
+        // If client (e.g. provider app) sent a location_id that is base-only, use first salon instead
+        const chosen = salonLocations?.find((l: { id: string }) => l.id === locationId);
+        if (chosen && (chosen as { location_type?: string }).location_type === "base") {
+          locationId = firstSalon?.id ?? locationId;
+        }
       }
     }
 
@@ -531,84 +550,247 @@ export async function POST(request: NextRequest) {
       throw new Error("customer_id is required");
     }
 
-    // Insert booking (use admin client to bypass RLS for provider-created bookings)
-    console.log("Inserting booking with data:", JSON.stringify(bookingData, null, 2));
-    const { data: booking, error } = await supabaseAdmin
-      .from("bookings")
-      .insert(bookingData)
-      .select(`
-        *,
-        customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
-        locations:provider_locations(id, name, address_line1, city)
-      `)
-      .single();
-
-    if (error) {
-      console.error("Error inserting booking:", error);
-      console.error("Error details:", JSON.stringify(error, null, 2));
-      throw new Error(`Database error: ${error.message || JSON.stringify(error)}`);
-    }
-
-    if (!booking) {
-      console.error("No booking returned from insert");
-      throw new Error("Failed to create booking: No data returned from database");
-    }
-
-    console.log("Booking created successfully:", booking.id);
-
-    // Create booking_services records for each service (required for calendar display)
-    // Support both old format (offering_id) and new format (serviceId)
+    // Resolve staff and time range for conflict check / RPC path
+    const staffId =
+      body.services?.[0]?.staffId ||
+      body.services?.[0]?.staff_id ||
+      body.team_member_id ||
+      body.staff_id ||
+      null;
+    let startAt: Date;
+    let endAt: Date;
+    const bufferMinutes = 15;
     if (body.services && Array.isArray(body.services) && body.services.length > 0) {
-      const bookingServicesData = body.services.map((service: any) => {
-        const startAt = service.scheduled_start_at || booking.scheduled_at;
-        const duration = service.duration || service.duration_minutes || 60;
-        const start = new Date(startAt);
+      const firstStart = body.services[0].scheduled_start_at || bookingData.scheduled_at;
+      startAt = new Date(firstStart);
+      let cursor = new Date(firstStart);
+      for (const s of body.services) {
+        const duration = s.duration ?? s.duration_minutes ?? 60;
+        cursor = new Date(cursor.getTime() + duration * 60 * 1000);
+      }
+      endAt = new Date(cursor.getTime() + bufferMinutes * 60 * 1000);
+    } else {
+      const start = new Date(bookingData.scheduled_at);
+      const duration = body.duration_minutes ?? 60;
+      startAt = start;
+      endAt = new Date(start.getTime() + (duration + bufferMinutes) * 60 * 1000);
+    }
+
+    const allowOverride = await canOverrideDoubleBooking(supabaseAdmin, providerId);
+    const useRpcPath = staffId != null && !allowOverride;
+
+    let booking: any;
+
+    if (useRpcPath) {
+      // Conflict check before RPC (same slot as client/portal booking)
+      const conflictResult = await checkBookingConflict(
+        supabaseAdmin as any,
+        staffId,
+        startAt,
+        endAt,
+        bufferMinutes
+      );
+      if (conflictResult.hasConflict) {
+        return errorResponse(
+          "This time slot is no longer available. Please select another time.",
+          "CONFLICT",
+          409
+        );
+      }
+
+      // Build RPC payload (booking_services shape for create_booking_with_locking)
+      const pBookingServices =
+        body.services && Array.isArray(body.services) && body.services.length > 0
+          ? (() => {
+              let cursor = new Date(body.services[0].scheduled_start_at || bookingData.scheduled_at);
+              return body.services.map((service: any) => {
+                const duration = service.duration ?? service.duration_minutes ?? 60;
+                const start = new Date(cursor);
+                const end = new Date(cursor.getTime() + duration * 60 * 1000);
+                cursor = new Date(end.getTime() + (service.buffer_minutes ?? 0) * 60 * 1000);
+                return {
+                  offering_id: service.serviceId || service.service_id || service.offering_id,
+                  staff_id: service.staffId || service.staff_id || staffId,
+                  duration_minutes: duration,
+                  price: service.price ?? 0,
+                  currency: service.currency || "ZAR",
+                  scheduled_start_at: start.toISOString(),
+                  scheduled_end_at: end.toISOString(),
+                };
+              });
+            })()
+          : (() => {
+              const start = new Date(bookingData.scheduled_at);
+              const duration = body.duration_minutes ?? 60;
+              const end = new Date(start.getTime() + duration * 60 * 1000);
+              return [
+                {
+                  offering_id: body.offering_id || body.service_id,
+                  staff_id: staffId,
+                  duration_minutes: duration,
+                  price: body.price ?? 0,
+                  currency: body.currency || "ZAR",
+                  scheduled_start_at: start.toISOString(),
+                  scheduled_end_at: end.toISOString(),
+                },
+              ];
+            })();
+
+      const pEndAt =
+        body.services?.length > 0
+          ? (() => {
+              let c = new Date(body.services[0].scheduled_start_at || bookingData.scheduled_at);
+              for (const s of body.services) {
+                const dur = s.duration ?? s.duration_minutes ?? 60;
+                c = new Date(c.getTime() + dur * 60 * 1000);
+              }
+              return new Date(c.getTime() + bufferMinutes * 60 * 1000).toISOString();
+            })()
+          : new Date(endAt.getTime()).toISOString();
+
+      const { data: bookingId, error: rpcError } = await supabaseAdmin.rpc("create_booking_with_locking", {
+        p_booking_data: bookingData,
+        p_booking_services: pBookingServices,
+        p_staff_id: staffId,
+        p_start_at: startAt.toISOString(),
+        p_end_at: pEndAt,
+      });
+
+      if (rpcError) {
+        const msg = (rpcError as { message?: string }).message ?? "";
+        if (msg.includes("BOOKING_SLOT_CONFLICT")) {
+          return errorResponse(
+            "This time slot is no longer available. Please select another time.",
+            "CONFLICT",
+            409
+          );
+        }
+        console.error("RPC create_booking_with_locking error:", rpcError);
+        throw new Error(`Database error: ${msg}`);
+      }
+      if (!bookingId) {
+        throw new Error("Failed to create booking: No data returned from database");
+      }
+
+      // Fetch created booking and set provider-only fields not in RPC
+      const { data: createdBooking, error: fetchErr } = await supabaseAdmin
+        .from("bookings")
+        .update({
+          booking_source: bookingSource,
+          referral_source_id: referralSourceId,
+          discount_reason: body.discount_reason ?? null,
+        })
+        .eq("id", bookingId)
+        .select(
+          `
+          *,
+          customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
+          locations:provider_locations(id, name, address_line1, city)
+        `
+        )
+        .single();
+
+      if (fetchErr || !createdBooking) {
+        console.error("Failed to fetch/update booking after RPC:", fetchErr);
+        throw new Error("Failed to create booking");
+      }
+      booking = createdBooking;
+      console.log("Booking created successfully via RPC:", booking.id);
+    } else {
+      // Direct insert (no staff, or provider allows double-booking override)
+      console.log("Inserting booking with data:", JSON.stringify(bookingData, null, 2));
+      const { data: insertedBooking, error } = await supabaseAdmin
+        .from("bookings")
+        .insert(bookingData)
+        .select(`
+          *,
+          customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
+          locations:provider_locations(id, name, address_line1, city)
+        `)
+        .single();
+
+      if (error) {
+        console.error("Error inserting booking:", error);
+        console.error("Error details:", JSON.stringify(error, null, 2));
+        throw new Error(`Database error: ${error.message || JSON.stringify(error)}`);
+      }
+      if (!insertedBooking) {
+        console.error("No booking returned from insert");
+        throw new Error("Failed to create booking: No data returned from database");
+      }
+      booking = insertedBooking;
+      console.log("Booking created successfully:", booking.id);
+
+      // Create booking_services records when not using RPC
+      if (body.services && Array.isArray(body.services) && body.services.length > 0) {
+        const bookingServicesData = body.services.map((service: any) => {
+          const startAtS = service.scheduled_start_at || booking.scheduled_at;
+          const duration = service.duration || service.duration_minutes || 60;
+          const start = new Date(startAtS);
+          const end = new Date(start.getTime() + duration * 60 * 1000);
+          return {
+            booking_id: booking.id,
+            offering_id: service.serviceId || service.service_id || service.offering_id,
+            staff_id: service.staffId || service.staff_id || body.team_member_id || body.staff_id || null,
+            duration_minutes: duration,
+            price: service.price || 0,
+            currency: service.currency || "ZAR",
+            scheduled_start_at: start.toISOString(),
+            scheduled_end_at: end.toISOString(),
+          };
+        });
+        const { error: bsError } = await supabaseAdmin.from("booking_services").insert(bookingServicesData);
+        if (bsError) {
+          console.error("Error creating booking_services:", bsError);
+        } else {
+          console.log("Booking services created:", bookingServicesData.length);
+        }
+      } else if (body.service_id || body.offering_id) {
+        const offeringId = body.offering_id || body.service_id;
+        const duration = body.duration_minutes || 60;
+        const start = new Date(booking.scheduled_at);
         const end = new Date(start.getTime() + duration * 60 * 1000);
-        return {
+        const bookingServiceData = {
           booking_id: booking.id,
-          offering_id: service.serviceId || service.service_id || service.offering_id,
-          staff_id: service.staffId || service.staff_id || body.team_member_id || body.staff_id || null,
+          offering_id: offeringId,
+          staff_id: body.team_member_id || body.staff_id || null,
           duration_minutes: duration,
-          price: service.price || 0,
-          currency: service.currency || "ZAR",
+          price: body.price || 0,
+          currency: body.currency || "ZAR",
           scheduled_start_at: start.toISOString(),
           scheduled_end_at: end.toISOString(),
         };
-      });
-
-      const { error: bsError } = await supabaseAdmin
-        .from("booking_services")
-        .insert(bookingServicesData);
-
-      if (bsError) {
-        console.error("Error creating booking_services:", bsError);
-        // Don't fail the booking creation, just log the error
-      } else {
-        console.log("Booking services created:", bookingServicesData.length);
+        const { error: bsError } = await supabaseAdmin.from("booking_services").insert(bookingServiceData);
+        if (bsError) console.error("Error creating booking_services:", bsError);
       }
-    } else if (body.service_id || body.offering_id) {
-      // Fallback: Create single service from legacy format
-      const offeringId = body.offering_id || body.service_id;
-      const duration = body.duration_minutes || 60;
-      const start = new Date(booking.scheduled_at);
-      const end = new Date(start.getTime() + duration * 60 * 1000);
-      const bookingServiceData = {
-        booking_id: booking.id,
-        offering_id: offeringId,
-        staff_id: body.team_member_id || body.staff_id || null,
-        duration_minutes: duration,
-        price: body.price || 0,
-        currency: body.currency || "ZAR",
-        scheduled_start_at: start.toISOString(),
-        scheduled_end_at: end.toISOString(),
-      };
+    }
 
-      const { error: bsError } = await supabaseAdmin
-        .from("booking_services")
-        .insert(bookingServiceData);
+    // Create addons / products / notification (shared for both paths)
+    if (body.services && Array.isArray(body.services) && body.services.length > 0) {
 
-      if (bsError) {
-        console.error("Error creating booking_services:", bsError);
+      // Persist add-ons to booking_addons (addon_id = offering id, price from offerings)
+      const addonIds = (body.services || [])
+        .flatMap((s: any) => (Array.isArray(s.add_on_ids) ? s.add_on_ids : []))
+        .filter(Boolean);
+      if (addonIds.length > 0) {
+        const { data: addonOfferings } = await supabaseAdmin
+          .from("offerings")
+          .select("id, price")
+          .in("id", addonIds);
+        const priceByAddonId = new Map((addonOfferings || []).map((o: any) => [o.id, Number(o.price || 0)]));
+        const bookingAddonsData = addonIds.map((addonId: string) => ({
+          booking_id: booking.id,
+          addon_id: addonId,
+          quantity: 1,
+          price: priceByAddonId.get(addonId) ?? 0,
+          currency: body.currency || "ZAR",
+        }));
+        const { error: baError } = await supabaseAdmin
+          .from("booking_addons")
+          .insert(bookingAddonsData);
+        if (baError) {
+          console.error("Error creating booking_addons:", baError);
+        }
       }
     }
 

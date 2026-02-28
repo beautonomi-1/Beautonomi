@@ -9,9 +9,10 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespon
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -24,7 +25,7 @@ export async function GET(
     const { data: automation } = await supabase
       .from("marketing_automations")
       .select("id")
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
@@ -39,7 +40,7 @@ export async function GET(
         *,
         customer:users!automation_executions_customer_id_fkey(id, full_name, email, phone)
       `)
-      .eq("automation_id", params.id)
+      .eq("automation_id", id)
       .order("executed_at", { ascending: false })
       .limit(100);
 

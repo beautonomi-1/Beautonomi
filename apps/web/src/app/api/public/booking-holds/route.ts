@@ -48,6 +48,7 @@ const createHoldSchema = z.object({
     .optional()
     .nullable(),
   guest_fingerprint_hash: z.string().optional().nullable(),
+  resource_ids: z.array(z.string().uuid()).optional(),
 });
 
 const HOLD_EXPIRY_MINUTES = 7;
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
       location_id,
       address,
       guest_fingerprint_hash,
+      resource_ids,
     } = parsed.data;
 
     const startDate = new Date(start_at);
@@ -90,6 +92,7 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin();
+    const nowIso = new Date().toISOString();
 
     // Rate limiting
     const rateLimit = checkHoldRateLimit(request, guest_fingerprint_hash || null);
@@ -102,13 +105,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Max 1 active hold per fingerprint
+    // Max 1 active, non-expired hold per fingerprint
     if (guest_fingerprint_hash) {
       const { data: activeHold } = await supabase
         .from("booking_holds")
         .select("id")
         .eq("guest_fingerprint_hash", guest_fingerprint_hash)
         .eq("hold_status", "active")
+        .gt("expires_at", nowIso)
         .limit(1)
         .maybeSingle();
       if (activeHold) {
@@ -186,17 +190,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Resolve staff_id: use body staff_id or first service's staff_id
+    // Resolve staff_id: use body staff_id or first service's staff_id. null = "anyone" mode (assign at confirm).
     const staffId = bodyStaffId ?? services[0]?.staff_id ?? null;
-
-    if (!staffId) {
-      return handleApiError(
-        new Error("staff_id is required for hold creation (availability 'anyone' mode not yet supported)"),
-        "Staff selection required",
-        "VALIDATION_ERROR",
-        400
-      );
-    }
 
     // Build booking_services_snapshot
     let cursor = new Date(startDate);
@@ -234,34 +229,44 @@ export async function POST(request: NextRequest) {
 
     const lastOffering = offeringById.get(services[services.length - 1].offering_id);
     const bufferMinutes = Number(lastOffering?.buffer_minutes || 15);
+    // If client sent full block end (slot start + totalSpan including last buffer), don't add buffer again
+    const expectedBlockEnd = new Date(cursor.getTime() + bufferMinutes * 60000);
+    const clientSentFullSpan = endDate.getTime() >= expectedBlockEnd.getTime() - 60000;
+    const bufferForConflict = clientSentFullSpan ? 0 : bufferMinutes;
 
-    // Check for conflicts: existing bookings
-    const conflictResult = await checkBookingConflict(
-      supabase as any,
-      staffId,
-      startDate,
-      endDate,
-      bufferMinutes
-    );
-
-    if (conflictResult.hasConflict) {
-      return handleApiError(
-        new Error("This time slot is no longer available. Please select another time."),
-        "This time slot is no longer available. Please select another time.",
-        "CONFLICT",
-        409
+    // Check for conflicts: existing bookings (skip when staff_id is null / "anyone" mode)
+    if (staffId) {
+      const conflictResult = await checkBookingConflict(
+        supabase as any,
+        staffId,
+        startDate,
+        endDate,
+        bufferForConflict
       );
+      if (conflictResult.hasConflict) {
+        return handleApiError(
+          new Error("This time slot is no longer available. Please select another time."),
+          "This time slot is no longer available. Please select another time.",
+          "CONFLICT",
+          409
+        );
+      }
     }
 
-    // Check for overlapping active holds on same staff
-    const { data: overlappingHolds } = await supabase
+    // Check for overlapping active, non-expired holds: same staff, or same provider when staff_id is null (anyone mode)
+    const overlapQuery = supabase
       .from("booking_holds")
       .select("id")
-      .eq("staff_id", staffId)
       .eq("hold_status", "active")
+      .gt("expires_at", nowIso)
       .lt("start_at", endDate.toISOString())
-      .gt("end_at", startDate.toISOString())
-      .limit(1);
+      .gt("end_at", startDate.toISOString());
+    if (staffId) {
+      overlapQuery.eq("staff_id", staffId);
+    } else {
+      overlapQuery.eq("provider_id", provider_id);
+    }
+    const { data: overlappingHolds } = await overlapQuery.limit(1);
 
     if (overlappingHolds && overlappingHolds.length > 0) {
       return handleApiError(
@@ -309,6 +314,9 @@ export async function POST(request: NextRequest) {
         holdMetadata = { travel_fee: 0, travel_distance_km: 0 };
       }
     }
+    if (resource_ids && resource_ids.length > 0) {
+      holdMetadata = { ...holdMetadata, resource_ids };
+    }
 
     const expiresAt = new Date(Date.now() + HOLD_EXPIRY_MINUTES * 60 * 1000);
 
@@ -333,6 +341,24 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError) {
+      // DB exclusion constraint: only one active non-expired hold per (staff|provider) and time range
+      const err = insertError as { code?: string; details?: string; message?: string };
+      const isExclusionViolation =
+        err.code === "23P01" ||
+        [err.details, err.message].some(
+          (t) =>
+            t &&
+            (t.includes("booking_holds_no_overlap_staff") ||
+              t.includes("booking_holds_no_overlap_provider_anyone"))
+        );
+      if (isExclusionViolation) {
+        return handleApiError(
+          new Error("This time slot is no longer available. Please select another time."),
+          "This time slot is no longer available. Please select another time.",
+          "CONFLICT",
+          409
+        );
+      }
       throw insertError;
     }
 

@@ -34,14 +34,18 @@ export async function GET(request: NextRequest) {
       fromDate = subDays(toDate, MAX_REPORT_DAYS);
     }
 
-    // Get bookings in date range
-    const { data: bookings, error: bookingsError } = await supabaseAdmin
+    const locationId = searchParams.get("location_id") || null;
+
+    // Get bookings in date range (optionally by location)
+    let bookingsQuery = supabaseAdmin
       .from('bookings')
       .select('id, status')
       .eq('provider_id', providerId)
       .gte('scheduled_at', fromDate.toISOString())
       .lte('scheduled_at', toDate.toISOString())
       .limit(MAX_BOOKINGS_FOR_REPORT);
+    if (locationId) bookingsQuery = bookingsQuery.eq('location_id', locationId);
+    const { data: bookings, error: bookingsError } = await bookingsQuery;
 
     if (bookingsError) {
       return handleApiError(
@@ -51,12 +55,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get provider revenue from finance_transactions
+    // Get provider revenue from finance_transactions (filter by location when provided)
     const { revenueByBooking } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       fromDate,
-      toDate
+      toDate,
+      locationId || undefined
     );
 
     // Calculate status breakdown

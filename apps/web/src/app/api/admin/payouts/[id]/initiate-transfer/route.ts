@@ -52,15 +52,31 @@ export async function POST(
       );
     }
 
-    // Load active recipient_code for provider (use latest if multiple active accounts)
-    const { data: acct } = await (supabase.from("provider_payout_accounts") as any)
-      .select("recipient_code, currency")
-      .eq("provider_id", p.provider_id)
-      .eq("active", true)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // Use bank account from payout request if stored, else primary (latest active)
+    const requestedAccountId = (p.payout_account_details as any)?.bank_account_id;
+    let acct: { recipient_code: string; currency?: string } | null = null;
+
+    if (requestedAccountId) {
+      const { data: requestedAcct } = await (supabase.from("provider_payout_accounts") as any)
+        .select("recipient_code, currency")
+        .eq("id", requestedAccountId)
+        .eq("provider_id", p.provider_id)
+        .eq("active", true)
+        .is("deleted_at", null)
+        .maybeSingle();
+      acct = requestedAcct;
+    }
+    if (!acct?.recipient_code) {
+      const { data: primaryAcct } = await (supabase.from("provider_payout_accounts") as any)
+        .select("recipient_code, currency")
+        .eq("provider_id", p.provider_id)
+        .eq("active", true)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      acct = primaryAcct;
+    }
 
     if (!acct?.recipient_code) {
       return NextResponse.json(

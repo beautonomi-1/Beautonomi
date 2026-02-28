@@ -6,6 +6,8 @@ export interface ApiError {
   message: string;
   code?: string;
   details?: unknown;
+  /** HTTP status code when error comes from a failed response */
+  status?: number;
 }
 
 export interface ApiResponse<T> {

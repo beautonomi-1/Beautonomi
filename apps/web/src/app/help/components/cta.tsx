@@ -25,11 +25,18 @@ export default function CTA() {
           </p>
         </div>
         {user ? (
-          <Link href="/help/submit-ticket" className="w-full">
-            <Button variant="secondary" className="w-full">
-              Submit a Support Ticket
-            </Button>
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-2 w-full">
+            <Link href="/help/submit-ticket" className="flex-1">
+              <Button variant="secondary" className="w-full">
+                Submit a Support Ticket
+              </Button>
+            </Link>
+            <Link href="/help/my-tickets" className="flex-1">
+              <Button variant="outline" className="w-full">
+                My tickets
+              </Button>
+            </Link>
+          </div>
         ) : (
           <Button
             variant="secondary"

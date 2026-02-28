@@ -4,8 +4,10 @@ import React, { useState, useEffect, useRef } from "react";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Info, Upload, Image as ImageIcon, Trash2, Star, Loader2, Maximize2 } from "lucide-react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Info, Upload, Image as ImageIcon, Trash2, Star, Loader2, Maximize2, Pencil } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import RoleGuard from "@/components/auth/RoleGuard";
@@ -26,6 +28,10 @@ export default function GalleryManagementPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [compressionProgress, setCompressionProgress] = useState<{ [key: string]: CompressionResult }>({});
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+  const [editDetailsOpen, setEditDetailsOpen] = useState(false);
+  const [editCaption, setEditCaption] = useState("");
+  const [editIndex, setEditIndex] = useState<number | null>(null);
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
 
@@ -391,6 +397,31 @@ export default function GalleryManagementPage() {
     }
   };
 
+  const openEditDetails = (index: number) => {
+    setEditIndex(index);
+    setEditCaption("");
+    setEditDetailsOpen(true);
+  };
+
+  const handleSaveEditDetails = async () => {
+    if (editIndex === null) return;
+    try {
+      setIsSavingDetails(true);
+      await fetcher.patch<{ data: { caption: string | null } }>(
+        `/api/provider/gallery/${editIndex}`,
+        { caption: editCaption.trim() || null }
+      );
+      toast.success("Photo details saved");
+      setEditDetailsOpen(false);
+      setEditIndex(null);
+      setEditCaption("");
+    } catch (err) {
+      toast.error("Failed to save photo details");
+    } finally {
+      setIsSavingDetails(false);
+    }
+  };
+
   const handleReorder = async (fromIndex: number, toIndex: number) => {
     const newGallery = [...gallery];
     const [moved] = newGallery.splice(fromIndex, 1);
@@ -718,15 +749,17 @@ export default function GalleryManagementPage() {
                           decoding="async"
                           onClick={(e) => e.stopPropagation()}
                         />
-                        <div className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 flex flex-col sm:flex-row gap-2 bg-black/70 backdrop-blur-sm rounded-lg p-2 sm:p-3 w-[calc(100%-2rem)] sm:w-auto">
+                        <div className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 flex flex-col sm:flex-row gap-2 bg-black/70 backdrop-blur-sm rounded-lg p-2 sm:p-3 w-[calc(100%-2rem)] sm:w-auto min-h-[52px] sm:min-h-0">
                           <Button
+                            type="button"
                             size="sm"
                             onClick={(e) => {
+                              e.preventDefault();
                               e.stopPropagation();
                               handleSetThumbnail(gallery[selectedImageIndex]);
                               setSelectedImageIndex(null);
                             }}
-                            className={`${
+                            className={`min-h-[44px] sm:min-h-0 ${
                               thumbnailUrl === gallery[selectedImageIndex]
                                 ? 'bg-[#FF0077] text-white'
                                 : 'bg-white/90 hover:bg-white text-gray-900'
@@ -737,13 +770,28 @@ export default function GalleryManagementPage() {
                             <span className="text-xs sm:text-sm">{thumbnailUrl === gallery[selectedImageIndex] ? "Thumbnail" : "Set as Thumbnail"}</span>
                           </Button>
                           <Button
+                            type="button"
                             size="sm"
                             onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              openEditDetails(selectedImageIndex);
+                            }}
+                            className="min-h-[44px] sm:min-h-0 bg-white/90 hover:bg-white text-gray-900 border-0 shadow-md touch-manipulation w-full sm:w-auto"
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            <span className="text-xs sm:text-sm">Edit details</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={(e) => {
+                              e.preventDefault();
                               e.stopPropagation();
                               handleDeleteImage(selectedImageIndex);
                               setSelectedImageIndex(null);
                             }}
-                            className="bg-red-600 hover:bg-red-700 text-white border-0 shadow-md touch-manipulation w-full sm:w-auto"
+                            className="min-h-[44px] sm:min-h-0 bg-red-600 hover:bg-red-700 text-white border-0 shadow-md touch-manipulation w-full sm:w-auto"
                           >
                             <Trash2 className="w-4 h-4 mr-1" />
                             <span className="text-xs sm:text-sm">Delete</span>
@@ -754,8 +802,10 @@ export default function GalleryManagementPage() {
                         </div>
                         {selectedImageIndex > 0 && (
                           <Button
+                            type="button"
                             size="sm"
                             onClick={(e) => {
+                              e.preventDefault();
                               e.stopPropagation();
                               setSelectedImageIndex(selectedImageIndex - 1);
                             }}
@@ -767,8 +817,10 @@ export default function GalleryManagementPage() {
                         )}
                         {selectedImageIndex < gallery.length - 1 && (
                           <Button
+                            type="button"
                             size="sm"
                             onClick={(e) => {
+                              e.preventDefault();
                               e.stopPropagation();
                               setSelectedImageIndex(selectedImageIndex + 1);
                             }}
@@ -780,6 +832,47 @@ export default function GalleryManagementPage() {
                         )}
                       </div>
                     )}
+                  </DialogContent>
+                </Dialog>
+
+                {/* Edit photo details modal */}
+                <Dialog open={editDetailsOpen} onOpenChange={setEditDetailsOpen}>
+                  <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
+                    <DialogHeader>
+                      <DialogTitle>Edit photo details</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-caption">Caption (optional)</Label>
+                        <Input
+                          id="edit-caption"
+                          value={editCaption}
+                          onChange={(e) => setEditCaption(e.target.value)}
+                          placeholder="Add a caption for this photo"
+                          className="touch-manipulation"
+                        />
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <Button type="button" variant="outline" onClick={() => setEditDetailsOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={handleSaveEditDetails}
+                          disabled={isSavingDetails}
+                          className="bg-[#FF0077] hover:bg-[#D60565] text-white"
+                        >
+                          {isSavingDetails ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            "Save"
+                          )}
+                        </Button>
+                      </div>
+                    </div>
                   </DialogContent>
                 </Dialog>
               </>

@@ -37,14 +37,19 @@ export async function POST(request: NextRequest, { params }: Params) {
 
     const now = new Date().toISOString();
 
-    const { error } = await supabase
+    const { error: msgError } = await supabase
       .from("messages")
-      .update({ read_at: now })
+      .update({ read_at: now, is_read: true })
       .eq("conversation_id", conversationId)
-      .eq("sender_type", "customer")
+      .eq("sender_role", "customer")
       .is("read_at", null);
 
-    if (error) throw error;
+    if (msgError) throw msgError;
+
+    await supabase
+      .from("conversations")
+      .update({ unread_count_provider: 0 })
+      .eq("id", conversationId);
 
     return successResponse({ marked_read: true });
   } catch (error) {

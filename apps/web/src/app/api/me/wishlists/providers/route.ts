@@ -99,10 +99,10 @@ export async function GET(request: NextRequest) {
       return successResponse([]);
     }
 
-    // Fetch locations for all providers
+    // Fetch locations for all providers (include location_type for salon vs base)
     const { data: locations, error: locationsError } = await supabase
       .from("provider_locations")
-      .select("provider_id, city, country, is_primary")
+      .select("provider_id, city, country, is_primary, location_type")
       .in("provider_id", providerIds)
       .eq("is_active", true)
       .order("is_primary", { ascending: false });
@@ -199,9 +199,10 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Check provider_locations for salon support
+    // Salon support only from locations with location_type = 'salon' (base = distance-only)
     if (locations && locations.length > 0) {
       locations.forEach((loc: any) => {
+        if ((loc.location_type || "salon") !== "salon") return;
         const serviceType = serviceTypeMap.get(loc.provider_id) || { supports_house_calls: false, supports_salon: false };
         serviceType.supports_salon = true;
         serviceTypeMap.set(loc.provider_id, serviceType);

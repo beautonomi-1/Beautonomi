@@ -36,12 +36,14 @@ export async function GET(
         customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
         locations:provider_locations(id, name, address_line1, address_line2, city, state, postal_code),
         providers:providers!bookings_provider_id_fkey(id, business_name, owner_email, phone, address),
+        group_bookings(ref_number),
         booking_services(
           id,
           offering_id,
           staff_id,
           duration_minutes,
           price,
+          guest_name,
           offerings:offerings!booking_services_offering_id_fkey(id, title),
           staff:provider_staff(id, name)
         ),
@@ -71,9 +73,9 @@ export async function GET(
     const loc = b.locations;
     const customer = b.customers || {};
 
-    // Build line items for invoice display
+    // Build line items for invoice display (include guest_name for group bookings)
     const serviceItems = (b.booking_services || []).map((bs: any) => ({
-      description: bs.offerings?.title || "Service",
+      description: bs.guest_name ? `${bs.offerings?.title || "Service"} (${bs.guest_name})` : (bs.offerings?.title || "Service"),
       staff: bs.staff?.name || null,
       duration: bs.duration_minutes || null,
       quantity: 1,
@@ -104,6 +106,7 @@ export async function GET(
 
     const receiptData = {
       invoice_number: b.booking_number || `BKG-${b.id?.slice(0, 8)}`,
+      group_booking_ref: (b as any).group_bookings?.ref_number || null,
       invoice_date: new Date(b.created_at || Date.now()).toLocaleDateString(),
       booking_date: b.scheduled_at
         ? new Date(b.scheduled_at).toLocaleDateString()

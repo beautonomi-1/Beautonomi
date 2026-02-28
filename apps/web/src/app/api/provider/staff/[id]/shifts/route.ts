@@ -9,8 +9,9 @@ const DAY_ORDER = ["sunday", "monday", "tuesday", "wednesday", "thursday", "frid
  * GET /api/provider/staff/[id]/shifts
  * Returns weekly schedule for a staff member from staff_schedules table.
  */
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const { data: staff } = await supabase
       .from("provider_staff")
       .select("id")
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const { data: schedules } = await supabase
       .from("staff_schedules")
       .select("id, day_of_week, start_time, end_time, is_working")
-      .eq("staff_id", params.id)
+      .eq("staff_id", id)
       .order("day_of_week");
 
     const scheduleMap = new Map((schedules || []).map((s: any) => [s.day_of_week, s]));
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       const schedule = scheduleMap.get(index);
       return {
         id: schedule?.id || null,
-        staff_id: params.id,
+        staff_id: id,
         day_of_week: day.charAt(0).toUpperCase() + day.slice(1),
         start_time: schedule?.start_time?.substring(0, 5) || null,
         end_time: schedule?.end_time?.substring(0, 5) || null,
@@ -62,8 +63,9 @@ const upsertScheduleSchema = z.object({
  * POST /api/provider/staff/[id]/shifts
  * Create or update a weekly schedule entry for a staff member.
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -72,7 +74,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const { data: staff } = await supabase
       .from("provider_staff")
       .select("id")
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
@@ -92,7 +94,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const { data: schedule, error } = await supabase
       .from("staff_schedules")
       .upsert({
-        staff_id: params.id,
+        staff_id: id,
         provider_id: providerId,
         day_of_week: dayIndex,
         start_time: result.data.start_time,
@@ -106,7 +108,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     return successResponse({
       id: schedule.id,
-      staff_id: params.id,
+      staff_id: id,
       day_of_week: result.data.day_of_week,
       start_time: schedule.start_time?.substring(0, 5),
       end_time: schedule.end_time?.substring(0, 5),

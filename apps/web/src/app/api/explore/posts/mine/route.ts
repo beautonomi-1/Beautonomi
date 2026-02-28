@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getSupabaseServer } from "@/lib/supabase/server";
 import {
   getProviderIdForUser,
   successResponse,
@@ -13,21 +14,21 @@ import { toPublicMediaUrl } from "@/lib/explore/media-urls";
 /**
  * GET /api/explore/posts/mine
  * List own provider's posts (draft + published)
+ * Supports cookie (web) and Bearer token (provider mobile app).
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi([
-      "provider_owner",
-      "provider_staff",
-      "superadmin",
-    ]);
-    const supabaseAdmin = await getSupabaseAdmin();
-
-    const providerId = await getProviderIdForUser(user.id);
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request
+    );
+    const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return errorResponse("Provider not found", "NOT_FOUND", 404);
     }
 
+    const supabaseAdmin = await getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
     // Default 500 / max 1000 so provider sees all their posts (was 50/100)
     const limit = Math.min(parseInt(searchParams.get("limit") || "500", 10), 1000);

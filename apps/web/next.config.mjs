@@ -133,6 +133,13 @@ const nextConfig = {
     return config;
   },
 
+  // Redirects for canonical legal URLs (mobile apps may link to /terms)
+  async redirects() {
+    return [
+      { source: '/terms', destination: '/terms-and-condition', permanent: true },
+    ];
+  },
+
   // Headers for caching & security
   async headers() {
     return [
@@ -142,7 +149,7 @@ const nextConfig = {
         headers: [
           { key: 'Access-Control-Allow-Origin', value: '*' },
           { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, PATCH, DELETE, OPTIONS' },
-          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, X-Requested-With' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, X-Requested-With, X-App' },
           { key: 'Access-Control-Max-Age', value: '86400' },
         ],
       },

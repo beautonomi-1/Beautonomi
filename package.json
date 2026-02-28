@@ -19,6 +19,7 @@
     "lint:fix": "pnpm exec turbo run lint -- --fix",
     "build:web": "pnpm exec turbo run build --filter=web",
     "build:packages": "pnpm exec turbo run build --filter='./packages/*'",
+    "prepare:production": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build",
     "parity:check": "node tooling/parity/check-parity.mjs",
     "audit:routes": "node tooling/audit/scan-routes.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md}\"",

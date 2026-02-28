@@ -122,7 +122,7 @@ export default function RequestCustomServiceDialog({ providerId, isOpen, onOpenC
               onClick={() => setLocationType("at_salon")}
               type="button"
             >
-              At salon
+              At Salon
             </Button>
             <Button
               variant={locationType === "at_home" ? "default" : "outline"}

@@ -17,9 +17,10 @@ const updateAutomationSchema = z.object({
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -31,7 +32,7 @@ export async function GET(
     const { data: automation, error } = await supabase
       .from("marketing_automations")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
@@ -52,9 +53,10 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -80,7 +82,7 @@ export async function PATCH(
     const { data: existing } = await supabase
       .from("marketing_automations")
       .select("action_config")
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
@@ -102,7 +104,7 @@ export async function PATCH(
         ...(validated.action_config && { action_config: updatedActionConfig }),
         updated_at: new Date().toISOString(),
       })
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .select()
       .single();
@@ -127,9 +129,10 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -141,7 +144,7 @@ export async function DELETE(
     const { error } = await supabase
       .from("marketing_automations")
       .delete()
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .eq("is_template", false); // Can't delete templates
 

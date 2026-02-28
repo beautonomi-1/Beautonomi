@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { Send, ArrowLeft, MoreVertical, Phone, Tag, User, Mail, Copy, Check, Paperclip, X, File, Play, Trash2 } from "lucide-react";
+import { Send, ArrowLeft, MoreVertical, Phone, Tag, User, Mail, Copy, Check, Paperclip, X, File, Play, Trash2, Pencil, Undo2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -37,6 +37,8 @@ interface Attachment {
   price?: number;
   duration_minutes?: number;
   offer_id?: string;
+  preferred_start_at?: string | null;
+  withdrawn?: boolean;
 }
 
 interface Message {
@@ -63,6 +65,8 @@ interface Conversation {
   provider_phone?: string;
   provider_email?: string;
   customer_name?: string;
+  customer_phone?: string | null;
+  customer_email?: string | null;
   booking_number?: string;
   avatar?: string;
   customer_avatar?: string;
@@ -89,6 +93,7 @@ export default function WhatsAppChat({
   const [isSending, setIsSending] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showCustomOfferModal, setShowCustomOfferModal] = useState(false);
+  const [editOfferId, setEditOfferId] = useState<string | null>(null);
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [hasInitiallyScrolled, setHasInitiallyScrolled] = useState(false);
@@ -106,22 +111,25 @@ export default function WhatsAppChat({
   // Determine if this is a provider chat (provider uses messagesEndpoint)
   const isProviderChat = !!messagesEndpoint;
   
+  // In provider view use customer contact; in customer view use provider contact
+  const contactPhone = isProviderChat ? conversation?.customer_phone : conversation?.provider_phone;
+  const contactEmail = isProviderChat ? conversation?.customer_email : conversation?.provider_email;
+
   const handlePhoneCall = () => {
-    if (!conversation?.provider_phone) {
+    if (!contactPhone) {
       toast.error("Phone number not available");
       return;
     }
-    // Open phone dialer
-    window.location.href = `tel:${conversation.provider_phone}`;
+    window.location.href = `tel:${contactPhone}`;
   };
-  
+
   const handleCopyPhone = async () => {
-    if (!conversation?.provider_phone) {
+    if (!contactPhone) {
       toast.error("Phone number not available");
       return;
     }
     try {
-      await navigator.clipboard.writeText(conversation.provider_phone);
+      await navigator.clipboard.writeText(contactPhone);
       setCopiedPhone(true);
       toast.success("Phone number copied");
       setTimeout(() => setCopiedPhone(false), 2000);
@@ -129,14 +137,14 @@ export default function WhatsAppChat({
       toast.error("Failed to copy phone number");
     }
   };
-  
+
   const handleCopyEmail = async () => {
-    if (!conversation?.provider_email) {
+    if (!contactEmail) {
       toast.error("Email not available");
       return;
     }
     try {
-      await navigator.clipboard.writeText(conversation.provider_email);
+      await navigator.clipboard.writeText(contactEmail);
       setCopiedEmail(true);
       toast.success("Email copied");
       setTimeout(() => setCopiedEmail(false), 2000);
@@ -698,11 +706,11 @@ export default function WhatsAppChat({
               <Tag className="w-5 h-5" />
             </button>
           )}
-          {!isProviderChat && conversation.provider_phone && (
+          {contactPhone && (
             <button
               onClick={handlePhoneCall}
               className="p-2 hover:bg-white/10 active:bg-white/20 rounded-full transition-colors"
-              title="Call"
+              title={isProviderChat ? "Call client" : "Call"}
             >
               <Phone className="w-5 h-5" />
             </button>
@@ -710,10 +718,18 @@ export default function WhatsAppChat({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="p-2 hover:bg-white/10 active:bg-white/20 rounded-full transition-colors"
-                title="More options"
+                className="p-2 hover:bg-white/10 active:bg-white/20 rounded-full transition-colors flex items-center gap-1"
+                title={isProviderChat ? "Client details & options" : "More options"}
+                aria-label={isProviderChat ? "Client details and options" : "More options"}
               >
-                <MoreVertical className="w-5 h-5" />
+                {isProviderChat ? (
+                  <>
+                    <Info className="w-5 h-5 md:w-5 md:h-5" />
+                    <span className="hidden sm:inline text-xs font-medium">Details</span>
+                  </>
+                ) : (
+                  <MoreVertical className="w-5 h-5" />
+                )}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56 bg-white">
@@ -728,7 +744,7 @@ export default function WhatsAppChat({
                     <User className="w-4 h-4 mr-2" />
                     View Customer Profile
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
+                  {(contactPhone || contactEmail) && <DropdownMenuSeparator />}
                 </>
               )}
               {conversation.provider_id && !isProviderChat && (
@@ -737,7 +753,7 @@ export default function WhatsAppChat({
                   View Provider Profile
                 </DropdownMenuItem>
               )}
-              {conversation.provider_phone && (
+              {contactPhone && (
                 <>
                   <DropdownMenuItem onClick={handleCopyPhone}>
                     {copiedPhone ? (
@@ -748,17 +764,17 @@ export default function WhatsAppChat({
                     ) : (
                       <>
                         <Copy className="w-4 h-4 mr-2" />
-                        Copy Phone Number
+                        {isProviderChat ? "Copy client phone" : "Copy Phone Number"}
                       </>
                     )}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handlePhoneCall}>
                     <Phone className="w-4 h-4 mr-2" />
-                    Call {conversation.provider_phone}
+                    Call {contactPhone}
                   </DropdownMenuItem>
                 </>
               )}
-              {conversation.provider_email && (
+              {contactEmail && (
                 <DropdownMenuItem onClick={handleCopyEmail}>
                   {copiedEmail ? (
                     <>
@@ -768,7 +784,7 @@ export default function WhatsAppChat({
                   ) : (
                     <>
                       <Mail className="w-4 h-4 mr-2" />
-                      Copy Email
+                      {isProviderChat ? "Copy client email" : "Copy Email"}
                     </>
                   )}
                 </DropdownMenuItem>
@@ -776,7 +792,7 @@ export default function WhatsAppChat({
               {conversation.id && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem 
+                  <DropdownMenuItem
                     onClick={() => setShowDeleteDialog(true)}
                     className="text-red-600 focus:text-red-600 focus:bg-red-50"
                   >
@@ -867,17 +883,84 @@ export default function WhatsAppChat({
                   message.attachments.length > 0 &&
                   message.attachments[0]?.type === "custom_offer" ? (
                     <div className="space-y-2">
-                      <p className="text-sm text-[#111b21]">{message.content}</p>
-                      <div className="rounded-md border border-[#FF0077]/20 bg-white/50 p-3">
-                        <div className="flex flex-col gap-3">
-                          <div className="text-sm">
-                            <div className="font-semibold text-[#111b21]">Custom Offer</div>
-                            <div className="text-xs text-[#667781] mt-1">
-                              {message.attachments[0]?.currency} {message.attachments[0]?.price} •{" "}
-                              {message.attachments[0]?.duration_minutes} mins
-                            </div>
+                      {message.content && (
+                        <p className="text-sm text-[#111b21]">{message.content}</p>
+                      )}
+                      <div
+                        className={`relative overflow-hidden rounded-2xl shadow-lg min-w-[260px] max-w-[320px] ${
+                          message.attachments[0]?.withdrawn
+                            ? "opacity-75 bg-gradient-to-br from-slate-400 to-slate-500 border border-slate-400/50"
+                            : "bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] border border-white/10"
+                        }`}
+                      >
+                        {/* Card shine / holographic strip */}
+                        {!message.attachments[0]?.withdrawn && (
+                          <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" />
+                        )}
+                        <div className="relative p-4 text-white">
+                          {/* Top row: brand + withdrawn badge */}
+                          <div className="flex items-center justify-between mb-4">
+                            <span className="text-xs font-semibold tracking-[0.2em] uppercase text-white/80">
+                              Custom Offer
+                            </span>
+                            {message.attachments[0]?.withdrawn && (
+                              <span className="text-[10px] font-semibold uppercase tracking-wider bg-white/20 text-white px-2 py-0.5 rounded-full">
+                                Withdrawn
+                              </span>
+                            )}
                           </div>
-                          {!messagesEndpoint && message.attachments[0]?.offer_id && (
+                          {/* Amount - prominent like a card number */}
+                          <div className="mb-1 font-mono text-2xl font-bold tracking-wider">
+                            {message.attachments[0]?.currency} {message.attachments[0]?.price}
+                          </div>
+                          <div className="text-xs text-white/70 mb-3">
+                            {message.attachments[0]?.duration_minutes} mins
+                          </div>
+                          {message.attachments[0]?.preferred_start_at && !message.attachments[0]?.withdrawn && (
+                            <div className="text-[11px] text-white/60 mb-3">
+                              {format(new Date(message.attachments[0].preferred_start_at), "EEE, d MMM · HH:mm")}
+                            </div>
+                          )}
+                          {/* Provider actions: Retract, Edit & resend */}
+                          {isProviderChat && message.attachments[0]?.offer_id && !message.attachments[0]?.withdrawn && (
+                            <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-white/10">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 text-xs text-white/90 hover:bg-white/15 hover:text-white"
+                                onClick={async () => {
+                                  try {
+                                    await fetcher.post(
+                                      `/api/provider/custom-offers/${message.attachments[0]?.offer_id}/retract`,
+                                      {}
+                                    );
+                                    toast.success("Offer withdrawn");
+                                    loadMessages();
+                                    onConversationUpdate?.();
+                                  } catch (err) {
+                                    toast.error("Failed to retract offer");
+                                  }
+                                }}
+                              >
+                                <Undo2 className="w-3.5 h-3.5 mr-1.5" />
+                                Retract
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 text-xs text-white/90 hover:bg-white/15 hover:text-white"
+                                onClick={() => {
+                                  setEditOfferId(message.attachments[0]?.offer_id ?? null);
+                                  setShowCustomOfferModal(true);
+                                }}
+                              >
+                                <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                                Edit & resend
+                              </Button>
+                            </div>
+                          )}
+                          {/* Customer: Accept & Pay */}
+                          {!messagesEndpoint && message.attachments[0]?.offer_id && !message.attachments[0]?.withdrawn && (
                             <Button
                               size="sm"
                               onClick={async () => {
@@ -897,14 +980,14 @@ export default function WhatsAppChat({
                                   console.error(err);
                                 }
                               }}
-                              className="bg-[#FF0077] hover:bg-[#E6006A] text-white text-xs"
+                              className="w-full mt-2 bg-[#FF0077] hover:bg-[#E6006A] text-white text-xs font-medium"
                             >
                               Accept & Pay
                             </Button>
                           )}
                         </div>
                       </div>
-                      {!messagesEndpoint && (
+                      {!messagesEndpoint && !message.attachments[0]?.withdrawn && (
                         <div className="text-xs text-[#667781]">
                           Or view:{" "}
                           <a
@@ -1155,12 +1238,16 @@ export default function WhatsAppChat({
       {isProviderChat && conversation.customer_id && (
         <CustomOfferModal
           isOpen={showCustomOfferModal}
-          onClose={() => setShowCustomOfferModal(false)}
+          onClose={() => {
+            setShowCustomOfferModal(false);
+            setEditOfferId(null);
+          }}
           customerId={conversation.customer_id}
           customerName={conversation.customer_name}
+          conversationId={conversation.id}
+          editOfferId={editOfferId}
           onSuccess={() => {
-            // Reload messages to show the new offer message
-            // Use a small delay to let the database commit first
+            setEditOfferId(null);
             setTimeout(() => {
               loadMessages();
               if (onConversationUpdate) {

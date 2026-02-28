@@ -71,6 +71,7 @@ Source: `apps/customer/.env.example`, `apps/customer/app.config.js`, `apps/custo
 | EXPO_PUBLIC_APP_URL | http://localhost:3000 or LAN IP | Staging URL | https://yourdomain.com |
 | EXPO_PUBLIC_ONESIGNAL_APP_ID | Optional | Optional | Optional |
 | EXPO_PUBLIC_AMPLITUDE_API_KEY | Optional | Optional | Optional (usually from /api/public/analytics-config) |
+| EXPO_PUBLIC_SENTRY_DSN | Optional | Optional | Optional | Sentry error reporting (see docs/SENTRY_WEB_SETUP.md) |
 
 ### SECRET
 
@@ -95,7 +96,7 @@ Source: `apps/provider/.env.example`, `apps/provider/app.config.js`, `apps/provi
 
 | Variable | Notes |
 |----------|-------|
-| EXPO_PUBLIC_SENTRY_DSN | Error tracking (devDependencies) |
+| EXPO_PUBLIC_SENTRY_DSN | Sentry error reporting; set in `.env.local` and in app.config.js extra (see docs/SENTRY_WEB_SETUP.md) |
 
 ---
 

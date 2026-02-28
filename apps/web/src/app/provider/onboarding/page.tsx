@@ -2432,11 +2432,11 @@ function Step7Location({
             <p className="text-sm text-green-800">
               {isFreelancer ? (
                 <>
-                  Enter your base location or service area center. This helps customers find you and we'll use it to calculate travel fees and distances for at-home services.
+                  Enter your base address (e.g. home). We use it only for travel distance and fees—clients won't book "Visit Salon" until you add a salon location in Settings.
                 </>
               ) : (
                 <>
-                  Enter your salon address. This helps customers find you on the map and enables location-based search. We'll also use it to calculate travel fees for at-home services.
+                  Enter your salon or studio address. Clients can book "Visit Salon" at this location. We also use it for travel distance when you offer at-home services.
                 </>
               )}
             </p>

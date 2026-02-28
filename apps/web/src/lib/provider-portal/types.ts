@@ -20,6 +20,8 @@ export interface Salon {
   address: string;
   city: string;
   is_primary: boolean;
+  /** 'salon' = clients can visit; 'base' = distance/travel only (mobile-only) */
+  location_type?: "salon" | "base";
 }
 
 /** Day key in working_hours: monday, tuesday, ... */

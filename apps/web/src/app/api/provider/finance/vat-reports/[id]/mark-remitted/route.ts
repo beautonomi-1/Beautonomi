@@ -9,9 +9,10 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -31,7 +32,7 @@ export async function PATCH(
     const { data: reminder, error: reminderError } = await supabase
       .from("vat_remittance_reminders")
       .select("id, provider_id, remitted_to_sars")
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .eq("period_start", period_start)
       .eq("period_end", period_end)
@@ -77,7 +78,7 @@ export async function PATCH(
         remitted_at: new Date().toISOString(),
         remitted_by: user.id,
       })
-      .eq("id", params.id)
+      .eq("id", id)
       .select()
       .single();
 

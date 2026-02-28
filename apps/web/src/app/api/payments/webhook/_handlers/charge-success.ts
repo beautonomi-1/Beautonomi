@@ -200,6 +200,38 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
     }
   }
 
+  // Loyalty points: deduct if used (idempotent; same as verify so only one path applies)
+  const loyaltyPointsUsed = Number(
+    metadata?.loyalty_points_used ?? bookingData?.loyalty_points_used ?? 0
+  );
+  if (loyaltyPointsUsed > 0 && (metadata?.customer_id || bookingData?.customer_id)) {
+    const customerId = metadata?.customer_id || bookingData?.customer_id;
+    try {
+      const { data: existingRedeem } = await (supabase.from("loyalty_point_transactions") as any)
+        .select("id")
+        .eq("user_id", customerId)
+        .eq("reference_id", metadata.booking_id)
+        .eq("reference_type", "booking")
+        .eq("transaction_type", "redeemed")
+        .maybeSingle();
+      if (!existingRedeem) {
+        await (supabase.from("loyalty_point_transactions") as any).insert({
+          user_id: customerId,
+          points: loyaltyPointsUsed,
+          transaction_type: "redeemed",
+          description: `Redeemed for booking ${bookingData?.booking_number || metadata.booking_id}`,
+          reference_id: metadata.booking_id,
+          reference_type: "booking",
+        });
+        await (supabase.from("bookings") as any)
+          .update({ loyalty_points_used: loyaltyPointsUsed })
+          .eq("id", metadata.booking_id);
+      }
+    } catch (loyaltyErr: any) {
+      console.error("Loyalty points deduction failed:", loyaltyErr?.message || loyaltyErr);
+    }
+  }
+
   // Save card if requested and authorization is reusable
   if (
     metadata?.save_card &&
@@ -630,8 +662,17 @@ async function handleCustomOfferSuccess(
   const feesInCurrency = convertFromSmallestUnit(payload.fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
-  // Create a hidden offering to satisfy booking_services.offering_id
-  const offeringTitle = `Custom Service`;
+  const meta = payload.metadata || {};
+  const travelFee = Number(meta.travel_fee ?? offer.travel_fee ?? 0) >= 0 ? Number(meta.travel_fee ?? offer.travel_fee ?? 0) : 0;
+  const tipAmount = Number(meta.tip_amount ?? 0);
+  const taxAmount = Number(meta.tax_amount ?? 0);
+  const taxRate = Number(meta.tax_rate ?? 0);
+  const serviceFeeAmount = Number(meta.service_fee_amount ?? 0);
+  const serviceFeePercentage = Number(meta.service_fee_percentage ?? 0);
+  const promotionDiscountAmount = Number(meta.promotion_discount_amount ?? 0);
+  const promotionId = meta.promotion_id && String(meta.promotion_id).trim() ? meta.promotion_id : null;
+
+  const offeringTitle = (req.service_name && String(req.service_name).trim()) ? String(req.service_name).trim() : "Custom Service";
   const { data: createdOffering, error: offeringError } = await adminSupabase
     .from("offerings")
     .insert({
@@ -660,12 +701,18 @@ async function handleCustomOfferSuccess(
     return;
   }
 
-  // Create booking
-  const scheduledAt = req.preferred_start_at
-    ? new Date(req.preferred_start_at).toISOString()
-    : new Date().toISOString();
+  // Create booking: use offer scheduled_at, then request preferred_start_at, else start of next hour (so it shows on calendar)
+  let scheduledAt: string;
+  if (offer.scheduled_at) {
+    scheduledAt = new Date(offer.scheduled_at).toISOString();
+  } else if (req.preferred_start_at) {
+    scheduledAt = new Date(req.preferred_start_at).toISOString();
+  } else {
+    const nextHour = new Date(Date.now() + 60 * 60 * 1000);
+    nextHour.setMinutes(0, 0, 0);
+    scheduledAt = nextHour.toISOString();
+  }
   const bookingSubtotal = Number(offer.price || 0);
-  const bookingTotal = bookingSubtotal;
 
   const bookingInsert: any = {
     booking_number: "",
@@ -673,12 +720,16 @@ async function handleCustomOfferSuccess(
     provider_id: req.provider_id,
     status: "confirmed",
     location_type: req.location_type || "at_salon",
-    location_id: null,
+    location_id: req.location_type === "at_salon" && offer.location_id ? offer.location_id : null,
     scheduled_at: scheduledAt,
     subtotal: bookingSubtotal,
-    tip_amount: 0,
-    discount_amount: 0,
-    total_amount: bookingTotal,
+    tip_amount: tipAmount,
+    discount_amount: promotionDiscountAmount,
+    tax_rate: taxRate,
+    tax_amount: taxAmount,
+    service_fee_percentage: 0,
+    service_fee_amount: serviceFeeAmount,
+    total_amount: amountInCurrency,
     currency: offer.currency || "ZAR",
     payment_status: "paid",
     payment_reference: payload.reference,
@@ -687,9 +738,22 @@ async function handleCustomOfferSuccess(
     special_requests: `Custom order: ${req.description}`,
     loyalty_points_earned: 0,
     loyalty_points_used: 0,
+    promotion_id: promotionId,
+    promotion_discount_amount: promotionDiscountAmount,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
+  if (req.location_type === "at_home" && (req.address_line1 || req.address_city || req.address_country)) {
+    bookingInsert.address_line1 = req.address_line1 ?? null;
+    bookingInsert.address_line2 = req.address_line2 ?? null;
+    bookingInsert.address_city = req.address_city ?? null;
+    bookingInsert.address_state = req.address_state ?? null;
+    bookingInsert.address_country = req.address_country ?? null;
+    bookingInsert.address_postal_code = req.address_postal_code ?? null;
+  }
+  if (travelFee > 0) {
+    bookingInsert.travel_fee = travelFee;
+  }
 
   const { data: booking, error: bookingError } = await adminSupabase
     .from("bookings")
@@ -737,7 +801,26 @@ async function handleCustomOfferSuccess(
     })
     .eq("id", offerId);
 
-  // Commission + ledger entries
+  // Create payments row so booking has a consistent payment record (reports, portal)
+  await (adminSupabase.from("payments") as any).insert({
+    booking_id: booking.id,
+    user_id: req.customer_id,
+    provider_id: req.provider_id,
+    payment_number: "",
+    amount: amountInCurrency,
+    currency: offer.currency || "ZAR",
+    status: "paid",
+    payment_provider: "paystack",
+    payment_provider_transaction_id: payload.reference,
+    payment_provider_response: {},
+    processed_at: new Date().toISOString(),
+    description: `Custom offer payment`,
+    metadata: { custom_offer_id: offerId },
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+
+  // Commission + ledger entries (use metadata.commission_base when present for tax/fee-aware base)
   const { data: settingsRow } = await adminSupabase
     .from("platform_settings")
     .select("settings")
@@ -748,7 +831,7 @@ async function handleCustomOfferSuccess(
 
   const commissionRate =
     (settingsRow as any)?.settings?.payouts?.platform_commission_percentage ?? 15;
-  const commissionBase = bookingSubtotal;
+  const commissionBase = Number(meta.commission_base) > 0 ? Number(meta.commission_base) : Math.max(0, bookingSubtotal + travelFee - promotionDiscountAmount);
   const platformCommission = (commissionBase * commissionRate) / 100;
   const providerEarnings = commissionBase - platformCommission;
 
@@ -788,6 +871,91 @@ async function handleCustomOfferSuccess(
       created_at: new Date().toISOString(),
     },
   ]);
+
+  // Service fee, tip, tax, travel fee ledger entries
+  const extraRows: any[] = [];
+  if (serviceFeeAmount > 0) {
+    extraRows.push({
+      booking_id: booking.id,
+      provider_id: req.provider_id,
+      transaction_type: "service_fee",
+      amount: serviceFeeAmount,
+      fees: 0,
+      commission: 0,
+      net: serviceFeeAmount,
+      description: `Service fee (custom order)`,
+      created_at: new Date().toISOString(),
+    });
+  }
+  extraRows.push(
+    {
+      booking_id: booking.id,
+      provider_id: req.provider_id,
+      transaction_type: "tip",
+      amount: tipAmount,
+      fees: 0,
+      commission: 0,
+      net: 0,
+      description: `Tip (custom order)`,
+      created_at: new Date().toISOString(),
+    },
+    {
+      booking_id: booking.id,
+      provider_id: req.provider_id,
+      transaction_type: "tax",
+      amount: taxAmount,
+      fees: 0,
+      commission: 0,
+      net: 0,
+      description: `Tax (custom order)`,
+      created_at: new Date().toISOString(),
+    }
+  );
+  if (travelFee > 0) {
+    extraRows.push({
+      booking_id: booking.id,
+      provider_id: req.provider_id,
+      transaction_type: "travel_fee",
+      amount: travelFee,
+      fees: 0,
+      commission: 0,
+      net: 0,
+      description: `Travel fee (custom order)`,
+      created_at: new Date().toISOString(),
+    });
+  }
+  if (extraRows.length > 0) {
+    await adminSupabase.from("finance_transactions").insert(extraRows);
+  }
+
+  // Record promotion usage (idempotent)
+  if (promotionId && promotionDiscountAmount > 0) {
+    try {
+      await (adminSupabase.from("promotion_usage") as any)
+        .insert({
+          promotion_id: promotionId,
+          user_id: req.customer_id,
+          booking_id: booking.id,
+          discount_amount: promotionDiscountAmount,
+          used_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+      const { data: promoRow } = await (adminSupabase.from("promotions") as any)
+        .select("usage_count")
+        .eq("id", promotionId)
+        .single();
+      const nextCount = Number(promoRow?.usage_count || 0) + 1;
+      await (adminSupabase.from("promotions") as any)
+        .update({ usage_count: nextCount })
+        .eq("id", promotionId);
+    } catch (promoErr: any) {
+      const msg = promoErr?.message || String(promoErr);
+      if (!msg.toLowerCase().includes("duplicate") && !msg.toLowerCase().includes("unique")) {
+        console.error("Error recording custom offer promotion usage:", promoErr);
+      }
+    }
+  }
 
   // Update custom request status to fulfilled
   await adminSupabase

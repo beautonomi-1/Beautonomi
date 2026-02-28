@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,8 @@ import type { WaitingRoomEntry } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useModuleConfig } from "@/providers/ConfigBundleProvider";
+import { playRingtone } from "@/lib/on-demand/ringtone";
 
 interface VirtualWaitingRoomProps {
   onEntrySelect?: (entry: WaitingRoomEntry) => void;
@@ -20,6 +22,15 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect }: VirtualWai
   const [_isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, _setStatusFilter] = useState<"all" | "waiting" | "in_service" | "completed">("all");
+  const onDemandConfig = useModuleConfig("on_demand");
+  const prevWaitingCountRef = useRef<number | null>(null);
+  const ringtoneStopRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      ringtoneStopRef.current?.();
+    };
+  }, []);
 
   useEffect(() => {
     loadEntries();
@@ -32,6 +43,26 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect }: VirtualWai
     try {
       setIsLoading(true);
       const response = await providerApi.listWaitingRoomEntries();
+      const waitingCount = response.filter((e) => e.status === "waiting").length;
+      if (
+        onDemandConfig.enabled &&
+        onDemandConfig.ringtone_asset_path &&
+        prevWaitingCountRef.current !== null &&
+        waitingCount > prevWaitingCountRef.current
+      ) {
+        ringtoneStopRef.current?.();
+        const ctrl = await playRingtone(
+          {
+            enabled: onDemandConfig.enabled,
+            ringtone_asset_path: onDemandConfig.ringtone_asset_path,
+            ring_duration_seconds: onDemandConfig.ring_duration_seconds ?? 20,
+            ring_repeat: onDemandConfig.ring_repeat ?? true,
+          },
+          { environment: "production" }
+        );
+        ringtoneStopRef.current = ctrl.stop;
+      }
+      prevWaitingCountRef.current = waitingCount;
       setEntries(response);
     } catch (error) {
       console.error("Failed to load waiting room entries:", error);

@@ -284,18 +284,17 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi([
-      "provider_owner",
-      "provider_staff",
-      "superadmin",
-    ]);
-    const supabaseAdmin = await getSupabaseAdmin();
-
-    const providerId = await getProviderIdForUser(user.id);
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request
+    );
+    const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return errorResponse("Provider not found", "NOT_FOUND", 404);
     }
 
+    const supabaseAdmin = await getSupabaseAdmin();
     const isOwner =
       (await supabaseAdmin
         .from("providers")

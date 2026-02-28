@@ -28,6 +28,7 @@ export async function GET(
           phone,
           email
         ),
+        group_bookings(ref_number),
         location:provider_locations(
           id,
           name,
@@ -164,6 +165,8 @@ export async function GET(
         phone: auth.user.user_metadata?.phone || "",
       },
       special_requests: bookingData.special_requests,
+      is_group_booking: !!bookingData.group_booking_id,
+      group_booking_ref: bookingData.group_bookings?.ref_number ?? null,
       provider: bookingData.provider ? {
         id: bookingData.provider.id,
         business_name: bookingData.provider.business_name,

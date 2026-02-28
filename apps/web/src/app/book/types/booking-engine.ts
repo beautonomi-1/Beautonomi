@@ -5,12 +5,26 @@
 
 export type BookingStep =
   | "venue"
+  | "category"
   | "services"
   | "addons"
+  | "group"
   | "staff"
   | "schedule"
+  | "resources"
   | "intake"
   | "review";
+
+/** One participant in a group booking (additional guests; primary = booker) */
+export interface GroupParticipant {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  /** Offering IDs for this participant's services */
+  service_ids: string[];
+  notes?: string | null;
+}
 
 export type VenueType = "at_salon" | "at_home";
 
@@ -21,6 +35,8 @@ export interface LocationOption {
   city: string;
   country: string;
   is_primary?: boolean;
+  /** 'salon' = physical venue for at_salon; 'base' = distance/travel reference only (mobile-only) */
+  location_type?: "salon" | "base";
 }
 
 export interface AtHomeAddress {
@@ -30,6 +46,9 @@ export interface AtHomeAddress {
   state?: string;
   country: string;
   postal_code?: string;
+  /** Set by map/geocode for distance and travel fee calculation */
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface ServiceOption {
@@ -104,11 +123,31 @@ export interface ClientIntake {
   specialRequests: string;
 }
 
+/** Provider intake/consent form response: formId -> { fieldId -> value } */
+export type ProviderFormResponses = Record<
+  string,
+  Record<string, string | number | boolean | null>
+>;
+
+/** Platform booking custom field values: field name -> value */
+export type CustomFieldValues = Record<string, string | number | boolean | null>;
+
+export interface ProviderCategoryOption {
+  id: string;
+  name: string;
+  description?: string | null;
+  color?: string | null;
+  display_order?: number;
+}
+
 export interface BookingData {
   // Venue
   venueType: VenueType;
   selectedLocation: LocationOption | null;
   atHomeAddress: AtHomeAddress;
+
+  // Category (for service grouping)
+  selectedCategory: ProviderCategoryOption | null;
 
   // Services: either package (with multiple offerings) or single service/variant
   selectedPackage: PackageOption | null;
@@ -123,8 +162,22 @@ export interface BookingData {
   selectedDate: Date | null;
   selectedSlot: { start: string; end: string; staff_id?: string } | null;
 
+  // Resources (when services require rooms/equipment)
+  selectedResourceIds: string[];
+
   // Client (intake)
   client: ClientIntake;
+
+  // Provider forms and platform booking custom fields (from intake step)
+  provider_form_responses?: ProviderFormResponses;
+  custom_field_values?: CustomFieldValues;
+
+  // Policy acceptance (review step)
+  policyAccepted?: boolean;
+
+  // Group booking (when provider has online_group_booking_enabled)
+  isGroupBooking?: boolean;
+  groupParticipants?: GroupParticipant[];
 
   // Computed
   currency: string;
@@ -134,10 +187,13 @@ export interface BookingData {
 
 export const STEP_ORDER: BookingStep[] = [
   "venue",
+  "category",
   "services",
   "addons",
+  "group",
   "staff",
   "schedule",
+  "resources",
   "intake",
   "review",
 ];
@@ -150,12 +206,15 @@ export function getStepIndex(step: BookingStep): number {
 export function getStepLabel(step: BookingStep): string {
   const labels: Record<BookingStep, string> = {
     venue: "Where",
+    category: "Category",
     services: "What",
     addons: "Extras",
+    group: "Group",
     staff: "Who",
-    schedule: "When",
-    intake: "Details",
-    review: "Review",
-  };
+  schedule: "When",
+  resources: "Resources",
+  intake: "Details",
+  review: "Review",
+};
   return labels[step];
 }

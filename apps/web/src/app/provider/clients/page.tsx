@@ -1934,7 +1934,7 @@ function ClientDetailSheet({
     }
 
     try {
-      const data = await fetcher.post<{ data?: { id: string } }>("/api/provider/conversations/create", {
+      const data = await fetcher.post<{ data?: { id: string } }>("/api/provider/conversations", {
         customer_id: client.customer_id,
         booking_id: null,
       });

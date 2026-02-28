@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 
 /**
  * GET /api/provider/payouts
@@ -89,18 +90,23 @@ export async function POST(request: NextRequest) {
       return errorResponse("Amount must be greater than 0", "VALIDATION_ERROR", 400);
     }
 
-    const { data: provider } = await supabase
-      .from("providers")
-      .select("available_balance, pending_payouts")
-      .eq("id", providerId)
-      .single();
-
-    if (!provider) {
-      return notFoundResponse("Provider not found");
+    const numAmount = Number(amount);
+    const { data: platformRow } = await (supabase as any)
+      .from("platform_settings")
+      .select("settings")
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    const minimumPayout = (platformRow?.settings as any)?.payouts?.minimum_payout_amount ?? 100;
+    if (numAmount < minimumPayout) {
+      return errorResponse(
+        `Minimum payout amount is ${minimumPayout} ZAR. You requested ${numAmount}.`,
+        "BELOW_MINIMUM_PAYOUT",
+        400
+      );
     }
 
-    const availableBalance = (provider as any).available_balance || 0;
-    const pendingPayouts = (provider as any).pending_payouts || 0;
+    const { availableBalance } = await getAvailablePayoutBalance(supabase, providerId);
 
     if (amount > availableBalance) {
       return errorResponse(
@@ -109,6 +115,32 @@ export async function POST(request: NextRequest) {
         400
       );
     }
+
+    // Resolve payout account: use bank_account_id from body if valid, else primary (latest active)
+    const { data: accounts } = await supabase
+      .from("provider_payout_accounts")
+      .select("id, recipient_code, account_name, account_number_last4, bank_name")
+      .eq("provider_id", providerId)
+      .eq("active", true)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false });
+
+    const accountList = accounts || [];
+    if (accountList.length === 0) {
+      return errorResponse(
+        "Add at least one bank account in Settings → Payout Accounts to request a payout.",
+        "NO_PAYOUT_ACCOUNT",
+        400
+      );
+    }
+
+    const chosenAccount = bank_account_id
+      ? accountList.find((a: any) => a.id === bank_account_id)
+      : accountList[0];
+    if (bank_account_id && !chosenAccount) {
+      return errorResponse("Selected bank account not found or inactive.", "INVALID_ACCOUNT", 400);
+    }
+    const payoutAccountId = chosenAccount?.id ?? accountList[0].id;
 
     // Insert into payouts table (service role bypasses RLS)
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -123,7 +155,7 @@ export async function POST(request: NextRequest) {
 
     const payoutAccountDetails = {
       ...(notes && { notes }),
-      ...(bank_account_id && { bank_account_id }),
+      bank_account_id: payoutAccountId,
     };
 
     const { data: payout, error: payoutError } = await supabaseAdmin
@@ -148,15 +180,6 @@ export async function POST(request: NextRequest) {
       throw payoutError;
     }
 
-    // Update provider's pending payouts (best-effort)
-    try {
-      await supabaseAdmin
-        .from("providers")
-        .update({ pending_payouts: pendingPayouts + amount })
-        .eq("id", providerId);
-    } catch (updateErr) {
-      console.warn("Failed to update provider pending_payouts:", updateErr);
-    }
 
     try {
       await supabaseAdmin.from("notifications").insert({

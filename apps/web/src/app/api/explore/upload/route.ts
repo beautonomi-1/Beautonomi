@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getSupabaseServer } from "@/lib/supabase/server";
 import {
   getProviderIdForUser,
   successResponse,
@@ -21,18 +22,17 @@ const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi([
-      "provider_owner",
-      "provider_staff",
-      "superadmin",
-    ]);
-    const supabaseAdmin = await getSupabaseAdmin();
-
-    const providerId = await getProviderIdForUser(user.id);
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request
+    );
+    const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return errorResponse("Provider not found", "NOT_FOUND", 404);
     }
 
+    const supabaseAdmin = await getSupabaseAdmin();
     const isOwner =
       (await supabaseAdmin
         .from("providers")

@@ -7,7 +7,8 @@ import { requirePermission } from "@/lib/auth/requirePermission";
 /**
  * GET /api/provider/conversations/[id]
  *
- * Get a single conversation with messages (used by mobile chat screen)
+ * Get a single conversation with messages (used by mobile chat screen).
+ * Marks all messages from the customer as read and sets unread_count_provider to 0 (read receipt).
  */
 export async function GET(
   request: NextRequest,
@@ -44,7 +45,7 @@ export async function GET(
     const supabaseAdmin = await getSupabaseAdmin();
     const { data: customer } = await supabaseAdmin
       .from("users")
-      .select("id, full_name, email, avatar_url")
+      .select("id, full_name, email, phone, avatar_url")
       .eq("id", conversation.customer_id)
       .single();
 
@@ -91,6 +92,8 @@ export async function GET(
       customer_id: conversation.customer_id,
       customer_name: customerName,
       customer_avatar_url: customer?.avatar_url || null,
+      customer_phone: (customer as any)?.phone ?? null,
+      customer_email: customer?.email ?? null,
       messages: transformedMessages,
     });
   } catch (error) {
@@ -99,8 +102,25 @@ export async function GET(
 }
 
 /**
+ * POST /api/provider/conversations/create
+ * When the client hits .../conversations/create, some routers match [id]=create.
+ * Delegate to create logic so POST always works.
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  if (id === "create") {
+    const { createConversation } = await import("../_helpers/create-conversation");
+    return createConversation(request);
+  }
+  return notFoundResponse("Conversation not found");
+}
+
+/**
  * DELETE /api/provider/conversations/[id]
- * 
+ *
  * Delete a conversation (provider side - soft delete)
  */
 export async function DELETE(

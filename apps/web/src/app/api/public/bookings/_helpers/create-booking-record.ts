@@ -88,7 +88,18 @@ export async function createBookingRecord(
     }
   );
 
-  if (bookingError) throw bookingError;
+  if (bookingError) {
+    const msg = (bookingError as { message?: string }).message ?? "";
+    if (msg.includes("BOOKING_SLOT_CONFLICT")) {
+      return handleApiError(
+        new Error("This time slot is no longer available. Please select another time."),
+        "This time slot is no longer available. Please select another time.",
+        "CONFLICT",
+        409
+      );
+    }
+    throw bookingError;
+  }
 
   if (!bookingId) {
     return handleApiError(
@@ -115,6 +126,24 @@ export async function createBookingRecord(
     );
   }
 
+  const loyaltyPointsUsed = Number((validatedDraft as any).loyalty_points_used ?? 0);
+  if (loyaltyPointsUsed > 0) {
+    await adminSupabase
+      .from("bookings")
+      .update({ loyalty_points_used: loyaltyPointsUsed })
+      .eq("id", bookingId);
+  }
+
+  // Set guest_name from client_info so booking appears correctly in provider calendar
+  const clientInfo = validatedDraft.client_info as { firstName?: string; lastName?: string } | undefined;
+  if (clientInfo && (clientInfo.firstName || clientInfo.lastName)) {
+    const guestName = [clientInfo.firstName, clientInfo.lastName].filter(Boolean).join(" ").trim();
+    if (guestName) {
+      await adminSupabase.from("bookings").update({ guest_name: guestName }).eq("id", bookingId);
+      (booking as any).guest_name = guestName;
+    }
+  }
+
   // ── Group booking ────────────────────────────────────────────────────────
   if (v.isGroupBooking && v.groupParticipants && v.groupParticipants.length > 0) {
     const clientInfo = validatedDraft.client_info || {};
@@ -123,12 +152,20 @@ export async function createBookingRecord(
       const { createGroupBooking } = await import("@/lib/bookings/group-booking");
       const { createGroupBookingServices } = await import("@/lib/bookings/group-booking-services");
 
+      // Build servicesMap for all participants (primary + group) so every participant's services get correct timing
+      const allOfferingIds = new Set<string>(
+        draft.services.map((s: any) => s.offering_id).concat(
+          (v.groupParticipants || []).flatMap((p: any) => p.service_ids ?? p.serviceIds ?? [])
+        )
+      );
       const servicesMap = new Map();
-      for (const s of draft.services) {
-        const off = v.offeringById.get(s.offering_id);
-        servicesMap.set(s.offering_id, {
+      for (const offeringId of allOfferingIds) {
+        const off = v.offeringById.get(offeringId);
+        if (!off) continue;
+        const primaryService = draft.services.find((s: any) => s.offering_id === offeringId);
+        servicesMap.set(offeringId, {
           offering_id: off.id,
-          staff_id: s.staff_id || null,
+          staff_id: primaryService?.staff_id ?? null,
           duration_minutes: Number(off.duration_minutes),
           price: Number(off.price),
           currency: v.currency,
@@ -139,10 +176,10 @@ export async function createBookingRecord(
         adminSupabase,
         booking.id,
         v.selectedDatetime,
-        v.groupParticipants.map((p: any) => ({
-          id: p.id || Date.now().toString(),
+        v.groupParticipants.map((p: any, i: number) => ({
+          id: p.id || `p-${i}-${Date.now()}`,
           name: p.name,
-          serviceIds: p.serviceIds || [],
+          serviceIds: p.service_ids ?? p.serviceIds ?? [],
         })),
         servicesMap
       );
@@ -173,6 +210,11 @@ export async function createBookingRecord(
       (booking as any).group_booking_id = groupBooking.id;
       (booking as any).group_booking_ref = groupBooking.ref_number;
 
+      await adminSupabase
+        .from("bookings")
+        .update({ group_booking_id: groupBooking.id })
+        .eq("id", booking.id);
+
       // Send group notifications (best-effort)
       try {
         const { sendGroupBookingNotifications } = await import(
@@ -200,29 +242,42 @@ export async function createBookingRecord(
   if (bookingServicesError) throw bookingServicesError;
 
   // ── Resource assignments ─────────────────────────────────────────────────
+  const draftResourceIds = (draft as any).resource_ids as string[] | undefined;
   if (v.allResourceIds.length > 0 && createdBookingServices) {
     const { assignResourcesToBooking, getRequiredResourcesForOffering } = await import(
       "@/lib/resources/assignment"
     );
     const resourceAssignments: any[] = [];
+    let resourceCursor = 0;
 
     for (const service of createdBookingServices) {
-      const serviceOffering = draft.services.find((s) => s.offering_id === service.offering_id);
-      if (!serviceOffering) continue;
-
       const requiredResources = await getRequiredResourcesForOffering(
         supabase,
-        serviceOffering.offering_id
+        service.offering_id
       );
+      const count = requiredResources.length;
+      if (count === 0) continue;
 
-      for (const resourceId of requiredResources) {
-        resourceAssignments.push({
-          booking_id: booking.id,
-          booking_service_id: service.id,
-          resource_id: resourceId,
-          scheduled_start_at: service.scheduled_start_at,
-          scheduled_end_at: service.scheduled_end_at,
-        });
+      if (Array.isArray(draftResourceIds) && resourceCursor < draftResourceIds.length) {
+        for (let i = 0; i < count && resourceCursor < draftResourceIds.length; i++) {
+          resourceAssignments.push({
+            booking_id: booking.id,
+            booking_service_id: service.id,
+            resource_id: draftResourceIds[resourceCursor++],
+            scheduled_start_at: service.scheduled_start_at,
+            scheduled_end_at: service.scheduled_end_at,
+          });
+        }
+      } else {
+        for (const resourceId of requiredResources) {
+          resourceAssignments.push({
+            booking_id: booking.id,
+            booking_service_id: service.id,
+            resource_id: resourceId,
+            scheduled_start_at: service.scheduled_start_at,
+            scheduled_end_at: service.scheduled_end_at,
+          });
+        }
       }
     }
 

@@ -441,12 +441,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Create primary location with geocoding and operating hours using admin client
-    // Always create location (even without coordinates) as it's required for the provider
+    // location_type: "base" = mobile-only (distance/travel); "salon" = clients can visit (salon/both)
+    const locationType = business_type === "mobile" ? "base" : "salon";
+    const locationName = business_type === "mobile" ? "Home base" : "Main Location";
     const { error: locationError } = await supabaseAdmin
       .from("provider_locations")
       .insert({
         provider_id: providerId,
-        name: "Main Location",
+        name: locationName,
         address_line1: address.line1,
         address_line2: address.line2 || null,
         city: address.city,
@@ -458,6 +460,7 @@ export async function POST(request: NextRequest) {
         working_hours: operating_hours, // Store operating_hours as working_hours JSONB
         is_active: true,
         is_primary: true,
+        location_type: locationType,
       });
 
     if (locationError) {

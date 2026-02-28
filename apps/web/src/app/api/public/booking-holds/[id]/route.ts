@@ -30,7 +30,7 @@ export async function GET(
     const { data: hold, error } = await supabase
       .from("booking_holds")
       .select(
-        "id, provider_id, staff_id, booking_services_snapshot, start_at, end_at, location_type, location_id, address_snapshot, hold_status, expires_at, created_by_user_id, guest_fingerprint_hash, metadata, created_at"
+        "id, provider_id, staff_id, booking_services_snapshot, start_at, end_at, location_type, location_id, address_snapshot, hold_status, expires_at, created_by_user_id, guest_fingerprint_hash, metadata, created_at, providers(slug)"
       )
       .eq("id", id)
       .single();
@@ -66,9 +66,11 @@ export async function GET(
     }
 
     const metadata = (hold.metadata as Record<string, unknown>) || {};
+    const providerSlug = (hold.providers as { slug?: string } | null)?.slug ?? null;
     return successResponse({
       hold_id: hold.id,
       provider_id: hold.provider_id,
+      provider_slug: providerSlug,
       staff_id: hold.staff_id,
       booking_services_snapshot: hold.booking_services_snapshot,
       start_at: hold.start_at,

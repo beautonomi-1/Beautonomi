@@ -16,12 +16,12 @@ const updateStaffLocationsSchema = z.object({
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: staffId } = await params;
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
-    const staffId = params.id;
 
     // Verify staff belongs to provider
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -69,9 +69,10 @@ export async function GET(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: staffId } = await params;
     // Check permission to manage team
     const permissionCheck = await requirePermission('manage_team', request);
     if (!permissionCheck.authorized) {
@@ -80,7 +81,6 @@ export async function PUT(
     const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
-    const staffId = params.id;
     const body = await request.json();
 
     // Validate input
@@ -180,9 +180,10 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: staffId } = await params;
     // Check permission to manage team
     const permissionCheck = await requirePermission('manage_team', request);
     if (!permissionCheck.authorized) {
@@ -191,7 +192,6 @@ export async function DELETE(
     const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
-    const staffId = params.id;
 
     // Verify staff belongs to provider
     const providerId = await getProviderIdForUser(user.id, supabase);

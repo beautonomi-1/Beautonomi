@@ -1,150 +1,65 @@
-import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import type { OfferingCard } from "@/types/beautonomi";
 
 /**
  * GET /api/provider/services/[id]
- * 
- * Get a specific service
+ * Get a specific service. Uses requireRoleInApi(request) so mobile Bearer token works.
  */
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["provider_owner", "provider_staff"]);    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
-
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(user.id, supabase);
+    if (!providerId) return notFoundResponse("Provider not found");
+
     const { id } = await params;
-
-    // Get provider ID
-    const { data: provider } = await supabase
-      .from("providers")
-      .select("id")
-      .eq("user_id", auth.user.id)
-      .single();
-
-    if (!provider) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Provider not found",
-            code: "NOT_FOUND",
-          },
-        },
-        { status: 404 }
-      );
-    }
-
-    const _providerData = provider as any;
-
     const { data: service, error } = await supabase
       .from("offerings")
       .select("*")
       .eq("id", id)
-      .eq("provider_id", provider.id)
+      .eq("provider_id", providerId)
       .single();
 
-    if (error || !service) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Service not found",
-            code: "NOT_FOUND",
-          },
-        },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      data: service as OfferingCard,
-      error: null,
-    });
+    if (error || !service) return notFoundResponse("Service not found");
+    return successResponse(service as OfferingCard);
   } catch (error) {
-    console.error("Unexpected error in /api/provider/services/[id]:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: "Failed to fetch service",
-          code: "INTERNAL_ERROR",
-        },
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to fetch service");
   }
 }
 
 /**
  * PATCH /api/provider/services/[id]
- * 
- * Update a service
+ * Update a service.
  */
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check permission to edit services
-    const permissionCheck = await requirePermission('edit_services', request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const auth = { user: permissionCheck.user! };
+    const permissionCheck = await requirePermission("edit_services", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
 
     const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(permissionCheck.user!.id, supabase);
+    if (!providerId) return notFoundResponse("Provider not found");
+
     const { id } = await params;
     const body = await request.json();
 
-    // Get provider ID
-    const { data: provider } = await supabase
-      .from("providers")
-      .select("id")
-      .eq("user_id", auth.user.id)
-      .single();
-
-    if (!provider) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Provider not found",
-            code: "NOT_FOUND",
-          },
-        },
-        { status: 404 }
-      );
-    }
-
-    const _providerData = provider as any;
-
-    // Verify service belongs to provider
     const { data: existingService } = await supabase
       .from("offerings")
       .select("id")
       .eq("id", id)
-      .eq("provider_id", provider.id)
+      .eq("provider_id", providerId)
       .single();
 
-    if (!existingService) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Service not found",
-            code: "NOT_FOUND",
-          },
-        },
-        { status: 404 }
-      );
-    }
+    if (!existingService) return notFoundResponse("Service not found");
 
     // Update service
     const updateData: any = {};
@@ -198,137 +113,43 @@ export async function PATCH(
       .select()
       .single();
 
-    if (updateError || !updatedService) {
-      console.error("Error updating service:", updateError);
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Failed to update service",
-            code: "UPDATE_ERROR",
-          },
-        },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({
-      data: updatedService as OfferingCard,
-      error: null,
-    });
+    if (updateError || !updatedService) throw updateError ?? new Error("Failed to update service");
+    return successResponse(updatedService as OfferingCard);
   } catch (error) {
-    console.error("Unexpected error in /api/provider/services/[id]:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: "Failed to update service",
-          code: "INTERNAL_ERROR",
-        },
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to update service");
   }
 }
 
 /**
  * DELETE /api/provider/services/[id]
- * 
- * Delete a service
+ * Delete a service.
  */
 export async function DELETE(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Check permission to edit services (deletion requires edit permission)
-    const permissionCheck = await requirePermission('edit_services', request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const auth = { user: permissionCheck.user! };
+    const permissionCheck = await requirePermission("edit_services", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
 
     const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(permissionCheck.user!.id, supabase);
+    if (!providerId) return notFoundResponse("Provider not found");
+
     const { id } = await params;
-
-    // Get provider ID
-    const { data: provider } = await supabase
-      .from("providers")
-      .select("id")
-      .eq("user_id", auth.user.id)
-      .single();
-
-    if (!provider) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Provider not found",
-            code: "NOT_FOUND",
-          },
-        },
-        { status: 404 }
-      );
-    }
-
-    const _providerData = provider as any;
-
-    // Verify service belongs to provider
     const { data: existingService } = await supabase
       .from("offerings")
       .select("id")
       .eq("id", id)
-      .eq("provider_id", provider.id)
+      .eq("provider_id", providerId)
       .single();
 
-    if (!existingService) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Service not found",
-            code: "NOT_FOUND",
-          },
-        },
-        { status: 404 }
-      );
-    }
+    if (!existingService) return notFoundResponse("Service not found");
 
-    // Delete service
-    const { error: deleteError } = await supabase
-      .from("offerings")
-      .delete()
-      .eq("id", id);
-
-    if (deleteError) {
-      console.error("Error deleting service:", deleteError);
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Failed to delete service",
-            code: "DELETE_ERROR",
-          },
-        },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({
-      data: { success: true },
-      error: null,
-    });
+    const { error: deleteError } = await supabase.from("offerings").delete().eq("id", id);
+    if (deleteError) throw deleteError;
+    return successResponse({ success: true });
   } catch (error) {
-    console.error("Unexpected error in /api/provider/services/[id]:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: "Failed to delete service",
-          code: "INTERNAL_ERROR",
-        },
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to delete service");
   }
 }

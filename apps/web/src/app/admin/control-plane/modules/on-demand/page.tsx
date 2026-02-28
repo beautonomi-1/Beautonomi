@@ -110,7 +110,10 @@ export default function OnDemandModulePage() {
         <Card>
           <CardHeader>
             <CardTitle>Config</CardTitle>
-            <CardDescription>Storage path for ringtone: app-assets bucket, ux/ringtones/&lt;env&gt;/default.mp3</CardDescription>
+            <CardDescription>
+              Storage path for ringtone: app-assets bucket, ux/ringtones/&lt;env&gt;/default.mp3.
+              For the &quot;Request now / Accept&quot; flow, enable feature flags: on_demand_accept_enabled, on_demand_accept_customer_enabled, on_demand_accept_provider_enabled in <Link href="/admin/settings/feature-flags" className="text-primary underline">Feature flags</Link>.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-2">

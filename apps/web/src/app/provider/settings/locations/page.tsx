@@ -40,6 +40,8 @@ interface Location {
   phone?: string | null;
   description?: string | null;
   is_active: boolean;
+  /** 'salon' = clients can visit; 'base' = distance/travel only (mobile-only) */
+  location_type?: "salon" | "base";
   operating_hours?: OperatingHours;
 }
 
@@ -161,7 +163,7 @@ export default function LocationsSettings() {
         <SectionCard className="p-12">
           <EmptyState
             title="No locations yet"
-            description="Add your first business location to get started"
+            description="Add your business address for travel distance and fees. Add a salon location when clients can visit you in-studio."
             action={{
               label: "Add Location",
               onClick: handleCreate,
@@ -182,9 +184,20 @@ export default function LocationsSettings() {
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <h3 className="font-semibold text-lg">{location.name}</h3>
-                      {location.is_active && (
-                        <span className="text-xs text-[#FF0077] font-medium">Active</span>
-                      )}
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {location.is_active && (
+                          <span className="text-xs text-[#FF0077] font-medium">Active</span>
+                        )}
+                        {(location.location_type || "salon") === "salon" ? (
+                          <span className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded font-medium">
+                            Salon — clients can visit
+                          </span>
+                        ) : (
+                          <span className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-0.5 rounded font-medium">
+                            Base address (travel distance only)
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <p className="text-sm text-gray-600 mb-2">
@@ -274,6 +287,7 @@ function LocationDialog({
     latitude: location?.latitude || undefined,
     longitude: location?.longitude || undefined,
     operating_hours: location?.operating_hours || defaultHours,
+    location_type: (location?.location_type || "salon") as "salon" | "base",
   });
 
   const handleAddressSelect = (address: {
@@ -303,6 +317,7 @@ function LocationDialog({
       name: formData.label,
       ...formData,
       operating_hours: formData.operating_hours,
+      location_type: formData.location_type,
     });
   };
 
@@ -312,10 +327,48 @@ function LocationDialog({
         <DialogHeader>
           <DialogTitle>{location ? "Edit Location" : "Add Location"}</DialogTitle>
           <DialogDescription>
-            Add a business location. Address will be automatically geocoded.
+            {location
+              ? "Update address and location type. Salon locations allow in-studio bookings."
+              : "Add a business location. Choose Salon if clients can visit; Base if you only do house calls. Address will be geocoded."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <Label>Location type</Label>
+            <p className="text-sm text-muted-foreground mb-2">
+              Salon = clients can book in-studio. Base = used only for travel distance (mobile-only).
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-6">
+              <label
+                className={`flex items-center gap-2 cursor-pointer rounded-lg border p-3 hover:bg-muted/50 ${
+                  formData.location_type === "salon" ? "border-[#FF0077] bg-[#FF0077]/5" : ""
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="location_type"
+                  checked={formData.location_type === "salon"}
+                  onChange={() => setFormData({ ...formData, location_type: "salon" })}
+                  className="rounded-full border-gray-300 text-[#FF0077]"
+                />
+                <span className="text-sm font-medium">Salon / studio — clients can visit</span>
+              </label>
+              <label
+                className={`flex items-center gap-2 cursor-pointer rounded-lg border p-3 hover:bg-muted/50 ${
+                  formData.location_type === "base" ? "border-[#FF0077] bg-[#FF0077]/5" : ""
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="location_type"
+                  checked={formData.location_type === "base"}
+                  onChange={() => setFormData({ ...formData, location_type: "base" })}
+                  className="rounded-full border-gray-300 text-[#FF0077]"
+                />
+                <span className="text-sm font-medium">Base address only (travel distance)</span>
+              </label>
+            </div>
+          </div>
           <div>
             <Label htmlFor="name">Location Name *</Label>
             <Input

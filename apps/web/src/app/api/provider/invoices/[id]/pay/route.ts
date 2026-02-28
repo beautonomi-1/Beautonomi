@@ -9,9 +9,10 @@ import { requirePermission } from "@/lib/auth/requirePermission";
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const permissionCheck = await requirePermission("edit_settings", request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
@@ -35,7 +36,7 @@ export async function POST(
     let query = supabase
       .from("provider_invoices")
       .select("*")
-      .eq("id", params.id);
+      .eq("id", id);
 
     if (providerId) {
       query = query.eq("provider_id", providerId);
@@ -67,7 +68,7 @@ export async function POST(
     const { data: payment, error: paymentError } = await supabase
       .from("provider_invoice_payments")
       .insert({
-        invoice_id: params.id,
+        invoice_id: id,
         payment_method_id: paymentMethodId || null,
         amount,
         payment_date: paymentDate || new Date().toISOString().split("T")[0],

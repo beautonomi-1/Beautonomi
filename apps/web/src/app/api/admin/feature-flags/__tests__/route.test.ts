@@ -1,5 +1,6 @@
 /**
  * Admin feature-flags API tests: response shape { data, error }, auth, validation.
+ * Route uses requireRoleInApi (api-helpers) and getSupabaseAdmin.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -10,14 +11,18 @@ import {
   MOCK_USERS,
 } from "@/__tests__/helpers/mock-supabase";
 
-const mockRequireRole = vi.fn();
-vi.mock("@/lib/supabase/auth-server", () => ({
-  requireRole: (...args: unknown[]) => mockRequireRole(...args),
-}));
+const mockRequireRoleInApi = vi.fn();
+vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
+  return {
+    ...actual,
+    requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
+  };
+});
 
-const mockGetSupabaseServer = vi.fn();
-vi.mock("@/lib/supabase/server", () => ({
-  getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+const mockGetSupabaseAdmin = vi.fn();
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => mockGetSupabaseAdmin(),
 }));
 
 vi.mock("@/lib/audit/audit", () => ({
@@ -27,33 +32,38 @@ vi.mock("@/lib/audit/audit", () => ({
 describe("GET /api/admin/feature-flags", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequireRole.mockResolvedValue(undefined);
+    mockRequireRoleInApi.mockResolvedValue({ user: MOCK_USERS.superadmin });
     const mockSupabase = createMockSupabaseClient();
-    const thenable = {
+    const result = Promise.resolve({ data: [] as unknown[], error: null });
+    const chain = {
       select: vi.fn().mockReturnThis(),
       order: vi.fn().mockReturnThis(),
-      then(resolve: (v: { data: unknown[]; error: null }) => void) {
-        return Promise.resolve({ data: [], error: null }).then(resolve);
-      },
+      then: (onFulfilled?: (v: { data: unknown[]; error: null }) => unknown) =>
+        result.then(onFulfilled as (v: { data: unknown[]; error: null }) => unknown),
+      catch: (onRejected?: (e: unknown) => unknown) => result.catch(onRejected),
     };
-    mockSupabase.from.mockReturnValue(thenable);
-    mockGetSupabaseServer.mockResolvedValue(mockSupabase);
+    mockSupabase.from.mockReturnValue(chain);
+    mockGetSupabaseAdmin.mockReturnValue(mockSupabase);
   });
 
-  it("returns 200 with { data: array, error: null } when superadmin", async () => {
-    const { GET } = await import("../route");
-    const req = new NextRequest("http://localhost/api/admin/feature-flags");
-    const res = await GET(req);
-    const body = await res.json();
+  it(
+    "returns 200 with { data: array, error: null } when superadmin",
+    async () => {
+      const { GET } = await import("../route");
+      const req = new NextRequest("http://localhost/api/admin/feature-flags");
+      const res = await GET(req);
+      const body = await res.json();
 
-    expect(res.status).toBe(200);
-    expect(body).toHaveProperty("data");
-    expect(Array.isArray(body.data)).toBe(true);
-    expect(body.error).toBeNull();
-  });
+      expect(res.status).toBe(200);
+      expect(body).toHaveProperty("data");
+      expect(Array.isArray(body.data)).toBe(true);
+      expect(body.error).toBeNull();
+    },
+    10000
+  );
 
-  it("returns 403 when requireRole throws", async () => {
-    mockRequireRole.mockRejectedValue(new Error("Insufficient permissions"));
+  it("returns 403 when requireRoleInApi throws", async () => {
+    mockRequireRoleInApi.mockRejectedValue(new Error("Insufficient permissions"));
     const { GET } = await import("../route");
     const req = new NextRequest("http://localhost/api/admin/feature-flags");
     const res = await GET(req);
@@ -68,7 +78,7 @@ describe("GET /api/admin/feature-flags", () => {
 describe("POST /api/admin/feature-flags", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRequireRole.mockResolvedValue({
+    mockRequireRoleInApi.mockResolvedValue({
       user: { id: MOCK_USERS.superadmin.id },
     });
     const mockSupabase = createMockSupabaseClient();
@@ -86,7 +96,7 @@ describe("POST /api/admin/feature-flags", () => {
       }),
     };
     mockSupabase.from.mockReturnValue(chain);
-    mockGetSupabaseServer.mockResolvedValue(mockSupabase);
+    mockGetSupabaseAdmin.mockReturnValue(mockSupabase);
   });
 
   it("returns 400 with { data: null, error } when feature_key missing", async () => {

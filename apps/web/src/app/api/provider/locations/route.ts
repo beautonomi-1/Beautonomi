@@ -18,6 +18,8 @@ interface Location {
   longitude?: number;
   phone?: string;
   is_active: boolean;
+  /** 'salon' = clients can visit; 'base' = distance/travel reference only (mobile-only) */
+  location_type?: "salon" | "base";
 }
 
 /**
@@ -86,6 +88,7 @@ export async function POST(request: NextRequest) {
       latitude,
       longitude,
       phone,
+      location_type: locationType,
     } = body;
 
     if (!name || !address_line1 || !city || !country) {
@@ -167,6 +170,8 @@ export async function POST(request: NextRequest) {
     // Map operating_hours to working_hours for database
     const workingHours = body.operating_hours || null;
 
+    const locationTypeValue =
+      locationType === "base" || locationType === "salon" ? locationType : "salon";
     const { data: location, error } = await (supabase
       .from("provider_locations") as any)
       .insert({
@@ -183,6 +188,7 @@ export async function POST(request: NextRequest) {
         phone: phone || null,
         working_hours: workingHours,
         is_active: true,
+        location_type: locationTypeValue,
       })
       .select()
       .single();

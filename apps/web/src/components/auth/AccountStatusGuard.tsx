@@ -11,7 +11,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 export default function AccountStatusGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, signOut } = useAuth();
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
@@ -39,7 +39,25 @@ export default function AccountStatusGuard({ children }: { children: React.React
           }
 
           if (status?.is_deactivated) {
-            // Sign out and redirect to home
+            if (status.deactivated_by === "user") {
+              try {
+                const reactivateRes = await fetch("/api/me/reactivate-account", {
+                  method: "POST",
+                });
+                const reactivateData = await reactivateRes.json();
+                if (reactivateData?.data?.reactivated) {
+                  const recheck = await fetch("/api/me/account-status");
+                  const recheckData = await recheck.json();
+                  if (!recheckData?.data?.is_deactivated) {
+                    setIsChecking(false);
+                    return;
+                  }
+                }
+              } catch {
+                // Fall through to sign out
+              }
+            }
+            await signOut();
             router.replace("/?deactivated=true");
             return;
           }
@@ -52,7 +70,7 @@ export default function AccountStatusGuard({ children }: { children: React.React
     };
 
     checkAccountStatus();
-  }, [user, isLoading, pathname, router]);
+  }, [user, isLoading, pathname, router, signOut]);
 
   if (isLoading || isChecking) {
     return <LoadingTimeout />;

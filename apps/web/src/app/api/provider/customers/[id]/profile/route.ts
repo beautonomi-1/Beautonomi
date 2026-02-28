@@ -10,12 +10,12 @@ import { NextRequest } from "next/server";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: customerId } = await params;
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
-    const customerId = params.id;
 
     if (!customerId) {
       return handleApiError(new Error("Customer ID is required"), "Customer ID is required", 400);

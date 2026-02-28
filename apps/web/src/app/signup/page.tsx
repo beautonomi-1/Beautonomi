@@ -393,13 +393,13 @@ export default function SignupPage() {
             {content.footer_text ? (
               <span dangerouslySetInnerHTML={{ 
                 __html: content.footer_text
-                  .replace(/Terms of Service/g, '<a href="/terms" class="underline hover:text-[#FF0077]">Terms of Service</a>')
+                  .replace(/Terms of Service/g, '<a href="/terms-and-condition" class="underline hover:text-[#FF0077]">Terms of Service</a>')
                   .replace(/Privacy Policy/g, '<a href="/privacy" class="underline hover:text-[#FF0077]">Privacy Policy</a>')
               }} />
             ) : (
               <>
                 By continuing, you agree to Beautonomi's{" "}
-                <Link href="/terms" className="underline hover:text-[#FF0077]">
+                <Link href="/terms-and-condition" className="underline hover:text-[#FF0077]">
                   Terms of Service
                 </Link>{" "}
                 and{" "}

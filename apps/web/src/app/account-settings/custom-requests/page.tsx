@@ -39,6 +39,11 @@ type Offer = {
   status: string;
   payment_url?: string | null;
   paid_at?: string | null;
+  staff_id?: string | null;
+  location_id?: string | null;
+  scheduled_at?: string | null;
+  staff?: { id: string; name: string } | null;
+  location?: { id: string; name: string } | null;
 };
 
 type CustomRequest = {
@@ -50,6 +55,13 @@ type CustomRequest = {
   budget_min?: number | null;
   budget_max?: number | null;
   created_at: string;
+  service_name?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
+  address_country?: string | null;
+  address_postal_code?: string | null;
   provider?: { business_name?: string | null; slug?: string | null } | null;
   customer?: { id: string; full_name?: string | null; email?: string | null; avatar_url?: string | null } | null;
   offers?: Offer[];
@@ -78,6 +90,8 @@ export default function CustomRequestsPage() {
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoadingClients, setIsLoadingClients] = useState(false);
+  const [staffList, setStaffList] = useState<Array<{ id: string; name: string }>>([]);
+  const [locationsList, setLocationsList] = useState<Array<{ id: string; name: string }>>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form state for creating new custom offer
@@ -91,6 +105,8 @@ export default function CustomRequestsPage() {
     expiration_days: "7",
     notes: "",
     preferred_start_at: "",
+    staff_id: "",
+    location_id: "",
   });
 
   // Form state for creating offer for existing request
@@ -100,6 +116,9 @@ export default function CustomRequestsPage() {
     duration_minutes: "60",
     expiration_days: "7",
     notes: "",
+    staff_id: "",
+    location_id: "",
+    scheduled_at: "",
   });
 
   const load = async () => {
@@ -136,10 +155,25 @@ export default function CustomRequestsPage() {
     }
   };
 
+  const loadStaffAndLocations = async () => {
+    if (!isProvider) return;
+    try {
+      const [staffRes, locRes] = await Promise.all([
+        fetcher.get<{ data: Array<{ id: string; name: string }> }>("/api/provider/staff", { cache: "no-store" }),
+        fetcher.get<{ data: Array<{ id: string; name: string }> }>("/api/provider/locations", { cache: "no-store" }),
+      ]);
+      setStaffList(staffRes.data?.map((s) => ({ id: s.id, name: s.name })) ?? []);
+      setLocationsList(locRes.data?.map((l) => ({ id: l.id, name: l.name })) ?? []);
+    } catch (err) {
+      console.error("Failed to load staff/locations:", err);
+    }
+  };
+
   useEffect(() => {
     load();
     if (isProvider) {
       loadClients();
+      loadStaffAndLocations();
     }
   }, [isProvider]); // eslint-disable-line react-hooks/exhaustive-deps -- load when isProvider changes
 
@@ -178,6 +212,8 @@ export default function CustomRequestsPage() {
         expiration_at: expirationDate.toISOString(),
         notes: formData.notes || null,
         preferred_start_at: formData.preferred_start_at || null,
+        staff_id: formData.staff_id || null,
+        location_id: formData.location_id || null,
       };
 
       await fetcher.post("/api/provider/custom-offers/create", payload);
@@ -193,6 +229,8 @@ export default function CustomRequestsPage() {
         expiration_days: "7",
         notes: "",
         preferred_start_at: "",
+        staff_id: "",
+        location_id: "",
       });
       load();
     } catch (e: any) {
@@ -210,6 +248,9 @@ export default function CustomRequestsPage() {
       duration_minutes: "60",
       expiration_days: "7",
       notes: "",
+      staff_id: "",
+      location_id: "",
+      scheduled_at: "",
     });
     setShowOfferModal(true);
   };
@@ -231,6 +272,9 @@ export default function CustomRequestsPage() {
         duration_minutes: parseInt(offerFormData.duration_minutes),
         expiration_at: expirationDate.toISOString(),
         notes: offerFormData.notes || null,
+        staff_id: offerFormData.staff_id || null,
+        location_id: offerFormData.location_id || null,
+        scheduled_at: offerFormData.scheduled_at ? new Date(offerFormData.scheduled_at).toISOString() : null,
       };
 
       await fetcher.post(`/api/provider/custom-requests/${selectedRequestId}/offers`, payload);
@@ -263,7 +307,7 @@ export default function CustomRequestsPage() {
 
         {isProvider && (
           <p className="text-sm text-gray-600 mb-6">
-            Respond with tailored offers and convert them into bookings.
+            Set venue, staff, and appointment time when creating offers so the booking appears on the calendar and is assigned correctly once the customer pays.
           </p>
         )}
 
@@ -304,12 +348,19 @@ export default function CustomRequestsPage() {
                       )}
                     </div>
                     <div className="font-medium mt-1">{r.description}</div>
-                    <div className="text-sm text-gray-600 mt-2">
-                      {r.preferred_start_at ? `Preferred: ${new Date(r.preferred_start_at).toLocaleString()}` : "Preferred: not set"} •{" "}
-                      {r.location_type}
-                      {r.budget_min != null || r.budget_max != null
-                        ? ` • Budget: ${r.budget_min ?? ""} - ${r.budget_max ?? ""}`
-                        : ""}
+                    <div className="text-sm text-gray-600 mt-2 space-y-0.5">
+                      <span>
+                        {r.preferred_start_at ? `Preferred: ${new Date(r.preferred_start_at).toLocaleString()}` : "Preferred: not set"} •{" "}
+                        {r.location_type === "at_salon" ? "At salon" : "At home"}
+                        {r.budget_min != null || r.budget_max != null
+                          ? ` • Budget: ${r.budget_min ?? ""} - ${r.budget_max ?? ""}`
+                          : ""}
+                      </span>
+                      {r.location_type === "at_home" && (r.address_line1 || r.address_city || r.address_country) && (
+                        <div className="text-gray-500">
+                          Address: {[r.address_line1, r.address_line2, r.address_city, r.address_state, r.address_country].filter(Boolean).join(", ") || "—"}
+                        </div>
+                      )}
                     </div>
                   </div>
                   {isProvider && r.status === "pending" && (!r.offers || r.offers.length === 0) && (
@@ -327,13 +378,25 @@ export default function CustomRequestsPage() {
                   {r.offers && r.offers.length > 0 ? (
                     r.offers.map((o) => (
                       <div key={o.id} className="border rounded-md p-3 flex items-center justify-between gap-4">
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <div className="font-medium">
                             Offer: {o.currency} {o.price} • {o.duration_minutes} mins
                           </div>
-                          <div className="text-sm text-gray-600">
+                          <div className="text-sm text-gray-600 mt-1">
                             Expires: {new Date(o.expiration_at).toLocaleString()} • <span className="capitalize">{o.status}</span>
                           </div>
+                          {(o.location?.name || o.staff?.name) && (
+                            <div className="text-sm text-gray-600 mt-1">
+                              {o.location?.name && <span>Venue: {o.location.name}</span>}
+                              {o.location?.name && o.staff?.name && " • "}
+                              {o.staff?.name && <span>Staff: {o.staff.name}</span>}
+                            </div>
+                          )}
+                          {(o.scheduled_at ?? r.preferred_start_at) && (
+                            <div className="text-sm text-gray-600">
+                              Scheduled: {new Date(o.scheduled_at ?? r.preferred_start_at!).toLocaleString()}
+                            </div>
+                          )}
                           {o.notes ? <div className="text-sm mt-1">{o.notes}</div> : null}
                         </div>
                         {!isProvider && (
@@ -440,6 +503,45 @@ export default function CustomRequestsPage() {
                 </div>
               </div>
 
+              <div className={`grid gap-4 ${formData.location_type === "at_salon" ? "grid-cols-2" : "grid-cols-1"}`}>
+                {formData.location_type === "at_salon" && (
+                  <div>
+                    <Label htmlFor="venue">Venue</Label>
+                    <Select
+                      value={formData.location_id || "none"}
+                      onValueChange={(v) => setFormData({ ...formData, location_id: v === "none" ? "" : v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select venue" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No specific venue</SelectItem>
+                        {locationsList.map((loc) => (
+                          <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div>
+                  <Label htmlFor="staff">Assigned Staff</Label>
+                  <Select
+                    value={formData.staff_id || "none"}
+                    onValueChange={(v) => setFormData({ ...formData, staff_id: v === "none" ? "" : v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select staff" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No specific staff</SelectItem>
+                      {staffList.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="price">Price *</Label>
@@ -530,6 +632,54 @@ export default function CustomRequestsPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 mt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="offer_venue">Venue (for at salon)</Label>
+                  <Select
+                    value={offerFormData.location_id || "none"}
+                    onValueChange={(v) => setOfferFormData({ ...offerFormData, location_id: v === "none" ? "" : v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select venue" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No specific venue</SelectItem>
+                      {locationsList.map((loc) => (
+                        <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="offer_staff">Assigned Staff</Label>
+                  <Select
+                    value={offerFormData.staff_id || "none"}
+                    onValueChange={(v) => setOfferFormData({ ...offerFormData, staff_id: v === "none" ? "" : v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select staff" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No specific staff</SelectItem>
+                      {staffList.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="offer_scheduled_at">Appointment date & time (optional)</Label>
+                <Input
+                  id="offer_scheduled_at"
+                  type="datetime-local"
+                  value={offerFormData.scheduled_at}
+                  onChange={(e) => setOfferFormData({ ...offerFormData, scheduled_at: e.target.value })}
+                />
+                <p className="text-xs text-gray-500 mt-1">When the customer pays, the booking will show on the calendar at this time.</p>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="offer_price">Price *</Label>

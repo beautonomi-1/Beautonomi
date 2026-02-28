@@ -800,13 +800,11 @@ export async function GET(request: Request) {
           }
         }
         
-        // Check service type support
+        // Check service type support (supports_salon set only from provider_locations with location_type = 'salon')
         const serviceType = serviceTypeMap.get(offering.provider_id) || { supports_house_calls: false, supports_salon: false };
         if (offering.service?.supports_at_home) {
           serviceType.supports_house_calls = true;
         }
-        // If provider has offerings, they support salon services (at least one location)
-        serviceType.supports_salon = true;
         serviceTypeMap.set(offering.provider_id, serviceType);
       });
     }
@@ -835,28 +833,27 @@ export async function GET(request: Request) {
           }
         }
         
-        // Check service type support from services
+        // Check service type support (supports_salon set only from provider_locations with location_type = 'salon')
         const serviceType = serviceTypeMap.get(service.provider_id) || { supports_house_calls: false, supports_salon: false };
         if (service.supports_at_home) {
           serviceType.supports_house_calls = true;
         }
-        // If provider has services, they likely support salon services
-        serviceType.supports_salon = true;
         serviceTypeMap.set(service.provider_id, serviceType);
       });
     }
     
-    // Also check provider_locations to determine salon support
+    // Salon support only from locations with location_type = 'salon' (base = distance-only)
     if (allProviderIds.size > 0) {
       const { data: providerLocations } = await supabase
         .from("provider_locations")
-        .select("provider_id")
+        .select("provider_id, location_type")
         .in("provider_id", Array.from(allProviderIds))
         .eq("is_active", true)
         .limit(500);
-      
+
       if (providerLocations) {
         providerLocations.forEach((loc: any) => {
+          if ((loc.location_type || "salon") !== "salon") return;
           const serviceType = serviceTypeMap.get(loc.provider_id) || { supports_house_calls: false, supports_salon: false };
           serviceType.supports_salon = true;
           serviceTypeMap.set(loc.provider_id, serviceType);
@@ -982,7 +979,7 @@ export async function GET(request: Request) {
           providerIds.length > 0
             ? await supabase
                 .from("provider_locations")
-                .select("provider_id, latitude, longitude, city, country")
+                .select("provider_id, latitude, longitude, city, country, location_type")
                 .in("provider_id", providerIds)
                 .eq("is_active", true)
                 .not("latitude", "is", null)
@@ -1061,12 +1058,11 @@ export async function GET(request: Request) {
               }
             }
             
-            // Check service type support
+            // Check service type support (supports_salon set only from salon-type locations below)
             const serviceType = nearestServiceTypeMap.get(offering.provider_id) || { supports_house_calls: false, supports_salon: false };
             if (offering.service?.supports_at_home) {
               serviceType.supports_house_calls = true;
             }
-            serviceType.supports_salon = true; // If provider has offerings, they support salon
             nearestServiceTypeMap.set(offering.provider_id, serviceType);
           });
         }
@@ -1087,43 +1083,40 @@ export async function GET(request: Request) {
               }
             }
             
-            // Check service type support from services
+            // Check service type support (supports_salon set only from salon-type locations below)
             const serviceType = nearestServiceTypeMap.get(service.provider_id) || { supports_house_calls: false, supports_salon: false };
             if (service.supports_at_home) {
               serviceType.supports_house_calls = true;
             }
-            serviceType.supports_salon = true; // If provider has services, they likely support salon
             nearestServiceTypeMap.set(service.provider_id, serviceType);
           });
         }
         
-        // Also check provider_locations for nearest providers to determine salon support
-        // This ensures providers with locations show "At Salon" tag even if they don't have offerings/services yet
+        // Salon support only from locations with location_type = 'salon' (base = distance-only)
         if (allLocations && allLocations.length > 0) {
           (allLocations as any[]).forEach((loc: any) => {
+            if ((loc.location_type || "salon") !== "salon") return;
             const serviceType = nearestServiceTypeMap.get(loc.provider_id) || { supports_house_calls: false, supports_salon: false };
-            serviceType.supports_salon = true; // If provider has a location, they support salon services
+            serviceType.supports_salon = true;
             nearestServiceTypeMap.set(loc.provider_id, serviceType);
           });
         }
-        
-        // Also check all providers in nearestProviderIds to ensure we have service type info for all
-        // Fetch any missing service type data from provider_locations if not already set
+
+        // Fill missing service type from provider_locations (salon-type only)
         if (nearestProviderIds.length > 0) {
           const { data: allNearestLocations } = await supabase
             .from("provider_locations")
-            .select("provider_id")
+            .select("provider_id, location_type")
             .in("provider_id", nearestProviderIds)
             .eq("is_active", true)
             .limit(500);
-          
+
           if (allNearestLocations) {
             allNearestLocations.forEach((loc: any) => {
+              if ((loc.location_type || "salon") !== "salon") return;
               if (!nearestServiceTypeMap.has(loc.provider_id)) {
-                // Provider has location but no offerings/services - still supports salon
                 nearestServiceTypeMap.set(loc.provider_id, { supports_house_calls: false, supports_salon: true });
               } else {
-                // Ensure salon support is set if location exists
                 const serviceType = nearestServiceTypeMap.get(loc.provider_id)!;
                 serviceType.supports_salon = true;
               }
@@ -1161,18 +1154,12 @@ export async function GET(request: Request) {
             const badge = badgeMap.get(provider.id);
             let serviceType = nearestServiceTypeMap.get(provider.id);
             
-            // If no service type found, check if provider has a location (which means they support salon)
             if (!serviceType) {
-              const hasLocation = loc !== undefined;
-              serviceType = { 
-                supports_house_calls: false, 
-                supports_salon: hasLocation // If they have a location, they support salon
-              };
+              serviceType = { supports_house_calls: false, supports_salon: false };
             }
-            
-            // Ensure service type fields are always boolean
+
             const supportsHouseCalls = Boolean(serviceType.supports_house_calls);
-            const supportsSalon = Boolean(serviceType.supports_salon || loc !== undefined); // Also check location as fallback
+            const supportsSalon = Boolean(serviceType.supports_salon);
             
             return {
               id: provider.id,

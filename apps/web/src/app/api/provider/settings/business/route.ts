@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -201,12 +202,35 @@ export async function PATCH(request: NextRequest) {
       updates.social_media_links = socialMediaLinks;
     }
 
-    // Logo: app may send logo_base64 (data URL). Only persist if it's already a URL; base64 upload would need storage.
+    // Logo: accept HTTP URL (web) or data URL (mobile app base64). Data URLs are uploaded to storage.
     if (body.logo_base64 !== undefined && body.logo_base64 !== "") {
-      if (typeof body.logo_base64 === "string" && body.logo_base64.startsWith("http")) {
-        updates.thumbnail_url = body.logo_base64;
+      const logo = body.logo_base64 as string;
+      if (logo.startsWith("http")) {
+        updates.thumbnail_url = logo;
+      } else if (logo.startsWith("data:")) {
+        try {
+          const response = await fetch(logo);
+          const blob = await response.blob();
+          const fileExt = blob.type?.split("/")[1] || "jpg";
+          const fileName = `${providerId}/thumbnail-${Date.now()}.${fileExt}`;
+          const supabaseAdmin = getSupabaseAdmin();
+          const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+            .from("provider-gallery")
+            .upload(fileName, blob, {
+              contentType: blob.type || "image/jpeg",
+              cacheControl: "3600",
+              upsert: true,
+            });
+          if (!uploadError && uploadData?.path) {
+            const { data: { publicUrl } } = supabaseAdmin.storage
+              .from("provider-gallery")
+              .getPublicUrl(uploadData.path);
+            updates.thumbnail_url = publicUrl;
+          }
+        } catch (e) {
+          console.error("Business logo upload failed:", e);
+        }
       }
-      // Else: base64 data URL from app – would need upload to storage then set thumbnail_url (not done here)
     }
 
     const { data: provider, error } = await supabase

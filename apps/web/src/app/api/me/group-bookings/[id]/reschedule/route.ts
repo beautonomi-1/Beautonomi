@@ -78,16 +78,17 @@ export async function POST(
         const newDate = newDatetime.toISOString().split('T')[0];
         const constraints = await loadAvailabilityConstraints(supabase, firstService.staff_id, newDate);
         
-        // Calculate total duration
+        // Total blocked span = sum(durations) + sum(buffers) across all group booking services
         let totalDuration = 0;
         for (const booking of bookings) {
           const { data: services } = await supabase
             .from('booking_services')
-            .select('duration_minutes')
+            .select('duration_minutes, offerings(buffer_minutes)')
             .eq('booking_id', booking.id);
-          
           services?.forEach((s: any) => {
-            totalDuration += s.duration_minutes || 0;
+            const dur = s.duration_minutes ?? 60;
+            const buf = s.offerings?.buffer_minutes ?? 15;
+            totalDuration += dur + buf;
           });
         }
 

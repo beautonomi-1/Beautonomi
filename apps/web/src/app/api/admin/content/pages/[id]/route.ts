@@ -121,14 +121,14 @@ export async function PUT(
     if (validationResult.data.metadata !== undefined)
       updateData.metadata = validationResult.data.metadata;
     if (validationResult.data.order !== undefined)
-      updateData.order = validationResult.data.order;
+      updateData.display_order = validationResult.data.order;
     if (validationResult.data.is_active !== undefined)
       updateData.is_active = validationResult.data.is_active;
 
     updateData.updated_at = new Date().toISOString();
 
-    const { data: pageContent, error } = await (supabase
-      .from("page_content") as any)
+    const { data: pageContent, error } = await supabase
+      .from("page_content")
       .update(updateData)
       .eq("id", id)
       .select()

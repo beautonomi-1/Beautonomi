@@ -5,9 +5,10 @@
  * Supports Bearer token for mobile/Expo - pass request as second arg to requireRoleInApi.
  */
 
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
-import { getSupabaseServer, createSupabaseClientFromToken } from './server';
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
+import { getSupabaseServer, createSupabaseClientFromToken } from "./server";
 import { requireRole as requireRoleAuth } from '@/lib/auth/requireRole';
 import type { UserRole } from '@/types/beautonomi';
 
@@ -87,61 +88,63 @@ export function badRequestResponse(message: string) {
  * Handle API route errors
  */
 export function handleApiError(
-  error: unknown, 
-  defaultMessage = 'Internal server error',
+  error: unknown,
+  defaultMessage = "Internal server error",
   _codeOrStatus?: string | number,
   _statusCode?: number
 ) {
-  console.error('API Error:', error);
-  
+  console.error("API Error:", error);
+
   // Determine status code from arguments (backward compatibility)
-  let status = typeof _codeOrStatus === 'number' ? _codeOrStatus : (_statusCode ?? 500);
-  let code = typeof _codeOrStatus === 'string' ? _codeOrStatus : 'INTERNAL_ERROR';
-  
+  let status = typeof _codeOrStatus === "number" ? _codeOrStatus : (_statusCode ?? 500);
+  let code = typeof _codeOrStatus === "string" ? _codeOrStatus : "INTERNAL_ERROR";
+
   if (error instanceof Error) {
     const errorMessage = error.message.toLowerCase();
     const errorCause = (error as any).cause;
-    
+
     // Check for network/timeout errors
     if (
-      errorMessage.includes('network error') ||
-      errorMessage.includes('timeout') ||
-      errorMessage.includes('connect') ||
-      errorMessage.includes('fetch failed') ||
-      (errorCause && (
-        errorCause.code === 'UND_ERR_CONNECT_TIMEOUT' ||
-        errorCause.code === 'ECONNREFUSED' ||
-        errorCause.code === 'ETIMEDOUT'
-      ))
+      errorMessage.includes("network error") ||
+      errorMessage.includes("timeout") ||
+      errorMessage.includes("connect") ||
+      errorMessage.includes("fetch failed") ||
+      (errorCause &&
+        (errorCause.code === "UND_ERR_CONNECT_TIMEOUT" ||
+          errorCause.code === "ECONNREFUSED" ||
+          errorCause.code === "ETIMEDOUT"))
     ) {
-      status = 503; // Service Unavailable
-      code = 'SERVICE_UNAVAILABLE';
+      status = 503;
+      code = "SERVICE_UNAVAILABLE";
+      Sentry.captureException(error, { extra: { code, status } });
       return errorResponse(
-        'Service temporarily unavailable. Please try again later.',
+        "Service temporarily unavailable. Please try again later.",
         code,
         status,
-        process.env.NODE_ENV === 'development' ? error.stack : undefined
+        process.env.NODE_ENV === "development" ? error.stack : undefined
       );
     }
-    
+
     // Check for authentication/permission errors
     if (
-      errorMessage.includes('insufficient permissions') ||
-      errorMessage.includes('authentication required') ||
-      errorMessage.includes('unauthorized')
+      errorMessage.includes("insufficient permissions") ||
+      errorMessage.includes("authentication required") ||
+      errorMessage.includes("unauthorized")
     ) {
       status = 403;
-      code = 'FORBIDDEN';
+      code = "FORBIDDEN";
     }
-    
+
+    Sentry.captureException(error, { extra: { code, status } });
     return errorResponse(
       error.message || defaultMessage,
       code,
       status,
-      process.env.NODE_ENV === 'development' ? error.stack : undefined
+      process.env.NODE_ENV === "development" ? error.stack : undefined
     );
   }
-  
+
+  Sentry.captureMessage(String(error), { level: "error", extra: { code, status } });
   return errorResponse(defaultMessage, code, status);
 }
 
@@ -205,7 +208,6 @@ export async function requireRoleInApi(
       // Check if it's a network error that was caught
       const supabase = await getSupabaseServer();
       const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-      
       // If we can't get the auth user, it might be a network/auth issue
       if (authError || !authUser) {
         if (authError?.message?.toLowerCase().includes('timeout') || 

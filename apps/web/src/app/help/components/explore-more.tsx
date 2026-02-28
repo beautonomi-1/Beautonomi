@@ -63,14 +63,19 @@ export default function ExploreMore() {
               <p className="mb-5 text-lg font-light ">
                 We’ll start with some questions and get you to the right place.
               </p>
-              <Button
-                variant="destructive"
-                className="w-72 mb-6 text-base"
-                size="md"
-                asChild
-              >
-                <Link href="/help/submit-ticket">Contact support</Link>
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-3 mb-6">
+                <Button
+                  variant="destructive"
+                  className="w-72 text-base"
+                  size="md"
+                  asChild
+                >
+                  <Link href="/help/submit-ticket">Contact support</Link>
+                </Button>
+                <Button variant="outline" className="w-72 text-base" size="md" asChild>
+                  <Link href="/help/my-tickets">My tickets</Link>
+                </Button>
+              </div>
               <p className="text-base font-light ">
                 You can also{" "}
                 <Link
