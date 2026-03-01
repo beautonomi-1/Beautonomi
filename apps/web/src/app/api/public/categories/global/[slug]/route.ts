@@ -47,6 +47,7 @@ export async function GET(
           rating,
           review_count,
           thumbnail_url,
+          avatar_url,
           city,
           country,
           is_verified,

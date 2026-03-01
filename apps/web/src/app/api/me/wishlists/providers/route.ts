@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch provider data (use rating_average, not rating)
     const { data: providers, error: providersError } = await (supabase.from("providers") as any)
-      .select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, description, status, is_featured, is_verified, currency")
+      .select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, description, status, is_featured, is_verified, currency")
       .in("id", providerIds);
 
     console.log("Wishlist providers API - Fetched providers:", {
@@ -229,6 +229,7 @@ export async function GET(request: NextRequest) {
           rating: p.rating_average || 0, // Map rating_average to rating
           review_count: p.review_count || 0,
           thumbnail_url: p.thumbnail_url || null,
+          avatar_url: p.avatar_url ?? null,
           city: location?.city || "",
           country: location?.country || "",
           is_featured: p.is_featured || false,

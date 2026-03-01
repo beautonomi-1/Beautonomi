@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     const { data: provider, error: providerError } = await supabase
       .from("providers")
       .select(
-        "id, business_name, business_type, description, email, phone, website, thumbnail_url, timezone, time_format, week_start, appointment_color_source, client_notification_language, default_team_language, social_media_links, years_in_business, languages_spoken"
+        "id, business_name, business_type, description, email, phone, website, thumbnail_url, avatar_url, timezone, time_format, week_start, appointment_color_source, client_notification_language, default_team_language, social_media_links, years_in_business, languages_spoken"
       )
       .eq("id", providerId)
       .single();
@@ -77,6 +77,7 @@ export async function GET(request: NextRequest) {
       phone: provider.phone ?? "",
       website: provider.website ?? null,
       logo_url: provider.thumbnail_url ?? null,
+      avatar_url: (provider as any).avatar_url ?? null,
       address_line1: loc?.address_line1 ?? null,
       city: loc?.city ?? null,
       state: loc?.state ?? null,

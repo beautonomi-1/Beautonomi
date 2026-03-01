@@ -94,6 +94,7 @@ const onboardingSchema = z.object({
   })).optional().default([]),
   // New fields for public homepage optimization
   thumbnail_url: z.string().url().optional().nullable(),
+  avatar_url: z.string().optional().nullable(), // optional profile circle (business face); data URLs from form or URL string
   gallery: z.array(z.string().url()).optional().default([]),
   years_in_business: z.number().int().min(0).optional().nullable(),
   accepts_custom_requests: z.boolean().optional().default(false),
@@ -169,6 +170,7 @@ export async function POST(request: NextRequest) {
       operating_hours,
       services,
       thumbnail_url,
+      avatar_url,
       gallery,
       years_in_business,
       accepts_custom_requests,
@@ -318,8 +320,9 @@ export async function POST(request: NextRequest) {
       return errorResponse("Failed to create provider profile", "PROVIDER_CREATION_ERROR", 500);
     }
 
-    // Upload thumbnail and gallery images to storage
+    // Upload thumbnail, avatar (profile circle), and gallery images to storage
     let uploadedThumbnailUrl: string | null = null;
+    let uploadedAvatarUrl: string | null = null;
     const uploadedGalleryUrls: string[] = [];
 
     if (thumbnail_url) {
@@ -351,6 +354,24 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         console.error("Error processing thumbnail upload:", error);
         // Don't fail the entire request if image upload fails
+      }
+    }
+
+    if (avatar_url) {
+      try {
+        const response = await fetch(avatar_url);
+        const blob = await response.blob();
+        const fileExt = blob.type.split("/")[1] || "jpg";
+        const fileName = `${providerId}/avatar`;
+        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+          .from("provider-gallery")
+          .upload(fileName, blob, { contentType: blob.type, cacheControl: "3600", upsert: true });
+        if (!uploadError) {
+          const { data: { publicUrl } } = supabaseAdmin.storage.from("provider-gallery").getPublicUrl(uploadData.path);
+          uploadedAvatarUrl = publicUrl;
+        }
+      } catch (err) {
+        console.error("Error processing avatar upload:", err);
       }
     }
 
@@ -388,14 +409,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Update provider with uploaded image URLs if any were uploaded
-    if (uploadedThumbnailUrl || uploadedGalleryUrls.length > 0) {
+    if (uploadedThumbnailUrl || uploadedAvatarUrl || uploadedGalleryUrls.length > 0) {
       const updateData: any = {};
-      if (uploadedThumbnailUrl) {
-        updateData.thumbnail_url = uploadedThumbnailUrl;
-      }
-      if (uploadedGalleryUrls.length > 0) {
-        updateData.gallery = uploadedGalleryUrls;
-      }
+      if (uploadedThumbnailUrl) updateData.thumbnail_url = uploadedThumbnailUrl;
+      if (uploadedAvatarUrl) updateData.avatar_url = uploadedAvatarUrl;
+      if (uploadedGalleryUrls.length > 0) updateData.gallery = uploadedGalleryUrls;
 
       const { error: updateImagesError } = await supabaseAdmin
         .from("providers")

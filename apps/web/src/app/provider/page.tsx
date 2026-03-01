@@ -18,13 +18,10 @@ export default function ProviderPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Redirect if already logged in as provider
-  // Use push instead of replace to allow back navigation, but only if not already on dashboard
   useEffect(() => {
     if (!isLoading && user && (role === "provider_owner" || role === "provider_staff")) {
-      // Only redirect if we're not already on a provider sub-route
-      const currentPath = window.location.pathname;
-      if (!currentPath.startsWith("/provider/dashboard") && 
-          !currentPath.startsWith("/provider/") || currentPath === "/provider") {
+      const currentPath = typeof window !== "undefined" ? window.location.pathname : "";
+      if (!currentPath.startsWith("/provider/dashboard") && (currentPath === "/provider" || !currentPath.startsWith("/provider/"))) {
         router.push("/provider/dashboard");
       }
     }

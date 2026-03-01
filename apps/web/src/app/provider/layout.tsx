@@ -16,9 +16,10 @@ function RouteTracker() {
 export default function ProviderLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isOnboardingPage = pathname === "/provider/onboarding";
+  const isEmbedPage = pathname === "/provider/embed";
 
-  // Onboarding page allows customers, so don't wrap it in the provider-only RoleGuard
-  if (isOnboardingPage) {
+  // Onboarding page allows customers; embed is used by provider app WebView to set session then redirect
+  if (isOnboardingPage || isEmbedPage) {
     return <>{children}</>;
   }
 

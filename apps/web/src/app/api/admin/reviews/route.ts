@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
         created_at,
         updated_at,
         customer:users!reviews_customer_id_fkey(id, full_name, email, avatar_url),
-        provider:providers!reviews_provider_id_fkey(id, business_name, thumbnail_url),
+        provider:providers!reviews_provider_id_fkey(id, business_name, thumbnail_url, avatar_url),
         booking:bookings(id, booking_number, status)
       `)
       .order("created_at", { ascending: false })

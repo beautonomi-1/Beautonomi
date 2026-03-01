@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Info, Upload, Image as ImageIcon, Trash2, Star, Loader2, Maximize2, Pencil } from "lucide-react";
+import { Info, Upload, Image as ImageIcon, Trash2, Star, Loader2, Maximize2, Pencil, CircleUser } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +23,7 @@ interface _GalleryImage {
 export default function GalleryManagementPage() {
   const [gallery, setGallery] = useState<string[]>([]);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -34,6 +35,8 @@ export default function GalleryManagementPage() {
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   useEffect(() => {
     loadGallery();
@@ -52,11 +55,12 @@ export default function GalleryManagementPage() {
   const loadGallery = async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<{ data: { gallery: string[]; thumbnail_url: string | null } }>(
+      const response = await fetcher.get<{ data: { gallery: string[]; thumbnail_url: string | null; avatar_url?: string | null } }>(
         "/api/me/provider"
       );
       setGallery(response.data?.gallery || []);
       setThumbnailUrl(response.data?.thumbnail_url || null);
+      setAvatarUrl(response.data?.avatar_url ?? null);
     } catch (error) {
       console.error("Error loading gallery:", error);
       // Don't show toast on initial load to avoid annoying users
@@ -325,6 +329,78 @@ export default function GalleryManagementPage() {
     }
   };
 
+  const handleAvatarSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!validateFileType(file, IMAGE_CONSTRAINTS.allowedTypes)) {
+      toast.error("Invalid file type. Only JPEG, PNG, and WebP are allowed.");
+      return;
+    }
+    if (!validateFileSize(file, IMAGE_CONSTRAINTS.maxSizeBytes)) {
+      toast.error("File too large. Maximum size is 5MB.");
+      return;
+    }
+
+    try {
+      setIsUploadingAvatar(true);
+
+      const providerResponse = await fetcher.get<{ data: { id: string } }>("/api/me/provider");
+      const providerId = providerResponse.data?.id;
+      if (!providerId) throw new Error("Provider ID not found");
+
+      let compressionResult: { file: File | Blob; originalSize: number; compressedSize: number; compressionRatio: number };
+      if (file.size < 2 * 1024 * 1024) {
+        compressionResult = {
+          file,
+          originalSize: file.size,
+          compressedSize: file.size,
+          compressionRatio: 0,
+        };
+      } else {
+        const { compressImage } = await import("@/lib/utils/image-compression");
+        compressionResult = await compressImage(file, {
+          maxWidth: 600,
+          maxHeight: 600,
+          quality: 0.9,
+          maxSizeMB: 0.4,
+          outputFormat: "image/jpeg",
+        });
+      }
+
+      const compressedFile =
+        compressionResult.file instanceof File
+          ? compressionResult.file
+          : new File([compressionResult.file], file.name, { type: "image/jpeg", lastModified: Date.now() });
+
+      const avatarPath = `${providerId}/avatar`;
+      const result = await uploadFile({
+        bucket: "provider-gallery",
+        path: avatarPath,
+        file: compressedFile,
+        contentType: "image/jpeg",
+        cacheControl: "3600",
+        upsert: true,
+      });
+      const newAvatarUrl = result.publicUrl;
+
+      setAvatarUrl(newAvatarUrl);
+      const response = await fetcher.patch<{ data: { avatar_url: string | null } }>("/api/provider/profile", {
+        avatar_url: newAvatarUrl,
+      });
+      if (response.data?.avatar_url !== undefined) setAvatarUrl(response.data.avatar_url);
+      invalidateSetupStatusCache();
+      toast.success("Profile circle image updated. It appears in the circle on your listing card.");
+
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+    } catch (error) {
+      const msg = error instanceof FetchError ? error.message : "Failed to upload profile image.";
+      toast.error(msg);
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
   const saveGallery = async (newGallery: string[], newThumbnail: string | null) => {
     try {
       setIsSaving(true);
@@ -339,13 +415,9 @@ export default function GalleryManagementPage() {
       // Verify the response contains the updated data
       if (response.data) {
         console.log("Gallery saved successfully:", response.data);
-        // Update local state with server response to ensure consistency
-        if (response.data.gallery) {
-          setGallery(response.data.gallery);
-        }
-        if (response.data.thumbnail_url !== undefined) {
-          setThumbnailUrl(response.data.thumbnail_url);
-        }
+        if (response.data.gallery) setGallery(response.data.gallery);
+        if (response.data.thumbnail_url !== undefined) setThumbnailUrl(response.data.thumbnail_url);
+        if (response.data.avatar_url !== undefined) setAvatarUrl(response.data.avatar_url);
       }
     } catch (error) {
       console.error("Save gallery error:", error);
@@ -367,11 +439,14 @@ export default function GalleryManagementPage() {
       
       // If deleting thumbnail, also remove thumbnail_url
       const updatedThumbnail = thumbnailUrl === gallery[index] ? null : thumbnailUrl;
+      const wasAvatar = avatarUrl === gallery[index];
       
       await saveGallery(updatedGallery, updatedThumbnail);
       setGallery(updatedGallery);
-      if (updatedThumbnail !== thumbnailUrl) {
-        setThumbnailUrl(null);
+      if (updatedThumbnail !== thumbnailUrl) setThumbnailUrl(null);
+      if (wasAvatar) {
+        setAvatarUrl(null);
+        await fetcher.patch("/api/provider/profile", { avatar_url: null }).catch(() => {});
       }
       toast.success("Image deleted successfully");
     } catch (error) {
@@ -394,6 +469,24 @@ export default function GalleryManagementPage() {
           ? error.message
           : "Failed to set thumbnail. Please try again.";
       toast.error(errorMessage);
+    }
+  };
+
+  const handleSetAvatar = async (url: string) => {
+    try {
+      setIsSaving(true);
+      const response = await fetcher.patch<{ data: { avatar_url: string | null } }>("/api/provider/profile", {
+        avatar_url: url,
+      });
+      if (response.data?.avatar_url !== undefined) setAvatarUrl(response.data.avatar_url);
+      invalidateSetupStatusCache();
+      toast.success("Profile image updated. It appears in the circle on your listing card.");
+    } catch (error) {
+      const errorMessage =
+        error instanceof FetchError ? error.message : "Failed to set profile image. Please try again.";
+      toast.error(errorMessage);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -483,24 +576,82 @@ export default function GalleryManagementPage() {
           <Alert>
             <Info className="w-4 h-4" />
             <AlertDescription>
-              <strong>Thumbnail:</strong> Upload a professional photo of yourself (for freelancers) or your salon/yourself as owner (for salons). 
-              People are more likely to click on real photos than logos.
+              <strong>Listing image (thumbnail):</strong> The main photo on your card in search and on your profile header. 
+              Use a professional photo of yourself or your salon.
               <br />
-              <strong>Portfolio Gallery:</strong> Showcase your completed work, before/after transformations, and service examples. 
-              This is your portfolio that helps clients see the quality of your work.
+              <strong>Profile circle:</strong> The small circular “face” of your business on listing cards. Upload directly or pick from your gallery.
               <br />
-              <strong>Images are automatically compressed</strong> to reduce file size and improve upload speed. 
-              Maximum file size: 5MB per image (before compression). Supported formats: JPEG, PNG, WebP.
+              <strong>Portfolio Gallery:</strong> Showcase your work and service examples.
+              <br />
+              <strong>Images are automatically compressed.</strong> Max 5MB per image. Formats: JPEG, PNG, WebP.
             </AlertDescription>
           </Alert>
 
-          {/* Thumbnail Section */}
+          {/* Profile circle (business face) - direct upload */}
           <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6">
-            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-4">Profile Thumbnail</h3>
+            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-4">Profile circle (business face)</h3>
             <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
-              Upload a professional photo of yourself (for freelancers) or your salon/yourself as owner (for salons). 
-              This is the main image that appears in search results and on your profile header. 
-              People are more likely to click on real photos than logos.
+              This image appears in the small circle on your listing card. Upload a clear headshot or logo so clients recognize your business at a glance.
+            </p>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
+              {avatarUrl ? (
+                <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 border-indigo-500 flex-shrink-0 bg-gray-100">
+                  <img
+                    src={avatarUrl}
+                    alt="Profile circle"
+                    className="w-full h-full object-cover"
+                    decoding="async"
+                    onError={(e) => {
+                      e.currentTarget.src = "/images/placeholder-image.jpg";
+                    }}
+                  />
+                  <div className="absolute bottom-0 right-0 bg-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded-tl flex items-center gap-1">
+                    <CircleUser className="w-3 h-3" />
+                    <span className="hidden sm:inline">Face</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50 flex-shrink-0">
+                  <CircleUser className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" />
+                </div>
+              )}
+              <div className="flex-1 w-full sm:w-auto">
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
+                  onChange={handleAvatarSelect}
+                  className="hidden"
+                />
+                <Button
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={isUploadingAvatar}
+                  variant="outline"
+                  className="w-full sm:w-auto touch-manipulation border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
+                >
+                  {isUploadingAvatar ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      <span className="hidden sm:inline">{avatarUrl ? "Change profile image" : "Upload profile image"}</span>
+                      <span className="sm:hidden">{avatarUrl ? "Change" : "Upload"}</span>
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-gray-500 mt-2">Or choose from your gallery below and click “Profile” on any image.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Listing image (thumbnail) - direct upload */}
+          <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-semibold mb-2 sm:mb-4">Listing image (thumbnail)</h3>
+            <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
+              The main image on your card in search and on your profile header. Upload a professional photo of yourself or your salon.
             </p>
             
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
@@ -679,9 +830,27 @@ export default function GalleryManagementPage() {
                                 : 'bg-white/90 hover:bg-white text-gray-900 border-0'
                             }`}
                             disabled={thumbnailUrl === url}
+                            title={thumbnailUrl === url ? "Listing image" : "Set as listing image (card hero)"}
                           >
                             <Star className="w-3 h-3 sm:w-4 sm:h-4" />
                             <span className="hidden sm:inline ml-1">{thumbnailUrl === url ? "Thumbnail" : "Set"}</span>
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSetAvatar(url);
+                            }}
+                            className={`opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-md font-medium h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm touch-manipulation ${
+                              avatarUrl === url
+                                ? 'bg-indigo-600 text-white border-0 cursor-not-allowed'
+                                : 'bg-white/90 hover:bg-white text-gray-900 border-0'
+                            }`}
+                            disabled={avatarUrl === url}
+                            title={avatarUrl === url ? "Profile circle" : "Set as profile circle (face of business)"}
+                          >
+                            <CircleUser className="w-3 h-3 sm:w-4 sm:h-4" />
+                            <span className="hidden sm:inline ml-1">{avatarUrl === url ? "Face" : "Profile"}</span>
                           </Button>
                           <Button
                             size="sm"
@@ -697,11 +866,17 @@ export default function GalleryManagementPage() {
                         </div>
                       </div>
                       
-                      {/* Thumbnail Badge */}
+                      {/* Listing image & Profile circle badges */}
                       {thumbnailUrl === url && (
                         <div className="absolute top-1 right-1 bg-[#FF0077] text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1 shadow-md">
                           <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-current" />
-                          <span className="hidden sm:inline">Thumbnail</span>
+                          <span className="hidden sm:inline">Listing</span>
+                        </div>
+                      )}
+                      {avatarUrl === url && (
+                        <div className="absolute bottom-1 right-1 bg-indigo-600 text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1 shadow-md">
+                          <CircleUser className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                          <span className="hidden sm:inline">Face</span>
                         </div>
                       )}
                       
@@ -768,6 +943,25 @@ export default function GalleryManagementPage() {
                           >
                             <Star className="w-4 h-4 mr-1" />
                             <span className="text-xs sm:text-sm">{thumbnailUrl === gallery[selectedImageIndex] ? "Thumbnail" : "Set as Thumbnail"}</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleSetAvatar(gallery[selectedImageIndex]);
+                              setSelectedImageIndex(null);
+                            }}
+                            className={`min-h-[44px] sm:min-h-0 ${
+                              avatarUrl === gallery[selectedImageIndex]
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-white/90 hover:bg-white text-gray-900'
+                            } border-0 shadow-md touch-manipulation w-full sm:w-auto`}
+                            disabled={avatarUrl === gallery[selectedImageIndex]}
+                          >
+                            <CircleUser className="w-4 h-4 mr-1" />
+                            <span className="text-xs sm:text-sm">{avatarUrl === gallery[selectedImageIndex] ? "Profile circle" : "Set as profile circle"}</span>
                           </Button>
                           <Button
                             type="button"

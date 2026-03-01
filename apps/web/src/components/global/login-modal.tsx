@@ -283,13 +283,18 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
             }
           }
         } else {
-          // If we still don't have a role after all retries, show error but don't redirect
-          // The auth state listener should eventually update and trigger a redirect
-          const errorMsg = "Login successful, but unable to load user profile. Please refresh the page.";
-          setError(errorMsg);
-          toast.error(errorMsg);
+          // Role not loaded yet: if provider context, redirect to dashboard so RoleGuard can show loading
+          if (redirectContext === "provider") {
+            setError(null);
+            setOpen(false);
+            toast.success("Logged in successfully!");
+            router.replace("/provider/dashboard");
+          } else {
+            const errorMsg = "Login successful, but unable to load user profile. Please refresh the page.";
+            setError(errorMsg);
+            toast.error(errorMsg);
+          }
           setIsLoading(false);
-          // Don't close modal or redirect - let user refresh or wait for auth state to update
         }
       }
     } catch (error: any) {
@@ -399,9 +404,13 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
     setError(null);
 
     try {
-      // Save current URL for redirect after OAuth
-      const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
-      await signInWithOAuth(provider, currentUrl);
+      // Callback must be /auth/callback so the code can be exchanged. Add next= for post-login redirect.
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const callbackUrl =
+        redirectContext === "provider"
+          ? `${origin}/auth/callback?next=/provider/dashboard`
+          : `${origin}/auth/callback`;
+      await signInWithOAuth(provider, callbackUrl);
       // OAuth will redirect, so we don't need to do anything else here
       toast.info(`Redirecting to ${provider}...`);
     } catch (error: any) {

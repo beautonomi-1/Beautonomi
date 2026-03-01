@@ -53,8 +53,13 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
     return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
   };
 
-  const imageUrl = provider.thumbnail_url || "/images/placeholder-provider.jpg";
+  // Card hero = main listing image; circle = business "face" (avatar), fallback to thumbnail
+  const thumbnailUrl = provider.thumbnail_url || "/images/placeholder-provider.jpg";
+  const avatarUrl = provider.avatar_url || provider.thumbnail_url || "/images/placeholder-provider.jpg";
   const providerInitial = provider.business_name.charAt(0).toUpperCase();
+  const businessName = provider.business_name.trim() || "Provider";
+  const ratingText = provider.rating > 0 ? `${provider.rating.toFixed(1)} out of 5` : "No reviews yet";
+  const reviewCountText = provider.review_count ? `${formatReviewCount(provider.review_count)} reviews` : "No reviews";
 
   // Check if provider is in wishlist - optimized with caching for instant display
   // Skip check if isInWishlistProp is explicitly provided (e.g., from wishlist page)
@@ -140,99 +145,70 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
   };
 
   return (
-    <Link href={`/partner-profile?slug=${encodeURIComponent(provider.slug)}`} className="block" prefetch={false}>
-      <div className="w-full cursor-pointer group">
-        {/* Image Container */}
-        <div className="relative w-full h-40 md:h-64 squircle overflow-hidden mb-2 md:mb-3">
+    <Link
+      href={`/partner-profile?slug=${encodeURIComponent(provider.slug)}`}
+      className="block"
+      prefetch={false}
+      aria-label={`View ${businessName}, ${ratingText}, ${reviewCountText}`}
+    >
+      <article className="w-full cursor-pointer group" aria-labelledby={`provider-name-${provider.id}`}>
+        {/* Image Container - card hero (main listing image) */}
+        <div className="relative w-full h-40 md:h-64 squircle overflow-hidden mb-2 md:mb-3" role="img" aria-label={`${businessName} listing photo`}>
           <Image
-            src={imageUrl}
-            alt={provider.business_name}
+            src={thumbnailUrl}
+            alt=""
             fill
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             loading="eager"
             priority
             className="object-cover group-hover:scale-105 transition-transform duration-300"
             onError={(e) => {
-              // Fallback to placeholder if image fails to load
               (e.target as HTMLImageElement).src = "/images/placeholder-provider.jpg";
             }}
           />
           
           {/* Badges Container - Top Left */}
-          <div className="absolute top-2 left-2 md:top-3 md:left-3 flex flex-col gap-1.5 md:gap-2 z-10">
-            {/* Top Rated Badge */}
+          <div className="absolute top-2 left-2 md:top-3 md:left-3 flex flex-col gap-1.5 md:gap-2 z-10" role="list" aria-label="Listing badges">
             {showTopRatedBadge && (
-              <span className="bg-[#FF0077] text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block">
-                Top Rated
-              </span>
+              <span className="bg-[#FF0077] text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">Top Rated</span>
             )}
-            
-            {/* Hottest Badge */}
             {showHottestBadge && (
-              <span className="bg-orange-600 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block">
-                Hottest
-              </span>
+              <span className="bg-orange-600 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">Hottest</span>
             )}
-            
-            {/* Nearest Badge */}
             {showNearestBadge && (
-              <span className="bg-blue-600 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block">
-                Nearest
-              </span>
+              <span className="bg-blue-600 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">Nearest</span>
             )}
-            
-            {/* Rising Star Badge */}
             {showUpcomingTalentBadge && (
-              <span className="bg-purple-600 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block">
-                Rising Star
-              </span>
+              <span className="bg-purple-600 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">Rising Star</span>
             )}
-            
-            {/* Freelancer Badge */}
             {provider.business_type === 'freelancer' && (
-              <span className="bg-orange-500 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block">
-                Freelancer
-              </span>
+              <span className="bg-orange-500 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">Freelancer</span>
             )}
-            
-            {/* House Calls Badge */}
             {provider.supports_house_calls === true && (
-              <span className="bg-green-500 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block">
-                House Calls
-              </span>
+              <span className="bg-green-500 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">House Calls</span>
             )}
-            
-            {/* At Salon Badge */}
             {provider.supports_salon === true && (
-              <span className="bg-purple-500 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block">
-                At Salon
-              </span>
+              <span className="bg-purple-500 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">At Salon</span>
             )}
-            
-            {/* Gamification Badge */}
             {provider.current_badge && (
-              <span 
+              <span
                 className="text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block shadow-md"
-                style={{ 
-                  background: provider.current_badge.color || '#6366f1',
-                  border: '1px solid rgba(255, 255, 255, 0.3)'
-                }}
+                style={{ background: provider.current_badge.color || '#6366f1', border: '1px solid rgba(255, 255, 255, 0.3)' }}
+                role="listitem"
                 title={provider.current_badge.description || provider.current_badge.name}
+                aria-label={provider.current_badge.name}
               >
                 {provider.current_badge.name}
               </span>
             )}
-
-            {/* Sponsored (boosted listing) */}
             {provider.is_sponsored && (
-              <span className="bg-amber-600 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block">
-                Sponsored
-              </span>
+              <span className="bg-amber-600 text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full inline-block" role="listitem">Sponsored</span>
             )}
           </div>
 
-          {/* Heart Icon - Top Right */}
+          {/* Wishlist - Top Right */}
           <button
+            type="button"
             className={`absolute top-2 right-2 md:top-3 md:right-3 bg-white rounded-full p-1.5 md:p-2 hover:bg-gray-100 transition-colors z-10 ${isToggling ? "opacity-70 cursor-not-allowed" : ""}`}
             onClick={(e) => {
               e.preventDefault();
@@ -241,18 +217,19 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
               toggleWishlist();
             }}
             disabled={isToggling}
-            aria-label={isInWishlist ? "Remove from wishlist" : "Add to wishlist"}
+            aria-label={isInWishlist ? `Remove ${businessName} from wishlist` : `Add ${businessName} to wishlist`}
+            aria-pressed={isInWishlist}
           >
-            <Heart className={`h-4 w-4 md:h-5 md:w-5 transition-all ${isInWishlist ? "fill-[#FF0077] text-[#FF0077]" : "text-gray-600"}`} />
+            <Heart className={`h-4 w-4 md:h-5 md:w-5 transition-all ${isInWishlist ? "fill-[#FF0077] text-[#FF0077]" : "text-gray-600"}`} aria-hidden />
           </button>
 
-          {/* Provider Profile Picture - Bottom Left */}
-          <div className="absolute bottom-2 left-2 md:bottom-3 md:left-3">
+          {/* Business avatar (face of the business) - Bottom Left */}
+          <div className="absolute bottom-2 left-2 md:bottom-3 md:left-3" aria-hidden>
             <div className="relative w-10 h-10 md:w-12 md:h-12 rounded-full border-2 border-white overflow-hidden bg-gray-200">
-              {provider.thumbnail_url ? (
+              {avatarUrl ? (
                 <Image
-                  src={provider.thumbnail_url}
-                  alt={provider.business_name}
+                  src={avatarUrl}
+                  alt=""
                   fill
                   sizes="48px"
                   className="object-cover"
@@ -262,9 +239,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-gray-300">
-                  <span className="text-white font-semibold text-xs">
-                    {providerInitial}
-                  </span>
+                  <span className="text-white font-semibold text-xs">{providerInitial}</span>
                 </div>
               )}
             </div>
@@ -274,14 +249,14 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
         {/* Content */}
         <div className="px-2 md:px-0.5">
           <div className="flex items-center gap-0.5 mb-1.5 md:mb-1">
-            <h3 className="font-semibold text-sm md:text-base line-clamp-1">
-              {provider.business_name}
+            <h3 id={`provider-name-${provider.id}`} className="font-semibold text-sm md:text-base line-clamp-1">
+              {businessName}
             </h3>
-            {/* Verified Badge - LinkedIn/Twitter Style Premium Design */}
             {provider.is_verified && (
-              <div 
-                className="relative flex-shrink-0 group inline-flex items-center justify-center" 
+              <span
+                className="relative flex-shrink-0 group inline-flex items-center justify-center"
                 title="Verified Beautonomi Provider"
+                aria-label="Verified provider"
               >
                 {/* Gold checkmark badge - LinkedIn/Twitter inspired */}
                 <div className="relative inline-flex items-center justify-center">
@@ -316,15 +291,15 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
                     />
                   </div>
                 </div>
-              </div>
+              </span>
             )}
           </div>
-          
-          {/* Rating - Always show, even if 0 */}
-          <div className="flex items-center gap-1 md:gap-1.5 mb-1.5 md:mb-1">
-            <FaStar className="text-yellow-400 flex-shrink-0 w-3.5 h-3.5 md:w-4 md:h-4" />
+
+          {/* Rating */}
+          <div className="flex items-center gap-1 md:gap-1.5 mb-1.5 md:mb-1" aria-label={`Rating: ${ratingText}, ${reviewCountText}`}>
+            <FaStar className="text-yellow-400 flex-shrink-0 w-3.5 h-3.5 md:w-4 md:h-4" aria-hidden />
             <span className="text-xs md:text-sm font-medium leading-tight">
-              {provider.rating > 0 ? provider.rating.toFixed(1) : '0.0'}
+              {provider.rating > 0 ? provider.rating.toFixed(1) : "0.0"}
             </span>
             <span className="text-xs md:text-sm text-gray-500 leading-tight">
               ({formatReviewCount(provider.review_count || 0)})
@@ -347,16 +322,13 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
             </p>
           )}
 
-          {/* Distance */}
-          {provider.distance_km && (
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs md:text-sm text-gray-500 whitespace-nowrap flex-shrink-0">
-                {provider.distance_km.toFixed(0)} KM Away
-              </span>
-            </div>
+          {provider.distance_km != null && (
+            <p className="text-xs md:text-sm text-gray-500 whitespace-nowrap flex-shrink-0 mt-1" aria-label={`${provider.distance_km.toFixed(0)} kilometers away`}>
+              {provider.distance_km.toFixed(0)} KM Away
+            </p>
           )}
         </div>
-      </div>
+      </article>
       <LoginModal open={isLoginModalOpen} setOpen={setIsLoginModalOpen} />
     </Link>
   );

@@ -119,13 +119,20 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Try to restore booking state from localStorage (handled client-side)
-  // For now, redirect back to booking page
-  // The booking flow will check auth state and continue
-  const redirectUrl = new URL("/booking", requestUrl.origin);
-  
-  // Preserve any query params that were in the original booking URL
-  // This will be handled by the booking flow component checking localStorage
-  
-  return NextResponse.redirect(redirectUrl);
+  // Redirect: use "next" param if present (e.g. /provider/dashboard when logging in from provider page)
+  const nextParam = requestUrl.searchParams.get("next");
+  const allowedPaths = ["/provider/dashboard", "/provider", "/provider/onboarding", "/booking", "/account-settings", "/admin/dashboard"];
+  let normalizedPath: string | null = null;
+  if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
+    normalizedPath = new URL(nextParam, requestUrl.origin).pathname;
+  }
+  const isAllowedNext =
+    normalizedPath !== null &&
+    allowedPaths.some((p) => normalizedPath === p || normalizedPath!.startsWith(p + "/"));
+
+  if (isAllowedNext && normalizedPath) {
+    return NextResponse.redirect(new URL(normalizedPath, requestUrl.origin));
+  }
+
+  return NextResponse.redirect(new URL("/booking", requestUrl.origin));
 }

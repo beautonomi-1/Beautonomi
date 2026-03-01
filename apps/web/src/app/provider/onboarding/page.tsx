@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronLeft, ChevronRight, Check, Plus, Trash2, AlertCircle, Sparkles, Upload, Image as ImageIcon, X, Loader2, MapPin } from "lucide-react";
+import { ChevronLeft, ChevronRight, Check, Plus, Trash2, AlertCircle, Sparkles, Upload, Image as ImageIcon, X, Loader2, MapPin, CircleUser } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
@@ -101,6 +101,7 @@ interface OnboardingData {
   
   // Step 8: Photos
   thumbnail_url?: string;
+  avatar_url?: string; // optional profile circle (business face) for listing cards
   gallery?: string[];
 
   // Business contact (used in Step3; aliased from owner_* for display)
@@ -451,6 +452,7 @@ export default function ProviderOnboarding() {
         services: formData.services || [],
         // New fields for public homepage optimization
         thumbnail_url: formData.thumbnail_url || null,
+        avatar_url: formData.avatar_url || null,
         gallery: formData.gallery || [],
         years_in_business: formData.years_in_business || null,
         accepts_custom_requests: formData.accepts_custom_requests || false,
@@ -1412,9 +1414,12 @@ function Step8Photos({
 }) {
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(data.thumbnail_url || null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(data.avatar_url || null);
   const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
   const [galleryPreviews, setGalleryPreviews] = useState<string[]>(data.gallery || []);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const handleThumbnailSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1435,6 +1440,27 @@ function Step8Photos({
     const reader = new FileReader();
     reader.onloadend = () => {
       setThumbnailPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!validateFileType(file, IMAGE_CONSTRAINTS.allowedTypes)) {
+      toast.error("Invalid file type. Please upload a JPEG, PNG, or WebP image.");
+      return;
+    }
+    if (!validateFileSize(file, IMAGE_CONSTRAINTS.maxSizeBytes)) {
+      toast.error("File too large. Maximum size is 5MB.");
+      return;
+    }
+    setAvatarFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result as string;
+      setAvatarPreview(dataUrl);
+      updateData({ avatar_url: dataUrl });
     };
     reader.readAsDataURL(file);
   };
@@ -1475,11 +1501,12 @@ function Step8Photos({
     setGalleryFiles(newFiles);
   };
 
-  // Store files in formData for later upload (after provider creation)
+  // Sync previews from draft/data when loaded (e.g. after loadDraft)
   useEffect(() => {
-    // Note: We'll upload these after provider is created in the API
-    // For now, just store previews
-  }, [thumbnailFile, galleryFiles]);
+    if (data.thumbnail_url && !thumbnailFile) setThumbnailPreview(data.thumbnail_url);
+    if (data.avatar_url && !avatarFile) setAvatarPreview(data.avatar_url);
+    if (data.gallery?.length && galleryFiles.length === 0) setGalleryPreviews(data.gallery);
+  }, [data.thumbnail_url, data.avatar_url, data.gallery]);
 
   return (
     <div className="space-y-6">
@@ -1586,6 +1613,64 @@ function Step8Photos({
             {thumbnailFile && (
               <p className="text-xs text-gray-600 mt-2">
                 {thumbnailFile.name} ({(thumbnailFile.size / 1024 / 1024).toFixed(2)} MB)
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Profile circle (optional) - business face on listing cards */}
+      <div>
+        <Label className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
+          Profile circle (business face)
+          <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">(Optional)</span>
+        </Label>
+        <p className="text-xs sm:text-sm text-gray-600 mb-3">
+          This image appears in the small circle on your listing card. A clear headshot or logo helps clients recognize you. You can skip and set it later in Settings → Gallery.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-4 items-start">
+          {avatarPreview ? (
+            <div className="relative w-24 h-24 rounded-full border-2 border-indigo-200 overflow-hidden flex-shrink-0">
+              <Image src={avatarPreview} alt="Profile circle" fill className="object-cover" unoptimized />
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="absolute top-1 right-1"
+                onClick={() => {
+                  setAvatarFile(null);
+                  setAvatarPreview(null);
+                  updateData({ avatar_url: undefined });
+                  if (avatarInputRef.current) avatarInputRef.current.value = "";
+                }}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+          ) : (
+            <div className="w-24 h-24 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50 flex-shrink-0">
+              <CircleUser className="w-10 h-10 text-gray-400" />
+            </div>
+          )}
+          <div>
+            <Input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleAvatarSelect}
+              className="hidden"
+              id="avatar-upload"
+            />
+            <Label
+              htmlFor="avatar-upload"
+              className="cursor-pointer inline-flex items-center justify-center px-4 py-2 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors text-indigo-700"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              {avatarPreview ? "Change profile image" : "Upload profile image"}
+            </Label>
+            {avatarFile && (
+              <p className="text-xs text-gray-600 mt-2">
+                {avatarFile.name} ({(avatarFile.size / 1024).toFixed(1)} KB)
               </p>
             )}
           </div>

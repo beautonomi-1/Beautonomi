@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     const { data: provider, error } = await supabase
       .from("providers")
-      .select("id, business_name, description, business_type, phone, email, thumbnail_url")
+      .select("id, business_name, description, business_type, phone, email, thumbnail_url, avatar_url")
       .eq("id", providerId)
       .single();
 
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 
     const response = {
       ...provider,
-      avatar_url: (provider as any).thumbnail_url ?? null,
+      avatar_url: (provider as any).avatar_url ?? (provider as any).thumbnail_url ?? null,
       locations: (locations || []).map((loc: any) => ({
         id: loc.id,
         name: loc.name,
@@ -128,6 +128,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (body.thumbnail_url !== undefined) {
       updates.thumbnail_url = body.thumbnail_url || null;
+    }
+    if (body.avatar_url !== undefined) {
+      updates.avatar_url = body.avatar_url || null;
     }
 
     const { data: provider, error } = await supabase

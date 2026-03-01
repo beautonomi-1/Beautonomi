@@ -22,6 +22,7 @@ export default function CategoryPageClient({ category, initialProviders, slug }:
     rating: p.rating_average || 0,
     review_count: p.review_count || 0,
     thumbnail_url: p.thumbnail_url,
+    avatar_url: p.avatar_url ?? null,
     city: "",
     country: "",
     is_featured: p.is_featured || false,

@@ -42,6 +42,7 @@ interface Review {
     id: string;
     business_name: string;
     thumbnail_url: string | null;
+    avatar_url?: string | null;
   } | null;
 }
 

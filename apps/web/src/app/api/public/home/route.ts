@@ -144,6 +144,7 @@ export async function GET(request: Request) {
       rating_average,
       review_count,
       thumbnail_url,
+      avatar_url,
       is_featured,
       is_verified,
       currency,
@@ -927,6 +928,7 @@ export async function GET(request: Request) {
         rating: provider.rating_average || 0, // Map rating_average to rating
         review_count: provider.review_count || 0,
         thumbnail_url: provider.thumbnail_url,
+        avatar_url: provider.avatar_url ?? null,
         city: location?.city || "",
         country: location?.country || "",
         is_featured: provider.is_featured || false,
@@ -1169,6 +1171,7 @@ export async function GET(request: Request) {
               rating: provider.rating_average || 0,
               review_count: provider.review_count || 0,
               thumbnail_url: provider.thumbnail_url,
+              avatar_url: provider.avatar_url ?? null,
               city: loc?.city || "",
               country: loc?.country || "",
               is_featured: provider.is_featured || false,
@@ -1284,6 +1287,7 @@ export async function GET(request: Request) {
                   rating: provider.rating_average || 0,
                   review_count: provider.review_count || 0,
                   thumbnail_url: provider.thumbnail_url,
+                  avatar_url: provider.avatar_url ?? null,
                   city: loc?.city || "",
                   country: loc?.country || "",
                   is_featured: provider.is_featured || false,
@@ -1400,6 +1404,7 @@ export async function GET(request: Request) {
                 rating: provider.rating_average || 0,
                 review_count: provider.review_count || 0,
                 thumbnail_url: provider.thumbnail_url,
+                avatar_url: provider.avatar_url ?? null,
                 city: loc?.city || "",
                 country: loc?.country || "",
                 is_featured: provider.is_featured || false,
@@ -1513,6 +1518,7 @@ export async function GET(request: Request) {
               rating: provider.rating_average || 0,
               review_count: provider.review_count || 0,
               thumbnail_url: provider.thumbnail_url,
+              avatar_url: provider.avatar_url ?? null,
               city: loc?.city || "",
               country: loc?.country || "",
               is_featured: provider.is_featured || false,
@@ -1618,6 +1624,7 @@ export async function GET(request: Request) {
                 rating: provider.rating_average || 0,
                 review_count: provider.review_count || 0,
                 thumbnail_url: provider.thumbnail_url,
+                avatar_url: provider.avatar_url ?? null,
                 city: loc?.city || "",
                 country: loc?.country || "",
                 is_featured: provider.is_featured || false,
@@ -1690,7 +1697,7 @@ export async function GET(request: Request) {
       const { data: campaigns } = await supabaseAdmin.from("ads_campaigns").select("provider_id").eq("status", "active").limit(maxSlots * 2);
       const providerIds = [...new Set((campaigns ?? []).map((c: { provider_id: string }) => c.provider_id))].slice(0, maxSlots);
       if (providerIds.length > 0) {
-        const { data: providersRaw } = await supabaseAdmin.from("providers").select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, is_featured, is_verified, description, currency").in("id", providerIds).eq("status", "active");
+        const { data: providersRaw } = await supabaseAdmin.from("providers").select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, description, currency").in("id", providerIds).eq("status", "active");
         if (providersRaw?.length) {
           const allMap = new Map((data.all ?? []).map((p: PublicProviderCard) => [p.id, p]));
           for (const p of providersRaw as any[]) {
@@ -1702,6 +1709,7 @@ export async function GET(request: Request) {
               rating: p.rating_average ?? 0,
               review_count: p.review_count ?? 0,
               thumbnail_url: p.thumbnail_url,
+              avatar_url: p.avatar_url ?? null,
               city: "",
               country: "",
               is_featured: p.is_featured ?? false,

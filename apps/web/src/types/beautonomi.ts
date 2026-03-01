@@ -103,7 +103,10 @@ export interface PublicProviderCard {
   business_type: 'freelancer' | 'salon';
   rating: number;
   review_count: number;
+  /** Main card hero image (listing/cover image). */
   thumbnail_url: string | null;
+  /** Business "face" shown in the small circle on the card. Falls back to thumbnail if not set. */
+  avatar_url?: string | null;
   city: string;
   country: string;
   is_featured: boolean;

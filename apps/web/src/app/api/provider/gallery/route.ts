@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     const { data: provider, error } = await supabase
       .from("providers")
-      .select("gallery, thumbnail_url")
+      .select("gallery, thumbnail_url, avatar_url")
       .eq("id", providerId)
       .single();
 
@@ -47,6 +47,7 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       thumbnailUrl: provider.thumbnail_url || null,
+      avatarUrl: provider.avatar_url ?? null,
       items,
     });
   } catch (error) {
