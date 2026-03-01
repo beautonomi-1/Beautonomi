@@ -27,6 +27,6 @@
     "setup": "pnpm install && node scripts/setup-env.js"
   },
   "devDependencies": {
-    "turbo": "^2.8.8"
+    "turbo": "^2.8.12"
   }
 }
