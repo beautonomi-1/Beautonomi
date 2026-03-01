@@ -7,6 +7,10 @@ const analyzer = withBundleAnalyzer({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Expose Sentry DSN to client (NEXT_PUBLIC_* from .env.local also work; this ensures it's available)
+  env: {
+    NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  },
   // Enable React strict mode for better performance debugging
   reactStrictMode: true,
 
@@ -54,12 +58,12 @@ const nextConfig = {
 
   // Experimental features for performance
   experimental: {
+    // Exclude @radix-ui/react-select to avoid Turbopack HMR "module factory is not available" errors
     optimizePackageImports: [
       'lucide-react',
       'date-fns',
       '@radix-ui/react-dropdown-menu',
       '@radix-ui/react-dialog',
-      '@radix-ui/react-select',
       '@radix-ui/react-popover',
       'recharts',
     ],
@@ -133,6 +137,13 @@ const nextConfig = {
     return config;
   },
 
+  // Redirects for canonical legal URLs (mobile apps may link to /terms)
+  async redirects() {
+    return [
+      { source: '/terms', destination: '/terms-and-condition', permanent: true },
+    ];
+  },
+
   // Headers for caching & security
   async headers() {
     return [
@@ -142,7 +153,7 @@ const nextConfig = {
         headers: [
           { key: 'Access-Control-Allow-Origin', value: '*' },
           { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, PATCH, DELETE, OPTIONS' },
-          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, X-Requested-With' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, X-Requested-With, X-App' },
           { key: 'Access-Control-Max-Age', value: '86400' },
         ],
       },

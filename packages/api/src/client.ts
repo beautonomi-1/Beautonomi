@@ -71,6 +71,7 @@ export async function apiFetch<T>(
           message: json?.error?.message ?? `Request failed: ${response.statusText}`,
           code: json?.error?.code,
           details: json?.error?.details,
+          status: response.status,
         },
       };
     }

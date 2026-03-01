@@ -52,7 +52,7 @@ export function ProviderBottomNav() {
     { 
       name: "More", 
       icon: Grid3x3, 
-      link: "/provider/settings",
+      link: "/provider/more",
       activeColor: "text-purple-500",
       activeBg: "bg-purple-50"
     },
@@ -67,13 +67,20 @@ export function ProviderBottomNav() {
     if (pathname?.startsWith("/provider/clients")) return "Clients";
     if (pathname?.startsWith("/provider/messaging") || 
         pathname?.startsWith("/provider/chats")) return "Chats";
-    // More includes everything else
-    if (pathname?.startsWith("/provider/settings") ||
+    // More includes hubs and secondary nav
+    if (pathname?.startsWith("/provider/more") ||
+        pathname?.startsWith("/provider/settings") ||
         pathname?.startsWith("/provider/reports") ||
         pathname?.startsWith("/provider/catalogue") ||
         pathname?.startsWith("/provider/team") ||
         pathname?.startsWith("/provider/marketing") ||
-        pathname?.startsWith("/provider/reviews")) return "More";
+        pathname?.startsWith("/provider/reviews") ||
+        pathname?.startsWith("/provider/schedule") ||
+        pathname?.startsWith("/provider/time-blocks") ||
+        pathname?.startsWith("/provider/resources") ||
+        pathname?.startsWith("/provider/forms") ||
+        pathname?.startsWith("/provider/orders") ||
+        pathname?.startsWith("/provider/ecommerce")) return "More";
     return "";
   };
 

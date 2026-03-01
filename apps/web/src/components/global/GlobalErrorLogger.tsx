@@ -2,10 +2,15 @@
 
 import { useEffect } from "react";
 
-const DEBUG_LOG_URL = "http://127.0.0.1:7243/ingest/89f3cdbd-444d-401b-9bce-c59a37625210";
+// Only send when ingest server URL is set (avoids ERR_CONNECTION_REFUSED when server isn't running)
+const DEBUG_LOG_URL =
+  typeof process !== "undefined" && process.env?.NEXT_PUBLIC_DEBUG_INGEST_URL
+    ? process.env.NEXT_PUBLIC_DEBUG_INGEST_URL
+    : undefined;
 const SESSION_ID = "50ed8b";
 
 function sendLog(data: Record<string, unknown>) {
+  if (!DEBUG_LOG_URL) return;
   fetch(DEBUG_LOG_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Debug-Session-Id": SESSION_ID },

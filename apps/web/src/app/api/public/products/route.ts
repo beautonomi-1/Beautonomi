@@ -71,20 +71,31 @@ export async function GET(request: NextRequest) {
     query = query.range(offset, offset + limit - 1);
 
     const { data: products, error, count } = await query;
-    if (error) throw error;
+    if (error) {
+      console.error("[GET /api/public/products] Supabase error:", error.message, error.details);
+      return successResponse({
+        products: [],
+        categories: [],
+        pagination: { page, limit, total: 0, totalPages: 0 },
+      });
+    }
 
-    // Get distinct categories for filter chips
-    const { data: categories } = await (supabase.from("products") as any)
-      .select("category")
-      .eq("is_active", true)
-      .eq("retail_sales_enabled", true)
-      .gt("quantity", 0)
-      .not("category", "is", null)
-      .limit(50);
-
-    const uniqueCategories = [
-      ...new Set((categories ?? []).map((c: any) => c.category).filter(Boolean)),
-    ];
+    // Get distinct categories for filter chips (non-blocking: ignore errors)
+    let uniqueCategories: string[] = [];
+    try {
+      const { data: categories } = await (supabase.from("products") as any)
+        .select("category")
+        .eq("is_active", true)
+        .eq("retail_sales_enabled", true)
+        .gt("quantity", 0)
+        .not("category", "is", null)
+        .limit(50);
+      const categoryList = (categories ?? []) as Array<{ category?: string }>;
+      const categoryStrings = categoryList.map((c) => c.category).filter((x): x is string => Boolean(x));
+      uniqueCategories = [...new Set(categoryStrings)];
+    } catch {
+      // keep uniqueCategories []
+    }
 
     return successResponse({
       products: products ?? [],
@@ -97,6 +108,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
+    console.error("[GET /api/public/products]", err);
     return handleApiError(err, "Failed to fetch products");
   }
 }

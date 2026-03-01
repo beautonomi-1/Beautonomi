@@ -332,6 +332,20 @@ export async function POST(request: NextRequest) {
       }).then(() => {}, () => {});
     }
 
+    // Order confirmation to customer via OneSignal notification template (push + email)
+    try {
+      const { notifyOrderConfirmation } = await import("@/lib/notifications/notification-service");
+      await notifyOrderConfirmation(
+        user.id,
+        order.id,
+        order.order_number,
+        totalAmount,
+        ["push", "email"],
+      );
+    } catch (notifyErr) {
+      console.warn("Order confirmation notification failed:", notifyErr);
+    }
+
     return successResponse({
       order: { ...order, items: orderItems },
       paid_with_wallet: paidWithWalletOnly,

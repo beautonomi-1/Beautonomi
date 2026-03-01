@@ -23,18 +23,46 @@ src/app/provider/
 ├── catalogue/         # Services and products management
 │   ├── services/      # Service CRUD with variants and addons
 │   └── products/      # Product management with inventory
-├── team/              # Team management
+├── team/              # Team hub + management
+│   ├── page.tsx       # Team hub (members, earnings, days-off, shifts, etc.)
 │   ├── members/       # Staff management
-│   ├── time-clock/    # Time tracking
+│   ├── my-earnings/   # My earnings
+│   ├── days-off/      # Time off management
 │   ├── shifts/        # Shift management
-│   ├── totals/        # Performance metrics
-│   └── days-off/      # Time off management
+│   ├── time-clock/    # Time tracking
+│   ├── payroll/       # Pay runs
+│   └── totals/        # Performance metrics
+├── schedule/          # Schedule hub (time blocks, days off)
+├── time-blocks/       # Time blocks management
+├── resources/         # Resources management
+├── resources-forms/   # Resources & Forms hub
+├── forms/             # Intake/consent forms (+ /forms/[id] for fields)
+├── orders/            # Orders hub (orders, returns)
+├── ecommerce/         # E-Commerce hub + products, orders, shipping, walk-in
+├── more/              # More menu (mobile hub)
 ├── reviews/           # Review management
 ├── messaging/         # Messaging system
 ├── marketing/         # Marketing automations
 ├── settings/          # Comprehensive settings
 └── get-started/       # Onboarding wizard
 ```
+
+---
+
+## 🧭 Navigation & Hubs
+
+Sidebar and **More** (mobile) use hub landing pages for grouped areas:
+
+| Hub | Path | Contents |
+|-----|------|----------|
+| **Schedule** | `/provider/schedule` | Time Blocks, Days Off |
+| **Resources & Forms** | `/provider/resources-forms` | Resources, Forms |
+| **Orders** | `/provider/orders` | Orders, Returns |
+| **E-Commerce** | `/provider/ecommerce` | Orders, Returns, Products, Shipping & Collection, Walk-in Sale |
+| **Team** | `/provider/team` | Team members, My Earnings, Days Off, Shifts, Time Clock, Payroll, Totals |
+| **More** | `/provider/more` | All hubs + Team, Catalogue, Reports, Settings |
+
+Forms: list at `/provider/forms`, detail and field management at `/provider/forms/[id]`.
 
 ---
 

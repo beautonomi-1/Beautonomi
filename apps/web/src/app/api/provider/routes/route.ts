@@ -24,14 +24,18 @@ export async function GET(request: NextRequest) {
       return badRequestResponse("date parameter is required (YYYY-MM-DD format)");
     }
 
-    // Get route for the date
-    const { data: route, error: routeError } = await supabase
+    // Get route for the date (when no staff_id, match routes where staff_id IS NULL)
+    let query = supabase
       .from("travel_routes")
       .select("*")
       .eq("provider_id", providerId)
-      .eq("route_date", date)
-      .eq("staff_id", staff_id || null)
-      .single();
+      .eq("route_date", date);
+    if (staff_id != null && staff_id !== "") {
+      query = query.eq("staff_id", staff_id);
+    } else {
+      query = query.is("staff_id", null);
+    }
+    const { data: route, error: routeError } = await query.single();
 
     if (routeError && routeError.code !== 'PGRST116') {
       throw routeError;
@@ -71,16 +75,28 @@ export async function GET(request: NextRequest) {
       throw segmentsError;
     }
 
-    // Calculate savings
-    const { data: savingsData } = await supabase
-      .rpc('calculate_route_savings', { p_route_id: route.id });
-
-    const savings = savingsData?.[0] || {
+    // Calculate savings (best-effort; RPC can fail if starting_address is null or config missing)
+    let savings = {
       standard_total: 0,
       chained_total: 0,
       savings: 0,
       savings_percentage: 0,
     };
+    try {
+      const { data: savingsData } = await supabase
+        .rpc('calculate_route_savings', { p_route_id: route.id });
+      if (savingsData?.[0]) {
+        const row = savingsData[0] as Record<string, unknown>;
+        savings = {
+          standard_total: Number(row.standard_total ?? 0),
+          chained_total: Number(row.chained_total ?? 0),
+          savings: Number(row.savings ?? 0),
+          savings_percentage: Number(row.savings_percentage ?? 0),
+        };
+      }
+    } catch {
+      // use defaults
+    }
 
     return successResponse({
       route: {

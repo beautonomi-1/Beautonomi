@@ -4,9 +4,10 @@ import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; fieldId: string } },
+  { params }: { params: Promise<{ id: string; fieldId: string }> },
 ) {
   try {
+    const { id, fieldId } = await params;
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -15,7 +16,7 @@ export async function DELETE(
     const { data: form } = await supabase
       .from("provider_forms")
       .select("id")
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
@@ -24,8 +25,8 @@ export async function DELETE(
     const { error } = await supabase
       .from("provider_form_fields")
       .delete()
-      .eq("id", params.fieldId)
-      .eq("form_id", params.id);
+      .eq("id", fieldId)
+      .eq("form_id", id);
 
     if (error) throw error;
     return successResponse({ success: true });

@@ -103,7 +103,10 @@ export interface PublicProviderCard {
   business_type: 'freelancer' | 'salon';
   rating: number;
   review_count: number;
+  /** Main card hero image (listing/cover image). */
   thumbnail_url: string | null;
+  /** Business "face" shown in the small circle on the card. Falls back to thumbnail if not set. */
+  avatar_url?: string | null;
   city: string;
   country: string;
   is_featured: boolean;
@@ -217,6 +220,8 @@ export interface ProviderLocation {
   longitude: number | null;
   phone: string | null;
   is_active: boolean;
+  /** 'salon' = physical venue, clients can book in-studio; 'base' = distance/travel reference only (mobile-only) */
+  location_type?: "salon" | "base";
   working_hours: WorkingHours;
   created_at: string;
   updated_at: string;
@@ -307,6 +312,8 @@ export interface BookingDraft {
   promotion_code?: string;
   gift_card_code?: string;
   use_wallet?: boolean;
+  /** Resource IDs to assign (ordered: one per required slot per service). When set, used for validation and assignment. */
+  resource_ids?: string[];
 }
 
 export interface BookingService {
@@ -366,6 +373,13 @@ export interface Booking {
   arrival_otp_expires_at?: string | null;
   arrival_otp_verified?: boolean;
   products?: Array<{ id?: string; product_name?: string; quantity: number; total_price: number }>;
+  /** Provider form responses (intake/consent/waiver) filled at checkout */
+  provider_form_responses?: Record<string, Record<string, unknown>> | null;
+  /** Platform booking custom field values (from custom_field_values) */
+  custom_field_values?: Record<string, string | number | boolean | null> | null;
+  /** Group booking ref (e.g. GB-xxx) when this booking is part of a group */
+  is_group_booking?: boolean;
+  group_booking_ref?: string | null;
 }
 
 export interface BookingAddress {

@@ -156,6 +156,25 @@ export async function processPayment(
     );
     const shouldAutoConfirmStatus = !appointmentSettings.requireConfirmationForBookings;
 
+    const loyaltyPointsUsed = Number((validatedDraft as any).loyalty_points_used ?? 0);
+    if (loyaltyPointsUsed > 0) {
+      await (supabase.from("bookings") as any)
+        .update({ loyalty_points_used: loyaltyPointsUsed })
+        .eq("id", booking.id);
+      try {
+        await (supabase.from("loyalty_point_transactions") as any).insert({
+          user_id: v.customerId,
+          points: loyaltyPointsUsed,
+          transaction_type: "redeemed",
+          description: `Redeemed for booking ${booking.booking_number}`,
+          reference_id: booking.id,
+          reference_type: "booking",
+        });
+      } catch (e: any) {
+        console.error("Loyalty points deduction (no-gateway path):", e?.message || e);
+      }
+    }
+
     await (supabase.from("bookings") as any)
       .update({
         payment_status: "paid",
@@ -234,6 +253,7 @@ export async function processPayment(
         );
       }
 
+      const loyaltyPointsUsed = Number((validatedDraft as any).loyalty_points_used ?? 0);
       const chargeResult = await chargeAuthorization(
         savedCard.provider_payment_method_id,
         email,
@@ -254,6 +274,7 @@ export async function processPayment(
           commission_base: v.commissionBase,
           payment_method_id: savedPaymentMethodId,
           hold_id: validatedDraft.hold_id || null,
+          loyalty_points_used: loyaltyPointsUsed > 0 ? loyaltyPointsUsed : undefined,
         }
       );
 
@@ -299,6 +320,7 @@ export async function processPayment(
       });
     } else {
       // ── New card (Paystack redirect) ───────────────────────────────────
+      const loyaltyPointsUsed = Number((validatedDraft as any).loyalty_points_used ?? 0);
       const paystackData = await initializePaystackTransaction({
         email,
         amountInSmallestUnit: convertToSmallestUnit(amountToCollect),
@@ -322,6 +344,7 @@ export async function processPayment(
           save_card: saveCard,
           set_as_default: setAsDefault,
           hold_id: validatedDraft.hold_id || undefined,
+          loyalty_points_used: loyaltyPointsUsed > 0 ? loyaltyPointsUsed : undefined,
         },
       });
 

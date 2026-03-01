@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get or create route
-    const { data: routeId, error: routeError } = await supabase
+    const { data: routeIdRaw, error: routeError } = await supabase
       .rpc('get_or_create_route', {
         p_provider_id: providerId,
         p_route_date: date,
@@ -33,6 +33,12 @@ export async function POST(request: NextRequest) {
 
     if (routeError) {
       throw routeError;
+    }
+
+    // PostgREST can return scalar UUID as string or single-element array
+    const routeId = Array.isArray(routeIdRaw) ? routeIdRaw[0] : routeIdRaw;
+    if (!routeId) {
+      throw new Error("Failed to get or create route");
     }
 
     // Get all at-home bookings for the day (bookings table uses address_latitude, address_longitude per 005_bookings)
@@ -85,6 +91,15 @@ export async function POST(request: NextRequest) {
     const startLng = (providerLocation as any)?.longitude ?? (providerLocation as any)?.address_lng ?? 0;
     const startingLocation = providerLocation || { latitude: 0, longitude: 0, address_line1: "Provider Location" };
 
+    // Set starting_address on the route so calculate_route_savings can use it (avoids NULL and 500s)
+    await supabase
+      .from("travel_routes")
+      .update({
+        starting_address: { lat: startLat, lng: startLng, address: (startingLocation as any)?.address_line1 ?? "Provider Location" },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", routeId);
+
     // Create route segments
     let previousLocation = {
       lat: (providerLocation as any)?.latitude ?? (providerLocation as any)?.address_lat ?? startLat,
@@ -111,7 +126,7 @@ export async function POST(request: NextRequest) {
         address: (booking as any).address_line1 || "Customer Location",
       };
 
-      // Calculate distance
+      // Calculate distance (RPC may return scalar or single-element array)
       const { data: distanceData } = await supabase
         .rpc('calculate_distance_km', {
           lat1: previousLocation.lat,
@@ -119,20 +134,20 @@ export async function POST(request: NextRequest) {
           lat2: currentLocation.lat,
           lng2: currentLocation.lng,
         });
-
-      const distance = distanceData || 0;
+      const distance = Number(Array.isArray(distanceData) ? distanceData[0] : distanceData) || 0;
       totalDistance += distance;
 
       // Estimate duration (assume average speed of 40 km/h)
       const duration = Math.ceil((distance / 40) * 60); // minutes
       totalDuration += duration;
 
-      // Calculate travel fee
-      const { data: travelFee } = await supabase
+      // Calculate travel fee (RPC may return scalar or single-element array)
+      const { data: travelFeeData } = await supabase
         .rpc('calculate_chained_travel_fee', {
           distance_km: distance,
           is_first_in_route: segmentOrder === 1,
         });
+      const travelFee = Number(Array.isArray(travelFeeData) ? travelFeeData[0] : travelFeeData) || 0;
 
       // Create segment
       const { data: segment, error: segmentError } = await supabase
@@ -144,8 +159,8 @@ export async function POST(request: NextRequest) {
           segment_order: segmentOrder,
           distance_km: distance,
           duration_minutes: duration,
-          travel_fee_calculated: travelFee || 0,
-          travel_fee_charged: travelFee || 0,
+          travel_fee_calculated: travelFee,
+          travel_fee_charged: travelFee,
           from_location: previousLocation,
           to_location: currentLocation,
         })
@@ -160,7 +175,7 @@ export async function POST(request: NextRequest) {
           to: booking.id,
           distance_km: distance,
           duration_minutes: duration,
-          travel_fee: travelFee || 0,
+          travel_fee: travelFee,
           customer: Array.isArray(booking.customer) ? booking.customer?.[0]?.full_name : (booking.customer as { full_name?: string })?.full_name,
           scheduled_at: booking.scheduled_at,
         });
@@ -174,7 +189,7 @@ export async function POST(request: NextRequest) {
             travel_duration_minutes: duration,
             previous_booking_id: previousBookingId,
             travel_fee_method: 'route_chained',
-            travel_fee: travelFee || 0,
+            travel_fee: travelFee,
           })
           .eq("id", booking.id);
 
@@ -203,16 +218,24 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", routeId);
 
-    // Calculate savings
-    const { data: savingsData } = await supabase
-      .rpc('calculate_route_savings', { p_route_id: routeId });
-
-    const savings = savingsData?.[0] || {
+    // Calculate savings (best-effort; avoid 500 if RPC or config is missing)
+    let savings = {
       standard_total: 0,
       chained_total: 0,
       savings: 0,
       savings_percentage: 0,
     };
+    const { data: savingsData, error: savingsError } = await supabase
+      .rpc('calculate_route_savings', { p_route_id: routeId });
+    if (!savingsError && savingsData?.[0]) {
+      const row = savingsData[0] as any;
+      savings = {
+        standard_total: Number(row.standard_total ?? 0),
+        chained_total: Number(row.chained_total ?? 0),
+        savings: Number(row.savings ?? 0),
+        savings_percentage: Number(row.savings_percentage ?? 0),
+      };
+    }
 
     return successResponse({
       route_id: routeId,

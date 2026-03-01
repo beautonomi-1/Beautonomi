@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
       confirm: "confirmed",
       cancel: "cancelled",
       complete: "completed",
+      no_show: "no_show",
       delete: "deleted",
     };
 
@@ -110,7 +111,7 @@ export async function POST(request: NextRequest) {
             
             if (subtotal > 0) {
               try {
-                // Check if points were already awarded
+                const { calculateLoyaltyPoints } = await import("@/lib/loyalty/calculate-points");
                 const { data: existingTransaction } = await supabaseAdmin
                   .from("loyalty_point_transactions")
                   .select("id")
@@ -120,9 +121,9 @@ export async function POST(request: NextRequest) {
                   .maybeSingle();
 
                 if (!existingTransaction) {
-                  // Calculate points earned (1 point per ZAR spent on subtotal)
-                  const pointsEarned = Math.floor(subtotal);
-                  
+                  const currency = (booking as any).currency || "ZAR";
+                  const pointsEarned = await calculateLoyaltyPoints(subtotal, supabaseAdmin, currency);
+
                   if (pointsEarned > 0) {
                     // Create loyalty transaction for customer
                     const { error: loyaltyError } = await supabaseAdmin
@@ -173,8 +174,8 @@ export async function POST(request: NextRequest) {
                     .from("loyalty_point_transactions")
                     .insert({
                       user_id: customerId,
-                      transaction_type: "reversed",
-                      points: -loyaltyPointsEarned, // Negative to reverse
+                      transaction_type: "redeemed",
+                      points: loyaltyPointsEarned,
                       description: `Points reversed for cancelled booking ${(booking as any).booking_number || booking.id}`,
                       reference_id: booking.id,
                       reference_type: "booking",

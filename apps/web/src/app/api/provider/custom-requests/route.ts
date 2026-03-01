@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
         *,
         customer:users(id, full_name, email, avatar_url),
         attachments:custom_request_attachments(id, url, created_at),
-        offers:custom_offers(id, price, currency, duration_minutes, expiration_at, notes, status, payment_url, payment_reference, paid_at, created_at)
+        offers:custom_offers(id, price, currency, duration_minutes, expiration_at, notes, status, payment_url, payment_reference, paid_at, created_at, staff_id, location_id, scheduled_at, staff:provider_staff(id, name), location:provider_locations(id, name))
       `
       )
       .eq("provider_id", providerId)

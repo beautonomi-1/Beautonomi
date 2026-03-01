@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     const { data: provider, error } = await supabase
       .from("providers")
-      .select("id, business_name, description, business_type, phone, email")
+      .select("id, business_name, description, business_type, phone, email, thumbnail_url, avatar_url")
       .eq("id", providerId)
       .single();
 
@@ -37,7 +37,27 @@ export async function GET(request: NextRequest) {
       throw error || new Error("Provider not found");
     }
 
-    return successResponse(provider);
+    const { data: locations } = await supabase
+      .from("provider_locations")
+      .select("id, name, address_line1, city, location_type")
+      .eq("provider_id", providerId)
+      .eq("is_active", true)
+      .order("is_primary", { ascending: false })
+      .order("created_at", { ascending: true });
+
+    const response = {
+      ...provider,
+      avatar_url: (provider as any).avatar_url ?? (provider as any).thumbnail_url ?? null,
+      locations: (locations || []).map((loc: any) => ({
+        id: loc.id,
+        name: loc.name,
+        address_line1: loc.address_line1 || "",
+        city: loc.city || "",
+        location_type: loc.location_type || "salon",
+      })),
+    };
+
+    return successResponse(response);
   } catch (error) {
     return handleApiError(error, "Failed to fetch provider profile");
   }
@@ -108,6 +128,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (body.thumbnail_url !== undefined) {
       updates.thumbnail_url = body.thumbnail_url || null;
+    }
+    if (body.avatar_url !== undefined) {
+      updates.avatar_url = body.avatar_url || null;
     }
 
     const { data: provider, error } = await supabase

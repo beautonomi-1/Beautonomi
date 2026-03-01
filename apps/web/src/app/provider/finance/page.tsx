@@ -21,11 +21,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
+import { usePermissions } from "@/hooks/usePermissions";
+import { Lock } from "lucide-react";
 
 interface EarningsData {
   total_earnings: number;
   pending_payouts: number;
   available_balance: number;
+  minimum_payout_amount?: number;
   this_month: number;
   last_month: number;
   growth_percentage: number;
@@ -65,8 +68,19 @@ interface Payout {
   failure_reason?: string;
 }
 
+interface PayoutAccount {
+  id: string;
+  account_name: string;
+  account_number_last4: string;
+  bank_name: string | null;
+  active: boolean;
+}
+
 export default function ProviderFinance() {
   const { selectedLocationId } = useProviderPortal();
+  const { hasPermission } = usePermissions();
+  const canRequestPayout = hasPermission("process_payments");
+
   const [earnings, setEarnings] = useState<EarningsData | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
@@ -76,6 +90,8 @@ export default function ProviderFinance() {
   const [showPayoutDialog, setShowPayoutDialog] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState("");
   const [payoutNotes, setPayoutNotes] = useState("");
+  const [payoutAccounts, setPayoutAccounts] = useState<PayoutAccount[]>([]);
+  const [selectedBankId, setSelectedBankId] = useState<string>("");
   const [isRequestingPayout, setIsRequestingPayout] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showTransactionDialog, setShowTransactionDialog] = useState(false);
@@ -85,6 +101,7 @@ export default function ProviderFinance() {
   useEffect(() => {
     loadFinanceData();
     loadPayouts();
+    loadPayoutAccounts();
   }, [dateRange, selectedLocationId]);
 
   const loadFinanceData = async () => {
@@ -120,8 +137,18 @@ export default function ProviderFinance() {
       const response = await fetcher.get<{ data: Payout[] }>("/api/provider/payouts");
       setPayouts(response.data || []);
     } catch (err) {
-      // Silently fail - payouts are optional
       console.warn("Failed to load payouts:", err);
+    }
+  };
+
+  const loadPayoutAccounts = async () => {
+    try {
+      const response = await fetcher.get<{ data: PayoutAccount[] }>("/api/provider/payout-accounts");
+      const accts = response.data || [];
+      setPayoutAccounts(accts);
+      if (accts.length > 0 && !selectedBankId) setSelectedBankId(accts[0].id);
+    } catch (err) {
+      console.warn("Failed to load payout accounts:", err);
     }
   };
 
@@ -131,6 +158,11 @@ export default function ProviderFinance() {
       return;
     }
 
+    const minimumPayout = earnings?.minimum_payout_amount ?? 100;
+    if (parseFloat(payoutAmount) < minimumPayout) {
+      toast.error(`Minimum payout is ZAR ${minimumPayout.toLocaleString()}`);
+      return;
+    }
     if (!earnings || parseFloat(payoutAmount) > earnings.available_balance) {
       toast.error("Insufficient balance for this payout");
       return;
@@ -138,9 +170,11 @@ export default function ProviderFinance() {
 
     try {
       setIsRequestingPayout(true);
+      const primaryId = payoutAccounts[0]?.id;
       await fetcher.post("/api/provider/payouts", {
         amount: parseFloat(payoutAmount),
         notes: payoutNotes || null,
+        bank_account_id: selectedBankId || primaryId || undefined,
       });
       
       toast.success("Payout request submitted successfully");
@@ -149,6 +183,7 @@ export default function ProviderFinance() {
       setPayoutNotes("");
       loadFinanceData();
       loadPayouts();
+      loadPayoutAccounts();
     } catch (err) {
       const errorMessage =
         err instanceof FetchError
@@ -233,7 +268,8 @@ export default function ProviderFinance() {
             <h1 className="text-3xl font-semibold mb-2">Finance & Earnings</h1>
             <p className="text-gray-600">Track your revenue and earnings</p>
           </div>
-          <div className="flex gap-2 mt-4 md:mt-0">
+          <div className="flex flex-wrap gap-2 mt-4 md:mt-0 items-center">
+            {canRequestPayout ? (
             <Dialog open={showPayoutDialog} onOpenChange={setShowPayoutDialog}>
               <DialogTrigger asChild>
                 <Button className="bg-[#FF0077] hover:bg-[#D60565]">
@@ -259,11 +295,11 @@ export default function ProviderFinance() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="payout-amount">Payout Amount (ZAR) *</Label>
+                    <Label htmlFor="payout-amount">Payout Amount (ZAR) * — min ZAR {(earnings.minimum_payout_amount ?? 100).toLocaleString()}</Label>
                     <Input
                       id="payout-amount"
                       type="number"
-                      min="0"
+                      min={earnings.minimum_payout_amount ?? 100}
                       max={earnings.available_balance}
                       step="0.01"
                       value={payoutAmount}
@@ -271,12 +307,45 @@ export default function ProviderFinance() {
                       placeholder="Enter amount"
                       className="mt-1"
                     />
+                    {payoutAmount && parseFloat(payoutAmount) < (earnings.minimum_payout_amount ?? 100) && (
+                      <p className="text-sm text-red-600 mt-1">
+                        Below minimum payout (ZAR {(earnings.minimum_payout_amount ?? 100).toLocaleString()})
+                      </p>
+                    )}
                     {payoutAmount && parseFloat(payoutAmount) > earnings.available_balance && (
                       <p className="text-sm text-red-600 mt-1">
                         Amount exceeds available balance
                       </p>
                     )}
                   </div>
+                  {payoutAccounts.length === 0 && (
+                    <p className="text-sm text-amber-600">
+                      Add a bank account in Settings → Payout Accounts to receive payouts.
+                    </p>
+                  )}
+                  {payoutAccounts.length > 1 && (
+                    <div>
+                      <Label>Pay out to</Label>
+                      <select
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                        value={selectedBankId || payoutAccounts[0]?.id}
+                        onChange={(e) => setSelectedBankId(e.target.value)}
+                      >
+                        {payoutAccounts.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.account_name} ****{a.account_number_last4}
+                            {a.bank_name ? ` (${a.bank_name})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">Payouts will be sent to this account</p>
+                    </div>
+                  )}
+                  {payoutAccounts.length === 1 && (
+                    <p className="text-xs text-gray-500">
+                      Payout will be sent to {payoutAccounts[0].account_name} ****{payoutAccounts[0].account_number_last4}.
+                    </p>
+                  )}
                   <div>
                     <Label htmlFor="payout-notes">Notes (Optional)</Label>
                     <Textarea
@@ -302,7 +371,7 @@ export default function ProviderFinance() {
                   </Button>
                   <Button
                     onClick={handleRequestPayout}
-                    disabled={isRequestingPayout || !payoutAmount || parseFloat(payoutAmount) <= 0 || parseFloat(payoutAmount) > earnings.available_balance}
+                    disabled={isRequestingPayout || payoutAccounts.length === 0 || !payoutAmount || parseFloat(payoutAmount) < (earnings.minimum_payout_amount ?? 100) || parseFloat(payoutAmount) > earnings.available_balance}
                     className="bg-[#FF0077] hover:bg-[#D60565]"
                   >
                     {isRequestingPayout ? "Submitting..." : "Request Payout"}
@@ -310,6 +379,12 @@ export default function ProviderFinance() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+            ) : (
+              <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <Lock className="h-4 w-4 flex-shrink-0" />
+                <span>You don&apos;t have permission to request payouts. Contact your administrator.</span>
+              </div>
+            )}
             <Button variant="outline" onClick={handleExport}>
               <Download className="w-4 h-4 mr-2" />
               Export

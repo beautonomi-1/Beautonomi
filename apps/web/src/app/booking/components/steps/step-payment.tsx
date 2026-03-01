@@ -308,6 +308,7 @@ export default function StepPayment({
       gift_card_code: bookingState.promotions.giftCardCode || null,
       membership_plan_id: bookingState.promotions.membershipPlanId || null,
       use_wallet: (bookingState.useWallet ?? false) || (bookingState.promotions.loyaltyPointsUsed ? true : false),
+      loyalty_points_used: bookingState.promotions.loyaltyPointsUsed ?? 0,
     };
 
     // Add group booking data if it's a group booking

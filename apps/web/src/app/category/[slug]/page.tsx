@@ -107,6 +107,7 @@ export default async function CategoryPage({ params }: Props) {
         rating_average,
         review_count,
         thumbnail_url,
+        avatar_url,
         is_featured,
         is_verified,
         currency

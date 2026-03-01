@@ -1,14 +1,19 @@
 "use client";
 
-import { useEffect } from 'react';
-import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
+import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
+import dynamic from "next/dynamic";
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/providers/AuthProvider';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 import logo from './../../public/images/logo-beatonomi.svg';
-import BeautonomiHeader from "@/components/layout/beautonomi-header";
 
+// Dynamic imports to avoid pulling in Radix/header on booking/embed (fixes Turbopack HMR "module factory not available")
+const BeautonomiHeader = dynamic(
+  () => import('@/components/layout/beautonomi-header').then((m) => ({ default: m.default })),
+  { ssr: false }
+);
 const Footer = dynamic(
   () => import('@/components/layout/footer').then((m) => ({ default: m.default })),
   { ssr: true }
@@ -26,7 +31,29 @@ export default function Error({
   reset: () => void;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { user, role, isLoading } = useAuth();
+
+  // Booking link / embed: minimal error UI only (no header/footer/Radix – avoids Turbopack HMR crash)
+  const isBookingOrEmbed =
+    typeof pathname === "string" && (pathname.startsWith("/book") || searchParams?.get("embed") === "1");
+
+  // Report page-level errors to Sentry (skip 403/404 to reduce noise)
+  useEffect(() => {
+    const is403Or404 =
+      error.status === 403 ||
+      error.status === 404 ||
+      error.message?.includes("403") ||
+      error.message?.includes("404") ||
+      error.message?.includes("Forbidden") ||
+      error.message?.includes("Not Found");
+    if (!is403Or404) {
+      Sentry.captureException(error, {
+        extra: { pathname: pathname ?? undefined, status: error.status },
+      });
+    }
+  }, [error, pathname]);
 
   // Check if error is 403 or 404 and user is a provider
   useEffect(() => {
@@ -76,6 +103,25 @@ export default function Error({
         </div>
       );
     }
+  }
+
+  // Booking / embed: minimal error (no header, no Radix) so QR/mobile link and embed never hit the HMR crash
+  if (isBookingOrEmbed) {
+    return (
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6">
+        <Image src={logo} alt="Beautonomi" className="w-20 h-20 mb-4" />
+        <h1 className="text-xl font-semibold text-gray-900 mb-2">Something went wrong</h1>
+        <p className="text-gray-600 text-center text-sm mb-6 max-w-sm">{error.message || "Please try again."}</p>
+        <div className="flex gap-3">
+          <Button variant="outline" size="sm" onClick={reset}>
+            Try again
+          </Button>
+          <Button variant="default" size="sm" onClick={() => router.push("/")}>
+            Go to home
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   // Check if user is a provider

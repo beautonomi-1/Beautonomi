@@ -9,6 +9,9 @@ const createOfferSchema = z.object({
   duration_minutes: z.number().int().min(15).max(8 * 60),
   expiration_at: z.string(), // ISO
   notes: z.string().max(4000).optional().nullable(),
+  staff_id: z.string().uuid().optional().nullable(),
+  location_id: z.string().uuid().optional().nullable(),
+  scheduled_at: z.string().optional().nullable(), // ISO or datetime-local string; proposed appointment time when paid
 });
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -30,6 +33,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .single();
     if (!reqRow) return notFoundResponse("Custom request not found");
 
+    // Validate staff_id and location_id belong to this provider
+    if (body.staff_id) {
+      const { data: staffRow } = await supabase
+        .from("provider_staff")
+        .select("id")
+        .eq("id", body.staff_id)
+        .eq("provider_id", providerId)
+        .single();
+      if (!staffRow) return handleApiError(new Error("Staff not found"), "Invalid staff", 400);
+    }
+    if (body.location_id) {
+      const { data: locRow } = await supabase
+        .from("provider_locations")
+        .select("id")
+        .eq("id", body.location_id)
+        .eq("provider_id", providerId)
+        .single();
+      if (!locRow) return handleApiError(new Error("Location not found"), "Invalid location", 400);
+    }
+
     const expIso = new Date(body.expiration_at).toISOString();
 
     const { data: offer, error } = await supabase
@@ -42,6 +65,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         duration_minutes: body.duration_minutes,
         expiration_at: expIso,
         notes: body.notes ?? null,
+        staff_id: body.staff_id ?? null,
+        location_id: body.location_id ?? null,
+        scheduled_at: body.scheduled_at ? new Date(body.scheduled_at).toISOString() : null,
         status: "pending",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -59,13 +85,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // Also send via messages: post an offer message in the customer<->provider conversation (best-effort)
     try {
       const customerId = (reqRow as any).customer_id as string;
+      // Use the most recently active conversation so the offer appears in the same thread the customer is likely in
       const { data: existingConv } = await supabase
         .from("conversations")
         .select("id")
         .eq("customer_id", customerId)
         .eq("provider_id", providerId)
         .is("booking_id", null)
-        .order("created_at", { ascending: true })
+        .order("last_message_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 

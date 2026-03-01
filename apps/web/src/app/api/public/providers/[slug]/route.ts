@@ -49,6 +49,7 @@ export async function GET(
         rating_average,
         review_count,
         thumbnail_url,
+        avatar_url,
         gallery,
         is_featured,
         is_verified,
@@ -87,6 +88,7 @@ export async function GET(
           rating_average,
           review_count,
           thumbnail_url,
+          avatar_url,
           gallery,
           is_featured,
           is_verified,
@@ -130,6 +132,7 @@ export async function GET(
             rating_average,
             review_count,
             thumbnail_url,
+            avatar_url,
             gallery,
             is_featured,
             is_verified,
@@ -163,6 +166,7 @@ export async function GET(
             rating_average,
             review_count,
             thumbnail_url,
+            avatar_url,
             gallery,
             is_featured,
             is_verified,
@@ -386,8 +390,10 @@ export async function GET(
       }
     }
 
-    // Check if provider supports salon (has active locations)
-    supportsSalon = locations && locations.length > 0;
+    // Support salon only if provider has at least one physical salon location (location_type = 'salon').
+    // Base-only locations (location_type = 'base') are for distance/travel only—mobile-only freelancers.
+    const salonLocations = (locations || []).filter((l: any) => (l.location_type || "salon") === "salon");
+    supportsSalon = salonLocations.length > 0;
 
     // Ensure business_name is not null/undefined
     if (!providerData.business_name) {
@@ -402,6 +408,7 @@ export async function GET(
       rating: providerData.rating_average ?? 0,
       review_count: providerData.review_count ?? 0,
       thumbnail_url: providerData.thumbnail_url,
+      avatar_url: providerData.avatar_url ?? null,
       city: city,
       country: country,
       is_featured: providerData.is_featured ?? false,
@@ -413,6 +420,7 @@ export async function GET(
       categories: categories as string[],
       supports_house_calls: supportsHouseCalls,
       supports_salon: supportsSalon,
+      // Include location_type so booking flow can show only salon locations for "Visit Salon"; base = distance-only (mobile-only).
       locations: ((locations || []) as any[]).map((loc: any) => ({
         id: loc.id,
         provider_id: loc.provider_id,
@@ -428,6 +436,7 @@ export async function GET(
         phone: loc.phone,
         is_active: loc.is_active,
         working_hours: loc.working_hours,
+        location_type: loc.location_type || "salon",
         created_at: loc.created_at,
         updated_at: loc.updated_at,
       })),

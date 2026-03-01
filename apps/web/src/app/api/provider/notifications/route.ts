@@ -59,11 +59,12 @@ export async function GET(request: NextRequest) {
       console.warn('Error counting unread notifications:', countError);
     }
     
-    // Transform notifications to match frontend expectations (map is_read to read)
+    // Transform notifications to match frontend expectations (map is_read to read, action_url to link)
     const transformedNotifications = (notifications || []).map((n: any) => ({
       ...n,
       read: n.is_read,
       timestamp: n.created_at,
+      link: n.link ?? n.action_url ?? undefined,
     }));
 
     return successResponse({

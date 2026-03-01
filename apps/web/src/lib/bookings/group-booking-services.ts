@@ -46,14 +46,12 @@ export async function createGroupBookingServices(
     currency: string;
     scheduled_start_at: string;
     scheduled_end_at: string;
-    participant_id?: string;
-    participant_name?: string;
+    guest_name?: string | null;
   }> = [];
 
-  // Calculate time cursor - all participants start at the same time
+  // All participants share the same start time; each participant's services are sequential per person
   const baseCursor = new Date(scheduledStartAt);
 
-  // For each participant, create booking_services for their selected services
   for (const participant of participants) {
     let participantCursor = new Date(baseCursor);
 
@@ -73,11 +71,9 @@ export async function createGroupBookingServices(
         currency: service.currency,
         scheduled_start_at: start.toISOString(),
         scheduled_end_at: end.toISOString(),
-        participant_id: participant.id,
-        participant_name: participant.name,
+        guest_name: participant.name || null,
       });
 
-      // Advance cursor by duration (participants can have overlapping services)
       participantCursor = new Date(end);
     }
   }

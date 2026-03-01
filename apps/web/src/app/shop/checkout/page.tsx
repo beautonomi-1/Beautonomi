@@ -82,7 +82,7 @@ export default function ProductCheckoutPage() {
       const cartRes = await fetcher.get<{ data: { items: CartItem[] } }>("/api/me/cart");
       const allItems = cartRes?.data?.items ?? [];
       const providerItems = allItems.filter(
-        (item: any) => item.provider_id === providerId,
+        (item: any) => (item.provider?.id ?? item.product?.provider_id) === providerId,
       );
       setItems(providerItems);
 
@@ -332,6 +332,11 @@ export default function ProductCheckoutPage() {
           {fulfillment === "delivery" && (
             <div className="bg-white rounded-xl border p-6">
               <h3 className="font-semibold text-gray-900 mb-4">Delivery Address</h3>
+              {shippingConfig?.estimated_delivery_days != null && Number(shippingConfig.estimated_delivery_days) > 0 && (
+                <p className="text-sm text-gray-500 mb-4">
+                  Estimated delivery: within {Number(shippingConfig.estimated_delivery_days)} business day{Number(shippingConfig.estimated_delivery_days) !== 1 ? "s" : ""}
+                </p>
+              )}
               {addresses.length === 0 ? (
                 <div className="text-center py-4">
                   <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />

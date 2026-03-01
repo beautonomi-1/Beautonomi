@@ -1,8 +1,10 @@
 export { BookingNav } from "./BookingNav";
 export { BookingStepper } from "./BookingStepper";
 export { StepVenue } from "./StepVenue";
+export { StepCategory } from "./StepCategory";
 export { StepServices } from "./StepServices";
 export { StepAddons } from "./StepAddons";
+export { StepGroupParticipants } from "./StepGroupParticipants";
 export { StepStaff } from "./StepStaff";
 export { StepSchedule } from "./StepSchedule";
 export { StepIntake } from "./StepIntake";

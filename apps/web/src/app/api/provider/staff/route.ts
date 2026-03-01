@@ -189,11 +189,11 @@ export async function GET(request: NextRequest) {
                    : member.role === "manager" ? "provider_manager"
                    : "provider_staff";
       
-      // Extract location assignments
+      // Extract location assignments (staff_locations have location_name/location_city from join)
       const locations = (member.staff_locations || []).map((sl: any) => ({
         location_id: sl.location_id,
-        location_name: sl.location?.name || null,
-        location_city: sl.location?.city || null,
+        location_name: sl.location_name ?? sl.location?.name ?? null,
+        location_city: sl.location_city ?? sl.location?.city ?? null,
         is_primary: sl.is_primary || false,
       }));
       

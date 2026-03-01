@@ -14,6 +14,7 @@ export default function ProviderMetadata({
     business_name?: string;
     description?: string | null;
     thumbnail_url?: string | null;
+    avatar_url?: string | null;
     slug?: string;
     rating?: number;
     review_count?: number;
@@ -98,10 +99,34 @@ export default function ProviderMetadata({
     }
     canonical.setAttribute("href", profileUrl);
 
-    // Cleanup function (optional, but good practice)
-    return () => {
-      // Optionally reset to defaults on unmount
+    // JSON-LD: use thumbnail for image; use avatar_url as logo (distinct face/logo) when present
+    const toAbsolute = (url: string) => {
+      if (url.startsWith("http://") || url.startsWith("https://")) return url;
+      if (url.startsWith("/")) return `${siteUrl}${url}`;
+      return url;
     };
+    const schema: Record<string, unknown> = {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      name: provider.business_name || "Provider",
+      url: profileUrl,
+      description: provider.description || undefined,
+      image: ogImage,
+    };
+    if (provider.avatar_url) {
+      schema.logo = toAbsolute(provider.avatar_url);
+    }
+    if (provider.rating != null) schema.aggregateRating = { "@type": "AggregateRating", ratingValue: provider.rating, reviewCount: provider.review_count ?? 0 };
+    let schemaEl = document.getElementById("provider-jsonld") as HTMLScriptElement | null;
+    if (!schemaEl) {
+      schemaEl = document.createElement("script");
+      schemaEl.id = "provider-jsonld";
+      schemaEl.type = "application/ld+json";
+      document.head.appendChild(schemaEl);
+    }
+    schemaEl.textContent = JSON.stringify(schema);
+
+    return () => {};
   }, [provider, slug]);
 
   return null; // This component doesn't render anything

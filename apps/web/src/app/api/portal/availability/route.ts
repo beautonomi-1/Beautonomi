@@ -9,7 +9,10 @@ import { checkPortalRateLimit } from "@/lib/rate-limit/portal";
 /**
  * GET /api/portal/availability
  *
- * Get available time slots for rescheduling via portal token
+ * Get available time slots for rescheduling via portal token.
+ * Uses loadAvailabilityConstraints + calculateAvailableSlots (not the public
+ * book flow availability route). Duration includes service buffers so the
+ * blocked span matches the booking flow.
  * Query params: token, date
  */
 export async function GET(request: NextRequest) {
@@ -84,9 +87,12 @@ export async function GET(request: NextRequest) {
       return successResponse({ date, slots: [] });
     }
 
+    // Total blocked span = sum(durations) + sum(buffers) to match book flow semantics
     let totalDuration = 0;
     for (const bs of services) {
-      totalDuration += bs.duration_minutes || bs.offerings?.duration_minutes || 60;
+      const dur = bs.duration_minutes ?? bs.offerings?.duration_minutes ?? 60;
+      const buf = bs.offerings?.buffer_minutes ?? 15;
+      totalDuration += dur + buf;
     }
     totalDuration = totalDuration || 60;
 

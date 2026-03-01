@@ -12,9 +12,10 @@ import {
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
     
@@ -42,7 +43,7 @@ export async function GET(
         payments:provider_invoice_payments(*)
       `
       )
-      .eq("id", params.id);
+      .eq("id", id);
 
     if (providerId) {
       query = query.eq("provider_id", providerId);

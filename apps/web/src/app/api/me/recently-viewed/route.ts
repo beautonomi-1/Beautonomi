@@ -77,6 +77,7 @@ export async function GET(request: NextRequest) {
         rating,
         review_count,
         thumbnail_url,
+        avatar_url,
         city,
         country,
         description,

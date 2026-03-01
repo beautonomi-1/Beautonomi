@@ -43,6 +43,7 @@ interface ProviderLocation {
   city: string;
   country: string;
   is_primary: boolean;
+  location_type?: "salon" | "base";
 }
 
 export default function StepVenueChoice({
@@ -123,9 +124,11 @@ export default function StepVenueChoice({
       const response = await fetcher.get<{ data: { locations?: ProviderLocation[] } }>(
         `/api/public/providers/${encodeURIComponent(providerSlug)}`
       );
-      const locations = response.data?.locations || [];
+      const allLocations = response.data?.locations || [];
+      // Only show locations where clients can visit (salon); base = distance-only
+      const locations = allLocations.filter((l) => (l.location_type || "salon") === "salon");
       setProviderLocations(locations);
-      
+
       // Auto-select location:
       // 1. If only one location, select it
       // 2. If multiple locations, select primary
@@ -133,13 +136,12 @@ export default function StepVenueChoice({
       if (locations.length === 1) {
         updateBookingState({ selectedLocationId: locations[0].id });
       } else if (locations.length > 1) {
-        const primaryLocation = locations.find(loc => loc.is_primary) || locations[0];
+        const primaryLocation = locations.find((loc) => loc.is_primary) || locations[0];
         if (primaryLocation) {
           updateBookingState({ selectedLocationId: primaryLocation.id });
         }
       } else if (locations.length === 0) {
-        // No locations available - this will be caught in validation
-        console.warn("No locations available for this provider");
+        updateBookingState({ selectedLocationId: undefined });
       }
     } catch (error) {
       console.error("Error loading provider locations:", error);

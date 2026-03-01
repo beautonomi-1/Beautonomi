@@ -18,12 +18,16 @@ interface Resource {
 }
 
 interface ResourceSelectionProps {
+  /** Provider UUID or slug; public APIs use slug (e.g. from provider.slug) */
   providerId: string;
   serviceIds: string[];
   selectedDate: Date | null;
+  /** Slot start time (e.g. "10:00" or ISO string); used with selectedDate for availability check */
   selectedTimeSlot: string | null;
   selectedResources: string[];
   onResourceChange: (resourceIds: string[]) => void;
+  /** Duration in minutes for the booking; used to compute end_at for availability check */
+  durationMinutes?: number;
   className?: string;
 }
 
@@ -34,6 +38,7 @@ export default function ResourceSelection({
   selectedTimeSlot,
   selectedResources,
   onResourceChange,
+  durationMinutes = 60,
   className,
 }: ResourceSelectionProps) {
   const [resources, setResources] = useState<Resource[]>([]);
@@ -55,15 +60,12 @@ export default function ResourceSelection({
   const loadResources = async () => {
     setIsLoading(true);
     try {
-      // Load resources for the provider and services
-      // This would be a new API endpoint: /api/public/providers/[id]/resources
-      const response = await fetcher.get<{ resources: Resource[] }>(
+      const response = await fetcher.get<{ resources?: Resource[]; data?: Resource[] }>(
         `/api/public/providers/${providerId}/resources?service_ids=${serviceIds.join(",")}`
       );
-      setResources(response.resources || []);
+      const list = response.resources ?? response.data ?? [];
+      setResources(Array.isArray(list) ? list : []);
     } catch {
-      // If API doesn't exist yet, show empty state
-      console.log("Resources API not available yet");
       setResources([]);
     } finally {
       setIsLoading(false);
@@ -71,16 +73,20 @@ export default function ResourceSelection({
   };
 
   const checkAvailability = async () => {
-    if (!selectedDate || !selectedTimeSlot) return;
+    if (!selectedDate || !selectedTimeSlot || selectedResources.length === 0) return;
 
     try {
       const dateStr = selectedDate.toISOString().split("T")[0];
+      const timeStr = typeof selectedTimeSlot === "string" && selectedTimeSlot.length >= 5
+        ? selectedTimeSlot.slice(0, 5)
+        : selectedTimeSlot;
       const response = await fetcher.post<{ available: Record<string, boolean> }>(
-        `/api/availability/resources/check`,
+        `/api/public/providers/${providerId}/availability/resources/check`,
         {
           resource_ids: selectedResources,
           date: dateStr,
-          time: selectedTimeSlot,
+          time: timeStr,
+          duration_minutes: durationMinutes,
         }
       );
       setAvailability(response.available || {});

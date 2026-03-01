@@ -43,8 +43,11 @@ function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string) {
 
 /**
  * GET /api/public/providers/[slug]/availability
- * 
- * Get available time slots for a provider
+ *
+ * Get available time slots for the public book flow (express/online booking).
+ * Accepts duration_minutes and buffer_minutes so multi-service and group
+ * bookings can pass total span. Reschedule/portal use a separate pipeline:
+ * loadAvailabilityConstraints + calculateAvailableSlots (see /api/portal/availability).
  */
 export async function GET(
   request: Request,
@@ -59,7 +62,8 @@ export async function GET(
     const serviceId = searchParams.get("service_id");
     const staffId = searchParams.get("staff_id");
     const locationId = searchParams.get("location_id");
-    let durationMinutes = parseInt(searchParams.get("duration_minutes") || "60");
+    const paramDuration = searchParams.get("duration_minutes");
+    const paramBuffer = searchParams.get("buffer_minutes");
     const minNoticeMinutes = parseInt(searchParams.get("min_notice_minutes") || "0");
     const maxAdvanceDays = parseInt(searchParams.get("max_advance_days") || "365");
 
@@ -76,7 +80,6 @@ export async function GET(
       );
     }
 
-    if (Number.isNaN(durationMinutes) || durationMinutes <= 0) durationMinutes = 60;
     const effectiveMinNotice = Number.isNaN(minNoticeMinutes) || minNoticeMinutes < 0 ? 0 : minNoticeMinutes;
     const effectiveMaxAdvance = Number.isNaN(maxAdvanceDays) || maxAdvanceDays < 1 ? 365 : maxAdvanceDays;
 
@@ -101,8 +104,9 @@ export async function GET(
       );
     }
 
-    // If service_id provided, load offering duration/buffer
-    let bufferMinutes = 0;
+    // Duration and buffer: use query params when provided (e.g. multi-service total); else use single offering when service_id given
+    let durationMinutes = paramDuration != null ? parseInt(paramDuration, 10) : NaN;
+    let bufferMinutes = paramBuffer != null ? parseInt(paramBuffer, 10) : NaN;
     if (serviceId) {
       const { data: offering, error: offeringError } = await supabase
         .from("offerings")
@@ -110,13 +114,20 @@ export async function GET(
         .eq("id", serviceId)
         .single();
       if (!offeringError && offering && offering.provider_id === provider.id && offering.is_active) {
-        durationMinutes = Number(offering.duration_minutes) || durationMinutes;
-        bufferMinutes = Number(offering.buffer_minutes) || 0;
+        if (Number.isNaN(durationMinutes) || durationMinutes <= 0)
+          durationMinutes = Number(offering.duration_minutes) || 60;
+        if (Number.isNaN(bufferMinutes) || bufferMinutes < 0)
+          bufferMinutes = Number(offering.buffer_minutes) || 0;
       }
     }
+    if (Number.isNaN(durationMinutes) || durationMinutes <= 0) durationMinutes = 60;
+    if (Number.isNaN(bufferMinutes) || bufferMinutes < 0) bufferMinutes = 0;
 
-    // "any" = aggregate slots across all staff (anyone available)
-    const anyoneMode = staffId === "any" || staffId === "";
+    // "any" or synthetic "provider-*" (solo provider with no provider_staff rows) = aggregate slots
+    const anyoneMode =
+      staffId === "any" ||
+      staffId === "" ||
+      (typeof staffId === "string" && staffId.startsWith("provider-"));
     const effectiveStaffId = anyoneMode ? null : staffId;
 
     // Determine working hours: prefer staff hours if staff_id provided, otherwise location hours (primary/selected)
@@ -263,9 +274,11 @@ export async function GET(
             }
           }
         }
+        // Return slot end as start + totalSpan so clients (holds) store the full blocked period including buffer
+        const slotEndFullIso = isoAtLocalDateMinutes(date, startMin + totalSpan);
         slots.push({
           start: slotStartIso,
-          end: slotEndIso,
+          end: slotEndFullIso,
           staff_id: sid || undefined,
           location_id: locationId || undefined,
           is_available: available,
@@ -280,8 +293,9 @@ export async function GET(
       const slotToStaff = new Map<string, string>();
       const allStarts = new Set<string>();
       for (const s of staffList) {
+        // Use staff's working_hours; fallback to location/default is inside buildSlotsForStaff
         const hours = (s.working_hours || {})[day] || null;
-        const staffSlots = buildSlotsForStaff(hours, s.id);
+        const staffSlots = buildSlotsForStaff(hours ?? locationHours, s.id);
         for (const slot of staffSlots) {
           allStarts.add(slot.start);
           if (slot.is_available && !slotToStaff.has(slot.start)) {
@@ -289,11 +303,12 @@ export async function GET(
           }
         }
       }
+      const totalSpan = slotDuration + bufferMinutes;
       slots = Array.from(allStarts)
         .sort()
         .map((start) => {
           const end = new Date(start);
-          end.setMinutes(end.getMinutes() + slotDuration);
+          end.setMinutes(end.getMinutes() + totalSpan);
           const availableStaffId = slotToStaff.get(start);
           return {
             start,
@@ -328,6 +343,32 @@ export async function GET(
     if (effectiveMinNotice > 0 && date === today.toISOString().split("T")[0]) {
       const cutoff = new Date(Date.now() + effectiveMinNotice * 60 * 1000);
       slots = slots.filter((s) => new Date(s.start) >= cutoff);
+    }
+
+    // Filter by resource availability when service requires resources
+    if (serviceId && slots.length > 0) {
+      const { data: offeringRes } = await supabase
+        .from("offering_resources")
+        .select("resource_id")
+        .eq("offering_id", serviceId)
+        .eq("required", true);
+      const resourceIds = [...new Set((offeringRes || []).map((r: any) => r.resource_id))];
+      if (resourceIds.length > 0) {
+        const { checkResourceAvailability } = await import("@/lib/resources/assignment");
+        const slotDurationMs = durationMinutes * 60 * 1000;
+        const availableSlots: AvailabilitySlot[] = [];
+        for (const slot of slots) {
+          const startAt = new Date(slot.start);
+          const endAt = new Date(startAt.getTime() + slotDurationMs);
+          const check = await checkResourceAvailability(supabase, resourceIds, startAt, endAt);
+          if (check.available) {
+            availableSlots.push(slot);
+          } else {
+            availableSlots.push({ ...slot, is_available: false });
+          }
+        }
+        slots = availableSlots;
+      }
     }
 
     return NextResponse.json({

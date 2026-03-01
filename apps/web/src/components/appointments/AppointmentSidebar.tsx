@@ -221,6 +221,11 @@ export function AppointmentSidebar({
     updateSelectedAppointment,
   } = useAppointmentSidebar();
 
+  // In-salon appointments: only list locations where clients can visit (location_type === 'salon'); base = distance-only
+  const salonLocations = (locations || []).filter(
+    (l) => (l.location_type ?? "salon") !== "base"
+  );
+
   // Refund dialog state
   const [showRefundDialog, setShowRefundDialog] = useState(false);
   const [refundReason, setRefundReason] = useState("");
@@ -1983,7 +1988,7 @@ export function AppointmentSidebar({
         notes: formData.notes || undefined,
         location_type: formData.kind === AppointmentKind.AT_HOME ? "at_home" : "at_salon",
         location_id: formData.locationId || undefined,
-        location_name: (locations || []).find(l => l.id === formData.locationId)?.name,
+        location_name: (salonLocations || []).find(l => l.id === formData.locationId)?.name,
         // Pricing breakdown
         subtotal: formData.subtotal,
         discount_amount: formData.discountAmount,
@@ -3092,7 +3097,7 @@ export function AppointmentSidebar({
                     <div className="flex items-center gap-2">
                       <Building2 className="w-4 h-4 text-gray-400" />
                       <span className="text-sm text-gray-700">
-                        {(locations || []).find(l => l.id === formData.locationId)?.name || "No location"}
+                        {(salonLocations || []).find(l => l.id === formData.locationId)?.name || "No location"}
                       </span>
                     </div>
                   )}
@@ -3111,13 +3116,13 @@ export function AppointmentSidebar({
                       ))}
                     </SelectContent>
                   </Select>
-                  {formData.kind !== AppointmentKind.AT_HOME && locations.length > 0 && (
+                  {formData.kind !== AppointmentKind.AT_HOME && salonLocations.length > 0 && (
                     <Select value={formData.locationId} onValueChange={(v) => setFormData(prev => ({ ...prev, locationId: v }))}>
                       <SelectTrigger className="w-full max-w-full min-w-0 box-border">
                         <SelectValue placeholder="Select location" />
                       </SelectTrigger>
                       <SelectContent>
-                        {(locations || []).map((location) => (
+                        {salonLocations.map((location) => (
                           <SelectItem key={location.id} value={location.id}>
                             {location.name}
                           </SelectItem>

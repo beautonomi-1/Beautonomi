@@ -11,7 +11,8 @@ export async function GET(request: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       { auth: { autoRefreshToken: false, persistSession: false } },
-    );    const sp = request.nextUrl.searchParams;
+    );
+    const sp = request.nextUrl.searchParams;
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
 
@@ -26,7 +27,12 @@ export async function GET(request: NextRequest) {
 
     const startTime = new Date(scheduledAt);
     const endTime = addMinutes(startTime, durationMinutes);
+    const dateStr = scheduledAt.slice(0, 10);
 
+    const conflicts: string[] = [];
+    const staffIds = staffIdsParam ? staffIdsParam.split(",").filter(Boolean) : [];
+
+    // 1) Existing bookings overlap
     let query = supabaseAdmin
       .from("bookings")
       .select("id, booking_number, scheduled_at, booking_services(duration_minutes, staff_id)")
@@ -41,9 +47,6 @@ export async function GET(request: NextRequest) {
 
     const { data: overlapping } = await query;
 
-    const conflicts: string[] = [];
-    const staffIds = staffIdsParam ? staffIdsParam.split(",") : [];
-
     (overlapping || []).forEach((b: any) => {
       const bStart = new Date(b.scheduled_at);
       const bDuration = (b.booking_services || []).reduce((s: number, bs: any) => s + (bs.duration_minutes || 30), 0);
@@ -52,12 +55,31 @@ export async function GET(request: NextRequest) {
       if (startTime < bEnd && endTime > bStart) {
         if (staffIds.length > 0) {
           const bookingStaffIds = (b.booking_services || []).map((bs: any) => bs.staff_id).filter(Boolean);
-          const hasConflict = staffIds.some((sid) => bookingStaffIds.includes(sid));
-          if (hasConflict) {
-            conflicts.push(`Conflict with booking #${b.booking_number}`);
-          }
+          const hasConflict = bookingStaffIds.length === 0 || staffIds.some((sid) => bookingStaffIds.includes(sid));
+          if (hasConflict) conflicts.push(`Conflict with booking #${b.booking_number}`);
         } else {
           conflicts.push(`Conflict with booking #${b.booking_number}`);
+        }
+      }
+    });
+
+    // 2) Time blocks (breaks, time off) – treat as unavailable
+    const { data: timeBlocks } = await supabaseAdmin
+      .from("time_blocks")
+      .select("id, staff_id, name, date, start_time, end_time, is_active")
+      .eq("provider_id", providerId)
+      .eq("date", dateStr)
+      .eq("is_active", true);
+
+    (timeBlocks || []).forEach((block: any) => {
+      const startPart = typeof block.start_time === "string" ? block.start_time.slice(0, 5) : "00:00";
+      const endPart = typeof block.end_time === "string" ? block.end_time.slice(0, 5) : "23:59";
+      const blockStart = new Date(`${block.date}T${startPart}:00`);
+      const blockEnd = new Date(`${block.date}T${endPart}:00`);
+      if (startTime < blockEnd && endTime > blockStart) {
+        const appliesToStaff = !block.staff_id || staffIds.length === 0 || staffIds.includes(block.staff_id);
+        if (appliesToStaff) {
+          conflicts.push(block.name ? `Time block: ${block.name}` : "Time block conflicts with this slot");
         }
       }
     });

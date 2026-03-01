@@ -11,11 +11,16 @@ export async function GET(
 ) {
   try {
     const supabase = await getSupabaseServer();
-    const { slug } = await params;
+    let { slug } = await params;
+    try {
+      slug = decodeURIComponent(slug);
+    } catch {
+      // keep slug as-is if decode fails
+    }
 
     const { data: provider, error: provErr } = await supabase
       .from("providers")
-      .select("id, online_booking_enabled")
+      .select("id, online_booking_enabled, waitlist_online_enabled")
       .eq("slug", slug)
       .eq("status", "active")
       .single();
@@ -49,6 +54,8 @@ export async function GET(
       deposit_required: false,
       deposit_amount: null as number | null,
       deposit_percent: null as number | null,
+      allow_online_waitlist: !!(provider as { waitlist_online_enabled?: boolean }).waitlist_online_enabled,
+      tip_suggestions: [0, 50, 100, 150, 200] as number[],
     };
 
     const merged = settings
@@ -62,6 +69,10 @@ export async function GET(
           deposit_required: settings.deposit_required ?? defaults.deposit_required,
           deposit_amount: settings.deposit_amount ?? defaults.deposit_amount,
           deposit_percent: settings.deposit_percent ?? defaults.deposit_percent,
+          allow_online_waitlist: (provider as { waitlist_online_enabled?: boolean }).waitlist_online_enabled ?? defaults.allow_online_waitlist,
+          tip_suggestions: Array.isArray((settings as { tip_suggestions?: number[] }).tip_suggestions)
+            ? (settings as { tip_suggestions: number[] }).tip_suggestions
+            : defaults.tip_suggestions,
         }
       : defaults;
 

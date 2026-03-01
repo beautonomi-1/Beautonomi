@@ -182,16 +182,28 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // 4. Deduct loyalty points if used
+      // 4. Deduct loyalty points if used (idempotent: check for existing redemption for this booking)
       if (metadata.loyalty_points_used && parseInt(metadata.loyalty_points_used) > 0) {
         const pointsUsed = parseInt(metadata.loyalty_points_used);
-        await supabase.from("loyalty_point_transactions").insert({
-          user_id: user.id,
-          points: -pointsUsed,
-          type: "redeemed",
-          description: `Redeemed for booking ${bookingId}`,
-          booking_id: bookingId,
-        });
+        const { data: existing } = await supabase
+          .from("loyalty_point_transactions")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("reference_id", bookingId)
+          .eq("reference_type", "booking")
+          .eq("transaction_type", "redeemed")
+          .maybeSingle();
+        if (!existing) {
+          await supabase.from("loyalty_point_transactions").insert({
+            user_id: user.id,
+            points: pointsUsed,
+            transaction_type: "redeemed",
+            description: `Redeemed for booking`,
+            reference_id: bookingId,
+            reference_type: "booking",
+          });
+          await supabase.from("bookings").update({ loyalty_points_used: pointsUsed }).eq("id", bookingId);
+        }
       }
 
       // 5. Apply coupon usage

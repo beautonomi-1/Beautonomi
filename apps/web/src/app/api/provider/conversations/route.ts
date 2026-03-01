@@ -3,6 +3,17 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { createConversation } from "./_helpers/create-conversation";
+
+/**
+ * POST /api/provider/conversations
+ *
+ * Create a new conversation with a customer (provider-initiated).
+ * Same behavior as POST /api/provider/conversations/create.
+ */
+export async function POST(request: NextRequest) {
+  return createConversation(request);
+}
 
 /**
  * GET /api/provider/conversations
@@ -110,7 +121,7 @@ export async function GET(request: NextRequest) {
       const supabaseAdmin = await getSupabaseAdmin();
       const { data: customers, error: customerError } = await supabaseAdmin
         .from("users")
-        .select("id, full_name, email, avatar_url")
+        .select("id, full_name, email, phone, avatar_url")
         .in("id", customerIds);
       
       if (customerError) {
@@ -158,6 +169,8 @@ export async function GET(request: NextRequest) {
         customer_id: conv.customer_id,
         customer_name: customerName,
         customer_avatar: customer?.avatar_url || null,
+        customer_email: customer?.email || null,
+        customer_phone: customer?.phone || null,
         last_message: conv.last_message_preview || "",
         last_message_time: conv.last_message_at || conv.created_at,
         last_message_at: conv.last_message_at || conv.created_at, // Ensure last_message_at is set

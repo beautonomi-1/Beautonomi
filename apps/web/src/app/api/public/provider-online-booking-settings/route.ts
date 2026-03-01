@@ -54,6 +54,7 @@ export async function GET(request: NextRequest) {
       deposit_required: false,
       deposit_amount: null as number | null,
       deposit_percent: null as number | null,
+      tip_suggestions: [0, 50, 100, 150, 200] as number[],
     };
 
     const merged = settings
@@ -67,6 +68,9 @@ export async function GET(request: NextRequest) {
           deposit_required: settings.deposit_required ?? defaults.deposit_required,
           deposit_amount: settings.deposit_amount ?? defaults.deposit_amount,
           deposit_percent: settings.deposit_percent ?? defaults.deposit_percent,
+          tip_suggestions: Array.isArray((settings as { tip_suggestions?: number[] }).tip_suggestions)
+            ? (settings as { tip_suggestions: number[] }).tip_suggestions
+            : defaults.tip_suggestions,
         }
       : defaults;
 

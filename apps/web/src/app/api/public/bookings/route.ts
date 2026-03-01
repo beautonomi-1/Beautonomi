@@ -9,6 +9,7 @@ import { validateBooking } from "./_helpers/validate-booking";
 import { createBookingRecord } from "./_helpers/create-booking-record";
 import { processPayment } from "./_helpers/process-payment";
 import { postBookingEffects } from "./_helpers/post-booking";
+import { ensureUserProfileForAuthUser } from "./_helpers/ensure-user-profile";
 
 const bookingDraftSchema = z.object({
   provider_id: z.string().uuid("Invalid provider ID"),
@@ -77,6 +78,7 @@ const bookingDraftSchema = z.object({
     })
   ).optional().nullable(),
   hold_id: z.string().uuid().optional().nullable(),
+  loyalty_points_used: z.number().int().min(0).optional(),
 });
 
 /**
@@ -114,6 +116,9 @@ export async function POST(request: NextRequest) {
     }
 
     const supabaseAdmin = await getSupabaseAdmin();
+
+    // 2.5. Ensure user has a public profile (handles new sign-ins where trigger hasn't run yet)
+    await ensureUserProfileForAuthUser(supabaseAdmin, user);
 
     // 3. Validate booking (provider, services, pricing, conflicts, resources)
     const validationResult = await validateBooking(

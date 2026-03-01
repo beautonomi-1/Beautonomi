@@ -1,6 +1,7 @@
 /**
- * OAuth Callback Handler
- * Handles OAuth redirects from social login providers
+ * Auth Callback Handler
+ * - OAuth: exchange code for session, redirect to booking
+ * - Password recovery / magic link: verify token_hash, redirect to reset-password or home
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -9,6 +10,8 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
+  const tokenHash = requestUrl.searchParams.get("token_hash");
+  const type = requestUrl.searchParams.get("type");
   const error = requestUrl.searchParams.get("error");
   const errorDescription = requestUrl.searchParams.get("error_description");
 
@@ -20,13 +23,32 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const supabase = await getSupabaseServer();
+
+  // Password recovery or magic link (e.g. from provider app forgot-password)
+  if (tokenHash && (type === "recovery" || type === "signup" || type === "email")) {
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: type as "recovery" | "signup" | "email",
+    });
+    if (verifyError) {
+      console.error("Auth verifyOtp error:", verifyError);
+      return NextResponse.redirect(
+        new URL(`/booking?error=${encodeURIComponent(verifyError.message)}`, requestUrl.origin)
+      );
+    }
+    if (type === "recovery") {
+      return NextResponse.redirect(new URL("/account-settings/login-and-security/reset-password", requestUrl.origin));
+    }
+    const next = requestUrl.searchParams.get("next") || "/";
+    return NextResponse.redirect(new URL(next, requestUrl.origin));
+  }
+
   if (!code) {
     return NextResponse.redirect(
       new URL("/booking?error=missing_code", requestUrl.origin)
     );
   }
-
-  const supabase = await getSupabaseServer();
 
   // Exchange code for session
   const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
@@ -97,13 +119,20 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Try to restore booking state from localStorage (handled client-side)
-  // For now, redirect back to booking page
-  // The booking flow will check auth state and continue
-  const redirectUrl = new URL("/booking", requestUrl.origin);
-  
-  // Preserve any query params that were in the original booking URL
-  // This will be handled by the booking flow component checking localStorage
-  
-  return NextResponse.redirect(redirectUrl);
+  // Redirect: use "next" param if present (e.g. /provider/dashboard when logging in from provider page)
+  const nextParam = requestUrl.searchParams.get("next");
+  const allowedPaths = ["/provider/dashboard", "/provider", "/provider/onboarding", "/booking", "/account-settings", "/admin/dashboard"];
+  let normalizedPath: string | null = null;
+  if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
+    normalizedPath = new URL(nextParam, requestUrl.origin).pathname;
+  }
+  const isAllowedNext =
+    normalizedPath !== null &&
+    allowedPaths.some((p) => normalizedPath === p || normalizedPath!.startsWith(p + "/"));
+
+  if (isAllowedNext && normalizedPath) {
+    return NextResponse.redirect(new URL(normalizedPath, requestUrl.origin));
+  }
+
+  return NextResponse.redirect(new URL("/booking", requestUrl.origin));
 }

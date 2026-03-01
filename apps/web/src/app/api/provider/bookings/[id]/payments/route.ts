@@ -8,13 +8,13 @@ import { requireRoleInApi, getProviderIdForUser, handleApiError, successResponse
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: bookingId } = await params;
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff'], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
-    const { id: bookingId } = params;
 
     if (!providerId) {
       return badRequestResponse("Provider not found");

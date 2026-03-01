@@ -9,9 +9,10 @@ import { requirePermission } from "@/lib/auth/requirePermission";
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const permissionCheck = await requirePermission("edit_settings", request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
@@ -40,7 +41,7 @@ export async function PATCH(
     const { data: paymentMethod, error } = await supabase
       .from("provider_payment_methods")
       .update(updates)
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .select()
       .single();
@@ -70,9 +71,10 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const permissionCheck = await requirePermission("edit_settings", request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
@@ -94,7 +96,7 @@ export async function DELETE(
     const { error } = await supabase
       .from("provider_payment_methods")
       .update({ is_active: false })
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId);
 
     if (error) {

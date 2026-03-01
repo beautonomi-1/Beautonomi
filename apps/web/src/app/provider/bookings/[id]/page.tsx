@@ -62,10 +62,25 @@ export default function ProviderBookingDetail() {
   const [notesText, setNotesText] = useState("");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
 
+  // Provider forms (for labelling form responses)
+  const [providerForms, setProviderForms] = useState<Array<{ id: string; title: string; fields: Array<{ id: string; name: string }> }>>([]);
+
   useEffect(() => {
     loadBooking();
     loadAdditionalCharges();
   }, [bookingId]);
+
+  useEffect(() => {
+    if (!booking?.provider_form_responses || Object.keys(booking.provider_form_responses).length === 0) return;
+    fetcher.get<{ data: Array<{ id: string; title: string; fields?: Array<{ id: string; name: string }> }> }>("/api/provider/forms")
+      .then((res) => {
+        const list = (res as { data?: Array<{ id: string; title: string; fields?: Array<{ id: string; name: string }> }> })?.data ?? [];
+        setProviderForms(list.map((f) => ({ id: f.id, title: f.title, fields: f.fields ?? [] })));
+      })
+      .catch((err) => {
+        if (process.env.NODE_ENV === "development") console.warn("[Provider booking] Failed to load forms list", err);
+      });
+  }, [booking?.provider_form_responses]);
 
   const loadBooking = async () => {
     try {
@@ -546,6 +561,52 @@ export default function ProviderBookingDetail() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Provider form responses (intake/consent/waiver filled at checkout) */}
+        {(booking as any).provider_form_responses && Object.keys((booking as any).provider_form_responses).length > 0 && (
+          <div className="bg-white border rounded-lg p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Form responses</h2>
+            <div className="space-y-4">
+              {Object.entries((booking as any).provider_form_responses).map(([formId, fields]) => {
+                const formMeta = providerForms.find((f) => f.id === formId);
+                const formTitle = formMeta?.title ?? `Form ${formId.slice(0, 8)}`;
+                const getFieldName = (fieldId: string) => formMeta?.fields?.find((f) => f.id === fieldId)?.name ?? fieldId.slice(0, 8);
+                return (
+                  <div key={formId} className="rounded-lg border border-gray-200 bg-gray-50/50 p-4">
+                    <p className="text-sm font-semibold text-gray-800 mb-2">{formTitle}</p>
+                    <dl className="space-y-2">
+                      {typeof fields === "object" && fields !== null && Object.entries(fields).map(([fieldKey, value]) => (
+                        <div key={fieldKey} className="flex justify-between gap-2 text-sm">
+                          <dt className="text-gray-600">{getFieldName(fieldKey)}</dt>
+                          <dd className="text-gray-900 font-medium text-right break-all">
+                            {value === null || value === undefined ? "—" : String(value)}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Additional details (platform booking custom fields) */}
+        {(booking as any).custom_field_values && Object.keys((booking as any).custom_field_values).length > 0 && (
+          <div className="bg-white border rounded-lg p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">Additional details</h2>
+            <dl className="space-y-2">
+              {Object.entries((booking as any).custom_field_values).map(([name, value]) => (
+                <div key={name} className="flex justify-between gap-2 text-sm">
+                  <dt className="text-gray-600">{name}</dt>
+                  <dd className="text-gray-900 font-medium text-right break-all">
+                    {value === null || value === undefined ? "—" : String(value)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           </div>
         )}
 

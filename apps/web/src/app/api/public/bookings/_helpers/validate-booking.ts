@@ -124,6 +124,31 @@ export async function validateBooking(
       400
     );
   }
+  if (draft.location_type === "at_salon" && draft.location_id) {
+    const { data: loc } = await supabase
+      .from("provider_locations")
+      .select("id, location_type")
+      .eq("id", draft.location_id)
+      .eq("provider_id", draft.provider_id)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (!loc) {
+      return handleApiError(
+        new Error("Selected location is not available"),
+        "Selected location is not available",
+        "VALIDATION_ERROR",
+        400
+      );
+    }
+    if ((loc as any).location_type === "base") {
+      return handleApiError(
+        new Error("This provider does not accept in-studio bookings at this location"),
+        "This location is for distance reference only; please book at home.",
+        "VALIDATION_ERROR",
+        400
+      );
+    }
+  }
   if (draft.location_type === "at_home" && !draft.address) {
     return handleApiError(
       new Error("address is required for at_home bookings"),
@@ -167,7 +192,15 @@ export async function validateBooking(
   }
 
   // ── Offerings ────────────────────────────────────────────────────────────
-  const offeringIds = draft.services.map((s) => s.offering_id);
+  let offeringIds = draft.services.map((s) => s.offering_id);
+  const isGroupBookingDraft =
+    Boolean(validatedDraft.is_group_booking) && Array.isArray(validatedDraft.group_participants) && validatedDraft.group_participants.length > 0;
+  if (isGroupBookingDraft) {
+    const groupIds = (validatedDraft.group_participants as any[]).flatMap(
+      (p: any) => p.service_ids ?? p.serviceIds ?? []
+    );
+    offeringIds = [...new Set([...offeringIds, ...groupIds])];
+  }
   const { data: offerings, error: offeringsError } = await supabase
     .from("offerings")
     .select(
@@ -197,6 +230,24 @@ export async function validateBooking(
         "VALIDATION_ERROR",
         400
       );
+    }
+  }
+
+  // Validate group participants' offerings (same provider, active)
+  if (isGroupBookingDraft) {
+    for (const p of validatedDraft.group_participants as any[]) {
+      const ids = p.service_ids ?? p.serviceIds ?? [];
+      for (const id of ids) {
+        const off = offeringById.get(id);
+        if (!off || off.provider_id !== draft.provider_id || !off.is_active) {
+          return handleApiError(
+            new Error("Invalid service selection for group participant"),
+            "Invalid service selection",
+            "VALIDATION_ERROR",
+            400
+          );
+        }
+      }
     }
   }
 
@@ -517,6 +568,29 @@ export async function validateBooking(
   );
   const appointmentStatus = await determineAppointmentStatusFromDB(supabaseAdmin, draft.provider_id);
 
+  // ── Group booking duration (for conflict check) ─────────────────────────
+  const isGroupBooking =
+    Boolean(validatedDraft.is_group_booking) && Boolean(validatedDraft.group_participants);
+  const groupParticipants = isGroupBooking ? validatedDraft.group_participants : null;
+  let groupTotalDurationMinutes: number | null = null;
+  if (isGroupBooking && groupParticipants && groupParticipants.length > 0) {
+    const { calculateGroupBookingDuration } = await import(
+      "@/lib/bookings/group-booking-services"
+    );
+    const durationMap = new Map<string, { duration_minutes: number }>();
+    for (const o of offeringById.values()) {
+      durationMap.set(o.id, { duration_minutes: Number(o.duration_minutes || 0) });
+    }
+    const primaryServiceIds = (draft.services || []).map((s: any) => s.offering_id);
+    const allParticipantsForDuration = [
+      { serviceIds: primaryServiceIds },
+      ...(groupParticipants as any[]).map((p: any) => ({
+        serviceIds: p.service_ids ?? p.serviceIds ?? [],
+      })),
+    ];
+    groupTotalDurationMinutes = calculateGroupBookingDuration(allParticipantsForDuration, durationMap);
+  }
+
   // ── Time-slot conflict check ─────────────────────────────────────────────
   const firstService = draft.services[0];
   let allowOverride = false;
@@ -526,12 +600,20 @@ export async function validateBooking(
     const selectedDatetime = new Date(draft.selected_datetime);
 
     let checkDuration = 0;
-    for (const s of draft.services) {
-      const off = offeringById.get(s.offering_id);
-      checkDuration += Number(off.duration_minutes || 0);
-      checkDuration += Number(off.buffer_minutes || 0);
-      checkDuration += Number(off.processing_minutes || 0);
-      checkDuration += Number(off.finishing_minutes || 0);
+    if (groupTotalDurationMinutes != null) {
+      checkDuration = groupTotalDurationMinutes;
+      const lastPrimaryOffering = offeringById.get(draft.services[draft.services.length - 1].offering_id);
+      checkDuration += Number(lastPrimaryOffering?.buffer_minutes || 0);
+      checkDuration += Number(lastPrimaryOffering?.processing_minutes || 0);
+      checkDuration += Number(lastPrimaryOffering?.finishing_minutes || 0);
+    } else {
+      for (const s of draft.services) {
+        const off = offeringById.get(s.offering_id);
+        checkDuration += Number(off.duration_minutes || 0);
+        checkDuration += Number(off.buffer_minutes || 0);
+        checkDuration += Number(off.processing_minutes || 0);
+        checkDuration += Number(off.finishing_minutes || 0);
+      }
     }
 
     if (draft.location_type === "at_home" && draft.address?.latitude && draft.address?.longitude) {
@@ -579,11 +661,18 @@ export async function validateBooking(
   const { getRequiredResourcesForOffering, checkResourceAvailability } = await import(
     "@/lib/resources/assignment"
   );
-  const allResourceIds: string[] = [];
+  let allResourceIds: string[] = [];
 
-  for (const s of draft.services) {
-    const requiredResources = await getRequiredResourcesForOffering(supabase, s.offering_id);
-    allResourceIds.push(...requiredResources);
+  const draftResourceIds = (draft as any).resource_ids;
+  if (Array.isArray(draftResourceIds) && draftResourceIds.length > 0) {
+    allResourceIds = draftResourceIds;
+  } else {
+    for (const s of draft.services) {
+      const requiredResources = await getRequiredResourcesForOffering(supabase, s.offering_id);
+      if (requiredResources.length >= 1) {
+        allResourceIds.push(requiredResources[0]);
+      }
+    }
   }
 
   if (allResourceIds.length > 0) {
@@ -613,10 +702,6 @@ export async function validateBooking(
   }
 
   // ── Build booking_services data ──────────────────────────────────────────
-  const isGroupBooking =
-    Boolean(validatedDraft.is_group_booking) && Boolean(validatedDraft.group_participants);
-  const groupParticipants = isGroupBooking ? validatedDraft.group_participants : null;
-
   let bookingServicesData: any[];
   let totalDuration = 0;
 
@@ -638,23 +723,19 @@ export async function validateBooking(
       });
     }
 
-    totalDuration = calculateGroupBookingDuration(
-      groupParticipants.map((p: any) => ({ serviceIds: p.serviceIds || [] })),
-      servicesMap
-    );
+    // Primary = booker; their services are draft.services. Others are in group_participants (each with service_ids).
+    const primaryServiceIds = (draft.services || []).map((s: any) => s.offering_id);
+    const allParticipantsForDuration = [
+      { serviceIds: primaryServiceIds },
+      ...groupParticipants.map((p: any) => ({ serviceIds: p.service_ids ?? p.serviceIds ?? [] })),
+    ];
+    totalDuration = calculateGroupBookingDuration(allParticipantsForDuration, servicesMap);
 
-    const clientInfo = validatedDraft.client_info || {};
-    const primaryParticipantServices =
-      groupParticipants.find(
-        (p: any) =>
-          p.name === `${clientInfo.firstName || ""} ${clientInfo.lastName || ""}`.trim() ||
-          p.id === "1"
-      ) || groupParticipants[0];
-
+    // Booking services data = primary's services only (one booking row; createGroupBookingServices adds others' services)
     let cursor = new Date(draft.selected_datetime);
-    bookingServicesData = (primaryParticipantServices.serviceIds || [])
+    bookingServicesData = primaryServiceIds
       .map((serviceId: string) => {
-        const s = draft.services.find((serv) => serv.offering_id === serviceId);
+        const s = draft.services.find((serv: any) => serv.offering_id === serviceId);
         if (!s) return null;
         const off = offeringById.get(s.offering_id);
         const start = new Date(cursor);
@@ -708,6 +789,22 @@ export async function validateBooking(
         scheduled_end_at: end.toISOString(),
       };
     });
+
+    // When "anyone" / no preference: assign a random available staff so booking appears on calendar
+    const allStaffNull = bookingServicesData.every((s: any) => !s.staff_id);
+    if (allStaffNull && draft.provider_id) {
+      const { data: staffRows } = await supabaseAdmin
+        .from("provider_staff")
+        .select("id")
+        .eq("provider_id", draft.provider_id)
+        .eq("is_active", true)
+        .limit(10);
+      const staffIds = (staffRows || []).map((r: any) => r.id);
+      if (staffIds.length > 0) {
+        const assignId = staffIds[Math.floor(Math.random() * staffIds.length)];
+        bookingServicesData = bookingServicesData.map((s: any) => ({ ...s, staff_id: assignId }));
+      }
+    }
   }
 
   // Ensure totalDuration is non-zero
@@ -719,7 +816,14 @@ export async function validateBooking(
   }
 
   const selectedDatetime = new Date(draft.selected_datetime);
-  const bookingEnd = new Date(selectedDatetime.getTime() + totalDuration * 60000);
+  // Include last service's buffer so RPC / conflict check use full blocked span
+  const lastOffering = draft.services.length
+    ? offeringById.get(draft.services[draft.services.length - 1].offering_id)
+    : null;
+  const lastBufferMinutes = Number(lastOffering?.buffer_minutes || 0);
+  const bookingEnd = new Date(
+    selectedDatetime.getTime() + (totalDuration + lastBufferMinutes) * 60000
+  );
 
   // ── Return enriched data ─────────────────────────────────────────────────
   return {

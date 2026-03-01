@@ -37,7 +37,8 @@ export async function GET(request: NextRequest) {
         providers (
           id,
           business_name,
-          thumbnail_url
+          thumbnail_url,
+          avatar_url
         )
       `)
       .eq("customer_id", user.id)

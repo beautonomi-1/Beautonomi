@@ -1,10 +1,30 @@
 "use client";
 
-import { User } from "lucide-react";
+import { User, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BookingData, StaffOption } from "../../types/booking-engine";
+import {
+  BOOKING_ACCENT,
+  BOOKING_WAITLIST_BG,
+  BOOKING_BORDER,
+  BOOKING_EDGE,
+  BOOKING_SHADOW_CARD,
+  BOOKING_RADIUS_CARD,
+  BOOKING_RADIUS_BUTTON,
+  BOOKING_TEXT_PRIMARY,
+  BOOKING_TEXT_SECONDARY,
+  MIN_TAP,
+  BOOKING_ACTIVE_SCALE,
+} from "../../constants";
 
-const MIN_TAP = "min-h-[44px] min-w-[44px]";
+const cardStyle = {
+  background: "rgba(255,255,255,0.85)",
+  backdropFilter: "blur(16px) saturate(180%)",
+  WebkitBackdropFilter: "blur(16px) saturate(180%)",
+  border: `1px solid ${BOOKING_EDGE}`,
+  borderRadius: BOOKING_RADIUS_CARD,
+  boxShadow: BOOKING_SHADOW_CARD,
+};
 
 interface StepStaffProps {
   data: BookingData;
@@ -16,36 +36,48 @@ interface StepStaffProps {
 export function StepStaff({ data, staff, onSelectStaff, onNext }: StepStaffProps) {
   const noPreference: StaffOption = {
     id: "any",
-    name: "No preference",
-    role: "Anyone available",
+    name: "Any Professional",
+    role: "Fastest availability",
   };
   const selectedId = data.selectedStaff?.id ?? null;
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      <div>
-        <h2 className="text-xl font-semibold text-gray-900">Who would you like?</h2>
-        <p className="mt-1 text-sm text-gray-500">Choose your preferred specialist or leave it to us</p>
+    <div className="space-y-8 animate-in fade-in duration-300">
+      <div className="text-left">
+        <h2 className="text-2xl font-semibold tracking-tight" style={{ color: BOOKING_TEXT_PRIMARY }}>
+          Select Professional
+        </h2>
+        <p className="mt-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
+          Choose your preferred specialist or fastest availability
+        </p>
       </div>
 
-      <div className="space-y-2">
+      <div className="p-5 space-y-2 rounded-3xl" style={cardStyle}>
         <button
           type="button"
           onClick={() => onSelectStaff(noPreference)}
           className={cn(
-            "w-full text-left rounded-3xl border-2 px-4 py-3 transition-all touch-manipulation active:scale-[0.99] flex items-center gap-3",
-            selectedId === "any"
-              ? "border-[#EC4899] bg-[#EC4899]/10"
-              : "border-gray-200 bg-white hover:border-gray-300"
+            "w-full text-left rounded-2xl border-2 px-4 py-3.5 transition-all touch-manipulation flex items-center gap-3",
+            MIN_TAP,
+            BOOKING_ACTIVE_SCALE
           )}
+          style={{
+            borderColor: selectedId === "any" ? BOOKING_ACCENT : BOOKING_BORDER,
+            backgroundColor: selectedId === "any" ? BOOKING_WAITLIST_BG : "rgba(0,0,0,0.02)",
+          }}
         >
-          <div className="h-12 w-12 rounded-2xl bg-gray-200 flex items-center justify-center shrink-0">
+          <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center shrink-0 overflow-hidden">
             <User className="h-6 w-6 text-gray-500" />
           </div>
-          <div>
-            <span className="font-medium text-gray-900">{noPreference.name}</span>
-            <p className="text-sm text-gray-500">{noPreference.role}</p>
+          <div className="flex-1 min-w-0">
+            <span className="font-medium block" style={{ color: BOOKING_TEXT_PRIMARY }}>
+              {noPreference.name}
+            </span>
+            <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
+              {noPreference.role}
+            </p>
           </div>
+          <ChevronRight className="h-5 w-5 shrink-0" style={{ color: BOOKING_TEXT_SECONDARY }} />
         </button>
 
         {staff.map((s, i) => {
@@ -56,12 +88,16 @@ export function StepStaff({ data, staff, onSelectStaff, onNext }: StepStaffProps
               type="button"
               onClick={() => onSelectStaff(s)}
               className={cn(
-                "w-full text-left rounded-3xl border-2 px-4 py-3 transition-all touch-manipulation active:scale-[0.99] flex items-center gap-3",
-                isSelected ? "border-[#EC4899] bg-[#EC4899]/10" : "border-gray-200 bg-white hover:border-gray-300"
+                "w-full text-left rounded-2xl border-2 px-4 py-3.5 transition-all touch-manipulation flex items-center gap-3",
+                MIN_TAP,
+                BOOKING_ACTIVE_SCALE
               )}
-              style={{ animationDelay: `${(i + 1) * 50}ms` }}
+              style={{
+                borderColor: isSelected ? BOOKING_ACCENT : BOOKING_BORDER,
+                backgroundColor: isSelected ? BOOKING_WAITLIST_BG : "rgba(0,0,0,0.02)",
+              }}
             >
-              <div className="h-12 w-12 rounded-2xl bg-gray-200 overflow-hidden shrink-0 flex items-center justify-center">
+              <div className="h-12 w-12 rounded-full bg-gray-200 overflow-hidden shrink-0 flex items-center justify-center">
                 {s.avatar_url ? (
                   <img
                     src={s.avatar_url}
@@ -73,14 +109,19 @@ export function StepStaff({ data, staff, onSelectStaff, onNext }: StepStaffProps
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <span className="font-medium text-gray-900 block">{s.name}</span>
-                <p className="text-sm text-gray-500">{s.role}</p>
+                <span className="font-medium block" style={{ color: BOOKING_TEXT_PRIMARY }}>
+                  {s.name}
+                </span>
+                <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                  {s.role}
+                </p>
                 {s.rating != null && (
-                  <p className="text-xs text-amber-600 mt-0.5">
+                  <p className="text-xs mt-0.5" style={{ color: BOOKING_ACCENT }}>
                     ★ {Number(s.rating).toFixed(1)} rating
                   </p>
                 )}
               </div>
+              <ChevronRight className="h-5 w-5 shrink-0" style={{ color: BOOKING_TEXT_SECONDARY }} />
             </button>
           );
         })}
@@ -90,10 +131,15 @@ export function StepStaff({ data, staff, onSelectStaff, onNext }: StepStaffProps
         type="button"
         onClick={onNext}
         className={cn(
-          "w-full rounded-2xl h-12 font-medium text-white transition-all touch-manipulation active:scale-[0.98]",
-          MIN_TAP
+          "w-full rounded-2xl h-12 font-semibold text-white touch-manipulation transition-all duration-300",
+          MIN_TAP,
+          BOOKING_ACTIVE_SCALE
         )}
-        style={{ backgroundColor: "#EC4899" }}
+        style={{
+          backgroundColor: BOOKING_ACCENT,
+          borderRadius: BOOKING_RADIUS_BUTTON,
+          boxShadow: BOOKING_SHADOW_CARD,
+        }}
       >
         Continue
       </button>

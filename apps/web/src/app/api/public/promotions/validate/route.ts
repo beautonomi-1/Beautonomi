@@ -2,6 +2,13 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, badRequestResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { validatePromoCode } from "@/lib/promotions/validate";
+import { z } from "zod";
+
+const validateBodySchema = z.object({
+  code: z.string().min(1, "Promo code is required"),
+  provider_id: z.string().uuid("Invalid provider ID"),
+  booking_amount: z.number().min(0, "Booking amount must be non-negative"),
+});
 
 /**
  * POST /api/public/promotions/validate
@@ -20,11 +27,14 @@ export async function POST(request: NextRequest) {
     const supabase = await getSupabaseServer();
     const body = await request.json();
 
-    const { code, provider_id, booking_amount } = body;
-
-    if (!code || !provider_id || booking_amount === undefined) {
-      return badRequestResponse("Missing required fields: code, provider_id, booking_amount");
+    const parsed = validateBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return badRequestResponse(
+        parsed.error.issues.map((i) => i.message).join("; ") || "Validation failed"
+      );
     }
+
+    const { code, provider_id, booking_amount } = parsed.data;
 
     const result = await validatePromoCode(supabase, {
       code,

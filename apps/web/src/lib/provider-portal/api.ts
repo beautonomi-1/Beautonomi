@@ -113,6 +113,8 @@ export interface ProviderApi {
   reorderServices(categoryId: string, serviceIds: string[]): Promise<void>;
   getServiceVariants(serviceId: string): Promise<ServiceItem[]>;
   getServiceAddons(serviceId: string): Promise<ServiceItem[]>;
+  getServiceResources(serviceId: string): Promise<Array<{ resource_id: string; required: boolean }>>;
+  setServiceResources(serviceId: string, resources: Array<{ resource_id: string; required: boolean }>): Promise<void>;
 
   // Catalogue - Products
   listProducts(
@@ -428,6 +430,7 @@ export class MockProviderApi implements ProviderApi {
         address: loc.address_line1 || "",
         city: loc.city || "",
         is_primary: loc.is_primary ?? false,
+        location_type: loc.location_type ?? "salon",
       }));
     } catch (error) {
       console.error("Failed to fetch real locations:", error);
@@ -607,6 +610,7 @@ export class MockProviderApi implements ProviderApi {
           updated_by_name: booking.updated_by_name || "",
           client_since: customer.created_at || "",
           ...(booking.version !== undefined && { version: booking.version }),
+          ...(booking.is_group_booking && { is_group_booking: true, group_booking_ref: booking.group_booking_ref || null }),
         };
       };
 
@@ -704,6 +708,9 @@ export class MockProviderApi implements ProviderApi {
       (apt as any).service_fee_amount = booking.service_fee_amount || 0;
       (apt as any).service_fee_percentage = booking.service_fee_percentage;
       (apt as any).version = booking.version;
+      (apt as any).is_group_booking = booking.is_group_booking || false;
+      (apt as any).group_booking_ref = booking.group_booking_ref || null;
+      (apt as any).participants = booking.participants || [];
       return apt;
     } catch (error) {
       console.error("Failed to fetch appointment:", error);
@@ -771,6 +778,7 @@ export class MockProviderApi implements ProviderApi {
       client_since: customer.created_at || "",
       ...(booking.version !== undefined && { version: booking.version }),
       ...(booking.referral_source_id !== undefined && { referral_source_id: booking.referral_source_id }),
+      ...(booking.is_group_booking && { is_group_booking: true, group_booking_ref: booking.group_booking_ref || null }),
     } as Appointment;
   }
 
@@ -1798,6 +1806,23 @@ export class MockProviderApi implements ProviderApi {
       );
       throw error;
     }
+  }
+
+  async getServiceResources(serviceId: string): Promise<Array<{ resource_id: string; required: boolean }>> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.get<{ data?: { resources?: Array<{ resource_id: string; required: boolean }> }; resources?: Array<{ resource_id: string; required: boolean }> }>(
+      `/api/provider/services/${serviceId}/resources`
+    );
+    const r = (response as any)?.data?.resources ?? (response as any)?.resources;
+    return Array.isArray(r) ? r : [];
+  }
+
+  async setServiceResources(
+    serviceId: string,
+    resources: Array<{ resource_id: string; required: boolean }>
+  ): Promise<void> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.put(`/api/provider/services/${serviceId}/resources`, { resources });
   }
 
   async listProducts(

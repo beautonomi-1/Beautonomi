@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/select";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
-import { format } from "date-fns";
 
 interface Resource {
   id: string;
@@ -58,11 +57,11 @@ export default function ResourceAssignmentPanel({
   const loadResources = async () => {
     setIsLoading(true);
     try {
-      // Load all available resources for the provider
-      const response = await fetcher.get<{ resources: Resource[] }>(
+      const response = await fetcher.get<{ data?: Resource[]; resources?: Resource[] }>(
         `/api/provider/resources`
       );
-      setAvailableResources(response.resources || []);
+      const list = response.data ?? response.resources ?? [];
+      setAvailableResources(Array.isArray(list) ? list : []);
     } catch (error: any) {
       toast.error(error.message || "Failed to load resources");
     } finally {
@@ -72,12 +71,12 @@ export default function ResourceAssignmentPanel({
 
   const loadAssignedResources = async () => {
     try {
-      const response = await fetcher.get<{ resources: BookingResource[] }>(
+      const response = await fetcher.get<{ data?: { resources?: BookingResource[] }; resources?: BookingResource[] }>(
         `/api/provider/bookings/${bookingId}/resources`
       );
-      setAssignedResources(response.resources || []);
+      const list = response.data?.resources ?? response.resources ?? [];
+      setAssignedResources(Array.isArray(list) ? list : []);
     } catch {
-      // If API doesn't exist, show empty
       setAssignedResources([]);
     }
   };
@@ -87,24 +86,6 @@ export default function ResourceAssignmentPanel({
 
     setIsLoading(true);
     try {
-      // Check availability first
-      const dateStr = format(bookingDate, "yyyy-MM-dd");
-      const availabilityCheck = await fetcher.post<{ available: boolean }>(
-        `/api/availability/resources/check`,
-        {
-          resource_ids: [selectedResourceId],
-          date: dateStr,
-          time: bookingTime,
-          exclude_booking_id: bookingId,
-        }
-      );
-
-      if (!availabilityCheck.available) {
-        toast.error("This resource is not available at this time");
-        return;
-      }
-
-      // Assign resource
       await fetcher.post(`/api/provider/bookings/${bookingId}/resources`, {
         resource_id: selectedResourceId,
       });
@@ -114,7 +95,8 @@ export default function ResourceAssignmentPanel({
       loadAssignedResources();
       onUpdate?.();
     } catch (error: any) {
-      toast.error(error.message || "Failed to assign resource");
+      const msg = (error as { message?: string })?.message ?? "Failed to assign resource";
+      toast.error(msg.includes("not available") ? "This resource is not available at this time" : msg);
     } finally {
       setIsLoading(false);
     }

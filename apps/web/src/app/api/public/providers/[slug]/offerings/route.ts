@@ -51,7 +51,8 @@ export async function GET(
           id,
           name,
           color,
-          display_order
+          display_order,
+          description
         )
       `)
       .eq("provider_id", providerData.id)

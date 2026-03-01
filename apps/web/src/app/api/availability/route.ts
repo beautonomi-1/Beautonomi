@@ -9,9 +9,9 @@ import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
  * GET /api/availability
  *
  * Get available time slots for a staff member on a specific date.
- * Public access returns basic availability.
- * Authenticated provider/staff users get enriched data (e.g. provider context).
- *
+ * Uses loadAvailabilityConstraints + calculateAvailableSlots (same pipeline as
+ * portal/me reschedule). For duration, pass total blocked minutes (e.g. sum of
+ * service durations + buffers) so slots match the book flow.
  * Query params: staffId, date, mode, duration, travelBuffer, avoidGaps
  */
 export async function GET(request: NextRequest) {

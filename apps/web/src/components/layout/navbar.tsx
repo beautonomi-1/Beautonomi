@@ -42,11 +42,50 @@ const Navbar: React.FC = () => {
   const [loginModalMode, setLoginModalMode] = useState<"login" | "signup">("login");
   const [isFilterSliderSticky, setIsFilterSliderSticky] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
 
   // Prevent hydration mismatch by only rendering Radix components after mount
   useEffect(() => {
     queueMicrotask(() => setIsMounted(true));
   }, []);
+
+  // Cart count for authenticated users; refresh on cart-updated event (e.g. after add-to-cart)
+  const refreshCartCount = useCallback(() => {
+    if (!user) return;
+    fetch("/api/me/cart")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!json?.data?.items) return;
+        const total = json.data.items.reduce((s: number, i: { quantity?: number }) => s + (i.quantity ?? 1), 0);
+        setCartCount(total);
+      })
+      .catch(() => {});
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setCartCount(0);
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/me/cart")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled || !json?.data?.items) return;
+        const total = json.data.items.reduce((s: number, i: { quantity?: number }) => s + (i.quantity ?? 1), 0);
+        setCartCount(total);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    const handler = () => refreshCartCount();
+    window.addEventListener("beautonomi:cart-updated", handler);
+    return () => window.removeEventListener("beautonomi:cart-updated", handler);
+  }, [refreshCartCount]);
 
   const handleProfileClick = () => {
     setIsPopupVisible(!isPopupVisible);
@@ -222,7 +261,7 @@ const Navbar: React.FC = () => {
                           </li>
                           <li>
                             <Link href="/cart" className="flex items-center gap-2">
-                              <ShoppingCart className="h-4 w-4" /> My Cart
+                              <ShoppingCart className="h-4 w-4" /> My Cart{cartCount > 0 ? ` (${cartCount})` : ""}
                             </Link>
                           </li>
                           <li>
@@ -451,7 +490,7 @@ const Navbar: React.FC = () => {
                   className="flex items-center gap-1.5 text-sm font-medium text-secondary hover:text-pink-600 transition-colors px-3 py-2 rounded-full hover:bg-pink-50"
                 >
                   <ShoppingCart className="h-4 w-4" />
-                  Cart
+                  Cart{cartCount > 0 ? ` (${cartCount})` : ""}
                 </Link>
                 <div className="text-sm px-4 font-normal Beautonomi-semibold text-secondary hover:bg-primary p-3 rounded-full cursor-pointer">
                   <Link href="/become-a-partner" className="">

@@ -8,7 +8,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { successResponse, handleApiError, errorResponse, normalizePhoneToE164 } from "@/lib/supabase/api-helpers";
 import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
 import { z } from "zod";
 
@@ -19,6 +19,7 @@ const consumeBodySchema = z.object({
       lastName: z.string().min(1),
       email: z.string().email().optional(),
       phone: z.string().optional(),
+      phoneCountryCode: z.string().optional(),
     })
     .optional(),
   guest_fingerprint_hash: z.string().optional(),
@@ -27,10 +28,28 @@ const consumeBodySchema = z.object({
   use_wallet: z.boolean().optional(),
   gift_card_code: z.string().optional(),
   custom_field_values: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+  provider_form_responses: z.record(
+    z.string(),
+    z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+  ).optional(),
   addons: z.array(z.string().uuid()).optional(),
   special_requests: z.string().optional().nullable(),
   tip_amount: z.number().min(0).optional(),
   promotion_code: z.string().optional().nullable(),
+  is_group_booking: z.boolean().optional(),
+  group_participants: z
+    .array(
+      z.object({
+        name: z.string(),
+        email: z.string().optional().nullable(),
+        phone: z.string().optional().nullable(),
+        service_ids: z.array(z.string().uuid()),
+        notes: z.string().optional().nullable(),
+      })
+    )
+    .optional()
+    .nullable(),
+  resource_ids: z.array(z.string().uuid()).optional(),
 });
 
 export async function POST(
@@ -70,10 +89,14 @@ export async function POST(
     const useWallet = parsed.success ? parsed.data.use_wallet : undefined;
     const giftCardCode = parsed.success ? parsed.data.gift_card_code : undefined;
     const customFieldValues = parsed.success ? parsed.data.custom_field_values : undefined;
+    const providerFormResponses = parsed.success ? parsed.data.provider_form_responses : undefined;
     const addons = parsed.success ? parsed.data.addons : undefined;
     const specialRequests = parsed.success ? parsed.data.special_requests : undefined;
     const tipAmount = parsed.success ? parsed.data.tip_amount : undefined;
     const promotionCode = parsed.success ? parsed.data.promotion_code : undefined;
+    const isGroupBooking = parsed.success ? parsed.data.is_group_booking : undefined;
+    const groupParticipants = parsed.success ? parsed.data.group_participants : undefined;
+    const resourceIdsFromBody = parsed.success ? parsed.data.resource_ids : undefined;
 
     if (giftCardCode?.trim()) {
       const giftCardsEnabled = await isFeatureEnabledServer("gift_cards");
@@ -177,8 +200,23 @@ export async function POST(
 
     const holdMeta = (hold.metadata as Record<string, unknown>) || {};
     const travelFeeFromHold = holdMeta.travel_fee != null ? Number(holdMeta.travel_fee) : 0;
+    const resourceIdsFromHold = Array.isArray(holdMeta.resource_ids)
+      ? (holdMeta.resource_ids as string[]).filter((id) => typeof id === "string")
+      : undefined;
 
-    const draft = {
+    const cc = clientInfo?.phoneCountryCode || "27";
+    const normalizedClientInfo = clientInfo
+      ? {
+          firstName: clientInfo.firstName,
+          lastName: clientInfo.lastName,
+          email: clientInfo.email?.trim() || undefined,
+          phone: clientInfo.phone
+            ? normalizePhoneToE164(clientInfo.phone, cc) || clientInfo.phone.trim() || undefined
+            : undefined,
+        }
+      : undefined;
+
+    const draft: Record<string, unknown> = {
       provider_id: hold.provider_id,
       services,
       selected_datetime: selectedDatetime,
@@ -186,7 +224,7 @@ export async function POST(
       location_id: hold.location_id,
       address: addressFormatted,
       travel_fee: travelFeeFromHold,
-      client_info: clientInfo ?? {
+      client_info: normalizedClientInfo ?? {
         firstName: user.user_metadata?.full_name?.split(" ")[0] ?? "Guest",
         lastName: user.user_metadata?.full_name?.split(" ").slice(1).join(" ") ?? "User",
         email: user.email ?? undefined,
@@ -203,6 +241,14 @@ export async function POST(
       tip_amount: tipAmount ?? undefined,
       promotion_code: promotionCode ?? undefined,
     };
+    if (isGroupBooking === true && Array.isArray(groupParticipants) && groupParticipants.length > 0) {
+      draft.is_group_booking = true;
+      draft.group_participants = groupParticipants;
+    }
+    const resourceIds = resourceIdsFromBody ?? resourceIdsFromHold;
+    if (resourceIds && resourceIds.length > 0) {
+      draft.resource_ids = resourceIds;
+    }
 
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
@@ -271,6 +317,13 @@ export async function POST(
           { onConflict: "entity_type,entity_id,custom_field_id" }
         );
       }
+    }
+
+    if (bookingId && providerFormResponses && Object.keys(providerFormResponses).length > 0) {
+      await adminSupabase
+        .from("bookings")
+        .update({ provider_form_responses: providerFormResponses })
+        .eq("id", bookingId);
     }
 
     return successResponse({

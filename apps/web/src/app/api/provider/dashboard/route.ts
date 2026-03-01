@@ -310,6 +310,15 @@ export async function GET(request: NextRequest) {
         availableBalance -= Number(txn.amount || 0);
       }
     }
+
+    // Subtract pending/processing payout requests so dashboard matches finance "available for payout"
+    const { data: pendingPayoutRows } = await supabaseAdmin
+      .from('payouts')
+      .select('amount')
+      .eq('provider_id', providerId)
+      .in('status', ['pending', 'processing']);
+    const pendingPayoutSum = (pendingPayoutRows || []).reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+    availableBalance = Math.max(0, availableBalance - pendingPayoutSum);
     
     // Calculate pending payments (unpaid bookings)
     let unpaidBookingsQuery = supabaseAdmin

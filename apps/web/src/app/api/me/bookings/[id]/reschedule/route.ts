@@ -156,10 +156,12 @@ export async function POST(
       );
     }
 
-    // Calculate total duration
+    // Total blocked span = sum(durations) + sum(buffers) to match book flow
     let totalDuration = 0;
     bookingServices.forEach((bs: any) => {
-      totalDuration += bs.duration_minutes || bs.offerings?.duration_minutes || 0;
+      const dur = bs.duration_minutes ?? bs.offerings?.duration_minutes ?? 60;
+      const buf = bs.offerings?.buffer_minutes ?? 15;
+      totalDuration += dur + buf;
     });
 
     // Load availability constraints for new date

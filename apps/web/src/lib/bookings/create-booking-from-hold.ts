@@ -162,7 +162,13 @@ export async function createBookingFromHold(
     p_end_at: hold.end_at,
   });
 
-  if (rpcError) throw rpcError;
+  if (rpcError) {
+    const msg = (rpcError as { message?: string }).message ?? "";
+    if (msg.includes("BOOKING_SLOT_CONFLICT")) {
+      throw new Error("This time slot is no longer available. Please select another time.");
+    }
+    throw rpcError;
+  }
   if (!bookingId) throw new Error("Failed to create booking");
 
   const { data: booking } = await adminSupabase

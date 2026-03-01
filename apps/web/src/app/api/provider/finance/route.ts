@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 
 /**
  * GET /api/provider/finance
@@ -17,11 +18,19 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabase);
     
     if (!providerId) {
+      const { data: platformRow } = await (supabase as any)
+        .from("platform_settings")
+        .select("settings")
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      const minimumPayout = (platformRow?.settings as any)?.payouts?.minimum_payout_amount ?? 100;
       return successResponse({
         earnings: {
           total_earnings: 0,
           pending_payouts: 0,
           available_balance: 0,
+          minimum_payout_amount: minimumPayout,
           this_month: 0,
           last_month: 0,
           growth_percentage: 0,
@@ -182,16 +191,9 @@ export async function GET(request: NextRequest) {
     const growthPercentage =
       lastMonthTotal !== 0 ? ((thisMonthTotal - lastMonthTotal) / Math.abs(lastMonthTotal)) * 100 : (thisMonthTotal > 0 ? 100 : 0);
 
-    // Pending payouts + available balance still rely on payouts system; for now show earnings only.
-    // 
-    // IMPORTANT: available_balance should exclude walk-in bookings where payment was direct (cash/Yoco),
-    // because those customers paid directly to provider, so platform doesn't hold that money.
-    // However, walk-in bookings paid via Paystack SHOULD be included because platform holds the money.
-    // If we included direct walk-in earnings, providers could request payouts for money they already received,
-    // which would lead to incorrect payouts by superadmin.
-    const pendingPayouts = 0;
-    const onlineProviderEarningsTotal = sumNet(["provider_earnings"], undefined, true); // Exclude direct walk-ins (but include Paystack walk-ins)
-    const availableBalance = onlineProviderEarningsTotal - pendingPayouts;
+    // Available balance and pending payouts: use ledger + payouts table (aligned with payouts API validation).
+    const { availableBalance, pendingPayoutsSum } = await getAvailablePayoutBalance(supabase, providerId);
+    const pendingPayouts = pendingPayoutsSum;
 
     // Filter out internal transaction types that providers shouldn't see
     // "payment" type represents platform commission (internal accounting)
@@ -230,11 +232,20 @@ export async function GET(request: NextRequest) {
         description: r.description || r.transaction_type,
       }));
 
+    const { data: platformRow } = await (supabase as any)
+      .from("platform_settings")
+      .select("settings")
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    const minimumPayoutAmount = (platformRow?.settings as any)?.payouts?.minimum_payout_amount ?? 100;
+
     return successResponse({
       earnings: {
         total_earnings: providerEarningsTotal,
         pending_payouts: pendingPayouts,
         available_balance: availableBalance,
+        minimum_payout_amount: minimumPayoutAmount,
         this_month: thisMonthTotal,
         last_month: lastMonthTotal,
         growth_percentage: Math.round(growthPercentage * 10) / 10,

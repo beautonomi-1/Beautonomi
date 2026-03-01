@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     // Check provider status
     const { data: provider } = await supabaseAdmin
       .from("providers")
-      .select("id, status, business_name, description, gallery, thumbnail_url, business_type, website, years_in_business, languages_spoken, social_media_links")
+      .select("id, status, business_name, description, gallery, thumbnail_url, avatar_url, business_type, website, years_in_business, languages_spoken, social_media_links")
       .eq("id", providerId)
       .single();
 
@@ -89,10 +89,11 @@ export async function GET(request: NextRequest) {
 
     const hasServiceAddress = !!(locations && locations.length > 0);
 
-    // Check if provider has profile photo/thumbnail - REQUIRED for public pages
-    // Also check gallery for profile image as fallback
+    // Check if provider has profile photo (listing image, profile circle, or gallery) - REQUIRED for public pages
+    const avatarUrl = (provider as { avatar_url?: string | null }).avatar_url;
     const hasProfilePhoto = !!(
       (provider.thumbnail_url && typeof provider.thumbnail_url === 'string' && provider.thumbnail_url.trim().length > 0) ||
+      (avatarUrl && typeof avatarUrl === 'string' && avatarUrl.trim().length > 0) ||
       (provider.gallery && Array.isArray(provider.gallery) && provider.gallery.length > 0)
     );
 

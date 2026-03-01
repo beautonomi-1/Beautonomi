@@ -2,8 +2,9 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser, notFoundResponse } from "@/lib/supabase/api-helpers";
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -15,7 +16,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const { data: form } = await supabase
       .from("provider_forms")
       .select("id")
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
@@ -24,7 +25,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const { data: maxOrder } = await supabase
       .from("provider_form_fields")
       .select("sort_order")
-      .eq("form_id", params.id)
+      .eq("form_id", id)
       .order("sort_order", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -34,7 +35,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const { data, error } = await supabase
       .from("provider_form_fields")
       .insert({
-        form_id: params.id,
+        form_id: id,
         name,
         field_type,
         is_required: is_required ?? false,

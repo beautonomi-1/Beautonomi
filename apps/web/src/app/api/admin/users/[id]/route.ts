@@ -150,11 +150,13 @@ export async function PATCH(
     const updateData: any = {};
     
     if (validationResult.data.deactivated_at !== undefined) {
-      updateData.deactivated_at = validationResult.data.deactivated_at 
+      const at = validationResult.data.deactivated_at
         ? new Date(validationResult.data.deactivated_at).toISOString()
         : null;
+      updateData.deactivated_at = at;
+      updateData.deactivated_by = at ? 'admin' : null;
     }
-    
+
     if (validationResult.data.deactivation_reason !== undefined) {
       updateData.deactivation_reason = validationResult.data.deactivation_reason;
     }

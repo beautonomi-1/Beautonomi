@@ -111,6 +111,7 @@ export async function GET(request: NextRequest) {
       .from("support_tickets")
       .select(`
         id,
+        ticket_number,
         subject,
         status,
         priority,

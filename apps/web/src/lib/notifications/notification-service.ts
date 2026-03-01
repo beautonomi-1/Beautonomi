@@ -2052,6 +2052,36 @@ export async function notifyServicePackageUsed(
 }
 
 // ============================================================================
+// PRODUCT ORDER NOTIFICATIONS
+// ============================================================================
+
+/**
+ * Send order confirmation to customer (product order)
+ * Uses notification template "order_confirmation". Create it in Admin → Notification templates
+ * with key "order_confirmation" and variables: order_number, order_id, total_amount
+ */
+export async function notifyOrderConfirmation(
+  userId: string,
+  orderId: string,
+  orderNumber: string,
+  totalAmount: number,
+  channels: NotificationChannel[] = ["push", "email"]
+) {
+  const variables = {
+    order_number: orderNumber,
+    order_id: orderId,
+    total_amount: `R${totalAmount.toFixed(2)}`,
+  };
+
+  return await sendTemplateNotification(
+    "order_confirmation",
+    [userId],
+    variables,
+    channels
+  );
+}
+
+// ============================================================================
 // GIFT CARDS
 // ============================================================================
 

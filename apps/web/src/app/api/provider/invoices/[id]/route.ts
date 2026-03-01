@@ -14,9 +14,10 @@ import { requirePermission } from "@/lib/auth/requirePermission";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -40,7 +41,7 @@ export async function GET(
         payments:provider_invoice_payments(*)
       `
       )
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
@@ -69,9 +70,10 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const supabase = await getSupabaseServer(request);
     const permissionCheck = await requirePermission("edit_settings", request);
     if (!permissionCheck.authorized) {
@@ -107,7 +109,7 @@ export async function PATCH(
     const { data: invoice, error } = await supabase
       .from("provider_invoices")
       .update(updates)
-      .eq("id", params.id)
+      .eq("id", id)
       .eq("provider_id", providerId)
       .select()
       .single();

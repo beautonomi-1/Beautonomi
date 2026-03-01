@@ -26,18 +26,27 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+    if (!id) {
+      return notFoundResponse("Booking ID is required");
+    }
+
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
 
     const supabase = await getSupabaseServer(request);
-    const { id } = await params;
+    const supabaseAdmin = getSupabaseAdmin();
 
     // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
+      console.warn("[GET /api/provider/bookings/[id]] Provider not found for user", user.id);
       return notFoundResponse("Provider not found");
     }
 
-    const { data: booking, error } = await supabase
+    // Use admin client for the booking read (same as GET list) so RLS doesn't block
+    // provider portal reads; we already scope by provider_id.
+    // Match list endpoint: use explicit FK for group_bookings and same relation shape.
+    const { data: booking, error } = await supabaseAdmin
       .from("bookings")
       .select(
         `
@@ -45,6 +54,7 @@ export async function GET(
         version,
         customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
         locations:provider_locations(id, name, address_line1, city),
+        group_bookings!bookings_group_booking_id_fkey(ref_number, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact)),
         booking_services(
           id,
           offering_id,
@@ -52,6 +62,8 @@ export async function GET(
           duration_minutes,
           price,
           scheduled_start_at,
+          scheduled_end_at,
+          guest_name,
           offerings:offerings!booking_services_offering_id_fkey(id, title),
           staff:provider_staff(id, name, role)
         ),
@@ -67,9 +79,10 @@ export async function GET(
       )
       .eq("id", id)
       .eq("provider_id", providerId)
-      .single();
+      .maybeSingle();
 
     if (error || !booking) {
+      console.warn("[GET /api/provider/bookings/[id]] Booking not found", { id, providerId, supabaseError: error?.message ?? null });
       return notFoundResponse("Booking not found");
     }
 
@@ -107,8 +120,7 @@ export async function GET(
       completed_at: bookingData.completed_at || null,
       cancelled_at: bookingData.cancelled_at || null,
       cancellation_reason: bookingData.cancellation_reason || null,
-      // Services are fetched via booking_services join
-      // Note: booking_services.price is the price for this service line item
+      // Services are fetched via booking_services join (include guest_name for group bookings)
       services: (bookingData.booking_services || []).map((bs: any) => ({
         id: bs.id,
         offering_id: bs.offering_id,
@@ -121,6 +133,8 @@ export async function GET(
         duration_minutes: bs.duration_minutes,
         price: bs.price,
         scheduled_start_at: bs.scheduled_start_at,
+        scheduled_end_at: bs.scheduled_end_at,
+        guest_name: bs.guest_name || null,
         customization: null,
       })),
       products: (bookingData.booking_products || []).map((bp: any) => ({
@@ -156,10 +170,58 @@ export async function GET(
       updated_at: bookingData.updated_at,
       version: bookingData.version || 0,
       referral_source_id: bookingData.referral_source_id || null,
+      provider_form_responses: bookingData.provider_form_responses || null,
       // Include joined data for provider portal (customers, locations)
       customers: bookingData.customers || null,
       locations: bookingData.locations || null,
-    } as Booking & { version: number };
+      // Group booking: for calendar/sidebar (ref + participants). FK join can return array or single.
+      is_group_booking: Boolean(bookingData.is_group_booking),
+      group_booking_id: bookingData.group_booking_id || null,
+      group_booking_ref: (() => {
+        const gb = bookingData.group_bookings;
+        const one = Array.isArray(gb) ? gb[0] : gb;
+        return one?.ref_number ?? null;
+      })(),
+      participants: (() => {
+        const gb = bookingData.group_bookings;
+        const one = Array.isArray(gb) ? gb[0] : gb;
+        return (one?.booking_participants || []).map((p: any) => ({
+          id: p.id,
+          participant_name: p.participant_name,
+          participant_email: p.participant_email,
+          participant_phone: p.participant_phone,
+          is_primary_contact: p.is_primary_contact,
+        }));
+      })(),
+    } as Booking & { version: number; is_group_booking?: boolean; group_booking_id?: string | null; group_booking_ref?: string | null; participants?: any[] };
+
+    // Load booking custom field values (provider can read their bookings' values via RLS)
+    const { data: valueRows } = await supabase
+      .from("custom_field_values")
+      .select("custom_field_id, value")
+      .eq("entity_type", "booking")
+      .eq("entity_id", id);
+    if (valueRows && valueRows.length > 0) {
+      const { data: fieldDefs } = await supabase
+        .from("custom_fields")
+        .select("id, name, field_type")
+        .eq("entity_type", "booking")
+        .in("id", valueRows.map((r) => r.custom_field_id));
+      const idToName = new Map((fieldDefs || []).map((f) => [f.id, f.name]));
+      const idToType = new Map((fieldDefs || []).map((f) => [f.id, f.field_type]));
+      const customFieldValues: Record<string, string | number | boolean | null> = {};
+      for (const r of valueRows) {
+        const name = idToName.get(r.custom_field_id);
+        if (!name) continue;
+        const fieldType = idToType.get(r.custom_field_id) || "text";
+        let val: string | number | boolean | null = r.value;
+        if (fieldType === "number") val = r.value != null ? Number(r.value) : null;
+        else if (fieldType === "checkbox") val = r.value === "true" || r.value === "1";
+        else if (r.value === undefined) val = null;
+        customFieldValues[name] = val as string | number | boolean | null;
+      }
+      (transformedBooking as any).custom_field_values = customFieldValues;
+    }
 
     return successResponse(transformedBooking);
   } catch (error) {
@@ -714,17 +776,17 @@ export async function PATCH(
 
               if (existingTransaction) {
                 // Create a reversal transaction to deduct the points
-                await supabase
-                  .from("loyalty_point_transactions")
-                  .insert({
-                    user_id: customerId,
-                    transaction_type: "reversed",
-                    points: -loyaltyPointsEarned, // Negative to reverse
-                    description: `Points reversed for cancelled booking ${(currentBooking as any).booking_number || id}`,
-                    reference_id: id,
-                    reference_type: "booking",
-                    expires_at: null,
-                  });
+                  await supabase
+                    .from("loyalty_point_transactions")
+                    .insert({
+                      user_id: customerId,
+                      transaction_type: "redeemed",
+                      points: loyaltyPointsEarned,
+                      description: `Points reversed for cancelled booking ${(currentBooking as any).booking_number || id}`,
+                      reference_id: id,
+                      reference_type: "booking",
+                      expires_at: null,
+                    });
 
                 console.log(`Reversed ${loyaltyPointsEarned} loyalty points for cancelled booking ${id}`);
               }
@@ -755,7 +817,7 @@ export async function PATCH(
           
           if (subtotal > 0 && customerId) {
             try {
-              // Check if points were already awarded
+              const { calculateLoyaltyPoints } = await import("@/lib/loyalty/calculate-points");
               const { data: existingTransaction } = await supabase
                 .from("loyalty_point_transactions")
                 .select("id")
@@ -765,9 +827,9 @@ export async function PATCH(
                 .maybeSingle();
 
               if (!existingTransaction) {
-                // Calculate points earned (1 point per ZAR spent on subtotal)
-                const pointsEarned = Math.floor(subtotal);
-                
+                const currency = (currentBooking as any).currency || "ZAR";
+                const pointsEarned = await calculateLoyaltyPoints(subtotal, supabase, currency);
+
                 if (pointsEarned > 0) {
                   // Create loyalty transaction for customer
                   const { error: loyaltyError } = await supabase

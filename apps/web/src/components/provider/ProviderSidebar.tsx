@@ -30,6 +30,10 @@ import {
   Undo2,
   Truck,
   Store,
+  CalendarRange,
+  CalendarOff,
+  Package,
+  FileEdit,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProviderSidebar } from "@/contexts/ProviderSidebarContext";
@@ -60,11 +64,33 @@ const navigationSections = [
     ],
   },
   {
+    title: "Schedule",
+    items: [
+      { icon: Calendar, label: "Schedule", href: "/provider/schedule", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: CalendarRange, label: "Time Blocks", href: "/provider/time-blocks", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: CalendarOff, label: "Days Off", href: "/provider/team/days-off", permission: "view_team" as keyof StaffPermissions },
+    ],
+  },
+  {
+    title: "Resources & Forms",
+    items: [
+      { icon: Grid3x3, label: "Resources & Forms", href: "/provider/resources-forms", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: Package, label: "Resources", href: "/provider/resources", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: FileEdit, label: "Forms", href: "/provider/forms", permission: "edit_settings" as keyof StaffPermissions },
+    ],
+  },
+  {
+    title: "Orders",
+    items: [
+      { icon: ShoppingBag, label: "Orders", href: "/provider/ecommerce/orders", permission: "view_sales" as keyof StaffPermissions },
+      { icon: Undo2, label: "Returns", href: "/provider/ecommerce/returns", permission: "view_sales" as keyof StaffPermissions },
+    ],
+  },
+  {
     title: "E-Commerce",
     items: [
+      { icon: Store, label: "E-Commerce", href: "/provider/ecommerce", permission: "view_products" as keyof StaffPermissions },
       { icon: Store, label: "Products", href: "/provider/ecommerce/products", permission: "view_products" as keyof StaffPermissions },
-      { icon: ShoppingBag, label: "Product Orders", href: "/provider/ecommerce/orders", permission: "view_sales" as keyof StaffPermissions },
-      { icon: Undo2, label: "Returns", href: "/provider/ecommerce/returns", permission: "view_sales" as keyof StaffPermissions },
       { icon: Truck, label: "Shipping & Collection", href: "/provider/ecommerce/shipping", permission: "edit_settings" as keyof StaffPermissions },
       { icon: Store, label: "Walk-in Sale", href: "/provider/ecommerce/walk-in", permission: "view_sales" as keyof StaffPermissions },
     ],
@@ -85,7 +111,8 @@ const navigationSections = [
     title: "Team & Marketing",
     items: [
       { icon: Sparkles, label: "Explore Content", href: "/provider/explore", permission: "create_explore_posts" as keyof StaffPermissions },
-      { icon: Users, label: "Team", href: "/provider/team/members", permission: "view_team" as keyof StaffPermissions },
+      { icon: Users, label: "Team", href: "/provider/team", permission: "view_team" as keyof StaffPermissions },
+      { icon: Users, label: "Team members", href: "/provider/team/members", permission: "view_team" as keyof StaffPermissions },
       { icon: DollarSign, label: "My Earnings", href: "/provider/team/my-earnings", permission: "view_team" as keyof StaffPermissions },
       { icon: Star, label: "Reviews", href: "/provider/reviews", permission: "view_reviews" as keyof StaffPermissions },
       { icon: MessageSquare, label: "Messages", href: "/provider/messaging", permission: "view_messages" as keyof StaffPermissions },
@@ -100,6 +127,10 @@ const bottomItems = [
 
 // Match routes including sub-routes
 const isActiveRoute = (pathname: string, href: string) => {
+  // E-Commerce hub is active only on exact path, not on /ecommerce/orders etc.
+  if (href === "/provider/ecommerce") {
+    return pathname === "/provider/ecommerce" || pathname === "/provider/ecommerce/";
+  }
   if (href.startsWith("/provider/ecommerce")) {
     return pathname.startsWith(href);
   }
@@ -112,8 +143,34 @@ const isActiveRoute = (pathname: string, href: string) => {
   if (href === "/provider/explore") {
     return pathname.startsWith("/provider/explore");
   }
+  if (href === "/provider/team") {
+    return pathname === "/provider/team" || pathname === "/provider/team/"
+      || (pathname.startsWith("/provider/team/") && !pathname.startsWith("/provider/team/members")
+        && !pathname.startsWith("/provider/team/days-off") && !pathname.startsWith("/provider/team/my-earnings"));
+  }
+  if (href === "/provider/team/days-off") {
+    return pathname.startsWith("/provider/team/days-off");
+  }
   if (href === "/provider/team/members") {
-    return pathname.startsWith("/provider/team");
+    return pathname.startsWith("/provider/team/members");
+  }
+  if (href === "/provider/team/my-earnings") {
+    return pathname.startsWith("/provider/team/my-earnings");
+  }
+  if (href === "/provider/time-blocks") {
+    return pathname.startsWith("/provider/time-blocks");
+  }
+  if (href === "/provider/resources") {
+    return pathname.startsWith("/provider/resources");
+  }
+  if (href === "/provider/forms") {
+    return pathname.startsWith("/provider/forms");
+  }
+  if (href === "/provider/schedule") {
+    return pathname === "/provider/schedule" || pathname.startsWith("/provider/schedule/");
+  }
+  if (href === "/provider/resources-forms") {
+    return pathname === "/provider/resources-forms" || pathname.startsWith("/provider/resources-forms/");
   }
   if (href === "/provider/settings") {
     return pathname.startsWith("/provider/settings");

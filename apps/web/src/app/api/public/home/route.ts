@@ -33,7 +33,7 @@ export async function GET(request: Request) {
       supabase = getSupabaseAdmin();
     } catch (adminError) {
       console.warn("Admin client not available, falling back to server client:", adminError);
-      supabase = await getSupabaseServer();
+      supabase = await getSupabaseServer(request);
       if (!supabase) {
         console.error("Supabase client not available in /api/public/home");
         return NextResponse.json(
@@ -144,6 +144,7 @@ export async function GET(request: Request) {
       rating_average,
       review_count,
       thumbnail_url,
+      avatar_url,
       is_featured,
       is_verified,
       currency,
@@ -718,45 +719,49 @@ export async function GET(request: Request) {
       });
     }
 
-    // Fetch badges and points for all providers
-    const { data: providerPoints } = allProviderIds.size > 0 ? await supabase
-      .from("provider_points")
-      .select(`
-        provider_id,
-        total_points,
-        current_badge_id,
-        provider_badges!provider_points_current_badge_id_fkey (
-          id,
-          name,
-          slug,
-          description,
-          icon_url,
-          tier,
-          color,
-          requirements,
-          benefits
-        )
-      `)
-      .in("provider_id", Array.from(allProviderIds)) : { data: null };
-
-    // Create a map of provider_id -> badge
+    // Fetch badges and points for all providers (non-blocking: skip badges on failure)
     const badgeMap = new Map<string, any>();
-    if (providerPoints) {
-      providerPoints.forEach((pp: any) => {
-        if (pp.current_badge_id && pp.provider_badges) {
-          badgeMap.set(pp.provider_id, {
-            id: pp.provider_badges.id,
-            name: pp.provider_badges.name,
-            slug: pp.provider_badges.slug,
-            description: pp.provider_badges.description,
-            icon_url: pp.provider_badges.icon_url,
-            tier: pp.provider_badges.tier,
-            color: pp.provider_badges.color,
-            requirements: pp.provider_badges.requirements,
-            benefits: pp.provider_badges.benefits,
+    if (allProviderIds.size > 0) {
+      try {
+        const { data: providerPoints } = await supabase
+          .from("provider_points")
+          .select(`
+            provider_id,
+            total_points,
+            current_badge_id,
+            provider_badges!provider_points_current_badge_id_fkey (
+              id,
+              name,
+              slug,
+              description,
+              icon_url,
+              tier,
+              color,
+              requirements,
+              benefits
+            )
+          `)
+          .in("provider_id", Array.from(allProviderIds));
+        if (providerPoints) {
+          providerPoints.forEach((pp: any) => {
+            if (pp.current_badge_id && pp.provider_badges) {
+              badgeMap.set(pp.provider_id, {
+                id: pp.provider_badges.id,
+                name: pp.provider_badges.name,
+                slug: pp.provider_badges.slug,
+                description: pp.provider_badges.description,
+                icon_url: pp.provider_badges.icon_url,
+                tier: pp.provider_badges.tier,
+                color: pp.provider_badges.color,
+                requirements: pp.provider_badges.requirements,
+                benefits: pp.provider_badges.benefits,
+              });
+            }
           });
         }
-      });
+      } catch (badgeErr) {
+        console.warn("Home: provider_points/badges fetch failed, continuing without badges:", badgeErr);
+      }
     }
 
     // Fetch minimum prices from offerings for each provider (only if we have provider IDs)
@@ -800,13 +805,11 @@ export async function GET(request: Request) {
           }
         }
         
-        // Check service type support
+        // Check service type support (supports_salon set only from provider_locations with location_type = 'salon')
         const serviceType = serviceTypeMap.get(offering.provider_id) || { supports_house_calls: false, supports_salon: false };
         if (offering.service?.supports_at_home) {
           serviceType.supports_house_calls = true;
         }
-        // If provider has offerings, they support salon services (at least one location)
-        serviceType.supports_salon = true;
         serviceTypeMap.set(offering.provider_id, serviceType);
       });
     }
@@ -835,28 +838,27 @@ export async function GET(request: Request) {
           }
         }
         
-        // Check service type support from services
+        // Check service type support (supports_salon set only from provider_locations with location_type = 'salon')
         const serviceType = serviceTypeMap.get(service.provider_id) || { supports_house_calls: false, supports_salon: false };
         if (service.supports_at_home) {
           serviceType.supports_house_calls = true;
         }
-        // If provider has services, they likely support salon services
-        serviceType.supports_salon = true;
         serviceTypeMap.set(service.provider_id, serviceType);
       });
     }
     
-    // Also check provider_locations to determine salon support
+    // Salon support only from locations with location_type = 'salon' (base = distance-only)
     if (allProviderIds.size > 0) {
       const { data: providerLocations } = await supabase
         .from("provider_locations")
-        .select("provider_id")
+        .select("provider_id, location_type")
         .in("provider_id", Array.from(allProviderIds))
         .eq("is_active", true)
         .limit(500);
-      
+
       if (providerLocations) {
         providerLocations.forEach((loc: any) => {
+          if ((loc.location_type || "salon") !== "salon") return;
           const serviceType = serviceTypeMap.get(loc.provider_id) || { supports_house_calls: false, supports_salon: false };
           serviceType.supports_salon = true;
           serviceTypeMap.set(loc.provider_id, serviceType);
@@ -930,6 +932,7 @@ export async function GET(request: Request) {
         rating: provider.rating_average || 0, // Map rating_average to rating
         review_count: provider.review_count || 0,
         thumbnail_url: provider.thumbnail_url,
+        avatar_url: provider.avatar_url ?? null,
         city: location?.city || "",
         country: location?.country || "",
         is_featured: provider.is_featured || false,
@@ -982,7 +985,7 @@ export async function GET(request: Request) {
           providerIds.length > 0
             ? await supabase
                 .from("provider_locations")
-                .select("provider_id, latitude, longitude, city, country")
+                .select("provider_id, latitude, longitude, city, country, location_type")
                 .in("provider_id", providerIds)
                 .eq("is_active", true)
                 .not("latitude", "is", null)
@@ -1061,12 +1064,11 @@ export async function GET(request: Request) {
               }
             }
             
-            // Check service type support
+            // Check service type support (supports_salon set only from salon-type locations below)
             const serviceType = nearestServiceTypeMap.get(offering.provider_id) || { supports_house_calls: false, supports_salon: false };
             if (offering.service?.supports_at_home) {
               serviceType.supports_house_calls = true;
             }
-            serviceType.supports_salon = true; // If provider has offerings, they support salon
             nearestServiceTypeMap.set(offering.provider_id, serviceType);
           });
         }
@@ -1087,43 +1089,40 @@ export async function GET(request: Request) {
               }
             }
             
-            // Check service type support from services
+            // Check service type support (supports_salon set only from salon-type locations below)
             const serviceType = nearestServiceTypeMap.get(service.provider_id) || { supports_house_calls: false, supports_salon: false };
             if (service.supports_at_home) {
               serviceType.supports_house_calls = true;
             }
-            serviceType.supports_salon = true; // If provider has services, they likely support salon
             nearestServiceTypeMap.set(service.provider_id, serviceType);
           });
         }
         
-        // Also check provider_locations for nearest providers to determine salon support
-        // This ensures providers with locations show "At Salon" tag even if they don't have offerings/services yet
+        // Salon support only from locations with location_type = 'salon' (base = distance-only)
         if (allLocations && allLocations.length > 0) {
           (allLocations as any[]).forEach((loc: any) => {
+            if ((loc.location_type || "salon") !== "salon") return;
             const serviceType = nearestServiceTypeMap.get(loc.provider_id) || { supports_house_calls: false, supports_salon: false };
-            serviceType.supports_salon = true; // If provider has a location, they support salon services
+            serviceType.supports_salon = true;
             nearestServiceTypeMap.set(loc.provider_id, serviceType);
           });
         }
-        
-        // Also check all providers in nearestProviderIds to ensure we have service type info for all
-        // Fetch any missing service type data from provider_locations if not already set
+
+        // Fill missing service type from provider_locations (salon-type only)
         if (nearestProviderIds.length > 0) {
           const { data: allNearestLocations } = await supabase
             .from("provider_locations")
-            .select("provider_id")
+            .select("provider_id, location_type")
             .in("provider_id", nearestProviderIds)
             .eq("is_active", true)
             .limit(500);
-          
+
           if (allNearestLocations) {
             allNearestLocations.forEach((loc: any) => {
+              if ((loc.location_type || "salon") !== "salon") return;
               if (!nearestServiceTypeMap.has(loc.provider_id)) {
-                // Provider has location but no offerings/services - still supports salon
                 nearestServiceTypeMap.set(loc.provider_id, { supports_house_calls: false, supports_salon: true });
               } else {
-                // Ensure salon support is set if location exists
                 const serviceType = nearestServiceTypeMap.get(loc.provider_id)!;
                 serviceType.supports_salon = true;
               }
@@ -1161,18 +1160,12 @@ export async function GET(request: Request) {
             const badge = badgeMap.get(provider.id);
             let serviceType = nearestServiceTypeMap.get(provider.id);
             
-            // If no service type found, check if provider has a location (which means they support salon)
             if (!serviceType) {
-              const hasLocation = loc !== undefined;
-              serviceType = { 
-                supports_house_calls: false, 
-                supports_salon: hasLocation // If they have a location, they support salon
-              };
+              serviceType = { supports_house_calls: false, supports_salon: false };
             }
-            
-            // Ensure service type fields are always boolean
+
             const supportsHouseCalls = Boolean(serviceType.supports_house_calls);
-            const supportsSalon = Boolean(serviceType.supports_salon || loc !== undefined); // Also check location as fallback
+            const supportsSalon = Boolean(serviceType.supports_salon);
             
             return {
               id: provider.id,
@@ -1182,6 +1175,7 @@ export async function GET(request: Request) {
               rating: provider.rating_average || 0,
               review_count: provider.review_count || 0,
               thumbnail_url: provider.thumbnail_url,
+              avatar_url: provider.avatar_url ?? null,
               city: loc?.city || "",
               country: loc?.country || "",
               is_featured: provider.is_featured || false,
@@ -1297,6 +1291,7 @@ export async function GET(request: Request) {
                   rating: provider.rating_average || 0,
                   review_count: provider.review_count || 0,
                   thumbnail_url: provider.thumbnail_url,
+                  avatar_url: provider.avatar_url ?? null,
                   city: loc?.city || "",
                   country: loc?.country || "",
                   is_featured: provider.is_featured || false,
@@ -1413,6 +1408,7 @@ export async function GET(request: Request) {
                 rating: provider.rating_average || 0,
                 review_count: provider.review_count || 0,
                 thumbnail_url: provider.thumbnail_url,
+                avatar_url: provider.avatar_url ?? null,
                 city: loc?.city || "",
                 country: loc?.country || "",
                 is_featured: provider.is_featured || false,
@@ -1526,6 +1522,7 @@ export async function GET(request: Request) {
               rating: provider.rating_average || 0,
               review_count: provider.review_count || 0,
               thumbnail_url: provider.thumbnail_url,
+              avatar_url: provider.avatar_url ?? null,
               city: loc?.city || "",
               country: loc?.country || "",
               is_featured: provider.is_featured || false,
@@ -1631,6 +1628,7 @@ export async function GET(request: Request) {
                 rating: provider.rating_average || 0,
                 review_count: provider.review_count || 0,
                 thumbnail_url: provider.thumbnail_url,
+                avatar_url: provider.avatar_url ?? null,
                 city: loc?.city || "",
                 country: loc?.country || "",
                 is_featured: provider.is_featured || false,
@@ -1703,7 +1701,7 @@ export async function GET(request: Request) {
       const { data: campaigns } = await supabaseAdmin.from("ads_campaigns").select("provider_id").eq("status", "active").limit(maxSlots * 2);
       const providerIds = [...new Set((campaigns ?? []).map((c: { provider_id: string }) => c.provider_id))].slice(0, maxSlots);
       if (providerIds.length > 0) {
-        const { data: providersRaw } = await supabaseAdmin.from("providers").select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, is_featured, is_verified, description, currency").in("id", providerIds).eq("status", "active");
+        const { data: providersRaw } = await supabaseAdmin.from("providers").select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, description, currency").in("id", providerIds).eq("status", "active");
         if (providersRaw?.length) {
           const allMap = new Map((data.all ?? []).map((p: PublicProviderCard) => [p.id, p]));
           for (const p of providersRaw as any[]) {
@@ -1715,6 +1713,7 @@ export async function GET(request: Request) {
               rating: p.rating_average ?? 0,
               review_count: p.review_count ?? 0,
               thumbnail_url: p.thumbnail_url,
+              avatar_url: p.avatar_url ?? null,
               city: "",
               country: "",
               is_featured: p.is_featured ?? false,
@@ -1737,8 +1736,9 @@ export async function GET(request: Request) {
     const response = NextResponse.json({ ...result, data });
     response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     return response;
-  } catch (error: any) {
-    console.error("Unexpected error in /api/public/home:", error);
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error("Unexpected error in /api/public/home:", err.message, err.stack);
     // Return empty data instead of error to prevent page crash
     const errorResponse = NextResponse.json({
       data: {

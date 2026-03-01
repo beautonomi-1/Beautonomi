@@ -107,6 +107,9 @@ export async function PATCH(
     if (body.phone !== undefined) updateData.phone = body.phone;
     if (body.is_active !== undefined) updateData.is_active = body.is_active;
     if (body.is_primary !== undefined) updateData.is_primary = body.is_primary;
+    if (body.location_type !== undefined && (body.location_type === "salon" || body.location_type === "base")) {
+      updateData.location_type = body.location_type;
+    }
     // Map operating_hours to working_hours for database
     if (body.operating_hours !== undefined) updateData.working_hours = body.operating_hours;
 

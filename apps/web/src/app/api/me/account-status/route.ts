@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     // Check if user is deactivated
     const { data: userData } = await supabase
       .from("users")
-      .select("deactivated_at, role")
+      .select("deactivated_at, deactivated_by, role")
       .eq("id", user.id)
       .single();
 
@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
       return successResponse({
         is_deactivated: true,
         deactivated_at: userData.deactivated_at,
+        deactivated_by: userData.deactivated_by || null,
       });
     }
 

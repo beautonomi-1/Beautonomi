@@ -2,6 +2,7 @@
   "crons": [
     { "path": "/api/cron/send-reminders", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/expire-booking-holds", "schedule": "*/2 * * * *" },
+    { "path": "/api/cron/expire-on-demand-requests", "schedule": "* * * * *" },
     { "path": "/api/cron/execute-automations", "schedule": "*/10 * * * *" },
     { "path": "/api/cron/process-recurring-bookings", "schedule": "0 0 * * *" },
     { "path": "/api/cron/check-low-stock", "schedule": "0 8 * * *" }
@@ -9,9 +10,7 @@
   "headers": [
     {
       "source": "/api/public/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "s-maxage=30, stale-while-revalidate=300" }
-      ]
+      "headers": [{ "key": "Cache-Control", "value": "s-maxage=30, stale-while-revalidate=300" }]
     }
   ]
 }

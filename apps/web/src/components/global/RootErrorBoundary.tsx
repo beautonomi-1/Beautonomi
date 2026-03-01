@@ -2,10 +2,15 @@
 
 import React from "react";
 
-const DEBUG_LOG_URL = "http://127.0.0.1:7243/ingest/89f3cdbd-444d-401b-9bce-c59a37625210";
+// Only send debug logs when ingest server URL is set (e.g. local debug server on 7243)
+const DEBUG_LOG_URL =
+  typeof process !== "undefined" && process.env?.NEXT_PUBLIC_DEBUG_INGEST_URL
+    ? process.env.NEXT_PUBLIC_DEBUG_INGEST_URL
+    : undefined;
 const SESSION_ID = "50ed8b";
 
 function logError(error: Error) {
+  if (!DEBUG_LOG_URL) return;
   const payload = {
     sessionId: SESSION_ID,
     location: "RootErrorBoundary",

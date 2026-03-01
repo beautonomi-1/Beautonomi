@@ -71,8 +71,10 @@ export function ServiceCreateEditDialog({
 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [allServices, setAllServices] = useState<ServiceItem[]>([]);
+  const [providerResources, setProviderResources] = useState<Array<{ id: string; name: string; group_name?: string | null }>>([]);
   const [isLoadingTeam, setIsLoadingTeam] = useState(false);
   const [isLoadingServices, setIsLoadingServices] = useState(false);
+  const [isLoadingResources, setIsLoadingResources] = useState(false);
   const [showIncludedServicesDialog, setShowIncludedServicesDialog] = useState(false);
   const [showCategoryDialog, setShowCategoryDialog] = useState(false);
   const [showTeamMemberDialog, setShowTeamMemberDialog] = useState(false);
@@ -137,13 +139,29 @@ export function ServiceCreateEditDialog({
     parentServiceId: "",  // Parent service for variants
     variantName: "",  // Short name for variant (e.g., "Short Hair")
     variantSortOrder: 0,
+
+    // Resource requirements (rooms, equipment) for this service
+    offeringResources: [] as Array<{ resource_id: string; required: boolean }>,
   });
 
-  // Load team members and services when dialog opens
+  const loadProviderResources = async () => {
+    try {
+      setIsLoadingResources(true);
+      const list = await providerApi.listResources();
+      setProviderResources((list || []).map((r: any) => ({ id: r.id, name: r.name, group_name: r.group_name ?? null })));
+    } catch {
+      setProviderResources([]);
+    } finally {
+      setIsLoadingResources(false);
+    }
+  };
+
+  // Load team members, services, and resources when dialog opens
   useEffect(() => {
     if (open) {
       loadTeamMembers();
       loadAllServices();
+      loadProviderResources();
     }
   }, [open]);
 
@@ -344,6 +362,7 @@ export function ServiceCreateEditDialog({
         parentServiceId: service.parent_service_id || "",
         variantName: service.variant_name || "",
         variantSortOrder: service.variant_sort_order || 0,
+        offeringResources: [],
       });
       
       // Load pricing options if they exist
@@ -365,6 +384,13 @@ export function ServiceCreateEditDialog({
       } else {
         setAdvancedPricingRules([]);
       }
+
+      // Load resource requirements for this service
+      providerApi.getServiceResources(service.id).then((resList) => {
+        setFormData((prev) => ({ ...prev, offeringResources: Array.isArray(resList) ? resList : [] }));
+      }).catch(() => {
+        setFormData((prev) => ({ ...prev, offeringResources: [] }));
+      });
     } else {
       setFormData({
         name: "",
@@ -400,6 +426,8 @@ export function ServiceCreateEditDialog({
         parentServiceId: "",
         variantName: "",
         variantSortOrder: 0,
+
+        offeringResources: [],
       });
       setPricingOptions([{ id: "1", duration: 60, priceType: "fixed", price: 0, pricingName: "" }]);
     }
@@ -470,12 +498,20 @@ export function ServiceCreateEditDialog({
         variant_sort_order: formData.serviceType === "variant" ? formData.variantSortOrder : 0,
       };
       
+      let savedServiceId: string;
       if (service) {
         await providerApi.updateService(service.id, serviceData);
+        savedServiceId = service.id;
         toast.success("Service updated successfully");
       } else {
-        await providerApi.createService(serviceData);
+        const created = await providerApi.createService(serviceData);
+        savedServiceId = created.id;
         toast.success("Service created successfully");
+      }
+      if (formData.offeringResources?.length) {
+        await providerApi.setServiceResources(savedServiceId, formData.offeringResources);
+      } else {
+        await providerApi.setServiceResources(savedServiceId, []);
       }
       invalidateSetupStatusCache();
       onSave();
@@ -987,6 +1023,60 @@ export function ServiceCreateEditDialog({
                 )}
               </div>
             </div>
+
+            {(formData.serviceType === "basic" || formData.serviceType === "variant") && (
+              <>
+                <Separator />
+                <div className="space-y-3 sm:space-y-4">
+                  <div>
+                    <h3 className="text-base sm:text-lg font-semibold mb-1">Resource requirements</h3>
+                    <p className="text-xs sm:text-sm text-gray-500">Assign rooms or equipment required or optional for this service. Required resources are reserved when the service is booked.</p>
+                  </div>
+                  {isLoadingResources ? (
+                    <p className="text-sm text-gray-500">Loading resources...</p>
+                  ) : providerResources.length === 0 ? (
+                    <p className="text-sm text-gray-500">No resources yet. Add rooms or equipment under Resources in the main menu first.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-3 bg-gray-50">
+                      {providerResources.map((res) => {
+                        const entry = formData.offeringResources?.find((o) => o.resource_id === res.id);
+                        const isRequired = entry?.required === true;
+                        const isOptional = entry?.required === false;
+                        return (
+                          <div key={res.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-gray-200 last:border-0">
+                            <span className="text-sm font-medium truncate">{res.name}{res.group_name ? ` (${res.group_name})` : ""}</span>
+                            <div className="flex items-center gap-3 shrink-0">
+                              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                                <Checkbox
+                                  checked={isRequired}
+                                  onCheckedChange={(checked) => {
+                                    const next = (formData.offeringResources || []).filter((o) => o.resource_id !== res.id);
+                                    if (checked) next.push({ resource_id: res.id, required: true });
+                                    setFormData({ ...formData, offeringResources: next });
+                                  }}
+                                />
+                                Required
+                              </label>
+                              <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+                                <Checkbox
+                                  checked={isOptional}
+                                  onCheckedChange={(checked) => {
+                                    const next = (formData.offeringResources || []).filter((o) => o.resource_id !== res.id);
+                                    if (checked) next.push({ resource_id: res.id, required: false });
+                                    setFormData({ ...formData, offeringResources: next });
+                                  }}
+                                />
+                                Optional
+                              </label>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
 
             <Separator />
 

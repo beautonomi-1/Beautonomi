@@ -57,6 +57,7 @@ export async function GET(
         rating_average,
         review_count,
         thumbnail_url,
+        avatar_url,
         description,
         status,
         is_featured,

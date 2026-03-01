@@ -10,8 +10,11 @@ import { useEffect } from "react";
  */
 export default function SuppressConsoleWarnings() {
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/89f3cdbd-444d-401b-9bce-c59a37625210',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'50ed8b'},body:JSON.stringify({sessionId:'50ed8b',location:'suppress-console-warnings.tsx:useEffect',message:'SuppressConsoleWarnings mounted',data:{},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+    // #region agent log (only when NEXT_PUBLIC_DEBUG_INGEST_URL is set)
+    const url = typeof process !== "undefined" ? process.env?.NEXT_PUBLIC_DEBUG_INGEST_URL : undefined;
+    if (url) {
+      fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "50ed8b" }, body: JSON.stringify({ sessionId: "50ed8b", location: "suppress-console-warnings.tsx:useEffect", message: "SuppressConsoleWarnings mounted", data: {}, timestamp: Date.now(), hypothesisId: "H2" }) }).catch(() => {});
+    }
     // #endregion
     // Store original console methods
     const originalError = console.error;

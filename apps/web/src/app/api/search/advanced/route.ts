@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
         rating_average,
         review_count,
         thumbnail_url,
+        avatar_url,
         locations(
           id,
           name,

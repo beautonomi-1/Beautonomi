@@ -30,13 +30,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Deactivate account by setting is_active to false
+    // Deactivate account (self-service: deactivated_by = 'user' so they can reactivate by logging in)
     const { error: updateError } = await supabase
       .from('users')
       .update({
         is_active: false,
         deactivated_at: new Date().toISOString(),
         deactivation_reason: reason || null,
+        deactivated_by: 'user',
       })
       .eq('id', user.id);
 

@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch provider data (use rating_average, not rating)
     const { data: providers, error: providersError } = await (supabase.from("providers") as any)
-      .select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, description, status, is_featured, is_verified, currency")
+      .select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, description, status, is_featured, is_verified, currency")
       .in("id", providerIds);
 
     console.log("Wishlist providers API - Fetched providers:", {
@@ -99,10 +99,10 @@ export async function GET(request: NextRequest) {
       return successResponse([]);
     }
 
-    // Fetch locations for all providers
+    // Fetch locations for all providers (include location_type for salon vs base)
     const { data: locations, error: locationsError } = await supabase
       .from("provider_locations")
-      .select("provider_id, city, country, is_primary")
+      .select("provider_id, city, country, is_primary, location_type")
       .in("provider_id", providerIds)
       .eq("is_active", true)
       .order("is_primary", { ascending: false });
@@ -199,9 +199,10 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Check provider_locations for salon support
+    // Salon support only from locations with location_type = 'salon' (base = distance-only)
     if (locations && locations.length > 0) {
       locations.forEach((loc: any) => {
+        if ((loc.location_type || "salon") !== "salon") return;
         const serviceType = serviceTypeMap.get(loc.provider_id) || { supports_house_calls: false, supports_salon: false };
         serviceType.supports_salon = true;
         serviceTypeMap.set(loc.provider_id, serviceType);
@@ -228,6 +229,7 @@ export async function GET(request: NextRequest) {
           rating: p.rating_average || 0, // Map rating_average to rating
           review_count: p.review_count || 0,
           thumbnail_url: p.thumbnail_url || null,
+          avatar_url: p.avatar_url ?? null,
           city: location?.city || "",
           country: location?.country || "",
           is_featured: p.is_featured || false,

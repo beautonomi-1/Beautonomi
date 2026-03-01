@@ -16,6 +16,8 @@ interface Conversation {
   id: string;
   customer_id: string;
   customer_name: string;
+  customer_phone?: string | null;
+  customer_email?: string | null;
   customer_avatar?: string;
   last_message?: string;
   last_message_time?: string;
@@ -100,16 +102,16 @@ export default function ProviderMessaging() {
       // Transform provider conversations to match the expected format
       const transformed = (response.data || []).map((conv) => ({
         ...conv,
-        // For provider portal, show customer name (not provider name)
-        provider_name: undefined, // Provider doesn't need provider_name
+        // For provider portal, show customer name and contact details
+        provider_name: undefined,
         customer_name: conv.customer_name || "Customer",
+        customer_phone: conv.customer_phone ?? null,
+        customer_email: conv.customer_email ?? null,
         avatar: conv.customer_avatar || conv.avatar || null,
         last_message_at: conv.last_message_time || conv.last_message_at || new Date().toISOString(),
         last_message_preview: conv.last_message || conv.last_message_preview || "",
-        // Ensure unread_count is properly set
         unread_count: conv.unread_count || 0,
-        // Ensure all required fields are present (especially customer_id for custom offers)
-        customer_id: conv.customer_id || conv.customer_id, // Ensure customer_id is present
+        customer_id: conv.customer_id,
         provider_id: conv.provider_id,
         booking_id: conv.booking_id || null,
         booking_number: conv.booking_number || null,

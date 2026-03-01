@@ -93,13 +93,14 @@ export async function POST(
         console.error('Failed to check milestones:', err)
       );
 
-      // Award customer loyalty points for completed booking
+      // Award customer loyalty points for completed booking (using loyalty_rules)
       const customerId = (updatedBooking as any).customer_id;
       const subtotal = (updatedBooking as any).subtotal || 0;
       if (subtotal > 0 && customerId) {
         (async () => {
           try {
             const supabaseAdmin = await getSupabaseAdmin();
+            const { calculateLoyaltyPoints } = await import("@/lib/loyalty/calculate-points");
             const { data: existing } = await supabaseAdmin
               .from("loyalty_point_transactions")
               .select("id")
@@ -108,7 +109,8 @@ export async function POST(
               .eq("transaction_type", "earned")
               .maybeSingle();
             if (!existing) {
-              const pointsEarned = Math.floor(subtotal);
+              const currency = (updatedBooking as any).currency || "ZAR";
+              const pointsEarned = await calculateLoyaltyPoints(subtotal, supabaseAdmin, currency);
               if (pointsEarned > 0) {
                 await supabaseAdmin.from("loyalty_point_transactions").insert({
                   user_id: customerId,

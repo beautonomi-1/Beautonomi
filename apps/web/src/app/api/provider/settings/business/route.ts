@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
     const { data: provider, error: providerError } = await supabase
       .from("providers")
       .select(
-        "id, business_name, business_type, description, email, phone, website, thumbnail_url, timezone, time_format, week_start, appointment_color_source, client_notification_language, default_team_language, social_media_links, years_in_business, languages_spoken"
+        "id, business_name, business_type, description, email, phone, website, thumbnail_url, avatar_url, timezone, time_format, week_start, appointment_color_source, client_notification_language, default_team_language, social_media_links, years_in_business, languages_spoken"
       )
       .eq("id", providerId)
       .single();
@@ -76,6 +77,7 @@ export async function GET(request: NextRequest) {
       phone: provider.phone ?? "",
       website: provider.website ?? null,
       logo_url: provider.thumbnail_url ?? null,
+      avatar_url: (provider as any).avatar_url ?? null,
       address_line1: loc?.address_line1 ?? null,
       city: loc?.city ?? null,
       state: loc?.state ?? null,
@@ -201,12 +203,35 @@ export async function PATCH(request: NextRequest) {
       updates.social_media_links = socialMediaLinks;
     }
 
-    // Logo: app may send logo_base64 (data URL). Only persist if it's already a URL; base64 upload would need storage.
+    // Logo: accept HTTP URL (web) or data URL (mobile app base64). Data URLs are uploaded to storage.
     if (body.logo_base64 !== undefined && body.logo_base64 !== "") {
-      if (typeof body.logo_base64 === "string" && body.logo_base64.startsWith("http")) {
-        updates.thumbnail_url = body.logo_base64;
+      const logo = body.logo_base64 as string;
+      if (logo.startsWith("http")) {
+        updates.thumbnail_url = logo;
+      } else if (logo.startsWith("data:")) {
+        try {
+          const response = await fetch(logo);
+          const blob = await response.blob();
+          const fileExt = blob.type?.split("/")[1] || "jpg";
+          const fileName = `${providerId}/thumbnail-${Date.now()}.${fileExt}`;
+          const supabaseAdmin = getSupabaseAdmin();
+          const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+            .from("provider-gallery")
+            .upload(fileName, blob, {
+              contentType: blob.type || "image/jpeg",
+              cacheControl: "3600",
+              upsert: true,
+            });
+          if (!uploadError && uploadData?.path) {
+            const { data: { publicUrl } } = supabaseAdmin.storage
+              .from("provider-gallery")
+              .getPublicUrl(uploadData.path);
+            updates.thumbnail_url = publicUrl;
+          }
+        } catch (e) {
+          console.error("Business logo upload failed:", e);
+        }
       }
-      // Else: base64 data URL from app – would need upload to storage then set thumbnail_url (not done here)
     }
 
     const { data: provider, error } = await supabase

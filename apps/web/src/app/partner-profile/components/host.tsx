@@ -112,9 +112,9 @@ export default function ProviderInfo({ slug, id }: ProviderInfoProps) {
                     <Image src={Badge} alt="" className="h-4 w-4" />
                   </div>
                   <div className="w-24 h-24 mb-2 rounded-full mx-auto overflow-hidden bg-gray-200 flex items-center justify-center">
-                    {provider?.thumbnail_url ? (
+                    {(provider?.avatar_url || provider?.thumbnail_url) ? (
                       <Image
-                        src={provider.thumbnail_url}
+                        src={provider.avatar_url || provider.thumbnail_url}
                         alt={provider.business_name || "Provider"}
                         width={96}
                         height={96}

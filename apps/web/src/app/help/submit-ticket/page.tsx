@@ -46,14 +46,21 @@ export default function SubmitTicketPage() {
 
     try {
       setIsSubmitting(true);
-      await fetcher.post("/api/me/support-tickets", {
-        subject: subject.trim(),
-        message: message.trim(),
-        priority,
-        category: category || undefined,
-      });
-
-      toast.success("Support ticket submitted successfully!");
+      const res = await fetcher.post<{ data?: { ticket?: { ticket_number?: string } }; message?: string }>(
+        "/api/me/support-tickets",
+        {
+          subject: subject.trim(),
+          message: message.trim(),
+          priority,
+          category: category || undefined,
+        }
+      );
+      const ticketNumber = (res as { data?: { ticket?: { ticket_number?: string } } })?.data?.ticket?.ticket_number;
+      toast.success(
+        ticketNumber
+          ? `Support ticket submitted. Your ticket number is ${ticketNumber}. We'll email you a confirmation.`
+          : "Support ticket submitted successfully! We'll email you a confirmation."
+      );
       router.push("/help");
     } catch (error: any) {
       console.error("Failed to submit ticket:", error);

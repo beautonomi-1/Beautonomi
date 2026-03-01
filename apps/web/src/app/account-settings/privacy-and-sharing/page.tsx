@@ -46,9 +46,15 @@ const PrivacyPage = () => {
   // Data tab states
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteReason, setDeleteReason] = useState("");
   const [isRequestingData, setIsRequestingData] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  const DELETE_CONFIRM_PHRASE = "DELETE";
+  const canConfirmDelete =
+    !!deletePassword?.trim() &&
+    deleteConfirmText?.trim().toUpperCase() === DELETE_CONFIRM_PHRASE;
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [dataExportStatus, setDataExportStatus] = useState<{
     isReady: boolean;
@@ -216,6 +222,9 @@ const PrivacyPage = () => {
       });
       toast.success("Your account deletion request has been submitted.");
       setShowDeleteDialog(false);
+      setDeletePassword("");
+      setDeleteConfirmText("");
+      setDeleteReason("");
       setTimeout(() => {
         window.location.href = "/";
       }, 2000);
@@ -486,9 +495,9 @@ const PrivacyPage = () => {
                             <h3 className="text-base font-semibold text-gray-900 mb-1">
                               Delete your account
                             </h3>
-                            <p className="text-sm font-light text-gray-600">
-                              This will permanently delete your account and your data, in accordance
-                              with applicable law.
+                            <p className="text-sm font-light text-gray-600 mb-2">
+                              Permanently remove your account and all data (bookings, messages, profile).
+                              You will need to enter your password and type &quot;DELETE&quot; to confirm.
                             </p>
                           </div>
                         </div>
@@ -819,19 +828,35 @@ const PrivacyPage = () => {
         </div>
 
         {/* Delete Account Confirmation Dialog */}
-        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <Dialog
+          open={showDeleteDialog}
+          onOpenChange={(open) => {
+            setShowDeleteDialog(open);
+            if (!open) {
+              setDeletePassword("");
+              setDeleteConfirmText("");
+              setDeleteReason("");
+            }
+          }}
+        >
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle>Delete your account</DialogTitle>
-              <DialogDescription>
-                This will permanently delete your account and your data, in accordance with
-                applicable law. This action cannot be undone.
+              <DialogTitle className="text-red-700">Permanently delete your account</DialogTitle>
+              <DialogDescription asChild>
+                <div className="space-y-2 text-sm text-gray-600">
+                  <p>
+                    This will <strong>permanently</strong> remove your account and all associated data,
+                    including bookings, messages, preferences, and profile. This action{" "}
+                    <strong>cannot be undone</strong>.
+                  </p>
+                  <p>If you prefer to take a break, use &quot;Deactivate account&quot; in Login &amp; security instead.</p>
+                </div>
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div>
                 <label htmlFor="delete-password" className="text-sm font-medium mb-2 block">
-                  Enter your password to confirm
+                  Enter your password
                 </label>
                 <Input
                   id="delete-password"
@@ -844,6 +869,21 @@ const PrivacyPage = () => {
                 />
               </div>
               <div>
+                <label htmlFor="delete-confirm-text" className="text-sm font-medium mb-2 block">
+                  Type <span className="font-mono font-bold text-red-600">{DELETE_CONFIRM_PHRASE}</span> to confirm
+                </label>
+                <Input
+                  id="delete-confirm-text"
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder={DELETE_CONFIRM_PHRASE}
+                  disabled={isDeletingAccount}
+                  className="w-full font-mono"
+                  autoComplete="off"
+                />
+              </div>
+              <div>
                 <label htmlFor="delete-reason" className="text-sm font-medium mb-2 block">
                   Reason (optional)
                 </label>
@@ -853,7 +893,7 @@ const PrivacyPage = () => {
                   onChange={(e) => setDeleteReason(e.target.value)}
                   placeholder="Tell us why you're deleting your account..."
                   disabled={isDeletingAccount}
-                  className="w-full min-h-[100px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF0077]"
+                  className="w-full min-h-[80px] px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF0077]"
                 />
               </div>
             </div>
@@ -863,6 +903,7 @@ const PrivacyPage = () => {
                 onClick={() => {
                   setShowDeleteDialog(false);
                   setDeletePassword("");
+                  setDeleteConfirmText("");
                   setDeleteReason("");
                 }}
                 disabled={isDeletingAccount}
@@ -871,10 +912,10 @@ const PrivacyPage = () => {
               </Button>
               <Button
                 onClick={handleDeleteAccount}
-                disabled={isDeletingAccount || !deletePassword}
+                disabled={isDeletingAccount || !canConfirmDelete}
                 className="bg-red-600 hover:bg-red-700 text-white"
               >
-                {isDeletingAccount ? "Deleting..." : "Delete account"}
+                {isDeletingAccount ? "Deleting..." : "Permanently delete account"}
               </Button>
             </DialogFooter>
           </DialogContent>

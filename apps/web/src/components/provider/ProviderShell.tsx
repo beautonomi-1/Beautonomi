@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { ProviderSidebar } from "./ProviderSidebar";
 import { ProviderTopbar } from "./ProviderTopbar";
 import { ProviderBottomNav } from "./ProviderBottomNav";
+import { OnDemandIncomingOverlay } from "@/components/provider-portal/OnDemandIncomingOverlay";
 import { useProviderSidebar } from "@/contexts/ProviderSidebarContext";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +67,9 @@ export function ProviderShell({ children }: { children: React.ReactNode }) {
       
       {/* Mobile Bottom Navigation */}
       <ProviderBottomNav />
+
+      {/* On-demand accept: incoming request overlay + ringtone */}
+      <OnDemandIncomingOverlay />
     </div>
   );
 }

@@ -15,6 +15,8 @@ interface CustomOfferModalProps {
   onClose: () => void;
   customerId: string;
   customerName?: string;
+  conversationId?: string | null;
+  editOfferId?: string | null;
   onSuccess?: () => void;
 }
 
@@ -23,8 +25,11 @@ export default function CustomOfferModal({
   onClose,
   customerId,
   customerName,
+  conversationId,
+  editOfferId,
   onSuccess,
 }: CustomOfferModalProps) {
+  const [serviceName, setServiceName] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [currency, setCurrency] = useState("ZAR");
@@ -39,14 +44,54 @@ export default function CustomOfferModal({
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   const [staffId, setStaffId] = useState<string | null>(null);
   const [staffMembers, setStaffMembers] = useState<Array<{ id: string; name: string; is_active: boolean }>>([]);
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressCity, setAddressCity] = useState("");
+  const [addressCountry, setAddressCountry] = useState("");
+  const [travelFee, setTravelFee] = useState("");
 
-  // Load service categories and staff members
+  const isEditMode = Boolean(editOfferId);
+
+  // Load service categories and staff members; when editing, load offer to pre-fill
   useEffect(() => {
     if (isOpen) {
       loadCategories();
       loadStaffMembers();
+      if (editOfferId) {
+        loadOfferForEdit(editOfferId);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, editOfferId]);
+
+  const loadOfferForEdit = async (offerId: string) => {
+    try {
+      const res = await fetcher.get<{ data: any }>(`/api/provider/custom-offers/${offerId}`);
+      const offer = res?.data;
+      if (!offer) return;
+      const req = offer.request;
+      setPrice(String(offer.price ?? ""));
+      setCurrency(offer.currency ?? "ZAR");
+      setDurationMinutes(String(offer.duration_minutes ?? 60));
+      setNotes(offer.notes ?? "");
+      setStaffId(offer.staff_id ?? null);
+      setTravelFee(offer.travel_fee != null ? String(offer.travel_fee) : "");
+      if (req) {
+        setServiceName(req.service_name ?? "");
+        setDescription(req.description ?? "");
+        setLocationType(req.location_type === "at_home" ? "at_home" : "at_salon");
+        setServiceCategoryId(req.service_category_id ?? null);
+        setAddressLine1(req.address_line1 ?? "");
+        setAddressCity(req.address_city ?? "");
+        setAddressCountry(req.address_country ?? "");
+        if (req.preferred_start_at) {
+          const d = new Date(req.preferred_start_at);
+          setPreferredStartAt(d.toISOString().slice(0, 16));
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load offer for edit:", err);
+      toast.error("Could not load offer");
+    }
+  };
 
   const loadCategories = async () => {
     try {
@@ -138,25 +183,36 @@ export default function CustomOfferModal({
 
       const expirationAt = calculateExpirationDate(Number(expirationDays));
 
-      await fetcher.post<{ data: { request: any; offer: any } }>(
-        "/api/provider/custom-offers/create",
-        {
-          customer_id: customerId,
-          service_category_id: serviceCategoryId || null,
-          location_type: locationType,
-          description: description.trim(),
-          price: Number(price),
-          currency: currency,
-          duration_minutes: Number(durationMinutes),
-          expiration_at: expirationAt,
-          notes: notes.trim() || null,
-          preferred_start_at: preferredStartAtIso,
-          image_urls: imageUrls,
-          staff_id: staffId || null, // Include assigned staff
-        }
-      );
+      const payload: Record<string, unknown> = {
+        customer_id: customerId,
+        service_category_id: serviceCategoryId || null,
+        location_type: locationType,
+        description: description.trim(),
+        price: Number(price),
+        currency: currency,
+        duration_minutes: Number(durationMinutes),
+        expiration_at: expirationAt,
+        notes: notes.trim() || null,
+        preferred_start_at: preferredStartAtIso,
+        image_urls: imageUrls,
+        staff_id: staffId || null,
+      };
+      if (conversationId) payload.conversation_id = conversationId;
+      if (serviceName.trim()) payload.service_name = serviceName.trim();
+      if (locationType === "at_home") {
+        if (addressLine1.trim()) payload.address_line1 = addressLine1.trim();
+        if (addressCity.trim()) payload.address_city = addressCity.trim();
+        if (addressCountry.trim()) payload.address_country = addressCountry.trim();
+        const fee = Number(travelFee);
+        if (!Number.isNaN(fee) && fee >= 0) payload.travel_fee = fee;
+      }
 
-      toast.success("Custom offer sent successfully!");
+      if (editOfferId) {
+        await fetcher.post(`/api/provider/custom-offers/${editOfferId}/retract`, {});
+      }
+      await fetcher.post<{ data: { request: any; offer: any } }>("/api/provider/custom-offers/create", payload);
+
+      toast.success(isEditMode ? "Offer updated and resent." : "Custom offer sent successfully!");
       onSuccess?.();
       handleClose();
     } catch (err) {
@@ -172,6 +228,7 @@ export default function CustomOfferModal({
   };
 
   const handleClose = () => {
+    setServiceName("");
     setDescription("");
     setPrice("");
     setCurrency("ZAR");
@@ -183,6 +240,10 @@ export default function CustomOfferModal({
     setImageUrls([]);
     setServiceCategoryId(null);
     setStaffId(null);
+    setAddressLine1("");
+    setAddressCity("");
+    setAddressCountry("");
+    setTravelFee("");
     onClose();
   };
 
@@ -192,10 +253,12 @@ export default function CustomOfferModal({
         <DialogHeader>
           <DialogTitle className="text-2xl font-semibold flex items-center gap-2">
             <Sparkles className="w-6 h-6 text-[#FF0077]" />
-            Send Custom Offer to {customerName || "Customer"}
+            {isEditMode ? "Edit & resend offer" : `Send Custom Offer to ${customerName || "Customer"}`}
           </DialogTitle>
           <DialogDescription>
-            Create a personalized service offer for this customer. The offer will be sent as a message in your conversation.
+            {isEditMode
+              ? "Update the offer and resend. The previous offer will be withdrawn and a new message will appear in this conversation."
+              : "Create a personalized service offer for this customer. The offer will be sent as a message in your conversation."}
           </DialogDescription>
         </DialogHeader>
 
@@ -241,6 +304,19 @@ export default function CustomOfferModal({
                 Group Booking
               </Button>
             </div>
+          </div>
+
+          {/* Service name (optional) - used as booking/calendar title when accepted */}
+          <div className="space-y-2">
+            <Label htmlFor="serviceName" className="text-sm font-semibold">
+              Service name (optional)
+            </Label>
+            <Input
+              id="serviceName"
+              value={serviceName}
+              onChange={(e) => setServiceName(e.target.value)}
+              placeholder="e.g. Haircut & Styling"
+            />
           </div>
 
           {/* Description */}
@@ -357,6 +433,50 @@ export default function CustomOfferModal({
               />
             </div>
           </div>
+
+          {/* At home: address + optional travel fee */}
+          {locationType === "at_home" && (
+            <>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Address (for at home)</Label>
+                <Input
+                  value={addressLine1}
+                  onChange={(e) => setAddressLine1(e.target.value)}
+                  placeholder="Street address"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">City</Label>
+                  <Input
+                    value={addressCity}
+                    onChange={(e) => setAddressCity(e.target.value)}
+                    placeholder="City"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Country</Label>
+                  <Input
+                    value={addressCountry}
+                    onChange={(e) => setAddressCountry(e.target.value)}
+                    placeholder="Country"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Travel fee (optional, ZAR)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={travelFee}
+                  onChange={(e) => setTravelFee(e.target.value)}
+                  placeholder="e.g. 50"
+                />
+                <p className="text-xs text-gray-500">Add a travel fee for this house call. Leave empty for no fee.</p>
+              </div>
+            </>
+          )}
 
           {/* Service Category (optional) */}
           {categories.length > 0 && (

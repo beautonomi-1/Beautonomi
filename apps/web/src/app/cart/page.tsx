@@ -49,17 +49,20 @@ export default function CartPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ quantity: qty }),
     });
-    fetchCart();
+    await fetchCart();
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("beautonomi:cart-updated"));
   };
 
   const removeItem = async (itemId: string) => {
     await fetch(`/api/me/cart/${itemId}`, { method: "DELETE" });
-    fetchCart();
+    await fetchCart();
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("beautonomi:cart-updated"));
   };
 
   const clearAll = async () => {
     await fetch("/api/me/cart", { method: "DELETE" });
     setItems([]);
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("beautonomi:cart-updated"));
   };
 
   // Group by provider
