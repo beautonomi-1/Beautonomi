@@ -13,5 +13,3 @@ export default function AccountSettingsPageWrapper() {
     </AuthGuard>
   );
 }
-
-export default page
