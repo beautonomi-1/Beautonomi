@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { useAuth } from "@/providers/AuthProvider";
 
 interface ProductDetail {
   id: string;
@@ -14,10 +15,18 @@ interface ProductDetail {
   long_description: string | null;
   description: string | null;
   retail_price: number;
+  currency?: string | null;
   image_urls: string[];
   quantity: number;
   tags: string[];
   provider: { id: string; business_name: string; slug: string; logo_url: string | null };
+}
+
+/** Format price with currency (default ZAR/R). */
+function formatPrice(price: number, currency?: string | null): string {
+  const code = (currency || "ZAR").toUpperCase();
+  if (code === "ZAR") return `R${price.toFixed(2)}`;
+  return `${code} ${price.toFixed(2)}`;
 }
 
 interface Review {
@@ -59,6 +68,7 @@ function Stars({ rating }: { rating: number }) {
 export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [reviews, setReviews] = useState<{ average_rating: number; total_count: number; recent: Review[] }>({
     average_rating: 0,
@@ -75,6 +85,10 @@ export default function ProductDetailPage() {
 
   const handleAddToCart = useCallback(async () => {
     if (!product || addingToCart) return;
+    if (!user) {
+      router.push(`/account-settings?redirect=${encodeURIComponent(`/shop/${product.id}`)}`);
+      return;
+    }
     setAddingToCart(true);
     setCartMessage(null);
     try {
@@ -87,14 +101,23 @@ export default function ProductDetailPage() {
       if (res.ok) {
         setCartMessage({ text: "Added to cart!", type: "success" });
         setTimeout(() => setCartMessage(null), 3000);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("beautonomi:cart-updated"));
+        }
+      } else if (res.status === 401) {
+        setCartMessage({
+          text: "Please sign in to add to cart.",
+          type: "error",
+        });
+        router.push(`/account-settings?redirect=${encodeURIComponent(`/shop/${product.id}`)}`);
       } else {
-        setCartMessage({ text: json.error || "Failed to add to cart", type: "error" });
+        setCartMessage({ text: json.error?.message || json.error || "Failed to add to cart", type: "error" });
       }
     } catch {
       setCartMessage({ text: "Something went wrong", type: "error" });
     }
     setAddingToCart(false);
-  }, [product, quantity, addingToCart]);
+  }, [product, quantity, addingToCart, user, router]);
 
   useEffect(() => {
     if (!params.id) return;
@@ -190,7 +213,7 @@ export default function ProductDetailPage() {
             <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{product.name}</h1>
 
             <div className="mt-3 flex items-center gap-4">
-              <span className="text-3xl font-extrabold text-pink-600">R{product.retail_price.toFixed(2)}</span>
+              <span className="text-3xl font-extrabold text-pink-600">{formatPrice(product.retail_price, product.currency)}</span>
               {reviews.total_count > 0 && (
                 <div className="flex items-center gap-2">
                   <Stars rating={reviews.average_rating} />
@@ -226,13 +249,22 @@ export default function ProductDetailPage() {
                     +
                   </button>
                 </div>
-                <button
-                  onClick={handleAddToCart}
-                  disabled={addingToCart}
-                  className="flex-1 rounded-xl bg-pink-600 px-8 py-4 text-center font-bold text-white transition hover:bg-pink-700 disabled:opacity-50"
-                >
-                  {addingToCart ? "Adding..." : `Add to Cart — R${(product.retail_price * quantity).toFixed(2)}`}
-                </button>
+                {user ? (
+                  <button
+                    onClick={handleAddToCart}
+                    disabled={addingToCart}
+                    className="flex-1 rounded-xl bg-pink-600 px-8 py-4 text-center font-bold text-white transition hover:bg-pink-700 disabled:opacity-50"
+                  >
+                    {addingToCart ? "Adding..." : `Add to Cart — ${formatPrice(product.retail_price * quantity, product.currency)}`}
+                  </button>
+                ) : (
+                  <Link
+                    href={`/account-settings?redirect=${encodeURIComponent(`/shop/${product.id}`)}`}
+                    className="flex-1 rounded-xl bg-pink-600 px-8 py-4 text-center font-bold text-white transition hover:bg-pink-700"
+                  >
+                    Sign in to add to cart
+                  </Link>
+                )}
               </div>
               {cartMessage && (
                 <div className={`mt-3 rounded-lg px-4 py-3 text-sm font-medium ${
@@ -260,20 +292,29 @@ export default function ProductDetailPage() {
                   </div>
                 )}
                 {shipping.offers_delivery && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <svg className="h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Delivery: R{Number(shipping.delivery_fee).toFixed(2)}
-                    {shipping.free_delivery_threshold && ` (Free over R${Number(shipping.free_delivery_threshold).toFixed(0)})`}
-                  </div>
+                  <>
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <svg className="h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Delivery: {formatPrice(Number(shipping.delivery_fee), product.currency)}
+                      {shipping.free_delivery_threshold != null && (
+                        <> (Free over {formatPrice(Number(shipping.free_delivery_threshold), product.currency)})</>
+                      )}
+                    </div>
+                    {shipping.estimated_delivery_days != null && Number(shipping.estimated_delivery_days) > 0 && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Estimated delivery: within {Number(shipping.estimated_delivery_days)} business day{Number(shipping.estimated_delivery_days) !== 1 ? "s" : ""}
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}
 
-            {/* Provider */}
+            {/* Provider — link to public partner profile for customers */}
             <Link
-              href={`/provider/${product.provider.slug}`}
+              href={`/partner-profile?slug=${encodeURIComponent(product.provider.slug)}`}
               className="mt-6 flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-4 transition hover:bg-gray-100"
             >
               <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-gray-200">
@@ -343,7 +384,7 @@ export default function ProductDetailPage() {
                   </div>
                   <div className="p-3">
                     <p className="line-clamp-2 text-sm font-semibold text-gray-900">{p.name}</p>
-                    <p className="mt-1 font-bold text-pink-600">R{p.retail_price.toFixed(2)}</p>
+                    <p className="mt-1 font-bold text-pink-600">{formatPrice(p.retail_price, product.currency)}</p>
                   </div>
                 </Link>
               ))}

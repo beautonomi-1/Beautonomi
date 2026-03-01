@@ -22,7 +22,7 @@ export async function GET(
       .select(
         `
         id, name, slug, brand, category, short_description, long_description, description,
-        retail_price, supply_price, image_urls, quantity, tags, measure, amount,
+        retail_price, supply_price, currency, image_urls, quantity, tags, measure, amount,
         tax_rate, weight_grams, is_active, retail_sales_enabled, created_at,
         provider:providers (
           id, business_name, slug, logo_url, description

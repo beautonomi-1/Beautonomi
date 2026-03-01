@@ -33,7 +33,7 @@ export async function GET(request: Request) {
       supabase = getSupabaseAdmin();
     } catch (adminError) {
       console.warn("Admin client not available, falling back to server client:", adminError);
-      supabase = await getSupabaseServer();
+      supabase = await getSupabaseServer(request);
       if (!supabase) {
         console.error("Supabase client not available in /api/public/home");
         return NextResponse.json(
@@ -719,45 +719,49 @@ export async function GET(request: Request) {
       });
     }
 
-    // Fetch badges and points for all providers
-    const { data: providerPoints } = allProviderIds.size > 0 ? await supabase
-      .from("provider_points")
-      .select(`
-        provider_id,
-        total_points,
-        current_badge_id,
-        provider_badges!provider_points_current_badge_id_fkey (
-          id,
-          name,
-          slug,
-          description,
-          icon_url,
-          tier,
-          color,
-          requirements,
-          benefits
-        )
-      `)
-      .in("provider_id", Array.from(allProviderIds)) : { data: null };
-
-    // Create a map of provider_id -> badge
+    // Fetch badges and points for all providers (non-blocking: skip badges on failure)
     const badgeMap = new Map<string, any>();
-    if (providerPoints) {
-      providerPoints.forEach((pp: any) => {
-        if (pp.current_badge_id && pp.provider_badges) {
-          badgeMap.set(pp.provider_id, {
-            id: pp.provider_badges.id,
-            name: pp.provider_badges.name,
-            slug: pp.provider_badges.slug,
-            description: pp.provider_badges.description,
-            icon_url: pp.provider_badges.icon_url,
-            tier: pp.provider_badges.tier,
-            color: pp.provider_badges.color,
-            requirements: pp.provider_badges.requirements,
-            benefits: pp.provider_badges.benefits,
+    if (allProviderIds.size > 0) {
+      try {
+        const { data: providerPoints } = await supabase
+          .from("provider_points")
+          .select(`
+            provider_id,
+            total_points,
+            current_badge_id,
+            provider_badges!provider_points_current_badge_id_fkey (
+              id,
+              name,
+              slug,
+              description,
+              icon_url,
+              tier,
+              color,
+              requirements,
+              benefits
+            )
+          `)
+          .in("provider_id", Array.from(allProviderIds));
+        if (providerPoints) {
+          providerPoints.forEach((pp: any) => {
+            if (pp.current_badge_id && pp.provider_badges) {
+              badgeMap.set(pp.provider_id, {
+                id: pp.provider_badges.id,
+                name: pp.provider_badges.name,
+                slug: pp.provider_badges.slug,
+                description: pp.provider_badges.description,
+                icon_url: pp.provider_badges.icon_url,
+                tier: pp.provider_badges.tier,
+                color: pp.provider_badges.color,
+                requirements: pp.provider_badges.requirements,
+                benefits: pp.provider_badges.benefits,
+              });
+            }
           });
         }
-      });
+      } catch (badgeErr) {
+        console.warn("Home: provider_points/badges fetch failed, continuing without badges:", badgeErr);
+      }
     }
 
     // Fetch minimum prices from offerings for each provider (only if we have provider IDs)
@@ -1732,8 +1736,9 @@ export async function GET(request: Request) {
     const response = NextResponse.json({ ...result, data });
     response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     return response;
-  } catch (error: any) {
-    console.error("Unexpected error in /api/public/home:", error);
+  } catch (error: unknown) {
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error("Unexpected error in /api/public/home:", err.message, err.stack);
     // Return empty data instead of error to prevent page crash
     const errorResponse = NextResponse.json({
       data: {

@@ -6,6 +6,7 @@ import PartnerHero from "./components/partner-hero";
 import PartnerHeroMobile from "./components/partner-hero-mobile";
 import PartnerPhotos from "./components/partner-photos";
 import PartnerServices from "./components/partner-services";
+import PartnerProducts from "./components/partner-products";
 import PartnerTeam from "./components/partner-team";
 import PartnerReviews from "./components/partner-reviews";
 import PartnerBuy from "./components/partner-buy";
@@ -179,6 +180,12 @@ const PageContent = () => {
                 Services
               </TabsTrigger>
               <TabsTrigger
+                value="shop"
+                className="data-[state=active]:border-b-2 data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent data-[state=active]:text-[#FF0077] rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
+              >
+                Shop
+              </TabsTrigger>
+              <TabsTrigger
                 value="photos"
                 className="data-[state=active]:border-b-2 data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent data-[state=active]:text-[#FF0077] rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
               >
@@ -227,6 +234,10 @@ const PageContent = () => {
 
           <TabsContent value="services" className="mt-0">
             <PartnerServices slug={provider.slug} id={provider.id} />
+          </TabsContent>
+
+          <TabsContent value="shop" className="mt-0">
+            <PartnerProducts slug={provider.slug} />
           </TabsContent>
 
           <TabsContent value="photos" className="mt-0">
