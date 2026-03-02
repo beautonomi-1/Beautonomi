@@ -34,6 +34,7 @@ export async function GET(
         booking_products:booking_products(
           id,
           product_id,
+          product_variant_id,
           quantity,
           unit_price,
           total_price,
@@ -41,7 +42,8 @@ export async function GET(
             id,
             name,
             retail_price
-          )
+          ),
+          product_variant:product_variants(id, option_values)
         ),
         payment_transactions:payment_transactions(
           id,
@@ -105,12 +107,17 @@ export async function GET(
         price: bs.price || bs.offerings?.price || 0,
         total: bs.price || bs.offerings?.price || 0,
       })) || [],
-      products: booking.booking_products?.map((bp: any) => ({
-        name: bp.products?.name || "Product",
-        quantity: bp.quantity || 1,
-        price: bp.unit_price || bp.products?.retail_price || 0,
-        total: bp.total_price || (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1),
-      })) || [],
+      products: booking.booking_products?.map((bp: any) => {
+        const variantLabel = bp.product_variant?.option_values && typeof bp.product_variant.option_values === "object"
+          ? ` · ${Object.values(bp.product_variant.option_values).join(" / ")}`
+          : "";
+        return {
+          name: `${bp.products?.name || "Product"}${variantLabel}`,
+          quantity: bp.quantity || 1,
+          price: bp.unit_price || bp.products?.retail_price || 0,
+          total: bp.total_price || (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1),
+        };
+      }) || [],
       subtotal,
       tax,
       fees,

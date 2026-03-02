@@ -28,7 +28,8 @@ export async function GET(
         `
         *,
         items:product_order_items (
-          id, product_id, product_name, product_image_url, quantity, unit_price, total_price
+          id, product_id, product_variant_id, product_name, product_image_url, quantity, unit_price, total_price,
+          product_variant:product_variants (id, option_values)
         ),
         provider:providers (
           id, business_name, slug, logo_url

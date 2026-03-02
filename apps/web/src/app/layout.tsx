@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
 // Country restriction modal removed - not needed
 import SuppressConsoleWarningsWrapper from "@/components/global/suppress-console-warnings-wrapper";
@@ -6,6 +7,7 @@ import { OrganizationSchema } from "@/components/seo/structured-data";
 import { RootErrorBoundary } from "@/components/global/RootErrorBoundary";
 import GlobalErrorLogger from "@/components/global/GlobalErrorLogger";
 import ClientAppShellLoader from "@/components/global/ClientAppShellLoader";
+import { getOsTypeFromUserAgent } from "@/lib/utils/os-type";
 
 export const metadata: Metadata = {
   title: {
@@ -72,11 +74,15 @@ export const metadata: Metadata = {
   }),
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const headersList = await headers();
+  const ua = headersList.get("user-agent") ?? "";
+  const osType = getOsTypeFromUserAgent(ua);
+
   return (
     <html lang="en" className="overflow-x-hidden max-w-full">
       <body className="font-beautonomi overflow-x-hidden max-w-full" suppressHydrationWarning>
@@ -84,7 +90,7 @@ export default function RootLayout({
         <GlobalErrorLogger />
         <SuppressConsoleWarningsWrapper />
         <RootErrorBoundary>
-          <ClientAppShellLoader>{children}</ClientAppShellLoader>
+          <ClientAppShellLoader osType={osType}>{children}</ClientAppShellLoader>
         </RootErrorBoundary>
       </body>
     </html>

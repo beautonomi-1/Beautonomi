@@ -108,10 +108,12 @@ export async function GET(request: NextRequest) {
         booking_products(
           id,
           product_id,
+          product_variant_id,
           quantity,
           unit_price,
           total_price,
-          products:products!booking_products_product_id_fkey(id, name, retail_price)
+          products:products!booking_products_product_id_fkey(id, name, retail_price),
+          product_variant:product_variants(id, option_values)
         )
       `
       )
@@ -185,6 +187,8 @@ export async function GET(request: NextRequest) {
       const products = (booking.booking_products || []).map((bp: any) => ({
         id: bp.id,
         product_id: bp.product_id,
+        product_variant_id: bp.product_variant_id,
+        product_variant: bp.product_variant,
         product_name: bp.products?.name || "Product",
         quantity: bp.quantity || 1,
         unit_price: bp.unit_price || bp.products?.retail_price || 0,
@@ -800,6 +804,7 @@ export async function POST(request: NextRequest) {
       const bookingProductsData = body.products.map((product: any) => ({
         booking_id: booking.id,
         product_id: product.productId || product.product_id,
+        product_variant_id: product.productVariantId ?? null,
         quantity: product.quantity || 1,
         unit_price: product.unitPrice || product.unit_price || 0,
         total_price: product.totalPrice || product.total_price || (product.unitPrice || product.unit_price || 0) * (product.quantity || 1),

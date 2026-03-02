@@ -33,7 +33,9 @@
     "copy": "Kopieer",
     "refresh": "Verfris",
     "settings": "Instellings",
-    "more": "Meer"
+    "more": "Meer",
+    "appLanguage": "Apptaal",
+    "appLanguageSubtitle": "Kies die taal vir die app"
   },
   "auth": {
     "login": "Meld aan",
@@ -126,7 +128,10 @@
     "manageLocations": "Bestuur liggings",
     "operatingHours": "Bedryfsure",
     "paymentSettings": "Betalingsinstellings",
-    "staffSchedule": "Personeelroosters"
+    "staffSchedule": "Personeelroosters",
+    "profileCompletionTitle": "Voltooi jou besigheidsprofiel",
+    "profileCompletionSubtitle": "Help kliënte om jou te vind en met vertroue te bespreek",
+    "profileCompletionLoadError": "Kon profielstatus nie laai nie"
   },
   "customer": {
     "home": "Tuis",
@@ -213,6 +218,16 @@
     "export": "Voer uit",
     "exportCsv": "Voer CSV uit",
     "exportPdf": "Voer PDF uit"
+  },
+  "validation": {
+    "fixForm": "Maak die vorm reg",
+    "required": "{{field}} is verpligend.",
+    "emailRequired": "E-pos is verpligend.",
+    "emailInvalid": "Voer 'n geldige e-posadres in.",
+    "phoneRequired": "Telefoon is verpligend.",
+    "phoneTooLong": "Telefoonnommer is te lank.",
+    "phoneFormat": "Telefoon mag slegs syfers, +, spasies en koppeltekens bevat.",
+    "phoneMinDigits": "Telefoonnommer moet ten minste 10 syfers hê."
   },
   "errors": {
     "networkError": "Netwerkfout. Kontroleer jou verbinding.",

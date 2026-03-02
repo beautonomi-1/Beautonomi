@@ -9,6 +9,8 @@ interface CartItem {
   quantity: number;
   in_stock: boolean;
   stock_available: number;
+  effective_price?: number;
+  product_variant?: { id: string; retail_price: number; quantity: number; option_values?: Record<string, string> } | null;
   product: {
     id: string;
     name: string;
@@ -65,16 +67,18 @@ export default function CartPage() {
     if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("beautonomi:cart-updated"));
   };
 
+  const linePrice = (item: CartItem) => (item.effective_price ?? item.product?.retail_price ?? 0) * item.quantity;
+
   // Group by provider
   const groups: Record<string, { provider: CartItem["provider"]; items: CartItem[]; subtotal: number }> = {};
   items.forEach((item) => {
     const pid = item.provider?.id ?? "unknown";
     if (!groups[pid]) groups[pid] = { provider: item.provider, items: [], subtotal: 0 };
     groups[pid].items.push(item);
-    groups[pid].subtotal += (item.product?.retail_price ?? 0) * item.quantity;
+    groups[pid].subtotal += linePrice(item);
   });
 
-  const total = items.reduce((s, i) => s + (i.product?.retail_price ?? 0) * i.quantity, 0);
+  const total = items.reduce((s, i) => s + linePrice(i), 0);
   const totalCount = items.reduce((s, i) => s + i.quantity, 0);
 
   return (
@@ -130,6 +134,11 @@ export default function CartPage() {
                       </div>
                       <div className="flex-1">
                         <p className="font-semibold text-gray-900">{item.product?.name}</p>
+                        {item.product_variant?.option_values && Object.keys(item.product_variant.option_values).length > 0 && (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {Object.entries(item.product_variant.option_values).map(([k, v]) => `${k}: ${v}`).join(" · ")}
+                          </p>
+                        )}
                         {item.product?.brand && <p className="text-xs text-gray-400">{item.product.brand}</p>}
                         {!item.in_stock && <p className="text-xs font-semibold text-red-500">Out of stock</p>}
                       </div>
@@ -149,7 +158,7 @@ export default function CartPage() {
                         </button>
                       </div>
                       <p className="w-24 text-right font-bold text-gray-900">
-                        R{((item.product?.retail_price ?? 0) * item.quantity).toFixed(2)}
+                        R{linePrice(item).toFixed(2)}
                       </p>
                       <button onClick={() => removeItem(item.id)} className="text-red-400 hover:text-red-600">
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

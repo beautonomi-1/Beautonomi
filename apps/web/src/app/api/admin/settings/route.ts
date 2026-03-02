@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { revalidateTag } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { writeAuditLog } from "@/lib/audit/audit";
@@ -308,7 +309,7 @@ export async function GET(request: NextRequest) {
         .maybeSingle();
 
       if (settingsError || !settings) {
-        return successResponse(defaultSettings);
+        return successResponse(defaultSettings, 200);
       }
 
       if (settings && (settings as any).settings) {
@@ -334,14 +335,14 @@ export async function GET(request: NextRequest) {
           // ignore (table may not exist yet in dev)
         }
 
-        return successResponse(merged);
+        return successResponse(merged, 200);
       }
     } catch (error) {
       // Table might not exist, return default settings
       console.warn("Platform settings table may not exist, using defaults:", error);
     }
 
-    return successResponse(defaultSettings);
+    return successResponse(defaultSettings, 200);
   } catch (error) {
     return handleApiError(error, "Failed to load settings");
   }
@@ -462,10 +463,9 @@ export async function PATCH(request: NextRequest) {
         },
       });
 
-      // Clear locale cache on client side (will be handled by revalidation)
-      // In a real implementation, you might want to use a cache invalidation service
-      
-      return successResponse((updatedSettings as any).settings as PlatformSettings);
+      revalidateTag("platform-settings", "max");
+      const updatedPayload = (updatedSettings as any).settings as PlatformSettings;
+      return successResponse(updatedPayload, 200);
     } else {
       // Create
       const { data: newSettings, error: createError } = await (supabase
@@ -492,7 +492,9 @@ export async function PATCH(request: NextRequest) {
         },
       });
 
-      return successResponse((newSettings as any).settings as PlatformSettings);
+      revalidateTag("platform-settings", "max");
+      const newPayload = (newSettings as any).settings as PlatformSettings;
+      return successResponse(newPayload, 200);
     }
   } catch (error) {
     return handleApiError(error, "Failed to save settings");

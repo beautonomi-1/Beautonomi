@@ -33,7 +33,9 @@
     "copy": "Kopitsa",
     "refresh": "Nchafatsa",
     "settings": "Ditlhophiso",
-    "more": "Tse ding"
+    "more": "Tse ding",
+    "appLanguage": "Polelo ya app",
+    "appLanguageSubtitle": "Khetha polelo ya app"
   },
   "auth": {
     "login": "Kena",
@@ -126,7 +128,10 @@
     "manageLocations": "Tsamaisa dibaka",
     "operatingHours": "Hora tsa mosebetsi",
     "paymentSettings": "Ditlhophiso tsa tefo",
-    "staffSchedule": "Dinako tsa basebetsi"
+    "staffSchedule": "Dinako tsa basebetsi",
+    "profileCompletionTitle": "Fetola profaele ya kgwebo ya hao",
+    "profileCompletionSubtitle": "Thusa bareki ho u fumana le ho buka ka tshepo",
+    "profileCompletionLoadError": "Ha e a kgona ho laisha maemo a profaele"
   },
   "customer": {
     "home": "Lehae",
@@ -213,6 +218,16 @@
     "export": "Romela kantle",
     "exportCsv": "Romela CSV",
     "exportPdf": "Romela PDF"
+  },
+  "validation": {
+    "fixForm": "Ka kopo lokisa foromo",
+    "required": "{{field}} e a hlokahala.",
+    "emailRequired": "E-poso e a hlokahala.",
+    "emailInvalid": "Ka kopo kenya aterese ya e-poso e nepahetseng.",
+    "phoneRequired": "Mohala o a hlokahala.",
+    "phoneTooLong": "Nomoro ya mohala e telele haholo.",
+    "phoneFormat": "Mohala o ka nka lipalo, +, mahlakore le tšhupamahlakore feela.",
+    "phoneMinDigits": "Nomoro ya mohala e lokela e ba le dinomoro tse fetang 10."
   },
   "errors": {
     "networkError": "Phoso ya marangrang. Hlahloba kgokahano ya hao.",

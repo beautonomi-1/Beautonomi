@@ -6,6 +6,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/providers/AuthProvider";
 
+interface ProductVariant {
+  id: string;
+  option_values: Record<string, string>;
+  sort_order?: number;
+  retail_price: number;
+  quantity: number;
+  sku?: string | null;
+  image_url?: string | null;
+}
+
 interface ProductDetail {
   id: string;
   name: string;
@@ -19,6 +29,9 @@ interface ProductDetail {
   image_urls: string[];
   quantity: number;
   tags: string[];
+  has_variants?: boolean;
+  variant_option_types?: Array<{ name: string; values: string[] }>;
+  variants?: ProductVariant[];
   provider: { id: string; business_name: string; slug: string; logo_url: string | null };
 }
 
@@ -82,9 +95,21 @@ export default function ProductDetailPage() {
   const [activeImage, setActiveImage] = useState(0);
   const [addingToCart, setAddingToCart] = useState(false);
   const [cartMessage, setCartMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
+
+  const hasVariants = Boolean(product?.has_variants && product?.variants?.length);
+  const variants = product?.variants ?? [];
+  const selectedVariant = hasVariants && selectedVariantId ? variants.find((v) => v.id === selectedVariantId) : null;
+  const displayPrice = hasVariants && selectedVariant ? selectedVariant.retail_price : (product?.retail_price ?? 0);
+  const displayQuantity = hasVariants && selectedVariant ? selectedVariant.quantity : (product?.quantity ?? 0);
+  const inStockFromVariant = hasVariants ? (selectedVariant ? selectedVariant.quantity > 0 : false) : undefined;
 
   const handleAddToCart = useCallback(async () => {
     if (!product || addingToCart) return;
+    if (hasVariants && !selectedVariantId) {
+      setCartMessage({ text: "Please select a variant", type: "error" });
+      return;
+    }
     if (!user) {
       router.push(`/account-settings?redirect=${encodeURIComponent(`/shop/${product.id}`)}`);
       return;
@@ -95,7 +120,11 @@ export default function ProductDetailPage() {
       const res = await fetch("/api/me/cart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product_id: product.id, quantity }),
+        body: JSON.stringify({
+          product_id: product.id,
+          quantity,
+          ...(hasVariants && selectedVariantId ? { product_variant_id: selectedVariantId } : {}),
+        }),
       });
       const json = await res.json();
       if (res.ok) {
@@ -117,20 +146,26 @@ export default function ProductDetailPage() {
       setCartMessage({ text: "Something went wrong", type: "error" });
     }
     setAddingToCart(false);
-  }, [product, quantity, addingToCart, user, router]);
+  }, [product, quantity, addingToCart, user, router, hasVariants, selectedVariantId]);
 
   useEffect(() => {
     if (!params.id) return;
     (async () => {
       setLoading(true);
+      setSelectedVariantId(null);
       try {
         const res = await fetch(`/api/public/products/${params.id}`);
         const json = await res.json();
         if (json.data) {
-          setProduct(json.data.product);
+          const p = json.data.product;
+          setProduct(p);
           setReviews(json.data.reviews);
           setRelated(json.data.related_products);
           setShipping(json.data.shipping);
+          if (p?.has_variants && Array.isArray(p.variants) && p.variants.length > 0) {
+            const firstInStock = p.variants.find((v: ProductVariant) => (v.quantity || 0) > 0);
+            setSelectedVariantId(firstInStock ? firstInStock.id : p.variants[0].id);
+          }
         }
       } catch { /* ignore */ }
       setLoading(false);
@@ -157,7 +192,8 @@ export default function ProductDetailPage() {
   }
 
   const desc = product.long_description || product.description || product.short_description;
-  const inStock = product.quantity > 0;
+  const inStock = inStockFromVariant !== undefined ? inStockFromVariant : product.quantity > 0;
+  const maxQty = hasVariants && selectedVariant ? selectedVariant.quantity : product.quantity;
 
   return (
     <div className="min-h-screen bg-white">
@@ -212,8 +248,38 @@ export default function ProductDetailPage() {
             {product.brand && <p className="mb-1 text-sm font-medium text-gray-400">{product.brand}</p>}
             <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{product.name}</h1>
 
+            {hasVariants && variants.length > 0 && (
+              <div className="mt-3">
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  {product.variant_option_types?.[0]?.name ?? "Option"}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {variants.map((v) => {
+                    const label = Object.entries(v.option_values).map(([, val]) => val).join(" / ");
+                    const isSelected = selectedVariantId === v.id;
+                    const outOfStock = (v.quantity || 0) <= 0;
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => !outOfStock && setSelectedVariantId(v.id)}
+                        disabled={outOfStock}
+                        className={`rounded-lg border-2 px-4 py-2 text-sm font-medium transition ${
+                          isSelected ? "border-pink-600 bg-pink-50 text-pink-700" : "border-gray-200 hover:border-gray-300"
+                        } ${outOfStock ? "opacity-50 cursor-not-allowed" : ""}`}
+                      >
+                        {label}
+                        {outOfStock && " (Out of stock)"}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="mt-3 flex items-center gap-4">
-              <span className="text-3xl font-extrabold text-pink-600">{formatPrice(product.retail_price, product.currency)}</span>
+              <span className="text-3xl font-extrabold text-pink-600">
+                {hasVariants && variants.length > 1 ? `From ${formatPrice(displayPrice, product.currency)}` : formatPrice(displayPrice, product.currency)}
+              </span>
               {reviews.total_count > 0 && (
                 <div className="flex items-center gap-2">
                   <Stars rating={reviews.average_rating} />
@@ -225,7 +291,7 @@ export default function ProductDetailPage() {
             <div className={`mt-4 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold ${
               inStock ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"
             }`}>
-              {inStock ? `In Stock (${product.quantity})` : "Out of Stock"}
+              {inStock ? `In Stock (${displayQuantity})` : "Out of Stock"}
             </div>
 
             {desc && <p className="mt-6 leading-relaxed text-gray-600">{desc}</p>}
@@ -243,7 +309,7 @@ export default function ProductDetailPage() {
                   </button>
                   <span className="min-w-[40px] text-center font-bold">{quantity}</span>
                   <button
-                    onClick={() => setQuantity(Math.min(product.quantity, quantity + 1))}
+                    onClick={() => setQuantity(Math.min(maxQty, quantity + 1))}
                     className="px-4 py-3 text-gray-600 hover:text-gray-900"
                   >
                     +
@@ -255,7 +321,7 @@ export default function ProductDetailPage() {
                     disabled={addingToCart}
                     className="flex-1 rounded-xl bg-pink-600 px-8 py-4 text-center font-bold text-white transition hover:bg-pink-700 disabled:opacity-50"
                   >
-                    {addingToCart ? "Adding..." : `Add to Cart — ${formatPrice(product.retail_price * quantity, product.currency)}`}
+                    {addingToCart ? "Adding..." : `Add to Cart — ${formatPrice(displayPrice * quantity, product.currency)}`}
                   </button>
                 ) : (
                   <Link

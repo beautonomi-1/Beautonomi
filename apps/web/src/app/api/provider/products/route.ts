@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 
     let query = supabase
       .from("products")
-      .select("*", { count: 'exact' })
+      .select("*, product_variants(*)", { count: 'exact' })
       .eq("provider_id", providerId)
       .order("created_at", { ascending: false });
 
@@ -37,16 +37,23 @@ export async function GET(request: Request) {
     // Apply pagination
     query = query.range(offset, offset + limit - 1);
 
-    const { data: products, error, count } = await query;
+    const { data: productsRaw, error, count } = await query;
 
     if (error) {
       throw error;
     }
 
+    // Normalize: Supabase returns product_variants as array; ensure variants sorted by sort_order
+    const products = (productsRaw || []).map((p: any) => {
+      const variants = (p.product_variants || []).sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+      const { product_variants: _, ...rest } = p;
+      return { ...rest, variants };
+    });
+
     const totalPages = count ? Math.ceil(count / limit) : 1;
 
     return successResponse({
-      products: products || [],
+      products,
       total: count || 0,
       page,
       limit,
@@ -96,10 +103,17 @@ export async function POST(request: Request) {
       receive_low_stock_notifications,
       image_urls,
       is_active,
+      has_variants,
+      variant_option_types,
+      variants: variantsPayload,
     } = body;
 
-    if (!name || retail_price === undefined) {
-      return handleApiError(new Error("name and retail_price are required"), "Validation failed", "VALIDATION_ERROR", 400);
+    if (!name) {
+      return handleApiError(new Error("name is required"), "Validation failed", "VALIDATION_ERROR", 400);
+    }
+    const withVariants = Boolean(has_variants && Array.isArray(variantsPayload) && variantsPayload.length > 0);
+    if (!withVariants && retail_price === undefined) {
+      return handleApiError(new Error("retail_price is required for products without variants"), "Validation failed", "VALIDATION_ERROR", 400);
     }
 
     // Get provider ID
@@ -108,15 +122,12 @@ export async function POST(request: Request) {
       return notFoundResponse("Provider not found");
     }
 
-    // Generate SKU if not provided
+    // Generate SKU for simple product if not provided
     let finalSku = sku;
-    if (!finalSku) {
-      // Generate SKU: PROD-{provider_id first 4 chars}-{timestamp last 6 digits}
+    if (!withVariants && !finalSku) {
       const providerShort = providerId.substring(0, 4).toUpperCase();
       const timestamp = Date.now().toString().slice(-6);
       finalSku = `PROD-${providerShort}-${timestamp}`;
-      
-      // Ensure uniqueness
       let counter = 1;
       while (true) {
         const { data: existing } = await supabase
@@ -125,10 +136,7 @@ export async function POST(request: Request) {
           .eq("provider_id", providerId)
           .eq("sku", finalSku)
           .single();
-        
-        if (!existing) {
-          break;
-        }
+        if (!existing) break;
         finalSku = `PROD-${providerShort}-${timestamp}-${counter}`;
         counter++;
       }
@@ -139,28 +147,30 @@ export async function POST(request: Request) {
       .insert({
         provider_id: providerId,
         name,
-        barcode: barcode || null,
+        barcode: withVariants ? null : (barcode || null),
         brand: brand || null,
-        measure: measure || null,
-        amount: amount || null,
+        measure: withVariants ? null : (measure || null),
+        amount: withVariants ? null : (amount || null),
         short_description: short_description || null,
         description: description || null,
         category: category || null,
         supplier: supplier || null,
-        sku: finalSku,
-        quantity: quantity || 0,
-        low_stock_level: low_stock_level || 5,
-        reorder_quantity: reorder_quantity || 0,
-        supply_price: supply_price || 0,
-        retail_price: parseFloat(retail_price),
+        sku: withVariants ? null : (finalSku || null),
+        quantity: withVariants ? 0 : (quantity ?? 0),
+        low_stock_level: withVariants ? 5 : (low_stock_level ?? 5),
+        reorder_quantity: reorder_quantity ?? 0,
+        supply_price: withVariants ? 0 : (supply_price ?? 0),
+        retail_price: withVariants ? 0 : parseFloat(String(retail_price)),
         retail_sales_enabled: retail_sales_enabled ?? true,
-        markup: markup || null,
-        tax_rate: tax_rate || 0,
+        markup: withVariants ? null : (markup ?? null),
+        tax_rate: tax_rate ?? 0,
         team_member_commission_enabled: team_member_commission_enabled ?? false,
         track_stock_quantity: track_stock_quantity ?? true,
         receive_low_stock_notifications: receive_low_stock_notifications ?? false,
         image_urls: image_urls || [],
         is_active: is_active ?? true,
+        has_variants: withVariants,
+        variant_option_types: withVariants ? (variant_option_types || []) : [],
       })
       .select()
       .single();
@@ -169,7 +179,41 @@ export async function POST(request: Request) {
       throw error || new Error("Failed to create product");
     }
 
-    return successResponse(product);
+    if (withVariants && variantsPayload?.length) {
+      const providerShort = providerId.substring(0, 4).toUpperCase();
+      const baseTs = Date.now().toString().slice(-6);
+      const variantRows = variantsPayload.map((v: any, idx: number) => {
+        const vSku = v.sku || `PROD-${providerShort}-${baseTs}-V${idx + 1}`;
+        return {
+          product_id: product.id,
+          option_values: v.option_values || {},
+          sort_order: v.sort_order ?? idx,
+          sku: vSku,
+          barcode: v.barcode || null,
+          measure: v.measure || null,
+          amount: v.amount ?? null,
+          quantity: v.quantity ?? 0,
+          low_stock_level: v.low_stock_level ?? 5,
+          reorder_quantity: v.reorder_quantity ?? 0,
+          supply_price: v.supply_price ?? 0,
+          retail_price: parseFloat(String(v.retail_price ?? 0)),
+          markup: v.markup ?? null,
+          image_url: v.image_url || null,
+        };
+      });
+      const { error: varErr } = await supabase.from("product_variants").insert(variantRows);
+      if (varErr) throw varErr;
+    }
+
+    const { data: withVariantsData } = await supabase
+      .from("products")
+      .select("*, product_variants(*)")
+      .eq("id", product.id)
+      .single();
+    const out = withVariantsData || product;
+    const variants = (out as any).product_variants || [];
+    const { product_variants: _, ...rest } = out as any;
+    return successResponse({ ...rest, variants: variants.sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0)) });
   } catch (error) {
     return handleApiError(error, "Failed to create product");
   }

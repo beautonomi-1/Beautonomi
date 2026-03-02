@@ -47,4 +47,6 @@ export interface MobileEnv {
   EXPO_PUBLIC_ONESIGNAL_APP_ID?: string;
   EXPO_PUBLIC_AMPLITUDE_API_KEY?: string;
   EXPO_PUBLIC_SENTRY_DSN?: string;
+  /** Singular SDK key (customer and provider each have their own). Secret: use EAS Secrets only, never commit. */
+  EXPO_PUBLIC_SINGULAR_SDK_KEY?: string;
 }

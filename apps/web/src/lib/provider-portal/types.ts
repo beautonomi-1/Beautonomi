@@ -94,6 +94,33 @@ export interface ServiceItem {
   parent_service_id?: string | null;
 }
 
+/** Option type for product variants, e.g. { name: "Size", values: ["250ml", "500ml"] } */
+export interface ProductVariantOptionType {
+  name: string;
+  values: string[];
+}
+
+/** Single variant row (per-variant SKU, price, stock) */
+export interface ProductVariantItem {
+  id: string;
+  product_id: string;
+  option_values: Record<string, string>;
+  sort_order: number;
+  sku?: string | null;
+  barcode?: string | null;
+  measure?: string | null;
+  amount?: number | null;
+  quantity: number;
+  low_stock_level?: number;
+  reorder_quantity?: number;
+  supply_price?: number;
+  retail_price: number;
+  markup?: number | null;
+  image_url?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface ProductItem {
   id: string;
   name: string;
@@ -121,6 +148,10 @@ export interface ProductItem {
   receive_low_stock_notifications?: boolean;
   image_urls?: string[];
   is_active?: boolean;
+  // Product variants (when has_variants = true)
+  has_variants?: boolean;
+  variant_option_types?: ProductVariantOptionType[];
+  variants?: ProductVariantItem[];
 }
 
 export interface Appointment {

@@ -33,7 +33,9 @@
     "copy": "Kopisha",
     "refresh": "Vuselela",
     "settings": "Izilungiselelo",
-    "more": "Okuningi"
+    "more": "Okuningi",
+    "appLanguage": "Ulimi lwe-app",
+    "appLanguageSubtitle": "Khetha ulimi lwe-app"
   },
   "auth": {
     "login": "Ngena",
@@ -126,7 +128,10 @@
     "manageLocations": "Phatha izindawo",
     "operatingHours": "Amahora okusebenza",
     "paymentSettings": "Izilungiselelo zokukhokha",
-    "staffSchedule": "Izikhathi zabasebenzi"
+    "staffSchedule": "Izikhathi zabasebenzi",
+    "profileCompletionTitle": "Gcwalisa iphrofayili yebhizinisi lakho",
+    "profileCompletionSubtitle": "Siza amakhasimende ukuthi bakuthole futhi babhuke ngokuzethemba",
+    "profileCompletionLoadError": "Ayikwazanga ukulayisha isimo sephrofayili"
   },
   "customer": {
     "home": "Ikhaya",
@@ -213,6 +218,16 @@
     "export": "Khiphela ngaphandle",
     "exportCsv": "Khiphela i-CSV",
     "exportPdf": "Khiphela i-PDF"
+  },
+  "validation": {
+    "fixForm": "Sicela ulungise ifomu",
+    "required": "{{field}} iyadingeka.",
+    "emailRequired": "I-imeyili iyadingeka.",
+    "emailInvalid": "Sicela ufake ikheli le-imeyili elisebenzayo.",
+    "phoneRequired": "Ucingo luyadingeka.",
+    "phoneTooLong": "Inombolo yocingo inde kakhulu.",
+    "phoneFormat": "Ucingo lungabandakanya kuphela izinombolo, +, izikhala noma umdashi.",
+    "phoneMinDigits": "Inombolo yocingo kufanele ibe nezigidi eziyizi-10 okungenani."
   },
   "errors": {
     "networkError": "Iphutha lenethiwekhi. Hlola ukuxhumana kwakho.",

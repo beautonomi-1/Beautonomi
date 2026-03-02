@@ -119,14 +119,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get cart items for this provider
+    // Get cart items for this provider (include product_variant when present)
     const { data: cartItems, error: cartErr } = await (supabase.from("cart_items") as any)
       .select(
         `
-        id, quantity,
+        id, quantity, product_variant_id,
         product:products (
           id, name, retail_price, quantity, is_active, retail_sales_enabled,
-          image_urls, tax_rate, provider_id
+          image_urls, tax_rate, provider_id, has_variants
+        ),
+        product_variant:product_variants (
+          id, retail_price, quantity
         )
       `,
       )
@@ -138,14 +141,18 @@ export async function POST(request: NextRequest) {
       return errorResponse("No cart items found for this provider", "EMPTY_CART", 400);
     }
 
-    // Validate stock for all items
+    // Validate stock for all items (use variant quantity when variant)
     const stockErrors: string[] = [];
     for (const item of cartItems) {
       const p = item.product;
+      const variant = item.product_variant;
+      const effectiveQty = variant ? (variant.quantity ?? 0) : (p?.quantity ?? 0);
       if (!p || !p.is_active || !p.retail_sales_enabled) {
         stockErrors.push(`${p?.name ?? "Unknown product"} is no longer available`);
-      } else if (p.quantity < item.quantity) {
-        stockErrors.push(`${p.name}: only ${p.quantity} available (requested ${item.quantity})`);
+      } else if (p.has_variants && !variant) {
+        stockErrors.push(`${p.name}: variant required`);
+      } else if (effectiveQty < item.quantity) {
+        stockErrors.push(`${p.name}: only ${effectiveQty} available (requested ${item.quantity})`);
       }
     }
     if (stockErrors.length > 0) {
@@ -163,7 +170,10 @@ export async function POST(request: NextRequest) {
       if (shipConfig) {
         deliveryFee = parseFloat(shipConfig.delivery_fee) || 0;
         const subtotalCalc = cartItems.reduce(
-          (sum: number, ci: any) => sum + ci.product.retail_price * ci.quantity,
+          (sum: number, ci: any) => {
+            const price = ci.product_variant ? ci.product_variant.retail_price : ci.product.retail_price;
+            return sum + (parseFloat(price) || 0) * ci.quantity;
+          },
           0,
         );
         if (
@@ -180,6 +190,7 @@ export async function POST(request: NextRequest) {
     let taxAmount = 0;
     const orderItems: Array<{
       product_id: string;
+      product_variant_id: string | null;
       product_name: string;
       product_image_url: string | null;
       quantity: number;
@@ -189,16 +200,19 @@ export async function POST(request: NextRequest) {
 
     for (const item of cartItems) {
       const p = item.product;
-      const lineTotal = parseFloat(p.retail_price) * item.quantity;
+      const variant = item.product_variant;
+      const unitPrice = variant ? parseFloat(variant.retail_price) : parseFloat(p.retail_price);
+      const lineTotal = unitPrice * item.quantity;
       const lineTax = lineTotal * (parseFloat(p.tax_rate || "0") / 100);
       subtotal += lineTotal;
       taxAmount += lineTax;
       orderItems.push({
         product_id: p.id,
+        product_variant_id: variant?.id ?? null,
         product_name: p.name,
         product_image_url: p.image_urls?.[0] ?? null,
         quantity: item.quantity,
-        unit_price: parseFloat(p.retail_price),
+        unit_price: unitPrice,
         total_price: lineTotal,
       });
     }
@@ -297,12 +311,19 @@ export async function POST(request: NextRequest) {
     );
     if (itemsErr) throw itemsErr;
 
-    // Decrement stock for each product
+    // Decrement stock for each product (variant or product-level)
     for (const item of cartItems) {
-      await supabase.rpc("decrement_product_stock" as any, {
-        p_product_id: item.product.id,
-        p_quantity: item.quantity,
-      });
+      if (item.product_variant_id) {
+        await (supabase.rpc as any)("decrement_product_variant_stock", {
+          p_variant_id: item.product_variant_id,
+          p_quantity: item.quantity,
+        });
+      } else {
+        await supabase.rpc("decrement_product_stock" as any, {
+          p_product_id: item.product.id,
+          p_quantity: item.quantity,
+        });
+      }
     }
 
     // Clear cart items for this provider

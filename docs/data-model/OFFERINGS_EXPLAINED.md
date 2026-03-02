@@ -17,6 +17,14 @@ Separate from `offerings`, the `products` table handles **retail inventory**:
 - Has stock tracking (`stock_quantity`, `low_stock_threshold`)
 - Has SKU and barcode fields
 
+### Product variants
+
+Products can have **variants** (e.g. size, volume: 250ml vs 500ml):
+- `products.has_variants` — when true, sellable rows live in `product_variants`
+- `products.variant_option_types` — JSON e.g. `[{ "name": "Size", "values": ["250ml", "500ml"] }]`
+- `product_variants` — one row per variant: `product_id`, `option_values`, per-variant SKU, price, quantity
+- Cart, orders, and booking line items store `product_variant_id` when the item is a variant; otherwise they use `product_id` only (legacy single product)
+
 ## Why Not Just "Services"?
 
 The `offerings` name was chosen because:
@@ -33,5 +41,7 @@ offerings (type=service)
   └── booking_services — links to bookings
 
 products
-  └── booking_products — links to bookings
+  ├── product_variants — optional; one per variant when has_variants = true
+  ├── booking_products — links to bookings (optionally product_variant_id)
+  └── product_order_items / cart_items — e-commerce (optionally product_variant_id)
 ```

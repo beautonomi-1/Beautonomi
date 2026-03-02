@@ -17,6 +17,7 @@ interface Product {
   inStock: boolean;
   quantity: number;
   track_stock_quantity: boolean;
+  hasVariants?: boolean;
 }
 
 interface PartnerProductsProps {
@@ -94,7 +95,7 @@ export default function PartnerProducts({ slug }: PartnerProductsProps) {
             <div className="p-3">
               <p className="font-medium text-gray-900 text-sm line-clamp-2">{p.name}</p>
               <p className="mt-1 text-sm font-semibold text-[#FF0077]">
-                {p.currency} {p.price.toFixed(2)}
+                {p.hasVariants ? "From " : ""}{p.currency} {p.price.toFixed(2)}
               </p>
             </div>
           </Link>

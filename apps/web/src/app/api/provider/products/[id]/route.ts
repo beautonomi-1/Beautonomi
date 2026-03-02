@@ -22,18 +22,22 @@ export async function GET(
       return notFoundResponse("Provider not found");
     }
 
-    const { data: product, error } = await supabase
+    const { data: productRaw, error } = await supabase
       .from("products")
-      .select("*")
+      .select("*, product_variants(*)")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
-    if (error || !product) {
+    if (error || !productRaw) {
       return notFoundResponse("Product not found");
     }
 
-    return successResponse(product);
+    const variants = ((productRaw as any).product_variants || []).sort(
+      (a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    );
+    const { product_variants: _, ...product } = productRaw as any;
+    return successResponse({ ...product, variants });
   } catch (error) {
     return handleApiError(error, "Failed to fetch product");
   }
@@ -93,6 +97,8 @@ async function updateProductHandler(
   if (body.receive_low_stock_notifications !== undefined) updateData.receive_low_stock_notifications = body.receive_low_stock_notifications;
   if (body.image_urls !== undefined) updateData.image_urls = body.image_urls;
   if (body.is_active !== undefined) updateData.is_active = body.is_active;
+  if (body.has_variants !== undefined) updateData.has_variants = body.has_variants;
+  if (body.variant_option_types !== undefined) updateData.variant_option_types = body.variant_option_types;
 
   const { data: updatedProduct, error: updateError } = await supabase
     .from("products")
@@ -105,7 +111,44 @@ async function updateProductHandler(
     throw updateError || new Error("Failed to update product");
   }
 
-  return successResponse(updatedProduct);
+  // Replace variants if sent
+  const variantsPayload = body.variants;
+  if (Array.isArray(variantsPayload)) {
+    const { error: delErr } = await supabase.from("product_variants").delete().eq("product_id", id);
+    if (delErr) throw delErr;
+    if (variantsPayload.length > 0) {
+      const providerId = await getProviderIdForUser(user.id, supabase);
+      const providerShort = providerId ? providerId.substring(0, 4).toUpperCase() : "PRVD";
+      const baseTs = Date.now().toString().slice(-6);
+      const variantRows = variantsPayload.map((v: any, idx: number) => ({
+        product_id: id,
+        option_values: v.option_values || {},
+        sort_order: v.sort_order ?? idx,
+        sku: v.sku || `PROD-${providerShort}-${baseTs}-V${idx + 1}`,
+        barcode: v.barcode || null,
+        measure: v.measure || null,
+        amount: v.amount ?? null,
+        quantity: v.quantity ?? 0,
+        low_stock_level: v.low_stock_level ?? 5,
+        reorder_quantity: v.reorder_quantity ?? 0,
+        supply_price: v.supply_price ?? 0,
+        retail_price: parseFloat(String(v.retail_price ?? 0)),
+        markup: v.markup ?? null,
+        image_url: v.image_url || null,
+      }));
+      const { error: insErr } = await supabase.from("product_variants").insert(variantRows);
+      if (insErr) throw insErr;
+    }
+  }
+
+  const { data: final } = await supabase
+    .from("products")
+    .select("*, product_variants(*)")
+    .eq("id", id)
+    .single();
+  const variants = ((final as any)?.product_variants || []).sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const { product_variants: __, ...rest } = (final || updatedProduct) as any;
+  return successResponse({ ...rest, variants });
 }
 
 /**

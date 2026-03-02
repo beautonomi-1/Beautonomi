@@ -116,21 +116,41 @@ export async function PATCH(
       update.refund_method = "original_payment";
       update.resolved_by = user.id;
 
-      // Restore stock
+      // Restore stock (variant or product-level)
       if (req.order_item_id) {
         const { data: orderItem } = await (supabase.from("product_order_items") as any)
-          .select("product_id")
+          .select("product_id, product_variant_id, quantity")
           .eq("id", req.order_item_id)
           .single();
         if (orderItem) {
-          const { data: prod } = await (supabase.from("products") as any)
-            .select("quantity")
-            .eq("id", orderItem.product_id)
-            .single();
-          if (prod) {
-            await (supabase.from("products") as any)
-              .update({ quantity: prod.quantity + req.quantity })
-              .eq("id", orderItem.product_id);
+          const qty = req.quantity ?? orderItem.quantity ?? 1;
+          if (orderItem.product_variant_id) {
+            try {
+              await (supabase.rpc as any)("increment_product_variant_stock", {
+                p_variant_id: orderItem.product_variant_id,
+                p_quantity: qty,
+              });
+            } catch {
+              const { data: v } = await (supabase.from("product_variants") as any)
+                .select("quantity")
+                .eq("id", orderItem.product_variant_id)
+                .single();
+              if (v) {
+                await (supabase.from("product_variants") as any)
+                  .update({ quantity: (v.quantity ?? 0) + qty })
+                  .eq("id", orderItem.product_variant_id);
+              }
+            }
+          } else {
+            const { data: prod } = await (supabase.from("products") as any)
+              .select("quantity")
+              .eq("id", orderItem.product_id)
+              .single();
+            if (prod) {
+              await (supabase.from("products") as any)
+                .update({ quantity: (prod.quantity ?? 0) + qty })
+                .eq("id", orderItem.product_id);
+            }
           }
         }
       }

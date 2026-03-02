@@ -26,7 +26,7 @@ export interface ApiResponse<T> {
 /**
  * Create a successful API response
  */
-export function successResponse<T>(data: T, status = 200) {
+export function successResponse<T>(data: T, status: number = 200) {
   return NextResponse.json<ApiResponse<T>>(
     {
       data,

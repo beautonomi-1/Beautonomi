@@ -324,6 +324,7 @@ export async function createBookingRecord(
     const bookingProductsRows = products.map((product: any) => ({
       booking_id: booking.id,
       product_id: product.productId,
+      product_variant_id: product.productVariantId ?? null,
       quantity: product.quantity,
       unit_price: product.unitPrice,
       total_price: product.totalPrice,
@@ -336,15 +337,36 @@ export async function createBookingRecord(
       .insert(bookingProductsRows);
     if (bookingProductsError) throw bookingProductsError;
 
-    // Update product stock
+    // Update stock (variant or product-level)
     for (const product of products) {
-      const productData = v.productById.get((product as any).productId ?? product.product_id);
-      if (productData?.track_stock_quantity) {
-        const newQuantity = (productData.quantity || 0) - product.quantity;
-        await adminSupabase
-          .from("products")
-          .update({ quantity: Math.max(0, newQuantity) })
-          .eq("id", product.productId);
+      if (product.productVariantId) {
+        try {
+          await (adminSupabase.rpc as any)("decrement_product_variant_stock", {
+            p_variant_id: product.productVariantId,
+            p_quantity: product.quantity,
+          });
+        } catch {
+          const { data: vrow } = await adminSupabase
+            .from("product_variants")
+            .select("quantity")
+            .eq("id", product.productVariantId)
+            .single();
+          if (vrow) {
+            await adminSupabase
+              .from("product_variants")
+              .update({ quantity: Math.max(0, (vrow.quantity ?? 0) - product.quantity) })
+              .eq("id", product.productVariantId);
+          }
+        }
+      } else {
+        const productData = v.productById.get((product as any).productId ?? product.product_id);
+        if (productData?.track_stock_quantity) {
+          const newQuantity = (productData.quantity || 0) - product.quantity;
+          await adminSupabase
+            .from("products")
+            .update({ quantity: Math.max(0, newQuantity) })
+            .eq("id", product.productId);
+        }
       }
     }
   }

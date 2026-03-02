@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { OsType } from "@/lib/utils/os-type";
 
 const ClientAppShell = dynamic(() => import("@/app/ClientAppShell"), {
   ssr: false,
@@ -11,6 +12,15 @@ const ClientAppShell = dynamic(() => import("@/app/ClientAppShell"), {
   ),
 });
 
-export default function ClientAppShellLoader({ children }: { children: React.ReactNode }) {
-  return <ClientAppShell>{children}</ClientAppShell>;
+interface ClientAppShellLoaderProps {
+  children: React.ReactNode;
+  osType: OsType;
+}
+
+export default function ClientAppShellLoader({ children, osType }: ClientAppShellLoaderProps) {
+  return (
+    <ClientAppShell osType={osType}>
+      {children}
+    </ClientAppShell>
+  );
 }

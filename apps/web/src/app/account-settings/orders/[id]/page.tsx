@@ -24,11 +24,14 @@ interface ProductOrder {
   cancellation_reason: string | null;
   items: Array<{
     id: string;
+    product_id?: string;
+    product_variant_id?: string | null;
     product_name: string;
     product_image_url: string | null;
     quantity: number;
     unit_price: number;
     total_price: number;
+    product_variant?: { id: string; option_values?: Record<string, string> } | null;
   }>;
   provider: { id: string; business_name: string; slug: string; logo_url: string | null };
   delivery_address?: { label: string | null; address_line1: string; city: string; postal_code: string | null } | null;
@@ -170,7 +173,12 @@ export default function OrderDetailPage() {
                   )}
                 </div>
                 <div className="flex-1">
-                  <p className="font-semibold text-gray-900">{item.product_name}</p>
+                  <p className="font-semibold text-gray-900">
+                    {item.product_name}
+                    {item.product_variant?.option_values && Object.keys(item.product_variant.option_values).length > 0 && (
+                      <span className="font-normal text-gray-500"> · {Object.entries(item.product_variant.option_values).map(([, v]) => v).join(", ")}</span>
+                    )}
+                  </p>
                   <p className="text-xs text-gray-400">{item.quantity} x R{Number(item.unit_price).toFixed(2)}</p>
                 </div>
                 <p className="font-semibold text-gray-900">R{Number(item.total_price).toFixed(2)}</p>

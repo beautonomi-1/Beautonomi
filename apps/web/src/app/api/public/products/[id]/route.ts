@@ -24,6 +24,7 @@ export async function GET(
         id, name, slug, brand, category, short_description, long_description, description,
         retail_price, supply_price, currency, image_urls, quantity, tags, measure, amount,
         tax_rate, weight_grams, is_active, retail_sales_enabled, created_at,
+        has_variants, variant_option_types,
         provider:providers (
           id, business_name, slug, logo_url, description
         )
@@ -36,6 +37,16 @@ export async function GET(
 
     if (error || !product) {
       return notFoundResponse("Product not found");
+    }
+
+    if (product.has_variants) {
+      const { data: variants } = await (supabase.from("product_variants") as any)
+        .select("id, product_id, option_values, sort_order, retail_price, quantity, sku, image_url")
+        .eq("product_id", id)
+        .order("sort_order");
+      (product as any).variants = (variants || []).sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    } else {
+      (product as any).variants = [];
     }
 
     // Get reviews summary
