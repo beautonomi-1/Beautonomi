@@ -113,8 +113,8 @@ COMMENT ON COLUMN product_order_items.product_variant_id IS 'When set, line item
 -- 5) Cart: allow same product with different variants (change unique to include variant)
 ALTER TABLE cart_items ADD COLUMN IF NOT EXISTS product_variant_id UUID REFERENCES product_variants(id) ON DELETE CASCADE;
 
--- Remove old unique so one product can appear with multiple variants
-DROP INDEX IF EXISTS cart_items_user_id_product_id_key;
+-- Remove old unique constraint so one product can appear with multiple variants
+ALTER TABLE cart_items DROP CONSTRAINT IF EXISTS cart_items_user_id_product_id_key;
 -- One row per (user, product) when no variant
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cart_items_user_product_no_variant
   ON cart_items(user_id, product_id) WHERE product_variant_id IS NULL;
