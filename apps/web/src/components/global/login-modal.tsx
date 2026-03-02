@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -612,6 +613,17 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       </div>
                     </div>
                   )}
+                  {!isSignup && (
+                    <div className="mb-4 text-center">
+                      <Link
+                        href="/forgot-password"
+                        onClick={() => setOpen(false)}
+                        className="text-sm text-gray-600 hover:text-[#FF0077]"
+                      >
+                        Forgot your password? <span className="font-semibold text-[#FF0077]">Reset it</span>
+                      </Link>
+                    </div>
+                  )}
                   <Button 
                     className="w-full bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white h-12 text-base font-medium mb-6"
                     onClick={!isSignup ? handleEmailAuth : handleEmailContinue}
@@ -740,6 +752,15 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                     }
                   </Button>
                   <div className="text-center space-y-2">
+                    {!isSignup && (
+                      <Link
+                        href="/forgot-password"
+                        onClick={() => setOpen(false)}
+                        className="block w-full text-sm text-[#FF0077] hover:underline font-medium"
+                      >
+                        Forgot your password?
+                      </Link>
+                    )}
                     <button
                       onClick={() => {
                         setShowPasswordField(false);

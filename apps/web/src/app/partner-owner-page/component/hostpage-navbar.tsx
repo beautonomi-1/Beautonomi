@@ -50,7 +50,7 @@ const HostPageNavbar: React.FC = () => {
         </div>
         </Link>
         <div className="flex items-center gap-3">
-        <div className="text-sm px-4 font-normal Airbnb-normal text-secondary hover:bg-primary p-3 rounded-full cursor-pointer">
+        <div className="text-sm px-4 font-brand font-normal text-secondary hover:bg-primary p-3 rounded-full cursor-pointer">
           <Link href="/become-a-partner" className="">
             <h2 className="">Become a Partner</h2>
           </Link>
@@ -75,7 +75,7 @@ const HostPageNavbar: React.FC = () => {
             ref={popupRef}
             className="absolute right-0 top-12 bg-white border rounded-lg shadow py-5 z-10"
           >
-            <ul className="text-secondary text-base font-normal Airbnb-normal">
+            <ul className="text-secondary text-base font-brand font-normal">
               <li className="pr-20 pl-5 mb-5">
                 <Link href="/">All help topics</Link>
               </li>

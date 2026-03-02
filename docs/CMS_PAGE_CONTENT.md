@@ -1,0 +1,73 @@
+# CMS Page Content (Superadmin)
+
+The superadmin portal lets you manage **page content** via **Content → Pages**. Content is stored in `page_content` (keyed by `page_slug` and `section_key`). Different pages use different APIs (see below).
+
+## Footer-linked pages: fully managed via CMS?
+
+These are the internal links that appear in the site footer. Status:
+
+| Footer link / route | Fully CMS-managed? | Notes |
+|---------------------|--------------------|--------|
+| **About** (`/about`) | Yes | Loads `page_slug=about`; renders hero_title, hero_content, sections. |
+| **Careers** (`/career`) | No | Page is static; does not load or display CMS content. |
+| **Customer Support / Help** (`/help`) | No | Fetches help content but does not render it; UI is hardcoded. |
+| **Blog** (`/news`) | No | Static; no CMS. |
+| **Gift Cards** (`/gift-card`) | Yes | Hero, designs, features, banner from CMS. |
+| **Sign Up** (`/signup`) | Yes | Content from CMS via signup-content API. |
+| **For Partners** (`/become-a-partner`) | Yes | Hero, rating, why-different, features, CTA from CMS (usePageContent). |
+| **Pricing** (`/pricing`) | Partial | Only hero_title, hero_description from CMS; plans/FAQs from other tables. |
+| **Support** (`/help`) | No | Same as Help. |
+| **Privacy Policy** (`/privacy-policy`) | Yes | Title, description, hero image, supplemental policies, articles from CMS. |
+| **Terms of Service** (`/terms-and-condition`) | Yes | Title, intro, sections, sidebar from CMS. |
+| **Gift Card Purchase** (`/gift-card/purchase`) | N/A | Form/flow; not a content page. |
+| **Sitemap** (`/sitemap`) | N/A | Utility. |
+
+**Fully CMS-managed:** about, gift-card, signup, become-a-partner, privacy-policy, terms-and-condition. **Not:** help, career, news. **Partial:** pricing (hero only).
+
+## Which pages can be managed?
+
+You can create and edit content for any **page slug**. The dropdown in the admin includes:
+
+- **help** – Help Centre
+- **career** – Careers
+- **about** – About
+- **become-a-partner**, **gift-card**, **why-beautonomi**, **pricing**, **signup**
+- **privacy-policy**, **terms-and-condition**, **terms-of-service** (footer)
+- **resources**, **beautonomi-friendly**, **against-discrimination**
+
+## How much is actually driven by CMS?
+
+| Page / slug   | CMS used on frontend? | Notes |
+|---------------|------------------------|--------|
+| **help**      | Partially              | Help page fetches `page_slug=help` but the main UI (top articles, guides, explore more) is **hardcoded** in components. CMS entries for `help` are stored and can be used later if the help page is wired to render by `section_key`. |
+| **career**    | Not yet                | Careers page is **fully static**. You can add content in the CMS with `page_slug=career` for future use; the career frontend does not yet load or display it. |
+| **about**     | Yes                    | About page loads content from CMS. |
+| **gift-card** | Yes                    | Gift card page uses CMS. |
+| **why-beautonomi** | Yes                | Uses CMS. |
+| **pricing**   | Partial                | Only hero_title, hero_description from page_content; plans/FAQs from other DB tables. |
+| **signup**    | Yes                    | Signup page content is managed via the “Signup Page” tab and CMS. |
+| **become-a-partner** | Yes               | Uses CMS with known section keys (see admin modal). |
+| **privacy-policy**, **terms-and-condition**, **terms-of-service** | Yes | Each loads via `/api/public/content/pages/[slug]` and renders title, intro, sections, etc. |
+
+## APIs used by the frontend
+
+- **`GET /api/public/page-content?page_slug=<slug>`** – Map by section_key. Used by: about, gift-card, help, why-beautonomi, resources.
+- **`GET /api/public/content/pages/[slug]`** – Array of sections. Used by: privacy-policy, terms-and-condition.
+- **`GET /api/public/pages/[slug]`** – Grouped by section_key. Used by: become-a-partner (usePageContent hook).
+- **`GET /api/public/signup-content`** – Signup content. Used by: signup page.
+- **Pricing**: `getPricingPageContent()` (hero_title, hero_description only).
+
+## Making help, career, or news fully CMS-driven
+
+- **Help**: Page already fetches help content. Wire the response into the UI (e.g. top articles, guides from section_key) instead of hardcoded components.
+- **Careers**: Add a fetch for `page_slug=career` and render hero, intro, and lists from CMS.
+- **News**: Add a fetch for `page_slug=news` and render from CMS, or keep static.
+
+## Content types
+
+- **text** – Plain text  
+- **html** – Rich text (WYSIWYG in admin for supported pages)  
+- **json** – Structured data (e.g. feature lists)  
+- **image** / **video** – Media URLs  
+
+Use the **Section Key** field to identify each block (e.g. `hero_title`, `hero_description`). The frontend uses these keys when it’s wired to CMS.

@@ -9,27 +9,27 @@ import { Button } from "@/components/ui/button";
 const imageData = [
   {
     src: Image1,
-    caption: "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/" 
-},
+    caption: "New booking experience for customers",
+    date: "August 8, 2024",
+    link: "/news",
+  },
   {
     src: Image2,
-    caption: "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
-    date: "August 8,2024",
-    link: "/" 
+    caption: "New features for providers: smarter booking and payouts",
+    date: "August 12, 2024",
+    link: "/news",
   },
   {
     src: Image1,
-    caption: "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/" 
+    caption: "Trust and safety updates for our community",
+    date: "August 5, 2024",
+    link: "/news",
   },
   {
     src: Image2,
-    caption: "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
-    date: "August 8,2024",
-    link: "/" 
+    caption: "How we're making beauty services more accessible",
+    date: "August 7, 2024",
+    link: "/news",
   },
 ];
 

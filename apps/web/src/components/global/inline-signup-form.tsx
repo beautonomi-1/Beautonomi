@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Select,
@@ -11,9 +12,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FaApple, FaFacebook, FaGoogle } from "react-icons/fa6";
 import { CiMail } from "react-icons/ci";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { signIn as signInAuth, signUp as signUpAuth, signInWithOAuth, resendVerificationEmail } from "@/lib/supabase/auth";
 import { fetcher } from "@/lib/http/fetcher";
@@ -27,12 +29,27 @@ interface InlineSignupFormProps {
   referralCode?: string;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function getPasswordStrength(pw: string): { score: number; label: string; color: string } {
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (score <= 1) return { score, label: "Weak", color: "bg-red-500" };
+  if (score <= 2) return { score, label: "Fair", color: "bg-amber-500" };
+  if (score <= 3) return { score, label: "Good", color: "bg-blue-500" };
+  return { score, label: "Strong", color: "bg-green-500" };
+}
+
 export default function InlineSignupForm({ redirectContext, onAuthSuccess, redirectUrl, referralCode }: InlineSignupFormProps) {
   const router = useRouter();
   const { refreshUser, role: _contextRole, user } = useAuth();
   
   const [isLoading, setIsLoading] = useState(false);
-  const [showEmailForm, setShowEmailForm] = useState(true); // Start with email form for signup
+  const [showEmailForm, setShowEmailForm] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -42,6 +59,8 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
   const [showPasswordField, setShowPasswordField] = useState(false);
   const [showResendVerification, setShowResendVerification] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
+  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Close form and call onAuthSuccess when user becomes authenticated
   useEffect(() => {
@@ -62,28 +81,56 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
   }, [user?.id]);
 
   const handleEmailContinue = () => {
-    if (!email) {
+    setError(null);
+    if (!fullName?.trim()) {
+      setError("Full name is required");
+      return;
+    }
+    if (!email?.trim()) {
       setError("Email is required");
       return;
     }
+    if (!EMAIL_RE.test(email.trim())) {
+      setError("Please enter a valid email address");
+      return;
+    }
     setShowPasswordField(true);
-    setError(null);
   };
 
   const handleEmailAuth = async () => {
     setError(null);
     setShowResendVerification(false);
-    
-    if (!email || !password) {
-      setError("Email and password are required");
-      return;
-    }
 
     const trimmedEmail = email.trim();
     const trimmedPassword = password.trim();
 
-    if (!trimmedEmail || !trimmedPassword) {
-      setError("Email and password are required");
+    if (!fullName?.trim()) {
+      setError("Full name is required");
+      return;
+    }
+    if (!trimmedEmail) {
+      setError("Email is required");
+      return;
+    }
+    if (!EMAIL_RE.test(trimmedEmail)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+    if (!trimmedPassword) {
+      setError("Password is required");
+      return;
+    }
+    if (trimmedPassword.length < 8) {
+      setError("Password must be at least 8 characters");
+      return;
+    }
+    const strength = getPasswordStrength(trimmedPassword);
+    if (strength.score < 2) {
+      setError("Use a stronger password (add uppercase, numbers, or symbols)");
+      return;
+    }
+    if (!agreeTerms) {
+      setError("Please agree to the Terms of Service and Privacy Policy");
       return;
     }
 
@@ -96,12 +143,6 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     }
 
     try {
-      // Sign up new user
-      if (!fullName) {
-        setError("Full name is required");
-        setIsLoading(false);
-        return;
-      }
 
       const userRole = redirectContext === "provider" ? "provider_owner" : "customer";
 
@@ -345,7 +386,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           
           <p className="text-xs text-gray-600 mb-6">
             {"We'll"} call or text you to confirm your number. Standard message and data rates apply.{" "}
-            <span className="font-semibold underline cursor-pointer hover:text-gray-900">Privacy Policy</span>
+            <Link href="/privacy-policy" className="font-semibold underline hover:text-[#FF0077]">Privacy Policy</Link>
           </p>
           
           <Button 
@@ -390,7 +431,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               <Button 
                 className="w-full bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white h-12 text-base font-medium mb-6"
                 onClick={handleEmailContinue}
-                disabled={isLoading || !email || !fullName}
+                disabled={isLoading || !email?.trim() || !fullName?.trim()}
               >
                 Continue
               </Button>
@@ -467,25 +508,73 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
             <>
               <div className="mb-4">
                 <Label className="text-sm font-medium text-gray-700 mb-2 block">Password</Label>
-                <Input
-                  type="password"
-                  className="text-base h-12 border-gray-300"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (error) {
-                      setError(null);
-                      setShowResendVerification(false);
-                    }
-                  }}
-                  autoComplete="new-password"
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    className="text-base h-12 border-gray-300 pr-10"
+                    placeholder="Min. 8 characters"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (error) {
+                        setError(null);
+                        setShowResendVerification(false);
+                      }
+                    }}
+                    autoComplete="new-password"
+                    aria-describedby="password-strength"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 rounded p-1 focus:outline-none focus:ring-2 focus:ring-[#FF0077]/30"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
+                {password.length > 0 && (
+                  <div id="password-strength" className="mt-2" role="status">
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div
+                          key={i}
+                          className={`h-1 flex-1 rounded-full ${i <= getPasswordStrength(password).score ? getPasswordStrength(password).color : "bg-gray-200"}`}
+                        />
+                      ))}
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Strength: {getPasswordStrength(password).label}
+                      {getPasswordStrength(password).score < 2 && password.length >= 8 && (
+                        <span className="text-amber-600"> — Add uppercase, numbers, or symbols</span>
+                      )}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="mb-4 flex items-start gap-3">
+                <Checkbox
+                  id="signup-agree-terms"
+                  checked={agreeTerms}
+                  onCheckedChange={(c) => setAgreeTerms(c === true)}
+                  className="mt-0.5"
+                  aria-describedby="signup-terms-text"
                 />
+                <label htmlFor="signup-agree-terms" id="signup-terms-text" className="text-sm text-gray-600 cursor-pointer">
+                  I agree to the{" "}
+                  <Link href="/terms-and-condition" className="text-[#FF0077] font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/privacy-policy" className="text-[#FF0077] font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
+                    Privacy Policy
+                  </Link>
+                </label>
               </div>
               <Button 
                 className="w-full bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white h-12 text-base font-medium mb-4"
                 onClick={handleEmailAuth}
-                disabled={isLoading || !password}
+                disabled={isLoading || !password || !agreeTerms}
               >
                 {isLoading ? "Creating account..." : "Sign up"}
               </Button>

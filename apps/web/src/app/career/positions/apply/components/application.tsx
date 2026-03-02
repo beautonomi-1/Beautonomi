@@ -138,7 +138,7 @@ const Application = () => {
               Social Media (Facebook, Instagram, LinkedIn, Twitter)
             </SelectItem>
             <SelectItem value="tech">Beautonomi Tech blog post</SelectItem>
-            <SelectItem value="airbnb">Beautonomi.io</SelectItem>
+            <SelectItem value="beautonomi_io">Beautonomi.io</SelectItem>
             <SelectItem value="open source">Beautonomi Open Source</SelectItem>
             <SelectItem value="event">
               Event (Tech Talk, Meetup, conference)

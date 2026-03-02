@@ -25,7 +25,7 @@ const changes = [
   },
   {
     src: Global,
-    title: "Building a more inclusive travel community",
+    title: "Building a more inclusive community",
     description: "Travel beyond traditional tourist hubs can bring economic opportunity to communities that haven’t historically benefited from tourism. In the next year, we’ll continue to develop and scale global programs like the Beautonomi Entrepreneurship Academy to ensure broader access to the benefits of beauty partner on Beautonomi. Our efforts include expanding programs that help recruit more Hosts who are people of color."
   },
   {
@@ -46,7 +46,7 @@ const changes = [
   {
     src: Icon2,
     title: "Continuing our commitment to guests with mobility needs",
-    description: "Our accessibility feature search filters make it easier for guests to find and book stays that meet their needs. Through Accessibility Review, we review every accessibility feature submitted by Hosts for accuracy. Our Adapted category, launched in November 2022, features hundreds of listings adapted for wheelchair access, with verified step-free paths into the home, bedroom, and bathroom, and at least one accessibility feature in the bathroom. Adapted listings even undergo a 3D scan to confirm features and measurements."
+    description: "Our accessibility features and filters make it easier for customers to find and book services that meet their needs. We review accessibility information submitted by providers for accuracy and are committed to making beauty and wellness services accessible to everyone."
   }
 ];
 

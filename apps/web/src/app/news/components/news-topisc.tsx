@@ -3,17 +3,13 @@
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs";
 import Company from "../tabs/company";
-import Stays from "../tabs/stays";
+import Providers from "../tabs/providers";
 import Product from "../tabs/product";
-import Policy from "../tabs/policy";
-import Community from "../tabs/community";
 
 const tabs = [
   { value: "step1", label: "Company" },
-  { value: "step2", label: "Stays" },
-  { value: "step3", label: " Product" },
-  { value: "step4", label: "Policy" },
-  { value: "step5", label: "Community" },
+  { value: "step2", label: "Providers" },
+  { value: "step3", label: "Product" },
 ];
 
 const NewsTopics = () => {
@@ -49,10 +45,8 @@ const NewsTopics = () => {
               value={tab.value}
             >
               {tab.value === "step1" ? <Company /> : null}
-              {tab.value === "step2" ? <Stays /> : null}
+              {tab.value === "step2" ? <Providers /> : null}
               {tab.value === "step3" ? <Product /> : null}
-              {tab.value === "step4" ? <Policy /> : null}
-              {tab.value === "step5" ? <Community /> : null}
             </TabsContent>
           ))}
         </Tabs>

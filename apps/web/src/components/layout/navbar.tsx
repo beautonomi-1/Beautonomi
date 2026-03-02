@@ -628,7 +628,6 @@ const Navbar: React.FC = () => {
         pathname !== "/rooms" &&
         pathname !== "/accessibility" &&
         pathname !== "/against-discrimination" &&
-        pathname !== "/beautonomi-financial-results" &&
         pathname !== "/beautonomi-friendly" &&
         pathname !== "/beautonomi-your-home" &&
         pathname !== "/aircover-for-host" &&
@@ -640,14 +639,11 @@ const Navbar: React.FC = () => {
         pathname !== "/help/articles" &&
         pathname !== "/help" &&
         pathname !== "/hostpage" &&
-        pathname !== "/investors" &&
         pathname !== "/news" &&
-        pathname !== "/release" &&
         pathname !== "/reservation" &&
         pathname !== "/resources" &&
         pathname !== "/resources/pricing-place" &&
-        pathname !== "/resources/like-to-host" &&
-        pathname !== "/stays" && (
+        pathname !== "/resources/like-to-host" && (
           <div
             className={`relative lg:block z-0 ${
               isFilterSliderSticky ? "top-0" : "fixed top-0"

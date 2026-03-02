@@ -755,7 +755,7 @@ export default function ProviderOnboarding() {
   );
 }
 
-// Step 1: Team Size - Beautiful Airbnb-style card selection
+// Step 1: Team Size - card selection
 function Step1TeamSize({
   data,
   updateData,

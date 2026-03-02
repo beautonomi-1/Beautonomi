@@ -2022,6 +2022,7 @@ function PageContentModal({
           formData.page_slug === "terms-of-service" ||
           formData.page_slug === "about" ||
           formData.page_slug === "help" ||
+          formData.page_slug === "career" ||
           formData.page_slug === "why-beautonomi" ||
           formData.page_slug === "beautonomi-friendly" ||
           formData.page_slug === "against-discrimination" ||

@@ -1,5 +1,5 @@
 import Image from "next/image";
-import Getting from "./../../../../public/images/getting-started-on-airbnb-optimized.jpg";
+import Getting from "./../../../../public/images/getting-started-optimized.jpg";
 import Access from "./../../../../public/images/accessing-your-account-optimized.jpg";
 import Reservation from "./../../../../public/images/help-with-a-reservation-optimized.jpg";
 import Aircover from "./../../../../public/images/AC_Guests_HG_EN_S@3x.png";
@@ -23,13 +23,13 @@ const guides = [
   },
   {
     src: Reservation,
-    alt: "Help with hosting",
-    description: "Help with a reservation",
+    alt: "Help with a booking",
+    description: "Help with a booking",
   },
   {
     src: Aircover,
-    alt: "Getting protected through AirCover for Hosts",
-    description: "AirCover for guests",
+    alt: "Getting protected through Beautonomi Coverage for Providers",
+    description: "Beautonomi Coverage for customers",
   },
 ];
 

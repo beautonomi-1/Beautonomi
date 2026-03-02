@@ -6,25 +6,25 @@ import Instagram from "./../../../../public/images/instagram-icon.svg";
 import Tiktok from "./../../../../public/images/tiktok-icon.svg";
 
 const socialMedia = [
-  { src: Twitter, alt: "Twitter", link: "https://twitter.com/airbnb" },
+  { src: Twitter, alt: "Twitter", link: "https://twitter.com/beautonomi" },
   {
     src: Pinterest,
     alt: "Pinterest",
-    link: "https://www.pinterest.com/airbnb",
+    link: "https://www.pinterest.com/beautonomi",
   },
   {
     src: Tiktok,
-    alt: "Titktok",
-    link: "https://www.tiktok.com/company/airbnb",
+    alt: "TikTok",
+    link: "https://www.tiktok.com/@beautonomi",
   },
-  { src: Instagram, alt: "Link", link: " https://instagram.com/airbnb" },
+  { src: Instagram, alt: "Instagram", link: "https://instagram.com/beautonomi" },
 ];
 const ContactInfo = () => {
   return (
     <div className="container">
       <h2 className="font-normal  text-[22px] text-secondary text-center mb-6">
         {" "}
-        Follow Beautonomi for news and travel inspiration{" "}
+        Follow Beautonomi for news and updates{" "}
       </h2>
       <div className="flex gap-4 mb-12 md:mb-16 justify-center">
               {socialMedia.map((social, index) => (

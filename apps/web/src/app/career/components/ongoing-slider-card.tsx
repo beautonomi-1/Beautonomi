@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import House from "./../../../../public/images/Riverfront-Getaway-with-a-View-.webp";
 import Working from './../../../../public/images/PJM0223-18Q1_Superhost_Chicago_1000.jpg';
 import Games from "./../../../../public/images/Copy-of-Sophie_216212958_London_147.webp";
-import DollHouse from './../../../../public/images/21-Polly-Pocket-Icons-Airbnb-Credit-Juan-Navarro-Above-Summit-.jpg';
-import Image1 from './../../../../public/images/10-Kevin-Hart-Experience-Icons-Airbnb-Credit-Bethany-Mollenkof.jpg';
+import DollHouse from './../../../../public/images/polly-pocket-featured.jpg';
+import Image1 from './../../../../public/images/kevin-hart-featured.jpg';
 import Image3 from './../../../../public/images/Bettys-bed.jpg';
 import Image4 from './../../../../public/images/BeloRauschNewsroomFeatured_200316.png';
 import Image5 from './../../../../public/images/Newsroom_TrustSafety_004.jpg';
@@ -19,39 +19,39 @@ export default function SliderCard() {
   const slides = [
     {
       image: House,
-      title: "Local travel on the rise: See the top trending destinations locals love",
+      title: "Beautonomi supports arts and culture in our communities",
       date: "August 15, 2024",
-      link: "/local-travel",
+      link: "/seattle-arts",
     },
     {
       image: Working,
-      title: "Beautonomi and Erie County announce voluntary tax agreement on behalf of hosts",
+      title: "Partnering with local businesses to grow beauty and wellness",
       date: "August 13, 2024",
-      link: "/airbnb-erie-county",
+      link: "/partners",
     },
     {
       image: Games,
-      title: "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
+      title: "New features for providers: smarter booking and payouts",
       date: "August 8, 2024",
-      link: "/paris-2024",
+      link: "/provider-features",
     },
     {
       image: DollHouse,
-      title: "Polly Pocket’s ‘90s-era compact is now life-sized",
+      title: "How we're making beauty services more accessible",
       date: "August 7, 2024",
-      link: "/polly-pocket",
+      link: "/accessibility",
     },
     {
       image: Image1,
-      title: "Step behind the velvet rope into Kevin Hart’s Coramino Live Lounge",
+      title: "Beautonomi Coverage: protection for providers and peace of mind for customers",
       date: "July 23, 2024",
-      link: "/kevin-hart",
+      link: "/coverage",
     },
     {
       image: Image3,
-      title: "Celebrate Ugly Betty’s comeback and book her home, now on Beautonomi",
+      title: "Trust and safety updates for our community",
       date: "July 24, 2024",
-      link: "/ugly-betty",
+      link: "/trust-safety",
     },
     {
       image: Image4,
@@ -61,15 +61,15 @@ export default function SliderCard() {
     },
     {
       image: Image5,
-      title: "Joining forces with top financial crimes association to combat travel scams",
+      title: "Joining forces with industry partners to combat payment fraud",
       date: "August 5, 2024",
-      link: "/travel-scams",
+      link: "/fraud-prevention",
     },
     {
       image: Image6,
-      title: "Summer travel support for our community",
+      title: "Summer support for providers and customers",
       date: "July 24, 2024",
-      link: "/summer-travel",
+      link: "/summer-support",
     },
   ];
 

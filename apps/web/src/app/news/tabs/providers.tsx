@@ -3,43 +3,39 @@ import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import Image1 from "./../../../../public/images/Newsroom_TrustSafety_008.jpg";
-import Image2 from "./../../../../public/images/01-Kens-DreamHouse-Airbnb-Exterior-Credit-Hogwash-Studios-2.webp";
+import Image2 from "./../../../../public/images/Newsroom_TrustSafety_004.jpg";
 import { Button } from "@/components/ui/button";
 
 const imageData = [
   {
     src: Image1,
-    caption:
-      "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/",
+    caption: "New features for providers: smarter booking and payouts",
+    date: "August 8, 2024",
+    link: "/news",
   },
   {
     src: Image2,
-    caption:
-      "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Airbnb",
-    date: "August 8,2024",
-    link: "/",
+    caption: "Beautonomi Coverage: protection for providers",
+    date: "August 5, 2024",
+    link: "/news",
   },
   {
     src: Image1,
-    caption:
-      "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/",
+    caption: "Partnering with local businesses to grow beauty and wellness",
+    date: "August 15, 2024",
+    link: "/news",
   },
   {
     src: Image2,
-    caption:
-      "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Airbnb",
-    date: "August 8,2024",
-    link: "/",
+    caption: "Summer support for providers and customers",
+    date: "July 24, 2024",
+    link: "/news",
   },
 ];
 
 const ITEMS_PER_PAGE = 12;
 
-const Stays = () => {
+const Providers = () => {
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
 
   const handleLoadMore = () => {
@@ -49,7 +45,7 @@ const Stays = () => {
   return (
     <div className="container">
       <div className="pb-4 md:pb-20">
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-5 md:mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-5 md:mb-10">
           {imageData.slice(0, visibleCount).map((image, index) => (
             <div key={index} className="grid md:block grid-cols-2 gap-5">
               <Image
@@ -60,11 +56,11 @@ const Stays = () => {
               />
               <div>
                 <Link href={image.link}>
-                  <div className="text-sm md:text-lg font-normal  text-secondary leading-5 md:-7 mb-2 hover:underline">
+                  <div className="text-sm md:text-lg font-normal text-secondary leading-5 md:leading-7 mb-2 hover:underline">
                     {image.caption}
                   </div>
                 </Link>
-                <p className="text-sm font-light  text-[#717171]">
+                <p className="text-sm font-light text-[#717171]">
                   {image.date}
                 </p>
               </div>
@@ -81,4 +77,4 @@ const Stays = () => {
   );
 };
 
-export default Stays;
+export default Providers;

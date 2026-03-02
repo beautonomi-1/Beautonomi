@@ -22,10 +22,7 @@ const config: Config = {
     },
     extend: {
       fontFamily: {
-        airbnb: ["AirbnbCereal", "sans-serif"],
-      },
-      backgroundImage: {
-        "investors-banner": "url('/images/investors-banner-v2.jpg')",
+        brand: ["AirbnbCereal", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
