@@ -2,6 +2,13 @@
   "name": "beautonomi-monorepo",
   "private": true,
   "packageManager": "pnpm@9.15.0",
+  "pnpm": {
+    "overrides": {
+      "react": "19.1.0",
+      "react-native": "0.81.5",
+      "@react-native-async-storage/async-storage": "2.2.0"
+    }
+  },
   "scripts": {
     "dev": "pnpm exec turbo run dev",
     "dev:web": "pnpm exec turbo run dev --filter=web",

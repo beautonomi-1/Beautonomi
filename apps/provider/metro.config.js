@@ -6,7 +6,8 @@ const monorepoRoot = path.resolve(projectRoot, "../..");
 
 const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [monorepoRoot];
+// Preserve Expo defaults and add monorepo root (expo doctor expects default watchFolders)
+config.watchFolders = [...(config.watchFolders || [projectRoot]), monorepoRoot];
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, "node_modules"),
   path.resolve(monorepoRoot, "node_modules"),

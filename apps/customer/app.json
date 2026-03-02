@@ -64,6 +64,7 @@
     "plugins": [
       "expo-router",
       "expo-font",
+      "@sentry/react-native",
       "singular-react-native",
       [
         "expo-splash-screen",

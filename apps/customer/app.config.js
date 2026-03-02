@@ -27,9 +27,11 @@ const extra = {
   EXPO_PUBLIC_APP_URL: envFromFile.EXPO_PUBLIC_APP_URL ?? process.env.EXPO_PUBLIC_APP_URL,
   EXPO_PUBLIC_SENTRY_DSN: envFromFile.EXPO_PUBLIC_SENTRY_DSN ?? process.env.EXPO_PUBLIC_SENTRY_DSN,
 };
+// Explicitly spread app.json so Expo config tooling sees we use it
 module.exports = {
   expo: {
     ...appJson.expo,
+    plugins: [...(appJson.expo.plugins || [])],
     extra,
   },
 };
