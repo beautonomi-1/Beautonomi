@@ -1595,7 +1595,10 @@ function AppsSettings({
       <div>
         <h3 className="text-base sm:text-lg font-semibold mb-4">Mobile App Management</h3>
         <p className="text-xs sm:text-sm text-gray-600 mb-4">
-          Manage customer and provider mobile apps for Android, iOS, and Huawei platforms.
+          Manage customer and provider mobile apps for Android, iOS, and Huawei platforms. Store URLs and the
+          enabled flag below are used by the web site’s mobile download banner (sticky bar on mobile). Disable a
+          platform to hide its banner; set the URL to control where the CTA links. For “open app if installed, else
+          store” behaviour, paste Singular Link URLs from your Singular dashboard into the URL fields below.
         </p>
       </div>
 

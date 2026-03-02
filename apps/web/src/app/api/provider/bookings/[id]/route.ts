@@ -70,10 +70,12 @@ export async function GET(
         booking_products(
           id,
           product_id,
+          product_variant_id,
           quantity,
           unit_price,
           total_price,
-          products:products!booking_products_product_id_fkey(id, name, retail_price)
+          products:products!booking_products_product_id_fkey(id, name, retail_price),
+          product_variant:product_variants(id, option_values)
         )
       `
       )
@@ -140,6 +142,8 @@ export async function GET(
       products: (bookingData.booking_products || []).map((bp: any) => ({
         id: bp.id,
         product_id: bp.product_id,
+        product_variant_id: bp.product_variant_id,
+        product_variant: bp.product_variant,
         product_name: bp.products?.name || "Unknown Product",
         quantity: bp.quantity,
         unit_price: bp.unit_price,
@@ -564,10 +568,12 @@ export async function PATCH(
         booking_products(
           id,
           product_id,
+          product_variant_id,
           quantity,
           unit_price,
           total_price,
-          products:products!booking_products_product_id_fkey(id, name, retail_price)
+          products:products!booking_products_product_id_fkey(id, name, retail_price),
+          product_variant:product_variants(id, option_values)
         )
       `
       )
@@ -734,6 +740,7 @@ export async function PATCH(
         const productsToInsert = products.map((product: any) => ({
           booking_id: id,
           product_id: product.productId,
+          product_variant_id: product.productVariantId ?? null,
           quantity: product.quantity || 1,
           unit_price: product.unitPrice || 0,
           total_price: product.totalPrice || (product.unitPrice || 0) * (product.quantity || 1),
@@ -1117,6 +1124,8 @@ export async function PATCH(
       products: (bookingData.booking_products || []).map((bp: any) => ({
         id: bp.id,
         product_id: bp.product_id,
+        product_variant_id: bp.product_variant_id,
+        product_variant: bp.product_variant,
         product_name: bp.products?.name || "Unknown Product",
         quantity: bp.quantity,
         unit_price: bp.unit_price,

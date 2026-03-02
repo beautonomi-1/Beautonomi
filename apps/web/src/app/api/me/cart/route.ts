@@ -10,6 +10,7 @@ import { z } from "zod";
 
 const addSchema = z.object({
   product_id: z.string().uuid(),
+  product_variant_id: z.string().uuid().optional().nullable(),
   quantity: z.number().int().min(1).max(100).default(1),
 });
 
@@ -30,11 +31,15 @@ export async function GET(request: NextRequest) {
         `
         id,
         quantity,
+        product_variant_id,
         created_at,
         updated_at,
         product:products (
           id, name, retail_price, image_urls, quantity, is_active, retail_sales_enabled,
-          brand, category, provider_id
+          brand, category, provider_id, has_variants
+        ),
+        product_variant:product_variants (
+          id, retail_price, quantity, option_values
         ),
         provider:providers (
           id, business_name, slug
@@ -46,14 +51,19 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    const enriched = (items ?? []).map((item: any) => ({
-      ...item,
-      in_stock:
-        item.product?.is_active &&
-        item.product?.retail_sales_enabled &&
-        item.product?.quantity >= item.quantity,
-      stock_available: item.product?.quantity ?? 0,
-    }));
+    const enriched = (items ?? []).map((item: any) => {
+      const effectiveQty = item.product_variant ? item.product_variant.quantity : item.product?.quantity ?? 0;
+      const effectivePrice = item.product_variant ? item.product_variant.retail_price : item.product?.retail_price ?? 0;
+      return {
+        ...item,
+        effective_price: effectivePrice,
+        in_stock:
+          item.product?.is_active &&
+          item.product?.retail_sales_enabled &&
+          effectiveQty >= item.quantity,
+        stock_available: effectiveQty,
+      };
+    });
 
     return successResponse({ items: enriched });
   } catch (err) {
@@ -77,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     // Validate the product exists and is available
     const { data: product, error: prodErr } = await (supabase.from("products") as any)
-      .select("id, provider_id, quantity, is_active, retail_sales_enabled, retail_price, name")
+      .select("id, provider_id, quantity, is_active, retail_sales_enabled, retail_price, name, has_variants")
       .eq("id", parsed.product_id)
       .single();
 
@@ -87,27 +97,49 @@ export async function POST(request: NextRequest) {
     if (!product.is_active || !product.retail_sales_enabled) {
       return errorResponse("Product is not available for purchase", "UNAVAILABLE", 400);
     }
-    if (product.quantity < parsed.quantity) {
+
+    const variantId = parsed.product_variant_id || null;
+    let effectiveQuantity = product.quantity;
+    if (product.has_variants && variantId) {
+      const { data: variant, error: varErr } = await (supabase.from("product_variants") as any)
+        .select("id, product_id, quantity, retail_price")
+        .eq("id", variantId)
+        .eq("product_id", parsed.product_id)
+        .single();
+      if (varErr || !variant) {
+        return errorResponse("Variant not found", "NOT_FOUND", 404);
+      }
+      effectiveQuantity = variant.quantity ?? 0;
+    } else if (product.has_variants && !variantId) {
+      return errorResponse("Please select a variant", "VARIANT_REQUIRED", 400);
+    }
+
+    if (effectiveQuantity < parsed.quantity) {
       return errorResponse(
-        `Only ${product.quantity} items available`,
+        `Only ${effectiveQuantity} items available`,
         "INSUFFICIENT_STOCK",
         400,
       );
     }
 
-    // Upsert: if already in cart, increment quantity
-    const { data: existing } = await (supabase.from("cart_items") as any)
+    // Upsert: match by (user_id, product_id, product_variant_id)
+    const existingQuery = (supabase.from("cart_items") as any)
       .select("id, quantity")
       .eq("user_id", user.id)
-      .eq("product_id", parsed.product_id)
-      .maybeSingle();
+      .eq("product_id", parsed.product_id);
+    if (variantId) {
+      existingQuery.eq("product_variant_id", variantId);
+    } else {
+      existingQuery.is("product_variant_id", null);
+    }
+    const { data: existing } = await existingQuery.maybeSingle();
 
     let result;
     if (existing) {
       const newQty = existing.quantity + parsed.quantity;
-      if (newQty > product.quantity) {
+      if (newQty > effectiveQuantity) {
         return errorResponse(
-          `Only ${product.quantity} items available (you have ${existing.quantity} in cart)`,
+          `Only ${effectiveQuantity} items available (you have ${existing.quantity} in cart)`,
           "INSUFFICIENT_STOCK",
           400,
         );
@@ -124,6 +156,7 @@ export async function POST(request: NextRequest) {
         .insert({
           user_id: user.id,
           product_id: parsed.product_id,
+          product_variant_id: variantId,
           provider_id: product.provider_id,
           quantity: parsed.quantity,
         })

@@ -141,6 +141,8 @@ interface AppointmentProduct {
   id: string;
   productId: string;
   productName: string;
+  productVariantId?: string | null;
+  productVariantName?: string; // e.g. "250ml" for display
   quantity: number;
   unitPrice: number;
   totalPrice: number;
@@ -1151,16 +1153,19 @@ export function AppointmentSidebar({
   }, [calculatePricing, mode]);
 
   // Helper functions to manage products
-  // Always create a new line item, even for the same product, so each can be edited independently
-  const addProduct = useCallback((product: ProductItem, quantity: number = 1) => {
-    // Always create a new line item with unique ID
+  // variant: when product has variants, pass the selected variant for price and id
+  const addProduct = useCallback((product: ProductItem, quantity: number = 1, variant?: { id: string; retail_price: number; option_values?: Record<string, string> }) => {
+    const unitPrice = variant ? variant.retail_price : (product.retail_price ?? 0);
+    const variantLabel = variant && variant.option_values ? Object.values(variant.option_values).join(" / ") : undefined;
     const newProduct: AppointmentProduct = {
-      id: `product-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // More unique ID
+      id: `product-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       productId: product.id,
       productName: product.name,
+      productVariantId: variant?.id ?? null,
+      productVariantName: variantLabel,
       quantity,
-      unitPrice: product.retail_price,
-      totalPrice: product.retail_price * quantity,
+      unitPrice,
+      totalPrice: unitPrice * quantity,
     };
     setFormData(prev => {
       const newProducts = [...prev.products, newProduct];
@@ -1736,14 +1741,21 @@ export function AppointmentSidebar({
       
       // Extract products from booking_products if available on the appointment object
       const bookingProducts = (selectedAppointment as any).products || (selectedAppointment as any).booking_products || [];
-      const appointmentProducts: AppointmentProduct[] = bookingProducts.map((bp: any, idx: number) => ({
-        id: `product-${idx}`,
-        productId: bp.product_id || bp.id,
-        productName: bp.product_name || bp.product?.name || bp.name || "Product",
-        quantity: bp.quantity || 1,
-        unitPrice: bp.unit_price || bp.price || bp.product?.price || 0,
-        totalPrice: bp.total_price || (bp.quantity || 1) * (bp.unit_price || bp.price || bp.product?.price || 0),
-      }));
+      const appointmentProducts: AppointmentProduct[] = bookingProducts.map((bp: any, idx: number) => {
+        const variantLabel = bp.product_variant?.option_values && typeof bp.product_variant.option_values === "object"
+          ? Object.values(bp.product_variant.option_values).join(" / ")
+          : undefined;
+        return {
+          id: `product-${idx}`,
+          productId: bp.product_id || bp.id,
+          productName: bp.product_name || bp.product?.name || bp.name || "Product",
+          productVariantId: bp.product_variant_id ?? null,
+          productVariantName: variantLabel,
+          quantity: bp.quantity || 1,
+          unitPrice: bp.unit_price || bp.price || bp.product?.price || 0,
+          totalPrice: bp.total_price || (bp.quantity || 1) * (bp.unit_price || bp.price || bp.product?.price || 0),
+        };
+      });
       
       const travelFee = selectedAppointment.travel_fee || 0;
       const discountAmount = selectedAppointment.discount_amount || 0;
@@ -3426,7 +3438,10 @@ export function AppointmentSidebar({
                     <div key={product.id} className="bg-gray-50 rounded-lg p-3 flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className="font-medium text-sm text-gray-900 truncate">{product.productName}</p>
+                          <p className="font-medium text-sm text-gray-900 truncate">
+                            {product.productName}
+                            {product.productVariantName && <span className="text-gray-500 font-normal"> · {product.productVariantName}</span>}
+                          </p>
                           {mode !== "view" && (
                             <Button
                               variant="ghost"
@@ -3604,15 +3619,17 @@ export function AppointmentSidebar({
                     </div>
                     <Select 
                       value="" 
-                      onValueChange={(productId) => {
+                      onValueChange={(value) => {
+                        const [productId, variantId] = value.includes("::") ? value.split("::") : [value, null];
                         const product = filteredProducts.find(p => p.id === productId);
-                        if (product) {
-                          addProduct(product, 1);
-                          setProductSearchQuery(""); // Clear search after selection
-                        }
+                        if (!product) return;
+                        const variant = variantId && (product as any).variants?.length
+                          ? (product as any).variants.find((v: any) => v.id === variantId)
+                          : null;
+                        addProduct(product, 1, variant ?? undefined);
+                        setProductSearchQuery("");
                       }}
                       onOpenChange={(open) => {
-                        // Lazy load products when dropdown opens
                         if (open && !productsLoadedRef.current && products.length === 0) {
                           loadProducts();
                         }
@@ -3627,15 +3644,32 @@ export function AppointmentSidebar({
                             Loading products...
                           </div>
                         ) : filteredProducts.length > 0 ? (
-                          filteredProducts.map((product) => (
-                            <SelectItem key={product.id} value={product.id}>
-                              <div className="flex items-center gap-2">
-                                <span>{product.name}</span>
-                                <span className="text-gray-400">-</span>
-                                <span className="font-medium">R{product.retail_price}</span>
-                              </div>
-                            </SelectItem>
-                          ))
+                          filteredProducts.flatMap((product) => {
+                            const hasVariants = (product as any).has_variants && Array.isArray((product as any).variants) && (product as any).variants.length > 0;
+                            if (hasVariants) {
+                              return (product as any).variants.map((v: any) => {
+                                const label = Object.values(v.option_values || {}).join(" / ");
+                                return (
+                                  <SelectItem key={`${product.id}-${v.id}`} value={`${product.id}::${v.id}`}>
+                                    <div className="flex items-center gap-2">
+                                      <span>{product.name}</span>
+                                      <span className="text-gray-500">· {label}</span>
+                                      <span className="font-medium">R{(v.retail_price ?? 0).toFixed(2)}</span>
+                                    </div>
+                                  </SelectItem>
+                                );
+                              });
+                            }
+                            return [
+                              <SelectItem key={product.id} value={product.id}>
+                                <div className="flex items-center gap-2">
+                                  <span>{product.name}</span>
+                                  <span className="text-gray-400">-</span>
+                                  <span className="font-medium">R{(product.retail_price ?? 0).toFixed(2)}</span>
+                                </div>
+                              </SelectItem>,
+                            ];
+                          })
                         ) : (
                           <div className="p-2 text-sm text-gray-500 text-center">
                             {productSearchQuery.trim() 

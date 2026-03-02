@@ -17,7 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { Camera, X, Upload, Plus } from "lucide-react";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
-import type { ProductItem } from "@/lib/provider-portal/types";
+import type { ProductItem, ProductVariantOptionType, ProductVariantItem } from "@/lib/provider-portal/types";
 import { useReferenceData } from "@/hooks/useReferenceData";
 import { fetcher } from "@/lib/http/fetcher";
 import {
@@ -82,6 +82,24 @@ export function ProductCreateEditDialog({
     receiveLowStockNotifications: false,
     imageUrls: [] as string[],
     mainImageUrl: "",
+    // Variants
+    hasVariants: false,
+    variantOptionTypes: [] as ProductVariantOptionType[],
+    variantRows: [] as Array<{
+      option_values: Record<string, string>;
+      sku: string;
+      barcode: string;
+      measure: string;
+      amount: number;
+      quantity: number;
+      low_stock_level: number;
+      reorder_quantity: number;
+      supply_price: number;
+      retail_price: number;
+      markup: number;
+      image_url: string;
+      sort_order?: number;
+    }>,
   });
 
   useEffect(() => {
@@ -113,6 +131,24 @@ export function ProductCreateEditDialog({
         receiveLowStockNotifications: product.receive_low_stock_notifications || false,
         imageUrls: product.image_urls || (product.image_url ? [product.image_url] : []),
         mainImageUrl: product.image_url || (product.image_urls?.[0] || ""),
+        hasVariants: Boolean((product as any).has_variants),
+        variantOptionTypes: Array.isArray((product as any).variant_option_types) ? (product as any).variant_option_types : [],
+        variantRows: Array.isArray((product as any).variants)
+          ? (product as any).variants.map((v: ProductVariantItem) => ({
+              option_values: v.option_values || {},
+              sku: v.sku ?? "",
+              barcode: v.barcode ?? "",
+              measure: v.measure ?? "",
+              amount: v.amount ?? 0,
+              quantity: v.quantity ?? 0,
+              low_stock_level: v.low_stock_level ?? 5,
+              reorder_quantity: v.reorder_quantity ?? 0,
+              supply_price: v.supply_price ?? 0,
+              retail_price: v.retail_price ?? 0,
+              markup: v.markup ?? 0,
+              image_url: v.image_url ?? "",
+            }))
+          : [],
       });
     } else {
       setFormData({
@@ -142,6 +178,9 @@ export function ProductCreateEditDialog({
         receiveLowStockNotifications: false,
         imageUrls: [],
         mainImageUrl: "",
+        hasVariants: false,
+        variantOptionTypes: [],
+        variantRows: [],
       });
     }
   }, [product, open]);
@@ -419,33 +458,42 @@ export function ProductCreateEditDialog({
       toast.error("Product name is required");
       return;
     }
-    
+    const withVariants = formData.hasVariants && formData.variantRows.length > 0;
+    if (withVariants && formData.variantRows.some((r) => r.retail_price === undefined || Number(r.retail_price) < 0)) {
+      toast.error("Each variant must have a retail price");
+      return;
+    }
+    if (!withVariants && formData.retailPrice === undefined) {
+      toast.error("Retail price is required");
+      return;
+    }
+
     try {
       const productData: any = {
         name: formData.name,
-        barcode: formData.barcode,
+        barcode: withVariants ? undefined : formData.barcode,
         brand: formData.brand,
-        measure: formData.measure,
-        amount: formData.amount,
+        measure: withVariants ? undefined : formData.measure,
+        amount: withVariants ? undefined : formData.amount,
         short_description: formData.shortDescription,
         description: formData.description,
         category: formData.category,
         supplier: formData.supplier,
-        sku: formData.sku || formData.skuCodes[0] || undefined, // Use first SKU or let server generate if empty
-        sku_codes: formData.skuCodes.length > 0 ? formData.skuCodes : undefined, // Additional SKU codes
-        quantity: formData.quantity,
-        low_stock_level: formData.lowStockLevel,
+        sku: withVariants ? undefined : (formData.sku || formData.skuCodes[0] || undefined),
+        sku_codes: withVariants ? undefined : (formData.skuCodes.length > 0 ? formData.skuCodes : undefined),
+        quantity: withVariants ? 0 : formData.quantity,
+        low_stock_level: withVariants ? 5 : formData.lowStockLevel,
         reorder_quantity: formData.reorderQuantity,
-        supply_price: formData.supplyPrice,
-        retail_price: formData.retailPrice,
+        supply_price: withVariants ? 0 : formData.supplyPrice,
+        retail_price: withVariants ? 0 : formData.retailPrice,
         retail_sales_enabled: formData.retailSalesEnabled,
-        markup: formData.markup,
+        markup: withVariants ? undefined : formData.markup,
         tax_rate: formData.taxRate,
         team_member_commission_enabled: formData.teamMemberCommissionEnabled,
         track_stock_quantity: formData.trackStockQuantity,
         receive_low_stock_notifications: formData.receiveLowStockNotifications,
         image_urls: formData.imageUrls
-          .filter((url) => !url.startsWith("data:")) // Remove any base64 URLs
+          .filter((url) => !url.startsWith("data:"))
           .length > 0
           ? formData.imageUrls.filter((url) => !url.startsWith("data:"))
           : formData.mainImageUrl && !formData.mainImageUrl.startsWith("data:")
@@ -453,7 +501,25 @@ export function ProductCreateEditDialog({
           : [],
         is_active: true,
       };
-      
+      if (withVariants) {
+        productData.has_variants = true;
+        productData.variant_option_types = formData.variantOptionTypes;
+        productData.variants = formData.variantRows.map((r) => ({
+          option_values: r.option_values,
+          sku: r.sku || undefined,
+          barcode: r.barcode || undefined,
+          measure: r.measure || undefined,
+          amount: r.amount ?? undefined,
+          quantity: r.quantity ?? 0,
+          low_stock_level: r.low_stock_level ?? 5,
+          reorder_quantity: r.reorder_quantity ?? 0,
+          supply_price: r.supply_price ?? 0,
+          retail_price: r.retail_price,
+          markup: r.markup ?? undefined,
+          image_url: r.image_url || undefined,
+        }));
+      }
+
       if (product) {
         await providerApi.updateProduct(product.id, productData);
         toast.success("Product updated");
@@ -461,7 +527,7 @@ export function ProductCreateEditDialog({
         await providerApi.createProduct(productData);
         toast.success("Product created");
       }
-      
+
       onSave();
     } catch (error) {
       console.error("Failed to save product:", error);
@@ -650,10 +716,198 @@ export function ProductCreateEditDialog({
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="hasVariants"
+                      checked={formData.hasVariants}
+                      onCheckedChange={(checked) => {
+                        setFormData((prev) => ({
+                          ...prev,
+                          hasVariants: checked,
+                          variantOptionTypes: checked ? prev.variantOptionTypes : [],
+                          variantRows: checked ? prev.variantRows : [],
+                        }));
+                      }}
+                    />
+                    <Label htmlFor="hasVariants" className="font-normal text-gray-600">Has variants (e.g. size, volume)</Label>
+                  </div>
+                  <p className="text-xs text-gray-500">Enable to sell this product in multiple options (e.g. 250ml / 500ml) with separate SKU, price and stock per variant.</p>
+                </div>
+
+                {formData.hasVariants && (
+                  <div className="space-y-3 rounded-lg border border-gray-200 p-4 bg-gray-50/50">
+                    <h4 className="font-medium">Variant options</h4>
+                    <p className="text-xs text-gray-500">Add one option type (e.g. Size) and its values. Then generate the variant matrix and fill SKU, price and stock per row.</p>
+                    <div className="flex flex-wrap gap-2 items-end">
+                      <div className="flex-1 min-w-[120px]">
+                        <Label className="text-xs">Option name (e.g. Size)</Label>
+                        <Input
+                          placeholder="e.g. Size"
+                          value={formData.variantOptionTypes[0]?.name ?? ""}
+                          onChange={(e) => {
+                            const name = e.target.value;
+                            setFormData((prev) => ({
+                              ...prev,
+                              variantOptionTypes: prev.variantOptionTypes.length
+                                ? [{ ...prev.variantOptionTypes[0], name }]
+                                : [{ name, values: [] }],
+                            }));
+                          }}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-[180px]">
+                        <Label className="text-xs">Values (comma-separated, e.g. 250ml, 500ml)</Label>
+                        <Input
+                          placeholder="250ml, 500ml"
+                          value={(formData.variantOptionTypes[0]?.values ?? []).join(", ")}
+                          onChange={(e) => {
+                            const values = e.target.value.split(",").map((v) => v.trim()).filter(Boolean);
+                            setFormData((prev) => ({
+                              ...prev,
+                              variantOptionTypes: prev.variantOptionTypes.length
+                                ? [{ ...prev.variantOptionTypes[0], values }]
+                                : [{ name: prev.variantOptionTypes[0]?.name ?? "Option", values }],
+                            }));
+                          }}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const opt = formData.variantOptionTypes[0];
+                          if (!opt?.name || !opt.values?.length) {
+                            toast.error("Add option name and at least one value");
+                            return;
+                          }
+                          const rows = opt.values.map((val, idx) => {
+                            const existing = formData.variantRows.find(
+                              (r) => JSON.stringify(r.option_values) === JSON.stringify({ [opt.name]: val })
+                            );
+                            if (existing) return existing;
+                            return {
+                              option_values: { [opt.name]: val },
+                              sku: "",
+                              barcode: "",
+                              measure: formData.measure,
+                              amount: 0,
+                              quantity: 0,
+                              low_stock_level: 5,
+                              reorder_quantity: 0,
+                              supply_price: 0,
+                              retail_price: 0,
+                              markup: 0,
+                              image_url: "",
+                              sort_order: idx,
+                            };
+                          });
+                          setFormData((prev) => ({ ...prev, variantRows: rows }));
+                          toast.success(`${rows.length} variant(s) generated`);
+                        }}
+                      >
+                        Generate variant matrix
+                      </Button>
+                    </div>
+                    {formData.variantRows.length > 0 && (
+                      <div className="overflow-x-auto border rounded-md">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b bg-gray-100">
+                              <th className="text-left p-2 font-medium">Variant</th>
+                              <th className="text-left p-2 font-medium">SKU</th>
+                              <th className="text-left p-2 font-medium">Barcode</th>
+                              <th className="text-left p-2 font-medium">Qty</th>
+                              <th className="text-left p-2 font-medium">Supply (ZAR)</th>
+                              <th className="text-left p-2 font-medium">Retail (ZAR)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {formData.variantRows.map((row, idx) => (
+                              <tr key={idx} className="border-b">
+                                <td className="p-2">
+                                  {Object.entries(row.option_values)
+                                    .map(([k, v]) => `${k}: ${v}`)
+                                    .join(", ")}
+                                </td>
+                                <td className="p-2">
+                                  <Input
+                                    className="h-8 w-28"
+                                    value={row.sku}
+                                    onChange={(e) => {
+                                      const next = [...formData.variantRows];
+                                      next[idx] = { ...next[idx], sku: e.target.value };
+                                      setFormData((prev) => ({ ...prev, variantRows: next }));
+                                    }}
+                                    placeholder="Auto"
+                                  />
+                                </td>
+                                <td className="p-2">
+                                  <Input
+                                    className="h-8 w-24"
+                                    value={row.barcode}
+                                    onChange={(e) => {
+                                      const next = [...formData.variantRows];
+                                      next[idx] = { ...next[idx], barcode: e.target.value };
+                                      setFormData((prev) => ({ ...prev, variantRows: next }));
+                                    }}
+                                  />
+                                </td>
+                                <td className="p-2">
+                                  <Input
+                                    type="number"
+                                    className="h-8 w-16"
+                                    value={row.quantity}
+                                    onChange={(e) => {
+                                      const next = [...formData.variantRows];
+                                      next[idx] = { ...next[idx], quantity: parseInt(e.target.value, 10) || 0 };
+                                      setFormData((prev) => ({ ...prev, variantRows: next }));
+                                    }}
+                                  />
+                                </td>
+                                <td className="p-2">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    className="h-8 w-20"
+                                    value={row.supply_price || ""}
+                                    onChange={(e) => {
+                                      const next = [...formData.variantRows];
+                                      next[idx] = { ...next[idx], supply_price: parseFloat(e.target.value) || 0 };
+                                      setFormData((prev) => ({ ...prev, variantRows: next }));
+                                    }}
+                                  />
+                                </td>
+                                <td className="p-2">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    className="h-8 w-20"
+                                    value={row.retail_price || ""}
+                                    onChange={(e) => {
+                                      const next = [...formData.variantRows];
+                                      next[idx] = { ...next[idx], retail_price: parseFloat(e.target.value) || 0 };
+                                      setFormData((prev) => ({ ...prev, variantRows: next }));
+                                    }}
+                                    placeholder="0.00"
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <Separator />
 
+              {!formData.hasVariants && (
+              <>
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Pricing</h3>
                 
@@ -940,6 +1194,8 @@ export function ProductCreateEditDialog({
                   <Label className="font-normal text-gray-600">Receive low stock notifications</Label>
                 </div>
               </div>
+              </>
+              )}
             </div>
 
             {/* Right Column - Photos */}

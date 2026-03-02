@@ -33,7 +33,9 @@
     "copy": "Copy",
     "refresh": "Refresh",
     "settings": "Settings",
-    "more": "More"
+    "more": "More",
+    "appLanguage": "App language",
+    "appLanguageSubtitle": "Choose the language for the app"
   },
   "auth": {
     "login": "Log in",
@@ -126,7 +128,10 @@
     "manageLocations": "Manage locations",
     "operatingHours": "Operating hours",
     "paymentSettings": "Payment settings",
-    "staffSchedule": "Staff schedules"
+    "staffSchedule": "Staff schedules",
+    "profileCompletionTitle": "Complete your business profile",
+    "profileCompletionSubtitle": "Help clients find you and book with confidence",
+    "profileCompletionLoadError": "Couldn't load profile status"
   },
   "customer": {
     "home": "Home",
@@ -213,6 +218,16 @@
     "export": "Export",
     "exportCsv": "Export CSV",
     "exportPdf": "Export PDF"
+  },
+  "validation": {
+    "fixForm": "Please fix the form",
+    "required": "{{field}} is required.",
+    "emailRequired": "Email is required.",
+    "emailInvalid": "Please enter a valid email address.",
+    "phoneRequired": "Phone is required.",
+    "phoneTooLong": "Phone number is too long.",
+    "phoneFormat": "Phone can only contain numbers, +, spaces, and dashes.",
+    "phoneMinDigits": "Phone number should have at least 10 digits."
   },
   "errors": {
     "networkError": "Network error. Please check your connection.",

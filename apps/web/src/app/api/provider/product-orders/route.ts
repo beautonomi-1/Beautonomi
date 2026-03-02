@@ -30,7 +30,8 @@ export async function GET(request: NextRequest) {
         `
         *,
         items:product_order_items (
-          id, product_name, product_image_url, quantity, unit_price, total_price
+          id, product_id, product_variant_id, product_name, product_image_url, quantity, unit_price, total_price,
+          product_variant:product_variants(id, option_values)
         ),
         customer:users!product_orders_customer_id_fkey (
           id, full_name, email, avatar_url

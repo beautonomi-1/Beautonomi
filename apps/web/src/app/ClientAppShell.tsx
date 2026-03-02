@@ -13,8 +13,15 @@ import AuthLoadingSpinner from "@/components/global/auth-loading-spinner";
 import I18nInit from "@/components/i18n/I18nInit";
 import { ConfigBundleProvider } from "@/providers/ConfigBundleProvider";
 import OneSignalProvider from "@/components/global/OneSignalProvider";
+import { DownloadBannerContainer } from "@/components/download-banner";
+import type { OsType } from "@/lib/utils/os-type";
 
-export default function ClientAppShell({ children }: { children: React.ReactNode }) {
+interface ClientAppShellProps {
+  children: React.ReactNode;
+  osType: OsType;
+}
+
+export default function ClientAppShell({ children, osType }: ClientAppShellProps) {
   return (
     <AuthProvider>
       <I18nInit />
@@ -31,6 +38,7 @@ export default function ClientAppShell({ children }: { children: React.ReactNode
               {children}
             </AccountStatusGuard>
             <Toaster position="top-center" />
+            <DownloadBannerContainer osType={osType} />
           </AmplitudeProviderWrapper>
         </ConfigBundleProvider>
       </PlatformSettingsProvider>

@@ -18,6 +18,8 @@ import Link from "next/link";
 interface CartItem {
   id: string;
   quantity: number;
+  effective_price?: number;
+  product_variant?: { option_values?: Record<string, string> } | null;
   product: {
     id: string;
     name: string;
@@ -147,8 +149,9 @@ export default function ProductCheckoutPage() {
     }
   }, [paystackEnabled, paymentMethod]);
 
+  const linePrice = (i: CartItem) => (i.effective_price ?? i.product?.retail_price ?? 0) * i.quantity;
   const subtotal = items.reduce(
-    (s, i) => s + (i.product?.retail_price ?? 0) * i.quantity,
+    (s, i) => s + linePrice(i),
     0,
   );
   const deliveryFee =
@@ -453,10 +456,14 @@ export default function ProductCheckoutPage() {
               {items.map((item) => (
                 <div key={item.id} className="flex justify-between text-sm">
                   <span className="text-gray-700">
-                    {item.product?.name} x{item.quantity}
+                    {item.product?.name}
+                    {item.product_variant?.option_values && Object.keys(item.product_variant.option_values).length > 0 && (
+                      <span className="text-gray-500 font-normal"> · {Object.entries(item.product_variant.option_values).map(([, v]) => v).join(", ")}</span>
+                    )}{" "}
+                    x{item.quantity}
                   </span>
                   <span className="font-medium text-gray-900">
-                    R{((item.product?.retail_price ?? 0) * item.quantity).toFixed(2)}
+                    R{linePrice(item).toFixed(2)}
                   </span>
                 </div>
               ))}

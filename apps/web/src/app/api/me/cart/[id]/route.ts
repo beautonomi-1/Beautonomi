@@ -30,9 +30,9 @@ export async function PATCH(
     const parsed = updateSchema.parse(body);
     const supabase = await getSupabaseServer();
 
-    // Get the cart item + product stock
+    // Get the cart item + product/variant stock
     const { data: cartItem, error: cartErr } = await (supabase.from("cart_items") as any)
-      .select("id, product_id, user_id")
+      .select("id, product_id, product_variant_id, user_id")
       .eq("id", id)
       .eq("user_id", user.id)
       .single();
@@ -41,14 +41,24 @@ export async function PATCH(
       return errorResponse("Cart item not found", "NOT_FOUND", 404);
     }
 
-    const { data: product } = await (supabase.from("products") as any)
-      .select("quantity")
-      .eq("id", cartItem.product_id)
-      .single();
+    let maxQty = 999;
+    if (cartItem.product_variant_id) {
+      const { data: variant } = await (supabase.from("product_variants") as any)
+        .select("quantity")
+        .eq("id", cartItem.product_variant_id)
+        .single();
+      maxQty = variant?.quantity ?? 0;
+    } else {
+      const { data: product } = await (supabase.from("products") as any)
+        .select("quantity")
+        .eq("id", cartItem.product_id)
+        .single();
+      maxQty = product?.quantity ?? 0;
+    }
 
-    if (product && parsed.quantity > product.quantity) {
+    if (parsed.quantity > maxQty) {
       return errorResponse(
-        `Only ${product.quantity} items available`,
+        `Only ${maxQty} items available`,
         "INSUFFICIENT_STOCK",
         400,
       );

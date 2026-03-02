@@ -56,8 +56,10 @@ const PageContent = () => {
         });
         setProvider(response.data);
 
-        // Track view for authenticated users (silently ignore errors)
-        fetcher.post("/api/me/recently-viewed", { provider_id: response.data.id }).catch(() => {});
+        // Track view only when logged in (avoids 403 for guests)
+        if (user) {
+          fetcher.post("/api/me/recently-viewed", { provider_id: response.data.id }).catch(() => {});
+        }
       } catch (err) {
         let errorMessage = "Failed to load provider";
         

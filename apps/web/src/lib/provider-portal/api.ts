@@ -1849,7 +1849,8 @@ export class MockProviderApi implements ProviderApi {
       
       const response = await fetcher.get<{
         data: {
-          data: ProductItem[];
+          products?: ProductItem[];
+          data?: ProductItem[];
           total: number;
           page: number;
           limit: number;
@@ -1858,11 +1859,15 @@ export class MockProviderApi implements ProviderApi {
         error: null;
       }>(url);
       
-      // Extract the nested data structure
-      const responseData = response.data || { data: [], total: 0, page: 1, limit: 20, total_pages: 1 };
+      const responseData = response.data || { total: 0, page: 1, limit: 20, total_pages: 1 };
+      const productsArray = Array.isArray(responseData.products)
+        ? responseData.products
+        : Array.isArray(responseData.data)
+          ? responseData.data
+          : [];
       
       return {
-        data: Array.isArray(responseData.data) ? responseData.data : [],
+        data: productsArray,
         total: responseData.total || 0,
         page: responseData.page || 1,
         limit: responseData.limit || 20,
@@ -1908,6 +1913,9 @@ export class MockProviderApi implements ProviderApi {
         receive_low_stock_notifications: data.receive_low_stock_notifications,
         image_urls: data.image_urls || [],
         is_active: data.is_active ?? true,
+        has_variants: (data as any).has_variants,
+        variant_option_types: (data as any).variant_option_types,
+        variants: (data as any).variants,
       });
       
       const product = response.data;
@@ -1959,6 +1967,9 @@ export class MockProviderApi implements ProviderApi {
         receive_low_stock_notifications: data.receive_low_stock_notifications,
         image_urls: data.image_urls || [],
         is_active: data.is_active,
+        has_variants: (data as any).has_variants,
+        variant_option_types: (data as any).variant_option_types,
+        variants: (data as any).variants,
       });
       
       const product = response.data;

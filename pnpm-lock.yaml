@@ -137,6 +137,9 @@ importers:
       react-native-webview:
         specifier: ^13.16.0
         version: 13.16.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      singular-react-native:
+        specifier: ^4.1.0
+        version: 4.1.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -318,6 +321,9 @@ importers:
       react-native-webview:
         specifier: ^13.12.2
         version: 13.16.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      singular-react-native:
+        specifier: ^4.1.0
+        version: 4.1.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
     devDependencies:
       '@testing-library/jest-native':
         specifier: ^5.4.3
@@ -8132,6 +8138,12 @@ packages:
 
   simple-swizzle@0.2.4:
     resolution: {integrity: sha512-nAu1WFPQSMNr2Zn9PGSZK9AGn4t/y97lEm+MXTtUDwfP0ksAIX4nO+6ruD9Jwut4C49SB1Ws+fbXsm/yScWOHw==}
+
+  singular-react-native@4.1.0:
+    resolution: {integrity: sha512-i8SgSBieqnx+FfpoBnf74WMSBGzLQ14uuwlyJUWIwXkjDYPuE8D4XgtZccKkW7uA0dBC3DVOjLXx34XDBsH0jg==}
+    peerDependencies:
+      react: '>=16.0.0'
+      react-native: '>=0.46.4'
 
   sirv@2.0.4:
     resolution: {integrity: sha512-94Bdh3cC2PKrbgSOUqTiGPWVZeSiXfKOVZNJniWoqrWrRkB1CJzBU3NEbiTsPcYy1lDsANA/THzS+9WBiy5nfQ==}
@@ -18192,6 +18204,11 @@ snapshots:
   simple-swizzle@0.2.4:
     dependencies:
       is-arrayish: 0.3.4
+
+  singular-react-native@4.1.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+    dependencies:
+      react: 19.1.0
+      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
 
   sirv@2.0.4:
     dependencies:

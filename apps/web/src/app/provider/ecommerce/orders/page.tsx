@@ -21,7 +21,13 @@ interface ProductOrder {
   tracking_number: string | null;
   created_at: string;
   customer: { id: string; full_name: string; email: string };
-  items: { id: string; product_name: string; quantity: number; total_price: number }[];
+  items: {
+    id: string;
+    product_name: string;
+    quantity: number;
+    total_price: number;
+    product_variant?: { option_values?: Record<string, string> } | null;
+  }[];
 }
 
 const STATUS_ACTIONS: Record<string, { next: string; label: string; color: string }[]> = {
@@ -181,7 +187,12 @@ export default function ProviderProductOrdersPage() {
                         {o.items?.map((item) => (
                           <div key={item.id} className="flex items-center gap-2 text-sm text-gray-600">
                             <span className="text-gray-400">{item.quantity}x</span>
-                            <span>{item.product_name}</span>
+                            <span>
+                              {item.product_name}
+                              {item.product_variant?.option_values && Object.keys(item.product_variant.option_values).length > 0 && (
+                                <span className="text-gray-500"> · {Object.values(item.product_variant.option_values).join(", ")}</span>
+                              )}
+                            </span>
                             <span className="text-gray-400">R{Number(item.total_price).toFixed(2)}</span>
                           </div>
                         ))}
