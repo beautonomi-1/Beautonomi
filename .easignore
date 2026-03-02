@@ -1,0 +1,38 @@
+# Reduce EAS Build archive size (monorepo)
+# See https://expo.fyi/eas-build-archive
+
+# Dependencies - reinstalled on EAS
+node_modules/
+**/node_modules/
+.pnpm-store/
+.turbo/
+
+# Web app - not needed for customer/provider mobile builds
+apps/web/
+
+# Build outputs - rebuilt on EAS
+.next/
+dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+
+# Dev / tooling
+*.log
+test-report.json
+.cache/
+
+# Env / secrets (already in .gitignore; keep out of archive)
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+!.env.example
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
