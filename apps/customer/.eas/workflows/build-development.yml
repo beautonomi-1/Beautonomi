@@ -1,0 +1,22 @@
+name: Build Customer (Development)
+
+on:
+  push:
+    branches:
+      - development
+    paths:
+      - apps/customer/**
+
+jobs:
+  build_android:
+    name: Build Android
+    type: build
+    params:
+      platform: android
+      profile: development
+  build_ios:
+    name: Build iOS
+    type: build
+    params:
+      platform: ios
+      profile: development

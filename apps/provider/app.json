@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "name": "provider",
+    "slug": "provider",
+    "scheme": "provider",
+    "updates": {
+    "url": "https://u.expo.dev/dc17e4b9-e7c6-4ab4-b52d-3d807e5d9ad7"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "singular-react-native",
+      ["expo-splash-screen", {
+        "backgroundColor": "#ffffff",
+        "image": "./assets/splash-icon.png",
+        "imageWidth": 200
+      }]
+    ],
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.beautonomi.provider",
+      "infoPlist": { "UIBackgroundModes": ["remote-notification"] },
+      "entitlements": {
+        "aps-environment": "development",
+        "com.apple.security.application-groups": ["group.com.beautonomi.provider.onesignal"]
+      },
+      "associatedDomains": [
+        "applinks:beautonomi.com",
+        "applinks:www.beautonomi.com"
+      ]
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.beautonomi.provider",
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "beautonomi.com",
+              "pathPrefix": "/provider"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {"projectId": "dc17e4b9-e7c6-4ab4-b52d-3d807e5d9ad7"},
+      "router": {
+        "origin": "https://beautonomi.com"
+      }
+    }
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "expo": {
+    "name": "customer",
+    "slug": "customer",
+    "scheme": "customer",
+    "updates": {
+      "url": "https://u.expo.dev/434ef972-0597-4d93-9c09-ff7b9e11b149"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.beautonomi.customer",
+      "infoPlist": { "UIBackgroundModes": ["remote-notification"] },
+      "entitlements": {
+        "aps-environment": "development",
+        "com.apple.security.application-groups": ["group.com.beautonomi.customer.onesignal"]
+      },
+      "associatedDomains": [
+        "applinks:beautonomi.com",
+        "applinks:www.beautonomi.com"
+      ]
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.beautonomi.customer",
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "beautonomi.com",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.beautonomi.com",
+              "pathPrefix": "/"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+    "web": { "favicon": "./assets/favicon.png" },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "singular-react-native",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {"projectId": "434ef972-0597-4d93-9c09-ff7b9e11b149"},
+      "router": {
+        "origin": "https://beautonomi.com"
+      }
+    }
+  }
+}

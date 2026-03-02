@@ -1,0 +1,149 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "save": "Save",
+    "done": "Done",
+    "back": "Back",
+    "next": "Next",
+    "continue": "Continue",
+    "search": "Search",
+    "noResults": "No results found",
+    "error": "Something went wrong",
+    "offline": "No internet connection",
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "signOut": "Sign out",
+    "delete": "Delete",
+    "edit": "Edit",
+    "viewMore": "View More",
+    "learnMore": "Learn more"
+  },
+  "tabs": {
+    "home": "Home",
+    "explore": "Explore",
+    "bookings": "Bookings",
+    "chats": "Messages",
+    "profile": "Profile",
+    "search": "Search",
+    "saved": "Saved"
+  },
+  "home": {
+    "selectAddress": "Select address",
+    "topRated": "Top Rated",
+    "nearest": "Nearest Providers",
+    "hottest": "Hottest Picks",
+    "upcoming": "Upcoming Talent",
+    "browseByCity": "Browse by City",
+    "loadingProviders": "Loading providers...",
+    "categoryAll": "All",
+    "categoryHair": "Hair",
+    "categoryNails": "Nails",
+    "categoryFace": "Face",
+    "categoryBody": "Body"
+  },
+  "bookings": {
+    "title": "Bookings",
+    "upcoming": "Upcoming",
+    "past": "Past",
+    "cancelled": "Cancelled",
+    "noBookings": "No bookings yet",
+    "noBookingsDesc": "Your upcoming appointments will appear here",
+    "startSearching": "Start searching",
+    "viewDetails": "View Details"
+  },
+  "explore": {
+    "title": "Explore",
+    "loadingFeed": "Loading explore feed...",
+    "noPosts": "No posts to explore yet"
+  },
+  "chats": {
+    "title": "Messages",
+    "noChats": "No conversations yet",
+    "noChatsDesc": "Your messages with providers will appear here"
+  },
+  "search": {
+    "placeholder": "Search for services or providers...",
+    "searchButton": "Search"
+  },
+  "profile": {
+    "title": "Profile",
+    "guestTitle": "Welcome to Beautonomi",
+    "guestDesc": "Sign in to manage your bookings and profile",
+    "accountSettings": "Account Settings",
+    "myBookings": "My Bookings",
+    "messages": "Messages",
+    "notifications": "Notifications",
+    "help": "Help"
+  },
+  "auth": {
+    "loginTitle": "Welcome to Beautonomi",
+    "phoneLabel": "Phone number",
+    "phonePlaceholder": "Enter your phone number",
+    "otpTitle": "Enter verification code",
+    "otpSent": "A verification code was sent to",
+    "verifyCode": "Verify code",
+    "useDifferentNumber": "Use a different number",
+    "emailLabel": "Email",
+    "passwordLabel": "Password",
+    "nameLabel": "Full name",
+    "continueWithPhone": "Continue",
+    "orContinueWith": "Or continue with",
+    "google": "Google",
+    "apple": "Apple",
+    "email": "Email",
+    "facebook": "Facebook",
+    "agreeToTerms": "By continuing, you agree to our Terms of Service and Privacy Policy",
+    "haveAccount": "Already have an account? Log in",
+    "noAccount": "Don't have an account? Sign up"
+  },
+  "booking": {
+    "selectService": "Select a service",
+    "selectVenue": "Where do you want your service?",
+    "atSalon": "At the salon",
+    "atHome": "At my location",
+    "selectStaff": "Choose your stylist",
+    "selectDate": "Choose a date",
+    "selectTime": "Select time",
+    "noSlots": "No available slots. Try another date.",
+    "continueToPay": "Continue to payment",
+    "signInToContinue": "Sign in to continue",
+    "backButton": "Back",
+    "bookInBrowser": "Book on website"
+  },
+  "checkout": {
+    "title": "Booking summary",
+    "paymentMethod": "Payment method",
+    "cardPayment": "Pay with card",
+    "cashPayment": "Pay with cash",
+    "completeBooking": "Complete booking",
+    "signInToComplete": "Sign in to complete",
+    "holdExpired": "This booking hold has expired",
+    "startOver": "Start over"
+  },
+  "provider": {
+    "bookNow": "Book Now",
+    "requestCustom": "Request custom service",
+    "services": "Services",
+    "reviews": "Reviews",
+    "gallery": "Gallery",
+    "about": "About",
+    "getDirections": "Directions",
+    "call": "Call",
+    "share": "Share",
+    "wishlist": "Save to wishlist",
+    "removeWishlist": "Remove from wishlist"
+  },
+  "settings": {
+    "personalInfo": "Personal Information",
+    "loginSecurity": "Login & Security",
+    "payments": "Payments",
+    "notifications": "Notifications",
+    "privacy": "Privacy & Sharing",
+    "preferences": "Preferences",
+    "biometric": "Biometric Login",
+    "biometricDesc": "Use Face ID or fingerprint to sign in quickly",
+    "enableBiometric": "Enable biometric login"
+  }
+}

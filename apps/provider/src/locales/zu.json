@@ -1,0 +1,101 @@
+{
+  "common": {
+    "loading": "Iyalayisha...",
+    "retry": "Zama futhi",
+    "cancel": "Khansela",
+    "save": "Gcina",
+    "done": "Kwenziwe",
+    "back": "Emuva",
+    "next": "Okulandelayo",
+    "continue": "Qhubeka",
+    "search": "Sesha",
+    "noResults": "Ayikho imiphumela etholakele",
+    "error": "Kukhona okungahambanga kahle",
+    "offline": "Ayikho inethiwekhi",
+    "signIn": "Ngena ngemvume",
+    "signUp": "Bhalisela",
+    "signOut": "Phuma",
+    "delete": "Susa",
+    "edit": "Hlela",
+    "add": "Engeza",
+    "viewMore": "Bona okunye",
+    "confirm": "Qinisekisa",
+    "close": "Vala",
+    "yes": "Yebo",
+    "no": "Cha"
+  },
+  "tabs": {
+    "dashboard": "Ibhodi Yokulawula",
+    "calendar": "Ikhalenda",
+    "clients": "Amakhasimende",
+    "sales": "Ukuthengisa",
+    "more": "Okunye"
+  },
+  "dashboard": {
+    "title": "Ibhodi Yokulawula",
+    "todaysBookings": "Ukubhuka Kwanamuhla",
+    "revenue": "Imali Engenayo",
+    "newClients": "Amakhasimende Amasha",
+    "upcomingAppointments": "Ama-aphoyintimenti Azayo",
+    "quickActions": "Izenzo Ezisheshayo",
+    "newBooking": "Ukubhuka Okusha",
+    "addClient": "Engeza Ikhasimende",
+    "viewReports": "Bona Imibiko"
+  },
+  "calendar": {
+    "title": "Ikhalenda",
+    "day": "Usuku",
+    "week": "Isonto",
+    "noBookings": "Akukho kubhuka kulolu suku",
+    "preferences": "Izintandokazi Zekhalenda"
+  },
+  "bookings": {
+    "title": "Ukubhuka",
+    "new": "Ukubhuka Okusha",
+    "upcoming": "Okuzayo",
+    "past": "Okwedlule",
+    "cancelled": "Okukhansieliwe",
+    "noBookings": "Akukho kubhuka okwamanje",
+    "selectClient": "Khetha ikhasimende",
+    "selectService": "Khetha insizakalo",
+    "selectDate": "Khetha usuku",
+    "selectTime": "Khetha isikhathi",
+    "selectStaff": "Khetha abasebenzi",
+    "confirm": "Qinisekisa Ukubhuka",
+    "expressBooking": "Ukubhuka Okusheshayo"
+  },
+  "clients": {
+    "title": "Amakhasimende",
+    "addClient": "Engeza Ikhasimende",
+    "noClients": "Awekho amakhasimende okwamanje",
+    "searchClients": "Sesha amakhasimende...",
+    "totalClients": "Amakhasimende Wonke",
+    "newThisMonth": "Amasha Kule Nyanga",
+    "details": "Imininingwane Yekhasimende",
+    "bookingHistory": "Umlando Wokubhuka"
+  },
+  "settings": {
+    "title": "Izilungiselelo",
+    "business": "Imininingwane Yebhizinisi",
+    "hours": "Amahora Okusebenza",
+    "locations": "Izindawo",
+    "security": "Ezokuphepha",
+    "biometric": "Ukuvalwa Nge-Biometric",
+    "biometricDesc": "Dinga ukuqinisekiswa ukuze uvule uhlelo lokusebenza",
+    "version": "Inguqulo"
+  },
+  "auth": {
+    "loginTitle": "Siyakwamukela futhi",
+    "signupTitle": "Dala i-akhawunti yakho yomhlinzeki",
+    "phoneLabel": "Inombolo yocingo",
+    "phonePlaceholder": "Faka inombolo yakho yocingo",
+    "continueWithPhone": "Qhubeka",
+    "orContinueWith": "Noma qhubeka nge"
+  },
+  "notifications": {
+    "title": "Izaziso",
+    "markAllRead": "Maka konke njengokufundiwe",
+    "noNotifications": "Azikho izaziso",
+    "noNotificationsDesc": "Usezingeni!"
+  }
+}

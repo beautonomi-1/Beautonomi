@@ -1,0 +1,167 @@
+import { useCallback, useEffect, useState } from "react";
+import { Tabs, router, useFocusEffect } from "expo-router";
+import { Platform, TouchableOpacity, View, Text } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { useResponsive } from "@/hooks/useResponsive";
+import { Colors, Shadows } from "@/constants/colors";
+import { useTranslation } from "@beautonomi/i18n";
+import { useAuth } from "@/providers/AuthProvider";
+import { api } from "@/lib/api-client";
+import { onCartUpdated } from "@/lib/cart-events";
+
+function fetchCartCount(setCount: (n: number) => void, isUser: boolean) {
+  if (!isUser) {
+    setCount(0);
+    return;
+  }
+  api.get<{ items: unknown[] }>("/api/me/cart").then((res) => {
+    const data = res.data as { items?: unknown[] } | null;
+    setCount(Array.isArray(data?.items) ? data.items.length : 0);
+  }).catch(() => setCount(0));
+}
+
+export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
+  const { isTablet } = useResponsive();
+  const { t } = useTranslation();
+  const { user } = useAuth();
+  const [cartCount, setCartCount] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchCartCount(setCartCount, !!user);
+    }, [user]),
+  );
+
+  useEffect(() => {
+    const unsubscribe = onCartUpdated(() => fetchCartCount(setCartCount, !!user));
+    return unsubscribe;
+  }, [user]);
+
+  const TAB_BAR_HEIGHT = 60 + (insets.bottom > 0 ? insets.bottom : 10);
+
+  return (
+    <Tabs
+      screenOptions={{
+        sceneStyle:
+          Platform.OS === "web" ? { paddingBottom: TAB_BAR_HEIGHT } : undefined,
+        headerShown: false,
+        tabBarActiveTintColor: Colors.primary,
+        tabBarInactiveTintColor: Colors.gray[400],
+        tabBarShowLabel: true,
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: "500",
+          marginBottom: 4,
+        },
+        tabBarStyle: {
+          backgroundColor: Colors.white,
+          borderTopWidth: 1,
+          borderTopColor: Colors.gray[200],
+          height: TAB_BAR_HEIGHT,
+          paddingTop: 8,
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
+          ...Shadows.tabBar,
+          ...(isTablet ? { paddingHorizontal: 40 } : {}),
+          ...(Platform.OS === "web"
+            ? ({
+                position: "fixed",
+                bottom: 0,
+                left: 0,
+                right: 0,
+                zIndex: 999,
+              } as any)
+            : {}),
+        },
+      }}
+    >
+      <Tabs.Screen
+        name="home"
+        options={{
+          title: t("customer.home"),
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons name={focused ? "home" : "home-outline"} size={24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="explore"
+        options={{
+          title: t("customer.explore"),
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons name={focused ? "search" : "search-outline"} size={24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="bookings"
+        options={{
+          title: t("customer.bookings"),
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons name={focused ? "calendar" : "calendar-outline"} size={24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="cart"
+        options={{
+          title: "Cart",
+          tabBarIcon: ({ focused, color }) => (
+            <View>
+              <Ionicons name={focused ? "cart" : "cart-outline"} size={24} color={color} />
+              {cartCount > 0 && (
+                <View
+                  style={{
+                    position: "absolute",
+                    top: -4,
+                    right: -10,
+                    minWidth: 16,
+                    height: 16,
+                    borderRadius: 8,
+                    backgroundColor: "#EF4444",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingHorizontal: 4,
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }} numberOfLines={1}>
+                    {cartCount > 99 ? "99+" : cartCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          ),
+          tabBarButton: (props) => (
+            <TouchableOpacity
+              {...(props as React.ComponentProps<typeof TouchableOpacity>)}
+              onPress={() => router.push("/(app)/cart" as any)}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="chats"
+        options={{
+          title: t("customer.messages"),
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons name={focused ? "chatbubble" : "chatbubble-outline"} size={24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: t("customer.profile"),
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
+          ),
+        }}
+      />
+
+      {/* Hidden tabs */}
+      <Tabs.Screen name="search" options={{ href: null }} />
+      <Tabs.Screen name="saved" options={{ href: null }} />
+    </Tabs>
+  );
+}
