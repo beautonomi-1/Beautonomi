@@ -2391,7 +2391,7 @@ export function AppointmentSidebar({
         />
       )}
       
-      {/* Centered Modal - Airbnb style */}
+      {/* Centered modal */}
       <div className={cn(
         "fixed z-[101] bg-white rounded-2xl shadow-2xl overflow-hidden",
         "transition-all duration-300 ease-out",
@@ -2407,7 +2407,7 @@ export function AppointmentSidebar({
         // Animation
         isOpen && "animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0 sm:fade-in-0 sm:zoom-in-95 duration-300"
       )}>
-        {/* Header - Airbnb style */}
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b bg-white flex-shrink-0 z-10">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <h2 className="text-lg font-semibold text-gray-900 truncate">

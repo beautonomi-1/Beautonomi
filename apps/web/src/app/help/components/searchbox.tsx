@@ -10,9 +10,9 @@ export default function SearchBox() {
 
   // Define an array of search suggestions
   const searchSuggestions = [
-    "Canceling your reservation for a stay",
-    "Change the date or time of your Experience reservation",
-    "If your Beauty Partner cancels your reservation"
+    "Canceling your booking",
+    "Change the date or time of your appointment",
+    "If your provider cancels your booking"
   ];
 
   return (

@@ -1,0 +1,302 @@
+import { useCallback, useState } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  RefreshControl,
+  Alert,
+  Platform,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { format, startOfMonth, endOfMonth, subDays } from "date-fns";
+import { useApi, useApiMutation } from "@/hooks/useApi";
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { BottomSheet } from "@/components/ui/BottomSheet";
+import { ActionButton } from "@/components/ui/ActionButton";
+
+interface PayRun {
+  id: string;
+  pay_period_start: string;
+  pay_period_end: string;
+  status: string;
+  created_at: string;
+  approved_at: string | null;
+}
+
+export default function PayrollScreen() {
+  const [refreshing, setRefreshing] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [periodType, setPeriodType] = useState<"weekly" | "monthly">("weekly");
+  const [periodDate, setPeriodDate] = useState(() => new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const { data, loading, error, refresh } = useApi<PayRun[]>("/api/provider/pay-runs");
+  const { execute: approveRun } = useApiMutation("post");
+  const { execute: markPaidRun } = useApiMutation("post");
+  const { execute: createPayRun, loading: creating } = useApiMutation("post");
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  }, [refresh]);
+
+  const payRuns: PayRun[] = Array.isArray(data) ? data : [];
+
+  const handleApprove = useCallback(
+    async (run: PayRun) => {
+      if (run.status !== "draft") return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const { error: err } = await approveRun(`/api/provider/pay-runs/${run.id}/approve`);
+      if (err) {
+        Alert.alert("Error", err);
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      refresh();
+    },
+    [approveRun, refresh]
+  );
+
+  const handleMarkPaid = useCallback(
+    async (run: PayRun) => {
+      if (run.status !== "approved") return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const { error: err } = await markPaidRun(`/api/provider/pay-runs/${run.id}/mark-paid`);
+      if (err) {
+        Alert.alert("Error", err);
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      refresh();
+    },
+    [markPaidRun, refresh]
+  );
+
+  const formatDate = (d: string) =>
+    new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+  const getPeriodBounds = useCallback(() => {
+    if (periodType === "monthly") {
+      const start = startOfMonth(periodDate);
+      const end = endOfMonth(periodDate);
+      return { start: format(start, "yyyy-MM-dd"), end: format(end, "yyyy-MM-dd") };
+    }
+    const end = periodDate;
+    const start = subDays(end, 6);
+    return { start: format(start, "yyyy-MM-dd"), end: format(end, "yyyy-MM-dd") };
+  }, [periodType, periodDate]);
+
+  const handleCreatePayRun = useCallback(async () => {
+    const { start, end } = getPeriodBounds();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const { error: err } = await createPayRun("/api/provider/pay-runs", {
+      pay_period_start: start,
+      pay_period_end: end,
+      period_type: periodType,
+    });
+    if (err) {
+      Alert.alert("Error", err);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setCreateOpen(false);
+    refresh();
+  }, [getPeriodBounds, periodType, createPayRun, refresh]);
+
+  const periodLabel =
+    periodType === "monthly"
+      ? format(periodDate, "MMMM yyyy")
+      : `${format(subDays(periodDate, 6), "MMM d")} – ${format(periodDate, "MMM d, yyyy")}`;
+
+  if (loading && !data) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Payroll" showBack />
+        <View className="flex-1 items-center justify-center py-12">
+          <LoadingState />
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Payroll" showBack />
+        <View className="flex-1 justify-center px-4">
+          <ErrorState message={error} onRetry={refresh} />
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  return (
+    <ScreenContainer scrollable={false}>
+      <ScreenHeader
+        title="Payroll"
+        showBack
+        subtitle={`${payRuns.length} pay run${payRuns.length === 1 ? "" : "s"}`}
+        rightAction={
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setPeriodDate(new Date());
+              setPeriodType("weekly");
+              setCreateOpen(true);
+            }}
+            className="flex-row items-center rounded-xl bg-emerald-600 px-4 py-2"
+          >
+            <Ionicons name="add" size={18} color="#fff" />
+            <Text className="ml-1.5 text-sm font-semibold text-white">New run</Text>
+          </TouchableOpacity>
+        }
+      />
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="mb-4 rounded-2xl bg-emerald-50/80 p-4">
+          <Text className="text-sm font-medium text-emerald-900">Pay runs</Text>
+          <Text className="mt-1 text-sm text-emerald-800">
+            Create a run for a period, then approve and mark paid when ready.
+          </Text>
+        </View>
+        {payRuns.length === 0 ? (
+          <EmptyState
+            icon="wallet-outline"
+            title="No pay runs yet"
+            description="Create a pay run for a weekly or monthly period. Then approve and mark it paid here."
+            actionLabel="Create pay run"
+            onAction={() => {
+              setPeriodDate(new Date());
+              setPeriodType("weekly");
+              setCreateOpen(true);
+            }}
+          />
+        ) : (
+          payRuns.map((run) => (
+            <View
+              key={run.id}
+              className="mb-3 rounded-2xl border border-gray-200 bg-white p-4"
+            >
+              <View className="flex-row items-start justify-between">
+                <View>
+                  <Text className="font-semibold text-gray-900">
+                    {formatDate(run.pay_period_start)} – {formatDate(run.pay_period_end)}
+                  </Text>
+                  <View
+                    className={`mt-2 self-start rounded-full px-2.5 py-1 ${
+                      run.status === "paid"
+                        ? "bg-gray-100"
+                        : run.status === "approved"
+                          ? "bg-amber-100"
+                          : "bg-blue-100"
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs font-medium capitalize ${
+                        run.status === "paid"
+                          ? "text-gray-700"
+                          : run.status === "approved"
+                            ? "text-amber-800"
+                            : "text-blue-800"
+                      }`}
+                    >
+                      {run.status}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              {run.status === "draft" && (
+                <TouchableOpacity
+                  onPress={() => handleApprove(run)}
+                  className="mt-3 flex-row items-center justify-center rounded-xl bg-emerald-600 py-2.5"
+                >
+                  <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                  <Text className="ml-2 text-sm font-semibold text-white">Approve</Text>
+                </TouchableOpacity>
+              )}
+              {run.status === "approved" && (
+                <TouchableOpacity
+                  onPress={() => handleMarkPaid(run)}
+                  className="mt-3 flex-row items-center justify-center rounded-xl bg-gray-800 py-2.5"
+                >
+                  <Ionicons name="cash-outline" size={18} color="#fff" />
+                  <Text className="ml-2 text-sm font-semibold text-white">Mark as paid</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ))
+        )}
+      </ScrollView>
+
+      <BottomSheet
+        visible={createOpen}
+        onClose={() => !creating && setCreateOpen(false)}
+        title="Create pay run"
+        subtitle="Choose period type and date"
+      >
+        <View className="mb-4 flex-row gap-3">
+          <TouchableOpacity
+            onPress={() => setPeriodType("weekly")}
+            className={`flex-1 rounded-xl py-3 ${periodType === "weekly" ? "bg-emerald-600" : "bg-gray-100"}`}
+          >
+            <Text
+              className={`text-center text-sm font-medium ${periodType === "weekly" ? "text-white" : "text-gray-700"}`}
+            >
+              Weekly
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setPeriodType("monthly")}
+            className={`flex-1 rounded-xl py-3 ${periodType === "monthly" ? "bg-emerald-600" : "bg-gray-100"}`}
+          >
+            <Text
+              className={`text-center text-sm font-medium ${periodType === "monthly" ? "text-white" : "text-gray-700"}`}
+            >
+              Monthly
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <Text className="mb-2 text-sm font-medium text-gray-700">
+          {periodType === "monthly" ? "Month" : "Period end date"}
+        </Text>
+        <TouchableOpacity
+          onPress={() => setShowDatePicker(true)}
+          className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+        >
+          <Text className="text-base text-gray-900">{periodLabel}</Text>
+        </TouchableOpacity>
+        {showDatePicker && (
+          <DateTimePicker
+            value={periodDate}
+            mode={periodType === "monthly" ? "date" : "date"}
+            display={Platform.OS === "ios" ? "spinner" : "default"}
+            onChange={(_, d) => {
+              setShowDatePicker(Platform.OS !== "ios");
+              if (d) setPeriodDate(d);
+            }}
+          />
+        )}
+        <ActionButton
+          label={creating ? "Creating…" : "Create pay run"}
+          onPress={handleCreatePayRun}
+          loading={creating}
+          fullWidth
+        />
+      </BottomSheet>
+    </ScreenContainer>
+  );
+}

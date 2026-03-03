@@ -2,14 +2,14 @@
 import { useState } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import Image1 from "./../../../../public/images/10-Kevin-Hart-Experience-Icons-Airbnb-Credit-Bethany-Mollenkof.jpg";
-import Image2 from "./../../../../public/images/01-Inside-Out-2-Icons-Airbnb-Credit-Ryan-Lowry.webp";
-import Image3 from "./../../../../public/images/10-Orsay-2-Icons-Airbnb-Credit-Wendy-Huynh.webp";
-import Image4 from "./../../../../public/images/FEATURED-IMAGE-Incredibles-Icons-Airbnb-Credit-Spencer-Lowell.webp";
-import Image5 from "./../../../../public/images/01-Shrek-Airbnb-Exterior-Credit-Alix-McIntosh-1.webp";
-import Image6 from "./../../../../public/images/01-Kens-DreamHouse-Airbnb-Exterior-Credit-Hogwash-Studios-2.webp";
-import Image7 from "./../../../../public/images/01-Ted-Lasso-Airbnb-Exterior-Credit-Henry-Woide-1-1.webp";
-import Image8 from "./../../../../public/images/01-Houseplant-Airbnb-Seth-Rogen-Portrait-Credit-Yuri-Hasegawa-and-Hogwash-Studios.webp";
+import Image1 from "./../../../../public/images/kevin-hart-featured.jpg";
+import Image2 from "./../../../../public/images/inside-out-2.webp";
+import Image3 from "./../../../../public/images/orsay-2.webp";
+import Image4 from "./../../../../public/images/incredibles-featured.webp";
+import Image5 from "./../../../../public/images/shrek-exterior.webp";
+import Image6 from "./../../../../public/images/kens-dreamhouse.webp";
+import Image7 from "./../../../../public/images/ted-lasso-exterior.webp";
+import Image8 from "./../../../../public/images/houseplant-portrait.webp";
 import Image9 from "./../../../../public/images/Exterior_Hero-NewsroomThumbnail.webp";
 
 export default function SliderCard() {
@@ -18,57 +18,56 @@ export default function SliderCard() {
   const slides = [
     {
       image: Image1,
-      title:
-        "Step behind the velvet rope into Kevin Hart's Coramino Live Lounge",
+      title: "Beautonomi Coverage: protection for providers and peace of mind for customers",
       date: "July 23, 2024",
       link: "#",
     },
     {
       image: Image2,
-      title: "Make core memories with Inside Out 2",
+      title: "New booking experience for customers",
       date: "June 12, 2024",
       link: "#",
     },
     {
       image: Image3,
-      title: "Open the Olympic Games at Musée d’Orsay",
+      title: "Beautonomi supports arts and culture in our communities",
       date: "June 5, 2024",
       link: "#",
     },
     {
       image: Image4,
-      title: "Design your Incredibles Supersuit",
+      title: "Trust and safety updates for our community",
       date: "May 16, 2024",
       link: "#",
     },
     {
       image: Image5,
-      title: "Shrek’s Swamp",
+      title: "Partnering with local businesses to grow beauty and wellness",
       date: "September 26, 2023",
       link: "#",
     },
     {
       image: Image6,
-      title: "Barbie’s Malibu DreamHouse, Ken’s Way",
+      title: "How we're making beauty services more accessible",
       date: "January 26, 2023",
       link: "#",
     },
     {
       image: Image7,
-      title: "Ted Lasso’s Favorite Pub",
+      title: "Summer support for providers and customers",
       date: "March 7, 2023",
       link: "#",
     },
     {
       image: Image8,
-      title: "Houseplant Retreat",
+      title: "Joining forces with industry partners to combat payment fraud",
       date: "January 31, 2023",
       link: "#",
     },
     {
       image: Image9,
-      title: "The Last Blockbuster",
-      date: "August 11, 2020",
+      title: "Beautonomi Q2 2024 company update",
+      date: "August 11, 2023",
       link: "#",
     },
   ];
@@ -102,12 +101,12 @@ export default function SliderCard() {
         <div className="flex flex-col md:flex-row items-center  mb-14">
           <div>
             <h2 className="text-[26px] lg:text-[40px] mb-3 font-normal Aribnb-medium text-secondary ">
-              Introducing Icons
+              Featured stories
             </h2>
             <p className="text-sm md:text-xl font-light  text-secondary max-w-2xl">
               {" "}
-              Explore the extraordinary experiences hosted by the greatest names
-              in music, film, television, art, sports, and more.{" "}
+              Company updates, product news, and stories from the Beautonomi
+              community of providers and customers.{" "}
             </p>
           </div>
           <div className="flex gap-6 px-4 absolute top-32 md:top-0 right-0 md:right-40">

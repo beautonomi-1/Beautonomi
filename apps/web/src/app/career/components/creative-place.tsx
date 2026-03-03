@@ -37,11 +37,11 @@ export default function CreativePlace() {
       <div className=" container ">
         <div className="max-w-xl lg:max-w-full mx-auto text-center mb-12">
           <h1 className="text-5xl font-normal ">
-            Work at one of the most creative places on Earth
+            Work where beauty and tech meet
           </h1>
           <p className="text-lg font-normal  text-[#dddddd] mt-4">
-            From our first three guests in 2007, Beautonomi has welcomed 1.5 billion
-            arrivals, all thanks to our 5 million Hosts.
+            Beautonomi is building the future of beauty and wellness—connecting
+            customers with providers and helping salons and professionals thrive.
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-14 lg:gap-y-20 gap-6">

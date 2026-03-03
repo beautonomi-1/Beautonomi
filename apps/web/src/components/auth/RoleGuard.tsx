@@ -245,7 +245,7 @@ export default function RoleGuard({
     }
   }, [isLoading, sessionCache, hasShownContent]);
 
-  // KEY PRINCIPLE: Like Airbnb/Facebook - NEVER show loading for returning users
+  // KEY PRINCIPLE: Never show loading for returning users (instant nav when session cached)
   // If we have a persistent session cache and we've shown content before, render immediately
   const hasPersistentSession = sessionCache && allowedRoles.includes(sessionCache.role);
   

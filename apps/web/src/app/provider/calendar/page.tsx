@@ -1623,7 +1623,7 @@ export default function ProviderCalendar() {
         </SheetContent>
       </Sheet>
 
-      {/* Appointment Sidebar - Airbnb-style modal for view/create/edit */}
+      {/* Appointment sidebar modal for view/create/edit */}
       <AppointmentSidebar
         teamMembers={teamMembers}
         services={services}

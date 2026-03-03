@@ -1,0 +1,313 @@
+import { useState, useCallback } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  Platform,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { useApi } from "@/hooks/useApi";
+import { useAuth } from "@/providers/AuthProvider";
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { ScreenHeader } from "@/components/ui/ScreenHeader";
+
+type SettingsItem = {
+  title: string;
+  description: string;
+  href: string;
+  /** Native screen route (all settings are native). */
+  mobileRoute?: string;
+  isUpgrade?: boolean;
+  /** Special action instead of navigation (e.g. signOut) */
+  action?: "signOut";
+  /** Style as destructive (e.g. deactivate, delete) */
+  isDestructive?: boolean;
+};
+
+type SettingsCategory = {
+  id: string;
+  title: string;
+  description: string;
+  items: SettingsItem[];
+};
+
+const SETTINGS_CATEGORIES: SettingsCategory[] = [
+  {
+    id: "app",
+    title: "App",
+    description: "Language and display",
+    items: [
+      { title: "Language", description: "App language (English, Afrikaans, isiZulu, Sesotho)", href: "/provider/settings/language", mobileRoute: "/(app)/(tabs)/more/settings/language" },
+    ],
+  },
+  {
+    id: "appointment-activity",
+    title: "Appointment & activity",
+    description: "Appointments, business details, locations, hours",
+    items: [
+      { title: "Appointment settings", description: "Default status, confirmation", href: "/provider/settings/appointments", mobileRoute: "/(app)/(tabs)/more/settings-appointment-defaults" },
+      { title: "Business details", description: "Business information", href: "/provider/settings/appointment-activity/business-details", mobileRoute: "/(app)/(tabs)/more/settings/business" },
+      { title: "Business description", description: "Description customers see", href: "/provider/settings/business-description", mobileRoute: "/(app)/(tabs)/more/settings-business-description" },
+      { title: "Gallery & images", description: "Business photos", href: "/provider/settings/gallery", mobileRoute: "/(app)/(tabs)/more/gallery" },
+      { title: "Billing & invoices", description: "Billing and invoices", href: "/provider/settings/billing", mobileRoute: "/(app)/(tabs)/more/settings/billing" },
+      { title: "Locations", description: "Business locations", href: "/provider/settings/locations", mobileRoute: "/(app)/(tabs)/more/locations" },
+      { title: "Operating hours", description: "Opening and closing times", href: "/provider/settings/operating-hours", mobileRoute: "/(app)/(tabs)/more/settings-operating-hours" },
+      { title: "Distance settings", description: "House call limits", href: "/provider/settings/distance", mobileRoute: "/(app)/(tabs)/more/settings/distance-settings" },
+      { title: "Service area", description: "Service radius or zones", href: "/provider/settings/service-area", mobileRoute: "/(app)/(tabs)/more/settings/service-zones" },
+      { title: "Identity verification", description: "KYC for payouts", href: "/provider/settings/verification", mobileRoute: "/(app)/(tabs)/more/settings/verification" },
+      { title: "Service zones", description: "At-home booking zones", href: "/provider/settings/service-zones", mobileRoute: "/(app)/(tabs)/more/settings/service-zones" },
+      { title: "Online booking", description: "Online booking settings", href: "/provider/settings/appointment-activity/online-booking", mobileRoute: "/(app)/(tabs)/more/settings/online-booking" },
+      { title: "Note templates", description: "Reusable note templates", href: "/provider/settings/note-templates", mobileRoute: "/(app)/(tabs)/more/settings/note-templates" },
+      { title: "Resources", description: "Resources and equipment", href: "/provider/settings/appointment-activity/resources", mobileRoute: "/(app)/(tabs)/more/settings/resource-groups" },
+      { title: "Closed periods", description: "Holiday and closure dates", href: "/provider/settings/appointment-activity/closed-periods", mobileRoute: "/(app)/(tabs)/more/settings/closed-periods" },
+      { title: "Blocked time types", description: "Blocked time options", href: "/provider/settings/appointment-activity/blocked-time", mobileRoute: "/(app)/(tabs)/more/settings/blocked-time" },
+      { title: "Calendar integration", description: "Google, Apple, Outlook sync", href: "/provider/settings/calendar-integration", mobileRoute: "/(app)/(tabs)/more/settings/calendar-integration" },
+    ],
+  },
+  {
+    id: "clients",
+    title: "Clients",
+    description: "Client management and preferences",
+    items: [
+      { title: "Client list", description: "View and manage clients", href: "/provider/settings/clients/list", mobileRoute: "/(app)/(tabs)/more/clients" },
+      { title: "Referral sources", description: "Track where clients come from", href: "/provider/settings/clients/referrals", mobileRoute: "/(app)/(tabs)/more/settings/referral-sources" },
+      { title: "Cancellation reasons", description: "Manage cancellation reasons", href: "/provider/settings/clients/cancellation-reasons", mobileRoute: "/(app)/(tabs)/more/settings/cancellation-reasons" },
+      { title: "Cancellation policies", description: "Refund and cancellation policies", href: "/provider/settings/cancellation-policies", mobileRoute: "/(app)/(tabs)/more/settings/cancellation-policies" },
+      { title: "Customer visibility", description: "How lists are displayed", href: "/provider/settings/customer-visibility", mobileRoute: "/(app)/(tabs)/more/settings/customer-visibility" },
+    ],
+  },
+  {
+    id: "services",
+    title: "Services",
+    description: "Service menu and add-ons",
+    items: [
+      { title: "Services menu", description: "Service offerings", href: "/provider/settings/services/menu", mobileRoute: "/(app)/(tabs)/more/catalogue" },
+      { title: "Service add-ons", description: "Add-ons and upgrades", href: "/provider/settings/addons", mobileRoute: "/(app)/(tabs)/more/settings/service-addons" },
+      { title: "Memberships", description: "Membership plans", href: "/provider/settings/services/memberships", mobileRoute: "/(app)/(tabs)/more/membership-plans" },
+    ],
+  },
+  {
+    id: "sales",
+    title: "Sales",
+    description: "Payments and receipts",
+    items: [
+      { title: "Payout accounts", description: "Bank accounts for payouts", href: "/provider/settings/payout-accounts", mobileRoute: "/(app)/(tabs)/more/settings/payout-accounts" },
+      { title: "Yoco integration", description: "Yoco payment devices", href: "/provider/settings/sales/yoco-integration", mobileRoute: "/(app)/(tabs)/more/settings/yoco-devices" },
+      { title: "Yoco terminals", description: "Card terminals", href: "/provider/settings/yoco-terminals", mobileRoute: "/(app)/(tabs)/more/settings/yoco-devices" },
+      { title: "Receipt sequencing", description: "Receipt numbering", href: "/provider/settings/sales/receipt-sequencing", mobileRoute: "/(app)/(tabs)/more/settings/receipt-template" },
+      { title: "Receipt template", description: "Receipt design", href: "/provider/settings/sales/receipt-template", mobileRoute: "/(app)/(tabs)/more/settings/receipt-template" },
+      { title: "Taxes", description: "Tax rates", href: "/provider/settings/sales/taxes", mobileRoute: "/(app)/(tabs)/more/settings/tax-configuration" },
+      { title: "Travel fees", description: "At-home travel fees", href: "/provider/settings/sales/travel-fees", mobileRoute: "/(app)/(tabs)/more/settings/travel-fees" },
+      { title: "Tips", description: "Tip settings", href: "/provider/settings/sales/tips", mobileRoute: "/(app)/(tabs)/more/settings/sales-settings" },
+      { title: "Tips distribution", description: "Tips between you and staff", href: "/provider/settings/tips/distribution", mobileRoute: "/(app)/(tabs)/more/settings/tip-distribution" },
+      { title: "Gift cards", description: "Gift card settings", href: "/provider/settings/sales/gift-cards", mobileRoute: "/(app)/(tabs)/more/settings/gift-cards-settings" },
+      { title: "Upselling", description: "Upselling preferences", href: "/provider/settings/sales/upselling", mobileRoute: "/(app)/(tabs)/more/settings/upselling" },
+    ],
+  },
+  {
+    id: "team",
+    title: "Team",
+    description: "Team and permissions",
+    items: [
+      { title: "Team members", description: "Manage your team", href: "/provider/team/members", mobileRoute: "/(app)/(tabs)/more/team" },
+      { title: "Roles", description: "Team roles and permissions", href: "/provider/settings/team/roles", mobileRoute: "/(app)/(tabs)/more/settings/team-roles" },
+      { title: "Permissions", description: "Team permissions", href: "/provider/settings/team/permissions", mobileRoute: "/(app)/(tabs)/more/settings/staff-permissions" },
+      { title: "Commissions", description: "Commission rates", href: "/provider/settings/team/commissions", mobileRoute: "/(app)/(tabs)/more/settings/team-commissions" },
+      { title: "Time off types", description: "Time off categories", href: "/provider/settings/team/time-off-types", mobileRoute: "/(app)/(tabs)/more/settings/time-off-types" },
+      { title: "Team notifications", description: "Per-member notification preferences", href: "/provider/settings/team/notifications", mobileRoute: "/(app)/(tabs)/more/settings/notifications-settings" },
+    ],
+  },
+  {
+    id: "marketing",
+    title: "Marketing",
+    description: "Integrations and ads",
+    items: [
+      { title: "Paid ads", description: "Boosted listings and campaigns", href: "/provider/settings/ads", mobileRoute: "/(app)/(tabs)/more/marketing" },
+      { title: "Email integration", description: "SendGrid, Mailchimp", href: "/provider/settings/integrations/email", mobileRoute: "/(app)/(tabs)/more/settings/email-integration" },
+      { title: "Twilio integration", description: "SMS and WhatsApp", href: "/provider/settings/integrations/twilio", mobileRoute: "/(app)/(tabs)/more/settings/twilio-integration" },
+    ],
+  },
+  {
+    id: "account",
+    title: "Account",
+    description: "Account and notifications",
+    items: [
+      { title: "My profile", description: "Photo, personal info, address & plan", href: "/provider/account/profile", mobileRoute: "/(app)/(tabs)/more/profile" },
+      { title: "Notification preferences", description: "How you receive notifications", href: "/provider/settings/notifications", mobileRoute: "/(app)/(tabs)/more/notification-preferences" },
+      { title: "My tickets", description: "View and reply to your support tickets", href: "/help/my-tickets", mobileRoute: "/(app)/(tabs)/more/support-tickets" },
+      { title: "Contact support", description: "Submit a support ticket or get help", href: "/help/submit-ticket", mobileRoute: "/(app)/(tabs)/more/contact-support" },
+      { title: "Change password", description: "Update your account password", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-change-password" },
+      { title: "Privacy Policy", description: "How we use your data", href: "/privacy-policy", mobileRoute: "/(auth)/privacy" },
+      { title: "Terms of Service", description: "Terms and conditions", href: "/terms-and-condition", mobileRoute: "/(auth)/terms" },
+      { title: "Deactivate account", description: "Temporarily disable your account", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-deactivate-account", isDestructive: true },
+      { title: "Delete account", description: "Permanently delete account and data", href: "/account-settings/privacy-and-sharing", mobileRoute: "/(app)/(tabs)/more/delete-account-info", isDestructive: true },
+      { title: "Sign out", description: "Sign out of your account", href: "#", action: "signOut" as const },
+    ],
+  },
+];
+
+export default function SettingsAccountHubScreen() {
+  const router = useRouter();
+  const { signOut } = useAuth();
+  const [expandedId, setExpandedId] = useState<string | null>("account");
+
+  const { data: providerData } = useApi<{ business_type?: string } | { data?: { business_type?: string } }>(
+    "/api/me/provider"
+  );
+  const businessType =
+    (providerData as { business_type?: string })?.business_type ??
+    (providerData as { data?: { business_type?: string } })?.data?.business_type ??
+    null;
+  const isFreelancer = businessType === "freelancer";
+
+  const handleSignOut = useCallback(() => {
+    const goToLogin = () => router.replace("/(auth)/login" as never);
+    const performSignOut = () => signOut().then(goToLogin).catch(goToLogin);
+    if (Platform.OS === "web") {
+      performSignOut();
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Sign Out", style: "destructive", onPress: performSignOut },
+    ]);
+  }, [signOut, router]);
+
+  const handleItemPress = useCallback(
+    (item: SettingsItem) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (item.action === "signOut") {
+        handleSignOut();
+        return;
+      }
+      if (item.mobileRoute) {
+        router.push(item.mobileRoute as never);
+      }
+    },
+    [router, handleSignOut]
+  );
+
+  const toggleSection = useCallback((id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setExpandedId((prev) => (prev === id ? null : id));
+  }, []);
+
+  return (
+    <ScreenContainer>
+      <ScreenHeader
+        title="Settings & account"
+        subtitle="Business settings & rewards"
+        onBack={() => router.back()}
+      />
+
+      <View className="px-2 pb-2">
+        <View className="mb-3 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
+          <Text className="text-sm text-gray-700">
+            All screens are native. Manage your business settings here.
+          </Text>
+        </View>
+      </View>
+
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {isFreelancer && (
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/upgrade-info" as never)}
+            className="mb-3 flex-row items-center rounded-xl border border-pink-200 bg-pink-50/80 p-4"
+            activeOpacity={0.7}
+            accessibilityLabel="Upgrade to Salon, unlock team, locations and advanced features"
+            accessibilityRole="button"
+          >
+            <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-pink-100">
+              <Ionicons name="sparkles" size={22} color="#ec4899" />
+            </View>
+            <View className="flex-1">
+              <Text className="font-semibold text-pink-800">Upgrade to Salon</Text>
+              <Text className="mt-0.5 text-sm text-pink-700">
+                Unlock team, locations & advanced features
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#ec4899" />
+          </TouchableOpacity>
+        )}
+
+        {SETTINGS_CATEGORIES.map((category) => {
+          const isExpanded = expandedId === category.id;
+          const items = category.id === "appointment-activity" && isFreelancer
+            ? [{ title: "Upgrade to Salon", description: "Unlock team management and more", href: "/provider/settings/upgrade-to-salon", isUpgrade: true as const }, ...category.items]
+            : category.items;
+          return (
+            <View key={category.id} className="mb-2">
+              <TouchableOpacity
+                onPress={() => toggleSection(category.id)}
+                className="flex-row items-center justify-between rounded-t-xl border border-gray-200 bg-white px-4 py-3.5"
+                activeOpacity={0.7}
+                accessibilityLabel={`${category.title}, ${isExpanded ? "collapse" : "expand"} section`}
+                accessibilityRole="button"
+              >
+                <Text className="text-base font-semibold text-gray-900">
+                  {category.title}
+                </Text>
+                <Ionicons
+                  name={isExpanded ? "chevron-up" : "chevron-down"}
+                  size={20}
+                  color="#6b7280"
+                />
+              </TouchableOpacity>
+              {isExpanded && (
+                <View className="rounded-b-xl border border-t-0 border-gray-200 bg-white overflow-hidden">
+                  <View className="px-3 pb-2">
+                    <Text className="text-sm text-gray-500 mb-2">
+                      {category.description}
+                    </Text>
+                  </View>
+                  {items.map((item, idx) => {
+                    const isSignOut = item.action === "signOut";
+                    const isDestructive = item.isDestructive ?? isSignOut;
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        onPress={() => handleItemPress(item)}
+                        className={`flex-row items-center justify-between px-4 py-3.5 ${idx < items.length - 1 ? "border-b border-gray-100" : ""} ${item.isUpgrade ? "bg-pink-50/50" : ""} ${isDestructive ? "bg-red-50/50" : ""}`}
+                        activeOpacity={0.6}
+                        accessibilityLabel={item.description ? `${item.title}, ${item.description}` : item.title}
+                        accessibilityRole="button"
+                      >
+                        <View className="flex-1 pr-3">
+                          {item.isUpgrade && (
+                            <Ionicons name="sparkles" size={16} color="#ec4899" style={{ position: "absolute", left: 0, top: 2 }} />
+                          )}
+                          <Text className={`text-[15px] font-medium ${item.isUpgrade ? "text-pink-800" : isDestructive ? "text-red-700" : "text-gray-900"}`}>
+                            {item.title}
+                          </Text>
+                          <Text className={`mt-0.5 text-xs ${isDestructive ? "text-red-600/90" : "text-gray-500"}`} numberOfLines={1}>
+                            {item.description}
+                          </Text>
+                        </View>
+                        <View className="flex-row items-center gap-1">
+                          {isSignOut ? (
+                            <Ionicons name="log-out-outline" size={18} color="#dc2626" />
+                          ) : (
+                            <Ionicons name="chevron-forward" size={18} color={item.isUpgrade ? "#ec4899" : isDestructive ? "#dc2626" : "#9ca3af"} />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          );
+        })}
+      </ScrollView>
+    </ScreenContainer>
+  );
+}

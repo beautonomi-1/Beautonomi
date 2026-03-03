@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import Link from "next/link";
-import Policies from "./../../../../public/images/Airbnb-Policy-Web.png";
-import Saftey from "./../../../../public/images/Airbnb-Safety-Web.png";
+import Policies from "./../../../../public/images/policy-web.png";
+import Safety from "./../../../../public/images/safety-web.png";
 
 const content = [
   {
@@ -14,10 +14,10 @@ const content = [
     imageHeight: 233,
   },
   {
-    title: "Host resources and inspiration",
-    description: "Find tips, best practices, and news.",
-    imageSrc: Saftey,
-    imageAlt: "Host resources and inspiration",
+    title: "Provider resources and inspiration",
+    description: "Find tips, best practices, and news for providers.",
+    imageSrc: Safety,
+    imageAlt: "Provider resources and inspiration",
     imageWidth: 400,
     imageHeight: 233,
   },

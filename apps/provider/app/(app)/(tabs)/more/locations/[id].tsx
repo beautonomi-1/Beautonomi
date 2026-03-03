@@ -1,0 +1,370 @@
+/**
+ * Edit location – GET/PATCH/DELETE /api/provider/locations/[id].
+ */
+import { useCallback, useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  ScrollView,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableOpacity,
+  Switch,
+} from "react-native";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { useTranslation } from "@beautonomi/i18n";
+import { useApi } from "@/hooks/useApi";
+import { useApiMutation } from "@/hooks/useApi";
+import { api } from "@/lib/api-client";
+import { validateRequired, validatePhone } from "@/lib/validation";
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { ActionButton } from "@/components/ui/ActionButton";
+
+type LocationData = {
+  id: string;
+  name: string;
+  address_line1?: string;
+  address_line2?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+  phone?: string;
+  is_primary?: boolean;
+  is_active?: boolean;
+};
+
+export default function EditLocationScreen() {
+  const router = useRouter();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const locationId = Array.isArray(id) ? id[0] : id;
+  const { data, loading, error, refresh } = useApi<LocationData>(
+    `/api/provider/locations/${locationId || ""}`,
+    { enabled: !!locationId }
+  );
+  const { execute: deleteLocation } = useApiMutation("delete");
+
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState("");
+  const [address_line1, setAddressLine1] = useState("");
+  const [address_line2, setAddressLine2] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [postal_code, setPostalCode] = useState("");
+  const [country, setCountry] = useState("");
+  const [phone, setPhone] = useState("");
+  const [is_primary, setIsPrimary] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const { t } = useTranslation();
+  const FIELD_LABELS: Record<string, string> = {
+    name: "Location name",
+    address_line1: "Address line 1",
+    city: "City",
+    country: "Country",
+  };
+
+  useEffect(() => {
+    if (!data) return;
+    const d = data as LocationData;
+    setName(d.name ?? "");
+    setAddressLine1(d.address_line1 ?? "");
+    setAddressLine2(d.address_line2 ?? "");
+    setCity(d.city ?? "");
+    setState(d.state ?? "");
+    setPostalCode(d.postal_code ?? "");
+    setCountry(d.country ?? "");
+    setPhone(d.phone ?? "");
+    setIsPrimary(!!d.is_primary);
+  }, [data]);
+
+  const handleSave = useCallback(async () => {
+    if (!locationId) return;
+    const nextErrors: Record<string, string> = {};
+    const nameErr = validateRequired(name);
+    if (nameErr) nextErrors.name = nameErr;
+    const addressErr = validateRequired(address_line1);
+    if (addressErr) nextErrors.address_line1 = addressErr;
+    const cityErr = validateRequired(city);
+    if (cityErr) nextErrors.city = cityErr;
+    const countryErr = validateRequired(country);
+    if (countryErr) nextErrors.country = countryErr;
+    const phoneErr = validatePhone(phone, false);
+    if (phoneErr) nextErrors.phone = phoneErr;
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      const firstKey = Object.keys(nextErrors)[0];
+      const firstMsg = nextErrors[firstKey];
+      const message = firstMsg === "validation.required"
+        ? t(firstMsg, { field: FIELD_LABELS[firstKey] ?? firstKey })
+        : t(firstMsg);
+      Alert.alert(t("validation.fixForm"), message);
+      return;
+    }
+    const trimmedName = name.trim();
+    const trimmedAddress = address_line1.trim();
+    const trimmedCity = city.trim();
+    const trimmedCountry = country.trim();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSaving(true);
+    const res = await api.patch<LocationData>(`/api/provider/locations/${locationId}`, {
+      name: trimmedName,
+      address_line1: trimmedAddress,
+      address_line2: address_line2.trim() || null,
+      city: trimmedCity,
+      state: state.trim() || null,
+      postal_code: postal_code.trim() || null,
+      country: trimmedCountry,
+      phone: phone.trim() || null,
+      is_primary: is_primary,
+    });
+    setSaving(false);
+    if (res.error) {
+      Alert.alert("Error", res.error.message);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert("Saved", "Location updated.");
+    refresh();
+  }, [locationId, name, address_line1, address_line2, city, state, postal_code, country, phone, is_primary, refresh, t]);
+
+  const handleDelete = useCallback(() => {
+    Alert.alert(
+      "Delete location",
+      "Remove this location? This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            const res = await deleteLocation(`/api/provider/locations/${locationId}`);
+            if (!res.error) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              router.back();
+            } else {
+              Alert.alert("Error", res.error);
+            }
+          },
+        },
+      ]
+    );
+  }, [locationId, deleteLocation, router]);
+
+  if (!locationId) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Edit location" onBack={() => router.back()} />
+        <View className="flex-1 items-center justify-center px-4">
+          <Text className="text-gray-500">Invalid location.</Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  if (loading && !data) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Edit location" onBack={() => router.back()} />
+        <View className="flex-1 items-center justify-center py-12">
+          <LoadingState />
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Edit location" onBack={() => router.back()} />
+        <View className="flex-1 justify-center px-4">
+          <ErrorState message={error} onRetry={refresh} />
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  return (
+    <ScreenContainer scrollable={false}>
+      <ScreenHeader title="Edit location" onBack={() => router.back()} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        className="flex-1"
+      >
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{ paddingBottom: 120 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View className="px-4">
+            <View className="mb-4">
+              <Text className="mb-1.5 text-sm font-medium text-gray-700">Location name *</Text>
+              <TextInput
+                className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.name ? "border-red-500" : "border-gray-200"}`}
+                value={name}
+                onChangeText={(t) => {
+                  setName(t);
+                  if (errors.name) setErrors((e) => ({ ...e, name: "" }));
+                }}
+                placeholder="e.g. Main salon"
+                placeholderTextColor="#9ca3af"
+              />
+              {errors.name ? (
+                <Text className="mt-1 text-sm text-red-500">
+                  {errors.name === "validation.required"
+                    ? t(errors.name, { field: FIELD_LABELS.name })
+                    : t(errors.name)}
+                </Text>
+              ) : null}
+            </View>
+            <View className="mb-4">
+              <Text className="mb-1.5 text-sm font-medium text-gray-700">Address line 1 *</Text>
+              <TextInput
+                className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.address_line1 ? "border-red-500" : "border-gray-200"}`}
+                value={address_line1}
+                onChangeText={(t) => {
+                  setAddressLine1(t);
+                  if (errors.address_line1) setErrors((e) => ({ ...e, address_line1: "" }));
+                }}
+                placeholder="Street address"
+                placeholderTextColor="#9ca3af"
+              />
+              {errors.address_line1 ? (
+                <Text className="mt-1 text-sm text-red-500">
+                  {errors.address_line1 === "validation.required"
+                    ? t(errors.address_line1, { field: FIELD_LABELS.address_line1 })
+                    : t(errors.address_line1)}
+                </Text>
+              ) : null}
+            </View>
+            <View className="mb-4">
+              <Text className="mb-1.5 text-sm font-medium text-gray-700">Address line 2</Text>
+              <TextInput
+                className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                value={address_line2}
+                onChangeText={setAddressLine2}
+                placeholder="Optional"
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+            <View className="mb-4 flex-row gap-3">
+              <View className="flex-1">
+                <Text className="mb-1.5 text-sm font-medium text-gray-700">City *</Text>
+                <TextInput
+                  className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.city ? "border-red-500" : "border-gray-200"}`}
+                  value={city}
+                  onChangeText={(t) => {
+                    setCity(t);
+                    if (errors.city) setErrors((e) => ({ ...e, city: "" }));
+                  }}
+                  placeholder="City"
+                  placeholderTextColor="#9ca3af"
+                />
+                {errors.city ? (
+                  <Text className="mt-1 text-sm text-red-500">
+                    {errors.city === "validation.required"
+                      ? t(errors.city, { field: FIELD_LABELS.city })
+                      : t(errors.city)}
+                  </Text>
+                ) : null}
+              </View>
+              <View className="flex-1">
+                <Text className="mb-1.5 text-sm font-medium text-gray-700">Country *</Text>
+                <TextInput
+                  className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.country ? "border-red-500" : "border-gray-200"}`}
+                  value={country}
+                  onChangeText={(t) => {
+                    setCountry(t);
+                    if (errors.country) setErrors((e) => ({ ...e, country: "" }));
+                  }}
+                  placeholder="Country"
+                  placeholderTextColor="#9ca3af"
+                />
+                {errors.country ? (
+                  <Text className="mt-1 text-sm text-red-500">
+                    {errors.country === "validation.required"
+                      ? t(errors.country, { field: FIELD_LABELS.country })
+                      : t(errors.country)}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+            <View className="mb-4 flex-row gap-3">
+              <View className="flex-1">
+                <Text className="mb-1.5 text-sm font-medium text-gray-700">State / Province</Text>
+                <TextInput
+                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  value={state}
+                  onChangeText={setState}
+                  placeholder="Optional"
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
+              <View className="flex-1">
+                <Text className="mb-1.5 text-sm font-medium text-gray-700">Postal code</Text>
+                <TextInput
+                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  value={postal_code}
+                  onChangeText={setPostalCode}
+                  placeholder="Optional"
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
+            </View>
+            <View className="mb-4">
+              <Text className="mb-1.5 text-sm font-medium text-gray-700">Phone</Text>
+              <TextInput
+                className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.phone ? "border-red-500" : "border-gray-200"}`}
+                value={phone}
+                onChangeText={(t) => {
+                  setPhone(t);
+                  if (errors.phone) setErrors((e) => ({ ...e, phone: "" }));
+                }}
+                placeholder="Location phone"
+                placeholderTextColor="#9ca3af"
+                keyboardType="phone-pad"
+              />
+              {errors.phone ? (
+                <Text className="mt-1 text-sm text-red-500">{t(errors.phone)}</Text>
+              ) : null}
+            </View>
+            <View className="mb-6 flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3">
+              <Text className="text-base text-gray-900">Primary location</Text>
+              <Switch
+                value={is_primary}
+                onValueChange={setIsPrimary}
+                trackColor={{ true: "#14b8a6", false: "#d1d5db" }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            <ActionButton
+              label="Save changes"
+              variant="primary"
+              onPress={handleSave}
+              loading={saving}
+              fullWidth
+            />
+
+            <TouchableOpacity
+              onPress={handleDelete}
+              className="mt-6 py-4 items-center"
+              accessibilityRole="button"
+              accessibilityLabel="Delete location"
+            >
+              <Text className="text-sm font-medium text-red-600">Delete location</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </ScreenContainer>
+  );
+}

@@ -74,8 +74,8 @@
 
 //   return (
 //     <div className="w-full mx-auto py-4">
-//       <h2 className="text-lg font-medium Airbnb-medium text-secondary mb-2">Price range</h2>
-//       <p className="text-sm text-secondary font-light Airbnb-light mb-4">Service prices before fees and taxes</p>
+//       <h2 className="text-lg font-brand font-medium text-secondary mb-2">Price range</h2>
+//       <p className="text-sm text-secondary font-brand font-light mb-4">Service prices before fees and taxes</p>
 
 //       <div className="h-32 relative">
 //         <ResponsiveContainer width="100%" height="100%">
@@ -248,8 +248,8 @@ const PriceRangeComponent: React.FC = () => {
 
   return (
     <div className="w-full mx-auto py-4">
-      <h2 className="text-lg font-medium Airbnb-medium text-secondary mb-2">Price range</h2>
-      <p className="text-sm text-secondary font-light Airbnb-light mb-4">Service prices before fees and taxes</p>
+      <h2 className="text-lg font-brand font-medium text-secondary mb-2">Price range</h2>
+      <p className="text-sm text-secondary font-brand font-light mb-4">Service prices before fees and taxes</p>
 
       <div className="h-32 relative">
         <ResponsiveContainer width="100%" height="100%">

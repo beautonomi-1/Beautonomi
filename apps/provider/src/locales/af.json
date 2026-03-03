@@ -1,0 +1,101 @@
+{
+  "common": {
+    "loading": "Laai tans...",
+    "retry": "Probeer weer",
+    "cancel": "Kanselleer",
+    "save": "Stoor",
+    "done": "Klaar",
+    "back": "Terug",
+    "next": "Volgende",
+    "continue": "Gaan voort",
+    "search": "Soek",
+    "noResults": "Geen resultate gevind nie",
+    "error": "Iets het verkeerd gegaan",
+    "offline": "Geen internetverbinding nie",
+    "signIn": "Teken in",
+    "signUp": "Registreer",
+    "signOut": "Teken uit",
+    "delete": "Verwyder",
+    "edit": "Wysig",
+    "add": "Voeg by",
+    "viewMore": "Sien meer",
+    "confirm": "Bevestig",
+    "close": "Maak toe",
+    "yes": "Ja",
+    "no": "Nee"
+  },
+  "tabs": {
+    "dashboard": "Paneelbord",
+    "calendar": "Kalender",
+    "clients": "Kliënte",
+    "sales": "Verkope",
+    "more": "Meer"
+  },
+  "dashboard": {
+    "title": "Paneelbord",
+    "todaysBookings": "Vandag se Besprekings",
+    "revenue": "Inkomste",
+    "newClients": "Nuwe Kliënte",
+    "upcomingAppointments": "Komende Afsprake",
+    "quickActions": "Vinnige Aksies",
+    "newBooking": "Nuwe Bespreking",
+    "addClient": "Voeg Kliënt By",
+    "viewReports": "Sien Verslae"
+  },
+  "calendar": {
+    "title": "Kalender",
+    "day": "Dag",
+    "week": "Week",
+    "noBookings": "Geen besprekings vir hierdie dag nie",
+    "preferences": "Kalender Voorkeure"
+  },
+  "bookings": {
+    "title": "Besprekings",
+    "new": "Nuwe Bespreking",
+    "upcoming": "Komende",
+    "past": "Vorige",
+    "cancelled": "Gekanselleer",
+    "noBookings": "Geen besprekings nog nie",
+    "selectClient": "Kies 'n kliënt",
+    "selectService": "Kies 'n diens",
+    "selectDate": "Kies datum",
+    "selectTime": "Kies tyd",
+    "selectStaff": "Kies personeel",
+    "confirm": "Bevestig Bespreking",
+    "expressBooking": "Vinnige Bespreking"
+  },
+  "clients": {
+    "title": "Kliënte",
+    "addClient": "Voeg Kliënt By",
+    "noClients": "Geen kliënte nog nie",
+    "searchClients": "Soek kliënte...",
+    "totalClients": "Totale Kliënte",
+    "newThisMonth": "Nuut Hierdie Maand",
+    "details": "Kliënt Besonderhede",
+    "bookingHistory": "Bespreking Geskiedenis"
+  },
+  "settings": {
+    "title": "Instellings",
+    "business": "Besigheid Besonderhede",
+    "hours": "Bedryfstye",
+    "locations": "Liggings",
+    "security": "Sekuriteit",
+    "biometric": "Biometriese Slot",
+    "biometricDesc": "Vereis verifikasie om die toepassing oop te maak",
+    "version": "Weergawe"
+  },
+  "auth": {
+    "loginTitle": "Welkom terug",
+    "signupTitle": "Skep jou verskaffer rekening",
+    "phoneLabel": "Foonnommer",
+    "phonePlaceholder": "Voer jou foonnommer in",
+    "continueWithPhone": "Gaan voort",
+    "orContinueWith": "Of gaan voort met"
+  },
+  "notifications": {
+    "title": "Kennisgewings",
+    "markAllRead": "Merk alles as gelees",
+    "noNotifications": "Geen kennisgewings nie",
+    "noNotificationsDesc": "Jy is op datum!"
+  }
+}

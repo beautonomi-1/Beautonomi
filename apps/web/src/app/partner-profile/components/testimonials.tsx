@@ -271,8 +271,8 @@ const Testimonials = () => {
             />
             <div className="">
               <p className="text-sm font-light  mb-3">
-                Reviews from past guests help our community learn more about
-                each home. By default, reviews are sorted by recency.
+                Reviews from past customers help our community learn more about
+                each provider. By default, reviews are sorted by recency.
               </p>
               <p className="text-sm font-light  mb-3">
                 Only the Clients who booked the reservation can leave a review,

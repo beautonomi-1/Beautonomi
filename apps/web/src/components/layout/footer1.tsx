@@ -42,7 +42,7 @@ export default function Footer1() {
               links: [
                 { href: "/career", text: "Careers" },
                 { href: "/", text: "Customer Support" },
-                { href: "/", text: "Blog" },
+                { href: "/news", text: "Blog" },
               ],
             },
             {

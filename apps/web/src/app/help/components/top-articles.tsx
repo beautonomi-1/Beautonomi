@@ -3,33 +3,33 @@ import Link from 'next/link';
 
 const articles = [
   {
-    title: "Canceling your reservation for a stay",
-    description: "Your plans have changed and now you need to cancel your reservation. No problem.",
+    title: "Canceling your booking",
+    description: "Your plans have changed and you need to cancel your booking. Here’s how to do it and what to expect.",
     link: "#"
   },
   {
-    title: "Change the date or time of your Experience reservation",
-    description: "You booked an Experience, but the date or time no longer works for you? Don’t worry, you...",
+    title: "Change the date or time of your appointment",
+    description: "You booked a service, but the date or time no longer works? You can request to reschedule...",
     link: "#"
   },
   {
-    title: "If your Beauty Partner cancels your reservation",
-    description: "While it’s rare, sometimes a Beauty Partner may need to cancel a reservation. We understand this can ...",
+    title: "If your provider cancels your booking",
+    description: "Sometimes a provider may need to cancel a booking. We’ll help you rebook or get a refund.",
     link: "#"
   },
   {
     title: "Payment methods accepted",
-    description: "Beautonomi supports different payment methods, depending on the country your payment ...",
+    description: "Beautonomi supports different payment methods, depending on your country and payment ...",
     link: "#"
   },
   {
     title: "Editing, removing, or adding a payment method",
-    description: "If an existing payment method on your account is incorrect (ex: an expired credit...",
+    description: "If an existing payment method on your account is incorrect (e.g. an expired card)...",
     link: "#"
   },
   {
-    title: "When you’ll pay for your reservation",
-    description: "You just made a reservation—congrats! So, what happens next? Your payment method ...",
+    title: "When you’ll pay for your booking",
+    description: "You just made a booking—here’s what happens next and when your payment method is charged.",
     link: "#"
   }
 ];

@@ -1,0 +1,68 @@
+{
+  "common": {
+    "loading": "Laai tans...",
+    "retry": "Probeer weer",
+    "cancel": "Kanselleer",
+    "save": "Stoor",
+    "done": "Klaar",
+    "back": "Terug",
+    "next": "Volgende",
+    "continue": "Gaan voort",
+    "search": "Soek",
+    "noResults": "Geen resultate gevind nie",
+    "error": "Iets het verkeerd gegaan",
+    "offline": "Geen internetverbinding nie",
+    "signIn": "Teken in",
+    "signUp": "Registreer",
+    "signOut": "Teken uit",
+    "delete": "Verwyder",
+    "edit": "Wysig",
+    "viewMore": "Sien meer",
+    "learnMore": "Leer meer"
+  },
+  "tabs": {
+    "home": "Tuis",
+    "explore": "Ontdek",
+    "bookings": "Besprekings",
+    "chats": "Boodskappe",
+    "profile": "Profiel",
+    "search": "Soek",
+    "saved": "Gestoor"
+  },
+  "home": {
+    "selectAddress": "Kies adres",
+    "topRated": "Topaangewys",
+    "nearest": "Naaste Verskaffers",
+    "hottest": "Gewildste Keuses",
+    "upcoming": "Opkomende Talent",
+    "browseByCity": "Blaai per Stad",
+    "loadingProviders": "Laai verskaffers...",
+    "categoryAll": "Alles",
+    "categoryHair": "Hare",
+    "categoryNails": "Naels",
+    "categoryFace": "Gesig",
+    "categoryBody": "Liggaam"
+  },
+  "bookings": {
+    "title": "Besprekings",
+    "upcoming": "Komende",
+    "past": "Vorige",
+    "cancelled": "Gekanselleer",
+    "noBookings": "Geen besprekings nog nie",
+    "noBookingsDesc": "Jou komende afsprake sal hier verskyn",
+    "startSearching": "Begin soek",
+    "viewDetails": "Sien besonderhede"
+  },
+  "explore": {
+    "title": "Ontdek",
+    "loadingFeed": "Laai ontdek-voer...",
+    "noPosts": "Geen plasings om te ontdek nie"
+  },
+  "auth": {
+    "loginTitle": "Welkom by Beautonomi",
+    "phoneLabel": "Foonnommer",
+    "phonePlaceholder": "Voer jou foonnommer in",
+    "continueWithPhone": "Gaan voort",
+    "orContinueWith": "Of gaan voort met"
+  }
+}

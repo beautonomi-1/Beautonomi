@@ -1,6 +1,6 @@
 import React from "react";
 import Image from "next/image";
-import Image1 from "./../../../../public/images/21-Polly-Pocket-Icons-Airbnb-Credit-Juan-Navarro-Above-Summit-.jpg";
+import Image1 from "./../../../../public/images/polly-pocket-featured.jpg";
 import { Button } from "@/components/ui/button";
 const NewsHero = () => {
   return (
@@ -10,7 +10,7 @@ const NewsHero = () => {
         <div className="w-full md:w-1/2">
             <p className="text-popover text-sm font-normal  mb-0 md:mb-3">August 7, 2024</p>
           <h2 className="text-[22px] md:text-[26px] lg:text-[40px] font-light text-secondary leading-10 hover:underline mb-3 md:mb-7 lg:mb-9">
-            Polly Pocket’s ‘90s-era compact is now life-sized
+            What makes Beautonomi, Beautonomi
           </h2>
           <Button variant="secondary">Read more</Button>
         </div>

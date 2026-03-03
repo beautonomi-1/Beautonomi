@@ -254,17 +254,17 @@ const place = [
       {
         title: "Services",
         items: [
-          { text: "Long term stays allowed", image: Calendar },
-          { text: "Self check-in", image: Key },
-          { text: "Smart lock", image: SmartLock },
+          { text: "Recurring bookings available", image: Calendar },
+          { text: "Online booking", image: Key },
+          { text: "Contactless options", image: SmartLock },
         ],
       },
       {
         title: "Not included",
         items: [
-          { text: "Exterior security cameras on property", image: NoCamera },
-          { text: "Carbon monoxide alarm", image: Carbonmonoxide },
-          { text: "Heating", image: NoHeating },
+          { text: "No security cameras in treatment areas", image: NoCamera },
+          { text: "Safety equipment", image: Carbonmonoxide },
+          { text: "Climate control", image: NoHeating },
         ],
       },
     ],

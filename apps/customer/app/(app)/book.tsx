@@ -1,0 +1,963 @@
+import { useEffect, useState, useCallback, useMemo } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Pressable,
+  KeyboardAvoidingView,
+  Platform,
+  Linking,
+} from "react-native";
+import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, Stack, router } from "expo-router";
+import { useAuth } from "@/providers/AuthProvider";
+import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
+import { api } from "@/lib/api-client";
+import { useLocation } from "@/hooks/useLocation";
+import { useAddresses, type SavedAddress } from "@/hooks/useAddresses";
+import { AddressPicker } from "@/components/AddressPicker";
+import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { APP_URL } from "@/config/public-env";
+import { Colors } from "@/constants/colors";
+import { haptic } from "@/lib/haptics";
+import { Skeleton } from "@/components/Skeleton";
+import type {
+  PublicProviderDetail,
+  ProviderServicesResponse,
+  ProviderService,
+  StaffMember,
+  ProviderLocation,
+  AvailabilitySlot,
+} from "@/types/api";
+
+type Step = "service" | "venue" | "staff" | "date" | "time";
+
+const STEPS: Step[] = ["service", "venue", "staff", "date", "time"];
+const STEP_LABELS: Record<Step, string> = {
+  service: "Service",
+  venue: "Venue",
+  staff: "Staff",
+  date: "Date",
+  time: "Time",
+};
+
+function addDays(d: Date, n: number) {
+  const out = new Date(d);
+  out.setDate(out.getDate() + n);
+  return out;
+}
+
+function isSameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+/* ─── Step Progress Indicator ─── */
+function StepIndicator({ steps, current }: { steps: Step[]; current: Step }) {
+  const currentIdx = steps.indexOf(current);
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 4, paddingVertical: 12 }}>
+      {steps.map((s, i) => {
+        const isCompleted = i < currentIdx;
+        const isActive = i === currentIdx;
+        const isLast = i === steps.length - 1;
+        return (
+          <View key={s} style={{ flexDirection: "row", alignItems: "center", flex: isLast ? 0 : 1 }}>
+            <View style={{
+              width: 28, height: 28, borderRadius: 14,
+              backgroundColor: isCompleted ? Colors.primary : isActive ? Colors.primary : "#E5E7EB",
+              alignItems: "center", justifyContent: "center",
+            }}>
+              {isCompleted ? (
+                <Ionicons name="checkmark" size={16} color="#fff" />
+              ) : (
+                <Text style={{ color: isActive ? "#fff" : "#9CA3AF", fontWeight: "700", fontSize: 12 }}>{i + 1}</Text>
+              )}
+            </View>
+            {!isLast && (
+              <View style={{
+                flex: 1, height: 2, marginHorizontal: 4,
+                backgroundColor: isCompleted ? Colors.primary : "#E5E7EB",
+              }} />
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/* ─── Provider Summary Header ─── */
+function BookingSummaryHeader({ provider, service, variant }: {
+  provider: PublicProviderDetail;
+  service: ProviderService | null;
+  variant: { title?: string; price: number; duration_minutes: number } | null;
+}) {
+  const displayName = variant?.title ?? service?.title;
+  const displayPrice = variant?.price ?? service?.price;
+  const displayDuration = variant?.duration_minutes ?? service?.duration_minutes;
+
+  return (
+    <View style={{
+      flexDirection: "row", alignItems: "center", gap: 12,
+      backgroundColor: "#F9FAFB", borderRadius: 16, padding: 12, marginBottom: 12,
+    }}>
+      {provider.thumbnail_url ? (
+        <Image source={{ uri: provider.thumbnail_url }} style={{ width: 44, height: 44, borderRadius: 22 }} contentFit="cover" cachePolicy="memory-disk" />
+      ) : (
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center" }}>
+          <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 18 }}>{(provider.business_name || "P").charAt(0).toUpperCase()}</Text>
+        </View>
+      )}
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }} numberOfLines={1}>{provider.business_name}</Text>
+        {displayName && (
+          <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }} numberOfLines={1}>
+            {displayName} · {displayDuration} min · {provider.currency} {displayPrice?.toFixed(2)}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+/* ─── Date Cell for Calendar Grid ─── */
+function DateCell({ date, isSelected, isToday, onPress }: {
+  date: Date;
+  isSelected: boolean;
+  isToday: boolean;
+  onPress: () => void;
+}) {
+  const dayNames = ["S", "M", "T", "W", "T", "F", "S"];
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={{
+        flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 12, marginHorizontal: 2,
+        backgroundColor: isSelected ? Colors.primary : "transparent",
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`Select ${date.toLocaleDateString()}`}
+      accessibilityState={{ selected: isSelected }}
+    >
+      <Text style={{ fontSize: 10, color: isSelected ? "rgba(255,255,255,0.7)" : "#9CA3AF", fontWeight: "500", marginBottom: 4 }}>
+        {dayNames[date.getDay()]}
+      </Text>
+      <Text style={{
+        fontSize: 16, fontWeight: "700",
+        color: isSelected ? "#fff" : isToday ? Colors.primary : "#111827",
+      }}>
+        {date.getDate()}
+      </Text>
+      <Text style={{ fontSize: 9, color: isSelected ? "rgba(255,255,255,0.7)" : "#9CA3AF", marginTop: 2 }}>
+        {date.toLocaleDateString("en-US", { month: "short" })}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   Main Screen
+   ═══════════════════════════════════════════ */
+export default function BookScreen() {
+  useScreenTracking("Book");
+  const { slug, service_id, duration_minutes } = useLocalSearchParams<{
+    slug: string;
+    service_id?: string;
+    duration_minutes?: string;
+  }>();
+  const { user } = useAuth();
+  const { coords } = useLocation();
+  const { selectedAddress: primaryAddress } = useSelectedAddress();
+  const { addresses: savedAddresses, loading: addressesLoading } = useAddresses(!!user);
+
+  const [provider, setProvider] = useState<PublicProviderDetail | null>(null);
+  const [servicesData, setServicesData] = useState<ProviderServicesResponse | null>(null);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [step, setStep] = useState<Step>("service");
+  const [selectedService, setSelectedService] = useState<ProviderService | null>(null);
+  const [locationType, setLocationType] = useState<"at_salon" | "at_home">("at_salon");
+  const [selectedLocation, setSelectedLocation] = useState<ProviderLocation | null>(null);
+  const [atHomeAddress, setAtHomeAddress] = useState({ line1: "", city: "", country: "ZA" });
+  const [atHomeCoords, setAtHomeCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [addressPickerVisible, setAddressPickerVisible] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState<{
+    id: string; title?: string; duration_minutes: number; price: number;
+  } | null>(null);
+  const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
+  const [creatingHold, setCreatingHold] = useState(false);
+
+  // Week navigation for date picker
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  const visibleSteps = useMemo(() => {
+    const steps: Step[] = ["service", "venue"];
+    if (staff.length > 0) steps.push("staff");
+    steps.push("date", "time");
+    return steps;
+  }, [staff.length]);
+
+  const loadProviderAndServices = useCallback(async () => {
+    if (!slug) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [provRes, svcRes, staffRes] = await Promise.all([
+        api.get<PublicProviderDetail>(`/api/public/providers/${encodeURIComponent(slug)}`),
+        api.get<ProviderServicesResponse>(`/api/public/providers/${encodeURIComponent(slug)}/services`),
+        api.get<StaffMember[] | { data: StaffMember[] }>(`/api/public/providers/${encodeURIComponent(slug)}/staff`),
+      ]);
+
+      if (provRes.error || !provRes.data) {
+        setError(provRes.error?.message || "Provider not found");
+      } else {
+        setProvider(provRes.data);
+        const locs = provRes.data.locations || [];
+        if (locs.length === 1) setSelectedLocation(locs[0]);
+      }
+
+      if (!svcRes.error && svcRes.data) {
+        setServicesData(svcRes.data);
+        if (service_id) {
+          const flat: ProviderService[] = (svcRes.data.categories || []).flatMap((c) => c.services);
+          const svc = flat.find((s) => s.id === service_id || s.variants?.some((v) => v.id === service_id));
+          if (svc) setSelectedService(svc);
+        }
+      }
+
+      const staffRaw = staffRes.data;
+      const staffList: StaffMember[] = Array.isArray(staffRaw) ? staffRaw : (staffRaw as { data: StaffMember[] })?.data || [];
+      setStaff(staffList);
+      if (staffList.length === 1) setSelectedStaff(staffList[0]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }, [slug, service_id]);
+
+  useEffect(() => { loadProviderAndServices(); }, [loadProviderAndServices]);
+
+  const effectiveDuration = selectedVariant
+    ? selectedVariant.duration_minutes
+    : selectedService
+      ? selectedService.variants?.[0]?.duration_minutes ?? selectedService.duration_minutes
+      : parseInt(duration_minutes || "60", 10);
+  const effectiveOfferingId = selectedVariant
+    ? selectedVariant.id
+    : selectedService
+      ? selectedService.variants?.[0]?.id || selectedService.id
+      : service_id;
+
+  const loadSlots = useCallback(async () => {
+    if (!slug || !effectiveOfferingId || !selectedDate || !selectedStaff) return;
+    setLoadingSlots(true);
+    try {
+      const dateStr = selectedDate.toISOString().split("T")[0];
+      const params = new URLSearchParams({
+        date: dateStr,
+        service_id: effectiveOfferingId,
+        staff_id: selectedStaff.id,
+        duration_minutes: String(effectiveDuration),
+      });
+      if (locationType === "at_salon" && selectedLocation?.id) {
+        params.set("location_id", selectedLocation.id);
+      }
+      const res = await api.get<{ slots?: AvailabilitySlot[]; data?: AvailabilitySlot[] }>(
+        `/api/public/providers/${encodeURIComponent(slug)}/availability?${params}`
+      );
+      const data = (res.data ?? {}) as { slots?: AvailabilitySlot[]; data?: AvailabilitySlot[] };
+      setSlots(data.slots ?? data.data ?? []);
+      setSelectedSlot(null);
+    } catch {
+      setSlots([]);
+    } finally {
+      setLoadingSlots(false);
+    }
+  }, [slug, effectiveOfferingId, effectiveDuration, selectedDate, selectedStaff, locationType, selectedLocation]);
+
+  useEffect(() => {
+    if (step === "time" && selectedDate && selectedStaff) loadSlots();
+  }, [step, selectedDate, selectedStaff, loadSlots]);
+
+  const createHold = useCallback(async () => {
+    if (!provider || !selectedService || !selectedStaff || !selectedSlot) return;
+    setCreatingHold(true);
+    try {
+      const latLng = atHomeCoords ?? (coords ? { latitude: coords.latitude, longitude: coords.longitude } : null);
+      const address = locationType === "at_home"
+        ? { line1: atHomeAddress.line1, city: atHomeAddress.city, country: atHomeAddress.country, latitude: latLng?.latitude, longitude: latLng?.longitude }
+        : undefined;
+
+      const res = await api.post<{ hold_id?: string; id?: string }>("/api/public/booking-holds", {
+        provider_id: provider.id,
+        staff_id: selectedStaff.id,
+        services: [{ offering_id: effectiveOfferingId, staff_id: selectedStaff.id }],
+        start_at: selectedSlot.start,
+        end_at: selectedSlot.end,
+        location_type: locationType,
+        location_id: locationType === "at_salon" ? selectedLocation?.id : null,
+        address,
+      });
+
+      const holdData = (res.data ?? {}) as { hold_id?: string; id?: string };
+      const holdId = holdData.hold_id ?? holdData.id;
+      if (res.error || !holdId) {
+        setError(res.error?.message || "Failed to reserve slot");
+        return;
+      }
+
+      haptic.success();
+      router.replace({
+        pathname: "/(app)/book-checkout",
+        params: {
+          hold_id: holdId,
+          service_name: selectedVariant?.title ?? selectedService.title,
+          provider_name: provider.business_name,
+          provider_thumbnail: provider.thumbnail_url ?? "",
+        },
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create booking");
+    } finally {
+      setCreatingHold(false);
+    }
+  }, [provider, selectedService, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, coords, effectiveOfferingId, selectedLocation, selectedVariant]);
+
+  const goBack = useCallback(() => {
+    haptic.light();
+    if (step === "venue") setStep("service");
+    else if (step === "staff") setStep("venue");
+    else if (step === "date") setStep(staff.length ? "staff" : "venue");
+    else if (step === "time") setStep("date");
+    else router.back();
+  }, [step, staff.length]);
+
+  /* ═══ Loading skeleton ═══ */
+  if (loading && !provider) {
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={{ flex: 1, backgroundColor: "#fff" }}>
+          {/* Custom header skeleton */}
+          <View style={{ flexDirection: "row", alignItems: "center", paddingTop: 52, paddingHorizontal: 16, paddingBottom: 12, gap: 12, backgroundColor: "#fff" }}>
+            <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: "#F3F4F6" }} />
+            <Skeleton width="40%" height={18} />
+          </View>
+          <View style={{ paddingHorizontal: 16, gap: 12 }}>
+            {/* Step indicator skeleton */}
+            <View style={{ flexDirection: "row", gap: 8, paddingVertical: 12 }}>
+              {[1, 2, 3, 4].map((i) => <Skeleton key={i} width={28} height={28} borderRadius={14} />)}
+            </View>
+            {/* Provider summary skeleton */}
+            <View style={{ flexDirection: "row", gap: 12, backgroundColor: "#F9FAFB", borderRadius: 16, padding: 12 }}>
+              <Skeleton width={44} height={44} borderRadius={22} />
+              <View style={{ flex: 1, gap: 6 }}>
+                <Skeleton width="60%" height={16} />
+                <Skeleton width="80%" height={12} />
+              </View>
+            </View>
+            {/* Service list skeleton */}
+            <Skeleton width="30%" height={20} />
+            {[1, 2, 3, 4].map((i) => (
+              <View key={i} style={{ paddingVertical: 14, borderBottomWidth: 1, borderColor: "#F3F4F6", gap: 6 }}>
+                <Skeleton width="70%" height={16} />
+                <Skeleton width="40%" height={12} />
+              </View>
+            ))}
+          </View>
+        </View>
+      </>
+    );
+  }
+
+  /* ═══ Error state ═══ */
+  if (error && !provider) {
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={{ flex: 1, backgroundColor: "#fff", padding: 24, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="alert-circle-outline" size={48} color="#9CA3AF" />
+          <Text style={{ color: "#6B7280", marginTop: 12, textAlign: "center", fontSize: 15 }}>{error}</Text>
+          <TouchableOpacity
+            onPress={loadProviderAndServices}
+            style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 20 }}
+            accessibilityRole="button"
+          >
+            <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </>
+    );
+  }
+
+  if (!provider || !servicesData) return null;
+
+  const allServices = servicesData.categories.flatMap((c) => c.services);
+  const today = new Date();
+  const weekStart = addDays(today, weekOffset * 7);
+  const weekDays = [...Array(7)].map((_, i) => addDays(weekStart, i)).filter((d) => d >= today || isSameDay(d, today));
+
+  return (
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={{ flex: 1, backgroundColor: "#fff" }}>
+        {/* ═══ Custom Header ═══ */}
+        <View style={{
+          flexDirection: "row", alignItems: "center", paddingTop: 52, paddingHorizontal: 16, paddingBottom: 8,
+          backgroundColor: "#fff", borderBottomWidth: 1, borderColor: "#F3F4F6",
+        }}>
+          <TouchableOpacity
+            onPress={goBack}
+            style={{
+              width: 38, height: 38, borderRadius: 19, backgroundColor: "#F3F4F6",
+              alignItems: "center", justifyContent: "center",
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="arrow-back" size={20} color="#111827" />
+          </TouchableOpacity>
+          <Text style={{ flex: 1, fontSize: 18, fontWeight: "700", color: "#111827", marginLeft: 12 }}>Book Appointment</Text>
+          <Text style={{ fontSize: 12, color: "#9CA3AF", fontWeight: "500" }}>
+            {STEP_LABELS[step]}
+          </Text>
+        </View>
+
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={0}
+        >
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Step Indicator */}
+            <StepIndicator steps={visibleSteps} current={step} />
+
+            {/* Provider Summary */}
+            <BookingSummaryHeader provider={provider} service={selectedService} variant={selectedVariant} />
+
+            {/* Error banner */}
+            {error && (
+              <View style={{ backgroundColor: "#FEF2F2", borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                <Text style={{ color: "#B91C1C", fontSize: 13 }}>{error}</Text>
+              </View>
+            )}
+
+            {/* ── Step: Service ── */}
+            {step === "service" && (
+              <View>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Select a service</Text>
+                {allServices.map((svc) => {
+                  const hasVariants = svc.variants && svc.variants.length > 1;
+                  const isSelected = selectedService?.id === svc.id;
+                  return (
+                    <View key={svc.id} style={{ marginBottom: 4 }}>
+                      <Pressable
+                        onPress={() => {
+                          if (!hasVariants) {
+                            haptic.light();
+                            setSelectedService(svc);
+                            setSelectedVariant(null);
+                            setStep("venue");
+                          }
+                        }}
+                        style={{
+                          flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+                          paddingVertical: 14, paddingHorizontal: 14, borderRadius: 12, marginBottom: 2,
+                          backgroundColor: isSelected && !hasVariants ? Colors.primaryLight : "#fff",
+                          borderWidth: 1, borderColor: isSelected && !hasVariants ? Colors.primary : "#F3F4F6",
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${svc.title}, ${svc.duration_minutes} minutes, ${svc.currency} ${svc.price}`}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontWeight: "600", color: "#111827", fontSize: 15 }}>{svc.title}</Text>
+                          <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
+                            {hasVariants ? "Multiple options available" : `${svc.duration_minutes} min · ${svc.currency} ${svc.price.toFixed(2)}`}
+                          </Text>
+                        </View>
+                        {!hasVariants && (
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                            {isSelected && <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />}
+                            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+                          </View>
+                        )}
+                        {hasVariants && <Ionicons name="chevron-down" size={18} color="#9CA3AF" />}
+                      </Pressable>
+                      {hasVariants && (
+                        <View style={{ paddingLeft: 12, gap: 6, marginBottom: 8 }}>
+                          {svc.variants!.map((v) => {
+                            const vSelected = selectedVariant?.id === v.id;
+                            return (
+                              <Pressable
+                                key={v.id}
+                                onPress={() => {
+                                  haptic.light();
+                                  setSelectedService(svc);
+                                  setSelectedVariant(v);
+                                  setStep("venue");
+                                }}
+                                style={{
+                                  flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+                                  borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12,
+                                  backgroundColor: vSelected ? Colors.primaryLight : "#F9FAFB",
+                                  borderColor: vSelected ? Colors.primary : "#E5E7EB",
+                                }}
+                                accessibilityRole="button"
+                                accessibilityLabel={`${v.title ?? svc.title} ${v.duration_minutes} minutes ${svc.currency} ${v.price}`}
+                              >
+                                <View>
+                                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{v.title ?? `${v.duration_minutes} min`}</Text>
+                                  <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{v.duration_minutes} min</Text>
+                                </View>
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                  <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.primary }}>{svc.currency} {v.price.toFixed(2)}</Text>
+                                  {vSelected && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
+                                </View>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* ── Step: Venue ── */}
+            {step === "venue" && selectedService && (
+              <View>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Where would you like your service?</Text>
+                {provider.supports_salon && (
+                  <Pressable
+                    onPress={() => {
+                      haptic.light();
+                      setLocationType("at_salon");
+                      setSelectedLocation(provider.locations?.[0] || null);
+                      setStep(staff.length ? "staff" : "date");
+                    }}
+                    style={{
+                      flexDirection: "row", alignItems: "center", gap: 14,
+                      padding: 16, borderRadius: 16, marginBottom: 10,
+                      borderWidth: 1.5, borderColor: locationType === "at_salon" ? Colors.primary : "#E5E7EB",
+                      backgroundColor: locationType === "at_salon" ? Colors.primaryLight : "#fff",
+                    }}
+                    accessibilityRole="button" accessibilityLabel="At salon"
+                  >
+                    <View style={{
+                      width: 48, height: 48, borderRadius: 12, backgroundColor: "#EDE9FE",
+                      alignItems: "center", justifyContent: "center",
+                    }}>
+                      <Ionicons name="business-outline" size={24} color="#7C3AED" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontWeight: "600", color: "#111827", fontSize: 15 }}>At Salon</Text>
+                      {provider.locations?.[0] && (
+                        <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{provider.locations[0].name}</Text>
+                      )}
+                    </View>
+                    {locationType === "at_salon" && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
+                  </Pressable>
+                )}
+                {provider.supports_house_calls && selectedService.supports_at_home && (
+                  <Pressable
+                    onPress={() => {
+                      haptic.light();
+                      setLocationType("at_home");
+                      if (primaryAddress) {
+                        setAtHomeAddress({
+                          line1: primaryAddress.displayName || primaryAddress.label || "",
+                          city: "",
+                          country: "ZA",
+                        });
+                        setAtHomeCoords({ latitude: primaryAddress.latitude, longitude: primaryAddress.longitude });
+                      } else {
+                        setAtHomeCoords(coords ? { latitude: coords.latitude, longitude: coords.longitude } : null);
+                      }
+                    }}
+                    style={{
+                      flexDirection: "row", alignItems: "center", gap: 14,
+                      padding: 16, borderRadius: 16, marginBottom: 10,
+                      borderWidth: 1.5, borderColor: locationType === "at_home" ? Colors.primary : "#E5E7EB",
+                      backgroundColor: locationType === "at_home" ? Colors.primaryLight : "#fff",
+                    }}
+                    accessibilityRole="button" accessibilityLabel="At my location"
+                  >
+                    <View style={{
+                      width: 48, height: 48, borderRadius: 12, backgroundColor: "#ECFDF5",
+                      alignItems: "center", justifyContent: "center",
+                    }}>
+                      <Ionicons name="home-outline" size={24} color="#059669" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontWeight: "600", color: "#111827", fontSize: 15 }}>At My Location</Text>
+                      <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>We&apos;ll come to you</Text>
+                    </View>
+                    {locationType === "at_home" && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
+                  </Pressable>
+                )}
+                {locationType === "at_home" && (
+                  <View style={{ marginTop: 8, gap: 10 }}>
+                    {user && savedAddresses.length > 0 && (
+                      <View style={{ marginBottom: 4 }}>
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: "#6B7280", marginBottom: 8 }}>Saved addresses</Text>
+                        {savedAddresses.map((addr: SavedAddress) => {
+                          const isSelected = atHomeAddress.line1 === addr.address_line1 && atHomeAddress.city === addr.city;
+                          return (
+                            <Pressable
+                              key={addr.id}
+                              onPress={() => {
+                                haptic.light();
+                                setAtHomeAddress({
+                                  line1: addr.address_line1,
+                                  city: addr.city,
+                                  country: addr.country || "ZA",
+                                });
+                                setAtHomeCoords(
+                                  addr.latitude != null && addr.longitude != null
+                                    ? { latitude: addr.latitude, longitude: addr.longitude }
+                                    : null
+                                );
+                              }}
+                              style={{
+                                flexDirection: "row", alignItems: "center", gap: 10,
+                                paddingVertical: 12, paddingHorizontal: 14, marginBottom: 6,
+                                borderRadius: 12, borderWidth: 1.5,
+                                borderColor: isSelected ? Colors.primary : "#E5E7EB",
+                                backgroundColor: isSelected ? Colors.primaryLight : "#F9FAFB",
+                              }}
+                            >
+                              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#E5E7EB", alignItems: "center", justifyContent: "center" }}>
+                                <Ionicons name={addr.is_default ? "star" : "home-outline"} size={18} color={isSelected ? Colors.primary : "#6B7280"} />
+                              </View>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{addr.label}</Text>
+                                <Text style={{ fontSize: 12, color: "#6B7280" }} numberOfLines={1}>{addr.address_line1}, {addr.city}</Text>
+                              </View>
+                              {isSelected && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
+                            </Pressable>
+                          );
+                        })}
+                        <TouchableOpacity
+                          onPress={() => { haptic.light(); setAddressPickerVisible(true); }}
+                          style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10 }}
+                        >
+                          <Ionicons name="search-outline" size={18} color={Colors.primary} />
+                          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>Enter different address</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    {(!user || savedAddresses.length === 0) && (
+                      <TouchableOpacity
+                        onPress={() => { haptic.light(); setAddressPickerVisible(true); }}
+                        style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8, marginBottom: 4 }}
+                      >
+                        <Ionicons name="location-outline" size={18} color={Colors.primary} />
+                        <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>Search address</Text>
+                      </TouchableOpacity>
+                    )}
+                    <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>Or enter manually</Text>
+                    <TextInput
+                      placeholder="Street address"
+                      value={atHomeAddress.line1}
+                      onChangeText={(t) => { setAtHomeAddress((a) => ({ ...a, line1: t })); if (!atHomeCoords && coords) setAtHomeCoords({ latitude: coords.latitude, longitude: coords.longitude }); }}
+                      style={{
+                        borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
+                        fontSize: 15, color: "#111827", backgroundColor: "#F9FAFB",
+                      }}
+                      placeholderTextColor="#9CA3AF"
+                      accessibilityLabel="Street address"
+                    />
+                    <TextInput
+                      placeholder="City"
+                      value={atHomeAddress.city}
+                      onChangeText={(t) => setAtHomeAddress((a) => ({ ...a, city: t }))}
+                      style={{
+                        borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
+                        fontSize: 15, color: "#111827", backgroundColor: "#F9FAFB",
+                      }}
+                      placeholderTextColor="#9CA3AF"
+                      accessibilityLabel="City"
+                    />
+                    <TouchableOpacity
+                      onPress={() => { haptic.medium(); setStep(staff.length ? "staff" : "date"); }}
+                      disabled={!atHomeAddress.line1.trim() || !atHomeAddress.city.trim()}
+                      style={{
+                        backgroundColor: (!atHomeAddress.line1.trim() || !atHomeAddress.city.trim()) ? "#D1D5DB" : Colors.primary,
+                        borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 4,
+                      }}
+                      accessibilityRole="button" accessibilityLabel="Continue"
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Continue</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* ── Step: Staff ── */}
+            {step === "staff" && staff.length > 0 && (
+              <View>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Choose your professional</Text>
+                {staff.map((s) => {
+                  const isSelected = selectedStaff?.id === s.id;
+                  const initial = (s.name || "S").charAt(0).toUpperCase();
+                  return (
+                    <Pressable
+                      key={s.id}
+                      onPress={() => {
+                        haptic.light();
+                        setSelectedStaff(s);
+                        setStep("date");
+                      }}
+                      style={{
+                        flexDirection: "row", alignItems: "center", gap: 12,
+                        padding: 14, borderRadius: 16, marginBottom: 8,
+                        borderWidth: 1.5, borderColor: isSelected ? Colors.primary : "#F3F4F6",
+                        backgroundColor: isSelected ? Colors.primaryLight : "#fff",
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Select ${s.name}`}
+                    >
+                      {s.avatar_url ? (
+                        <Image source={{ uri: s.avatar_url }} style={{ width: 48, height: 48, borderRadius: 24 }} contentFit="cover" cachePolicy="memory-disk" />
+                      ) : (
+                        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" }}>
+                          <Text style={{ color: "#6B7280", fontWeight: "700", fontSize: 18 }}>{initial}</Text>
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827" }}>{s.name}</Text>
+                        {s.role && <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{s.role}</Text>}
+                      </View>
+                      {isSelected && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* ── Step: Date (no staff available fallback) ── */}
+            {step === "date" && staff.length === 0 && (
+              <View style={{ backgroundColor: "#FFFBEB", borderRadius: 16, padding: 20, alignItems: "center" }}>
+                <Ionicons name="alert-circle-outline" size={32} color="#F59E0B" />
+                <Text style={{ color: "#92400E", marginTop: 8, textAlign: "center", fontSize: 14, lineHeight: 20 }}>
+                  Online booking for this provider requires staff selection. Book via the website instead.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => Linking.openURL(`${APP_URL}/book/${slug}`)}
+                  style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 12, marginTop: 14 }}
+                  accessibilityRole="button" accessibilityLabel="Book in browser"
+                >
+                  <Text style={{ color: "#fff", fontWeight: "600" }}>Book in Browser</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* ── Step: Date (week-at-a-glance calendar) ── */}
+            {step === "date" && staff.length > 0 && (
+              <View>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 }}>Pick a date</Text>
+                <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>
+                  {weekStart.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                </Text>
+
+                {/* Week navigation */}
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+                  <TouchableOpacity
+                    onPress={() => { if (weekOffset > 0) setWeekOffset(weekOffset - 1); }}
+                    disabled={weekOffset === 0}
+                    style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: weekOffset === 0 ? "#F3F4F6" : "#E5E7EB", alignItems: "center", justifyContent: "center" }}
+                    accessibilityLabel="Previous week"
+                  >
+                    <Ionicons name="chevron-back" size={18} color={weekOffset === 0 ? "#D1D5DB" : "#111827"} />
+                  </TouchableOpacity>
+
+                  <View style={{ flex: 1, flexDirection: "row", marginHorizontal: 4 }}>
+                    {weekDays.map((d) => (
+                      <DateCell
+                        key={d.toISOString()}
+                        date={d}
+                        isSelected={selectedDate ? isSameDay(d, selectedDate) : false}
+                        isToday={isSameDay(d, today)}
+                        onPress={() => {
+                          haptic.light();
+                          setSelectedDate(d);
+                          setStep("time");
+                        }}
+                      />
+                    ))}
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => { if (weekOffset < 4) setWeekOffset(weekOffset + 1); }}
+                    disabled={weekOffset >= 4}
+                    style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: weekOffset >= 4 ? "#F3F4F6" : "#E5E7EB", alignItems: "center", justifyContent: "center" }}
+                    accessibilityLabel="Next week"
+                  >
+                    <Ionicons name="chevron-forward" size={18} color={weekOffset >= 4 ? "#D1D5DB" : "#111827"} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Quick jump: "Next week" chip */}
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+                  {["Today", "Tomorrow", "Next week"].map((label, i) => {
+                    const targetDate = i === 0 ? today : i === 1 ? addDays(today, 1) : addDays(today, 7);
+                    return (
+                      <TouchableOpacity
+                        key={label}
+                        onPress={() => {
+                          haptic.light();
+                          setSelectedDate(targetDate);
+                          if (i === 2) setWeekOffset(1);
+                          else setWeekOffset(0);
+                          setStep("time");
+                        }}
+                        style={{
+                          backgroundColor: "#F3F4F6", borderRadius: 999,
+                          paddingHorizontal: 14, paddingVertical: 8,
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: "500", color: "#374151" }}>{label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* ── Step: Time ── */}
+            {step === "time" && selectedDate && (
+              <View>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 }}>Pick a time</Text>
+                <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 16 }}>
+                  {selectedDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+                </Text>
+
+                {loadingSlots ? (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                      <Skeleton key={i} width={80} height={44} borderRadius={12} />
+                    ))}
+                  </View>
+                ) : slots.length === 0 ? (
+                  <View style={{ alignItems: "center", paddingVertical: 24 }}>
+                    <Ionicons name="time-outline" size={36} color="#D1D5DB" />
+                    <Text style={{ color: "#6B7280", marginTop: 8, fontSize: 14 }}>No available slots for this date.</Text>
+                    <TouchableOpacity
+                      onPress={() => setStep("date")}
+                      style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, marginTop: 12 }}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "600" }}>Try Another Date</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                    {slots.map((slot, i) => {
+                      const timeStr = new Date(slot.start).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+                      const isSelected = selectedSlot?.start === slot.start;
+                      return (
+                        <TouchableOpacity
+                          key={i}
+                          onPress={() => { haptic.light(); setSelectedSlot(slot); }}
+                          style={{
+                            paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12,
+                            borderWidth: 1.5,
+                            backgroundColor: isSelected ? Colors.primary : "#fff",
+                            borderColor: isSelected ? Colors.primary : "#E5E7EB",
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Select time ${timeStr}`}
+                          accessibilityState={{ selected: isSelected }}
+                        >
+                          <Text style={{
+                            fontWeight: "600", fontSize: 14,
+                            color: isSelected ? "#fff" : "#111827",
+                          }}>
+                            {timeStr}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </View>
+            )}
+          </ScrollView>
+
+          {/* ═══ Sticky Bottom CTA ═══ */}
+          {step === "time" && selectedSlot && (
+            <View style={{
+              paddingHorizontal: 16, paddingVertical: 12, paddingBottom: 28,
+              borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
+            }}>
+              <TouchableOpacity
+                onPress={() => { haptic.medium(); createHold(); }}
+                disabled={creatingHold}
+                style={{
+                  backgroundColor: Colors.primary, borderRadius: 14, paddingVertical: 16,
+                  alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8,
+                  opacity: creatingHold ? 0.7 : 1,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={user ? "Continue to payment" : "Sign in to continue"}
+                accessibilityState={{ disabled: creatingHold }}
+              >
+                {creatingHold ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: "rgba(255,255,255,0.3)", borderTopColor: "#fff" }} />
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Reserving...</Text>
+                  </View>
+                ) : (
+                  <>
+                    <Ionicons name="shield-checkmark-outline" size={20} color="#fff" />
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
+                      {user ? "Continue to Payment" : "Sign in to Continue"}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </KeyboardAvoidingView>
+      </View>
+      <AddressPicker
+        visible={addressPickerVisible}
+        onClose={() => setAddressPickerVisible(false)}
+        onSelect={(addr) => {
+          const display = addr.displayName || addr.label || "";
+          const parts = display.split(",").map((s) => s.trim()).filter(Boolean);
+          setAtHomeAddress({
+            line1: parts[0] || display || "",
+            city: parts[1] || parts[0] || "",
+            country: "ZA",
+          });
+          setAtHomeCoords({ latitude: addr.latitude, longitude: addr.longitude });
+          setAddressPickerVisible(false);
+        }}
+        onUseCurrentLocation={() => {
+          if (coords) {
+            setAtHomeCoords({ latitude: coords.latitude, longitude: coords.longitude });
+            setAtHomeAddress((a) => ({ ...a, line1: a.line1 || "Current location", city: a.city || "" }));
+          }
+          setAddressPickerVisible(false);
+        }}
+      />
+    </>
+  );
+}

@@ -36,7 +36,7 @@ const notificationSections = [
   {
     id: "inspiration_and_offers",
     title: "Inspiration and offers",
-    description: "Inspiring stays, experiences, and deals.",
+    description: "News, tips, and offers from Beautonomi.",
     icon: Gift,
   },
   {

@@ -1,7 +1,7 @@
 'use client'
 import { Button } from "@/components/ui/button";
 import Image, { StaticImageData } from "next/image";
-import Image1 from "./../../../../public/images/getting-started-on-airbnb-optimized.jpg";
+import Image1 from "./../../../../public/images/getting-started-optimized.jpg";
 import LoginModal from "@/components/global/login-modal";
 import { useState } from "react";
 
@@ -46,24 +46,24 @@ export default function ArticlePage() {
     {
       type: "paragraph",
       content:
-        "Whether you want to book a dream stay away from home or Beauty Partner an Beautonomi Experience in your own backyard, here’s how Beautonomi works for you—as a Beauty Partner or a guest. Let’s start with the basics and go from there. Welcome to the community!",
+        "Whether you want to book beauty and wellness services or offer your skills as a provider, here’s how Beautonomi works for you. Let’s start with the basics. Welcome to the community!",
     },
     {
       type: "section",
       title: "The Beautonomi community",
       paragraphs: [
-        "Beautonomi is a community based on connection and belonging. We take the safety of our Hosts and guests very seriously—Hosts must meet and maintain quality standards, and all personal profiles and listings are verified. We work to keep everyone safe on our site and app with encrypted personal data and a trusted payment system. Plus, we have a 24/7 community support team ready to answer any of your questions.",
+        "Beautonomi is a community built on trust and connection. We take the safety of our providers and customers seriously—providers meet quality standards, and profiles are verified. We use encrypted personal data and a trusted payment system, and our support team is here to help.",
       ],
       subsections: [
         {
-          title: "Host Reliability Standards",
+          title: "Provider standards",
           content:
-            "Standards for Hosts of stays including more about listing accuracy, cleanliness, and communication.",
+            "Standards for providers including listing accuracy, service quality, and communication.",
         },
         {
-          title: "Guest Reliability Standards",
+          title: "Customer standards",
           content:
-            "Standards for guests on stays including more about respect for the community, the space, and the house rules.",
+            "Guidelines for customers including respect for providers, cancellation policies, and reviews.",
         },
       ],
     },
@@ -71,41 +71,41 @@ export default function ArticlePage() {
       type: "section",
       title: "Getting set up",
       paragraphs: [
-        "Creating an account is free and easy! We’ll need to know a few basic details and then you’ll be asked to submit your government ID—which we don’t share with Hosts or anyone else. Now you’re ready to book!",
+        "Creating an account is free and easy. We’ll need a few basic details and may ask for ID verification—which we don’t share with providers or anyone else. Then you’re ready to book or offer services!",
       ],
       subsections: [
         {
           title: "Creating an account",
-          content: "Find easy-to-follow instructions to create an account.",
+          content: "Step-by-step instructions to create your account.",
         },
         {
           title: "How to submit your ID",
           content:
-            "Details what info you’ll need to share, plus troubleshooting when you’re uploading your government ID.",
+            "What info you’ll need to share and troubleshooting for uploading your government ID.",
         },
         {
-          title: "Booking a trip: What to do if you’re new",
+          title: "Booking a service: what to do if you’re new",
           content:
-            "Learn about Beautonomi booking process, how to confirm your reservation, special offers, and more.",
+            "How booking works on Beautonomi, how to confirm your appointment, and special offers.",
         },
       ],
     },
     {
       type: "section",
-      title: "Beauty partner basics",
+      title: "Provider basics",
       paragraphs: [
-        "If you’re interested in beauty partner your space, we’ll guide you through the process step-by-step. To Beauty Partner Experiences, just review our quality standards, create a listing, and submit your compelling idea (through a form or a short video if you’re submitting an online experience) for review. ",
+        "If you want to offer beauty or wellness services on Beautonomi, we’ll guide you step-by-step. Review our quality standards, create your profile and service listings, and submit for review.",
       ],
       subsections: [
         {
-          title: "All the ways to Beauty Partner on Beautonomi",
+          title: "All the ways to provide on Beautonomi",
           content:
-            "Details and all the fine print about beauty partner a place to stay or an Beautonomi experience.",
+            "Details on offering in-person services, at-home or in-salon, and how payments work.",
         },
         {
-          title: "Creating new Experiences",
+          title: "Creating and managing your services",
           content:
-            "Find the basic info you’ll need to have when submitting an Experience.",
+            "What you need to set up your services, pricing, availability, and policies.",
         },
       ],
     },
@@ -113,21 +113,22 @@ export default function ArticlePage() {
 
   const relatedArticles = [
     {
-      category: "Guest",
+      category: "Customer",
       title: "Create an account",
       description:
-        "Signing up is free—use your email address, phone number, Facebook or Google account, or Apple ID.",
+        "Signing up is free—use your email, phone number, or sign in with Google or Apple.",
     },
     {
-      category: "Guest",
-      title: "Booking a trip: what to do if you’re new",
+      category: "Customer",
+      title: "Booking a service: what to do if you’re new",
       description:
-        "Learn about Beautonomi booking process, how to confirm your reservation, special offers direct from a Host, and more.",
+        "How booking works on Beautonomi, how to confirm your appointment, and offers from providers.",
     },
     {
-      title: "Paying for your trip",
+      category: "Customer",
+      title: "Paying for your booking",
       description:
-        "When are you charged for a reservation? What do you do if you can’t complete your transaction? Let’s break down the financials and get answe…",
+        "When you’re charged, what happens if payment fails, and how refunds work.",
     },
   ];
   const [isModalOpen, setIsModalOpen] = useState(false); 
@@ -260,7 +261,7 @@ export default function ArticlePage() {
         </div>
         <div className="w-full h-full max-w-72 p-4 mt-10 border rounded-md md:mt-10 md:ml-10">
           <h2 className="mb-3 text-base font-normal ">
-            Get help with your reservations, account, and more.
+            Get help with your bookings, account, and more.
           </h2>
           <Button className="w-full" variant="secondary" size="sm" onClick={handleLoginClick}>
             Log in or sign up

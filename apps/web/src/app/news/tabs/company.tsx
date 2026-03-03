@@ -9,123 +9,27 @@ import { Button } from "@/components/ui/button";
 const imageData = [
   {
     src: Image1,
-    caption: "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/" 
-},
+    caption: "Beautonomi supports arts and culture in our communities",
+    date: "August 15, 2024",
+    link: "/news",
+  },
   {
     src: Image2,
-    caption: "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
-    date: "August 8,2024",
-    link: "/" 
+    caption: "Beautonomi Q2 2024 company update",
+    date: "August 8, 2024",
+    link: "/news",
   },
   {
     src: Image1,
-    caption: "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/" 
+    caption: "Joining forces with industry partners to combat payment fraud",
+    date: "August 5, 2024",
+    link: "/news",
   },
   {
     src: Image2,
-    caption: "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
-    date: "August 8,2024",
-    link: "/" 
-  },
-  {
-    src: Image1,
-    caption: "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/" 
-},
-  {
-    src: Image2,
-    caption: "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
-    date: "August 8,2024",
-    link: "/" 
-  },
-  {
-    src: Image1,
-    caption: "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/" 
-  },
-  {
-    src: Image2,
-    caption: "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
-    date: "August 8,2024",
-    link: "/" 
-  },
-  {
-    src: Image1,
-    caption: "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/" 
-},
-  {
-    src: Image2,
-    caption: "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
-    date: "August 8,2024",
-    link: "/" 
-  },
-  {
-    src: Image1,
-    caption: "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/" 
-  },
-  {
-    src: Image2,
-    caption: "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
-    date: "August 8,2024",
-    link: "/" 
-  },
-  {
-    src: Image1,
-    caption: "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/" 
-},
-  {
-    src: Image2,
-    caption: "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
-    date: "August 8,2024",
-    link: "/" 
-  },
-  {
-    src: Image1,
-    caption: "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/" 
-  },
-  {
-    src: Image2,
-    caption: "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
-    date: "August 8,2024",
-    link: "/" 
-  },
-  {
-    src: Image1,
-    caption: "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/" 
-},
-  {
-    src: Image2,
-    caption: "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
-    date: "August 8,2024",
-    link: "/" 
-  },
-  {
-    src: Image1,
-    caption: "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
-    link: "/" 
-  },
-  {
-    src: Image2,
-    caption: "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
-    date: "August 8,2024",
-    link: "/" 
+    caption: "What makes Beautonomi, Beautonomi",
+    date: "August 7, 2024",
+    link: "/news",
   },
 ];
 

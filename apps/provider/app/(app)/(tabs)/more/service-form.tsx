@@ -1,0 +1,661 @@
+import { useState, useEffect, useCallback } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  ScrollView,
+  TouchableOpacity,
+  Switch,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+} from "react-native";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { useApi, useApiMutation } from "@/hooks/useApi";
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ActionButton } from "@/components/ui/ActionButton";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { BottomSheet } from "@/components/ui/BottomSheet";
+
+interface ServiceCategory {
+  id: string;
+  name: string;
+  color?: string | null;
+}
+
+interface StaffMember {
+  id: string;
+  name: string;
+  email?: string;
+}
+
+interface Service {
+  id: string;
+  title?: string;
+  name?: string;
+  provider_category_id?: string | null;
+  service_type?: string;
+  duration_minutes?: number;
+  price?: number;
+  price_type?: string;
+  pricing_name?: string | null;
+  pricing_options?: { duration: number; price_type: string; price: number; pricing_name?: string }[];
+  description?: string | null;
+  aftercare_description?: string | null;
+  service_available_for?: string;
+  online_booking_enabled?: boolean;
+  supports_at_salon?: boolean;
+  supports_at_home?: boolean;
+  at_home_radius_km?: number | null;
+  at_home_price_adjustment?: number;
+  team_member_ids?: string[];
+  team_member_commission_enabled?: boolean;
+  tax_rate?: number;
+  is_active?: boolean;
+}
+
+function FormField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+  multiline,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  keyboardType?: "default" | "numeric" | "decimal-pad";
+  multiline?: boolean;
+}) {
+  return (
+    <View className="mb-3">
+      <Text className="mb-1 text-sm font-medium text-gray-700">{label}</Text>
+      <TextInput
+        className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+        placeholder={placeholder}
+        placeholderTextColor="#9ca3af"
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        multiline={multiline}
+        numberOfLines={multiline ? 3 : 1}
+        textAlignVertical={multiline ? "top" : "center"}
+        accessibilityLabel={label}
+      />
+    </View>
+  );
+}
+
+const defaultForm = {
+  name: "",
+  categoryId: "",
+  serviceType: "basic",
+  durationMinutes: "60",
+  price: "",
+  pricingName: "",
+  description: "",
+  aftercareDescription: "",
+  availableFor: "everyone",
+  onlineBookable: true,
+  supportsAtSalon: true,
+  supportsAtHome: false,
+  atHomeRadiusKm: "",
+  atHomePriceAdjustment: "0",
+  taxRate: "0",
+  teamMemberIds: [] as string[],
+  teamMemberCommissionEnabled: false,
+  isActive: true,
+};
+
+export default function ServiceFormScreen() {
+  const router = useRouter();
+  const { id: serviceId } = useLocalSearchParams<{ id?: string }>();
+  const isEdit = !!serviceId;
+
+  const { data: categoriesRes, refresh: refreshCategories } = useApi<{ data?: { own_categories?: ServiceCategory[] }; own_categories?: ServiceCategory[] }>(
+    "/api/provider/categories"
+  );
+  const { data: service, loading: loadingService, error: serviceError } = useApi<Service>(
+    serviceId ? `/api/provider/services/${serviceId}` : "",
+    { enabled: !!serviceId }
+  );
+  const { data: staffData } = useApi<StaffMember[] | { data?: StaffMember[] }>("/api/provider/staff");
+  const { data: refData } = useApi<Record<string, { value: string; label: string }[]> | unknown>(
+    "/api/provider/reference-data?type=service_type,availability,tax_rate"
+  );
+
+  const { execute: createService, loading: creating } = useApiMutation("post");
+  const { execute: updateService, loading: updating } = useApiMutation("patch");
+  const { execute: postMutation } = useApiMutation("post");
+
+  const categories =
+    categoriesRes?.own_categories ??
+    (categoriesRes as any)?.data?.own_categories ??
+    [];
+  const staff = Array.isArray(staffData) ? staffData : (staffData as any)?.data ?? [];
+  const refObj = refData && typeof refData === "object" && !Array.isArray(refData)
+    ? (refData as Record<string, { value: string; label: string }[]>)
+    : {};
+  const serviceTypeOptions = refObj.service_type?.length ? refObj.service_type : [{ value: "basic", label: "Basic" }, { value: "addon", label: "Add-on" }, { value: "package", label: "Package" }];
+  const availabilityOptions = refObj.availability?.length ? refObj.availability : [{ value: "everyone", label: "Everyone" }, { value: "women", label: "Women" }, { value: "men", label: "Men" }];
+  const taxRateOptions = refObj.tax_rate?.length ? refObj.tax_rate : [{ value: "0", label: "No tax" }, { value: "15", label: "15% VAT" }];
+
+  const [form, setForm] = useState(defaultForm);
+  const [categorySheetOpen, setCategorySheetOpen] = useState(false);
+  const [serviceTypeSheetOpen, setServiceTypeSheetOpen] = useState(false);
+  const [availabilitySheetOpen, setAvailabilitySheetOpen] = useState(false);
+  const [taxSheetOpen, setTaxSheetOpen] = useState(false);
+  const [teamSheetOpen, setTeamSheetOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+
+  useEffect(() => {
+    if (service) {
+      const opts = service.pricing_options?.[0];
+      setForm({
+        name: service.title || service.name || "",
+        categoryId: service.provider_category_id ?? "",
+        serviceType: service.service_type ?? "basic",
+        durationMinutes: String(service.duration_minutes ?? 60),
+        price: String(service.price ?? ""),
+        pricingName: service.pricing_name ?? opts?.pricing_name ?? "",
+        description: service.description ?? "",
+        aftercareDescription: service.aftercare_description ?? "",
+        availableFor: service.service_available_for ?? "everyone",
+        onlineBookable: service.online_booking_enabled !== false,
+        supportsAtSalon: service.supports_at_salon !== false,
+        supportsAtHome: service.supports_at_home ?? false,
+        atHomeRadiusKm: service.at_home_radius_km != null ? String(service.at_home_radius_km) : "",
+        atHomePriceAdjustment: String(service.at_home_price_adjustment ?? 0),
+        taxRate: String(service.tax_rate ?? 0),
+        teamMemberIds: service.team_member_ids ?? [],
+        teamMemberCommissionEnabled: service.team_member_commission_enabled ?? false,
+        isActive: service.is_active !== false,
+      });
+    } else if (!serviceId) {
+      setForm({ ...defaultForm });
+    }
+  }, [service, serviceId]);
+
+  const handleCreateCategory = useCallback(async () => {
+    const name = newCategoryName.trim();
+    if (!name) {
+      Alert.alert("Validation", "Category name is required.");
+      return;
+    }
+    const res = await postMutation("/api/provider/categories", { name }) as { data?: { id: string }; error?: string };
+    if (res.error) {
+      Alert.alert("Error", res.error);
+      return;
+    }
+    setNewCategoryName("");
+    await refreshCategories();
+    if (res.data?.id) {
+      setForm((p) => ({ ...p, categoryId: res.data!.id }));
+    }
+    setCategorySheetOpen(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [newCategoryName, postMutation, refreshCategories]);
+
+  const handleSave = useCallback(async () => {
+    const name = form.name.trim();
+    const price = parseFloat(form.price);
+    const duration = parseInt(form.durationMinutes, 10);
+    if (!name) {
+      Alert.alert("Validation", "Service name is required.");
+      return;
+    }
+    if (!form.categoryId) {
+      Alert.alert("Validation", "Please select a category.");
+      return;
+    }
+    if (isNaN(price) || price < 0) {
+      Alert.alert("Validation", "Price must be a valid number.");
+      return;
+    }
+    if (isNaN(duration) || duration <= 0) {
+      Alert.alert("Validation", "Duration must be a positive number (minutes).");
+      return;
+    }
+
+    const payload = {
+      name,
+      title: name,
+      provider_category_id: form.categoryId,
+      service_type: form.serviceType,
+      duration_minutes: duration,
+      price,
+      pricing_name: form.pricingName || null,
+      price_type: "fixed",
+      description: form.description || null,
+      aftercare_description: form.aftercareDescription || null,
+      service_available_for: form.availableFor,
+      online_booking_enabled: form.onlineBookable,
+      supports_at_salon: form.supportsAtSalon,
+      supports_at_home: form.supportsAtHome,
+      at_home_radius_km: form.supportsAtHome && form.atHomeRadiusKm ? parseFloat(form.atHomeRadiusKm) : null,
+      at_home_price_adjustment: form.supportsAtHome ? parseFloat(form.atHomePriceAdjustment) || 0 : 0,
+      tax_rate: parseFloat(form.taxRate) || 0,
+      team_member_ids: form.teamMemberIds,
+      team_member_commission_enabled: form.teamMemberCommissionEnabled,
+      is_active: form.isActive,
+    };
+
+    if (isEdit && serviceId) {
+      const { error } = await updateService(`/api/provider/services/${serviceId}`, payload);
+      if (error) {
+        Alert.alert("Error", error);
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.back();
+    } else {
+      const { error } = await createService("/api/provider/services", payload);
+      if (error) {
+        Alert.alert("Error", error);
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.back();
+    }
+  }, [form, isEdit, serviceId, createService, updateService, router]);
+
+  const isSaving = creating || updating;
+
+  if (serviceId && loadingService && !service) {
+    return (
+      <ScreenContainer>
+        <ScreenHeader title={isEdit ? "Edit Service" : "Add Service"} onBack={() => router.back()} />
+        <LoadingState message="Loading service..." />
+      </ScreenContainer>
+    );
+  }
+
+  if (serviceId && serviceError && !service) {
+    return (
+      <ScreenContainer>
+        <ScreenHeader title="Edit Service" onBack={() => router.back()} />
+        <View className="flex-1 items-center justify-center p-6">
+          <Text className="text-center text-gray-600">Service not found.</Text>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="mt-4"
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
+            <Text className="text-indigo-600">Go back</Text>
+          </TouchableOpacity>
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  return (
+    <ScreenContainer>
+      <ScreenHeader
+        title={isEdit ? "Edit Service" : "Add Service"}
+        onBack={() => router.back()}
+        rightAction={
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={isSaving}
+            className="min-h-[40px] flex-row items-center justify-center rounded-full bg-indigo-600 px-4"
+            accessibilityLabel="Save service"
+            accessibilityRole="button"
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text className="font-medium text-white">Save</Text>
+            )}
+          </TouchableOpacity>
+        }
+      />
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        className="flex-1"
+      >
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{ paddingBottom: 120 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View className="px-1 pt-2">
+            <FormField
+              label="Service name *"
+              value={form.name}
+              onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
+              placeholder="e.g. Signature Haircut, Full Body Massage"
+            />
+
+            <View className="mb-3">
+              <Text className="mb-1 text-sm font-medium text-gray-700">Category *</Text>
+              <TouchableOpacity
+                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                onPress={() => setCategorySheetOpen(true)}
+                accessibilityLabel={`Category, ${form.categoryId ? categories.find((c: ServiceCategory) => c.id === form.categoryId)?.name ?? "Selected" : "Select category"}`}
+                accessibilityRole="button"
+              >
+                <Text className={form.categoryId ? "text-base text-gray-900" : "text-base text-gray-400"}>
+                  {form.categoryId ? categories.find((c: ServiceCategory) => c.id === form.categoryId)?.name ?? "Selected" : "Select category"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View className="mb-3">
+              <Text className="mb-1 text-sm font-medium text-gray-700">Service type</Text>
+              <TouchableOpacity
+                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                onPress={() => setServiceTypeSheetOpen(true)}
+                accessibilityLabel={`Service type, ${serviceTypeOptions.find((o) => o.value === form.serviceType)?.label ?? form.serviceType}`}
+                accessibilityRole="button"
+              >
+                <Text className="text-base text-gray-900">
+                  {serviceTypeOptions.find((o) => o.value === form.serviceType)?.label ?? form.serviceType}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View className="mb-3 flex-row gap-3">
+              <View className="flex-1">
+                <FormField
+                  label="Duration (min) *"
+                  value={form.durationMinutes}
+                  onChangeText={(t) => setForm((p) => ({ ...p, durationMinutes: t }))}
+                  placeholder="60"
+                  keyboardType="numeric"
+                />
+              </View>
+              <View className="flex-1">
+                <FormField
+                  label="Price *"
+                  value={form.price}
+                  onChangeText={(t) => setForm((p) => ({ ...p, price: t }))}
+                  placeholder="0.00"
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            </View>
+
+            <FormField
+              label="Pricing name (optional)"
+              value={form.pricingName}
+              onChangeText={(t) => setForm((p) => ({ ...p, pricingName: t }))}
+              placeholder="e.g. Standard, Express"
+            />
+
+            <FormField
+              label="Description (optional)"
+              value={form.description}
+              onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
+              placeholder="What clients can expect"
+              multiline
+            />
+            <FormField
+              label="Aftercare instructions (optional)"
+              value={form.aftercareDescription}
+              onChangeText={(t) => setForm((p) => ({ ...p, aftercareDescription: t }))}
+              placeholder="e.g. Avoid washing for 24 hours"
+              multiline
+            />
+
+            <View className="mb-3">
+              <Text className="mb-1 text-sm font-medium text-gray-700">Available for</Text>
+              <TouchableOpacity
+                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                onPress={() => setAvailabilitySheetOpen(true)}
+                accessibilityLabel={`Available for, ${availabilityOptions.find((o) => o.value === form.availableFor)?.label ?? form.availableFor}`}
+                accessibilityRole="button"
+              >
+                <Text className="text-base text-gray-900">
+                  {availabilityOptions.find((o) => o.value === form.availableFor)?.label ?? form.availableFor}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View className="mb-3">
+              <Text className="mb-1 text-sm font-medium text-gray-700">Tax rate</Text>
+              <TouchableOpacity
+                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                onPress={() => setTaxSheetOpen(true)}
+                accessibilityLabel={`Tax rate, ${taxRateOptions.find((o) => o.value === form.taxRate)?.label ?? `${form.taxRate}%`}`}
+                accessibilityRole="button"
+              >
+                <Text className="text-base text-gray-900">
+                  {taxRateOptions.find((o) => o.value === form.taxRate)?.label ?? `${form.taxRate}%`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View className="mb-3">
+              <Text className="mb-1 text-sm font-medium text-gray-700">Team members</Text>
+              <TouchableOpacity
+                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                onPress={() => setTeamSheetOpen(true)}
+                accessibilityLabel={`Team members, ${form.teamMemberIds.length ? `${form.teamMemberIds.length} selected` : "Any team member"}`}
+                accessibilityRole="button"
+              >
+                <Text className="text-base text-gray-900">
+                  {form.teamMemberIds.length === 0
+                    ? "Any team member"
+                    : `${form.teamMemberIds.length} selected`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <Text className="text-sm font-medium text-gray-700">Online bookable</Text>
+              <Switch
+                value={form.onlineBookable}
+                onValueChange={(v) => setForm((p) => ({ ...p, onlineBookable: v }))}
+              />
+            </View>
+
+            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <Text className="text-sm font-medium text-gray-700">Available at salon</Text>
+              <Switch
+                value={form.supportsAtSalon}
+                onValueChange={(v) => setForm((p) => ({ ...p, supportsAtSalon: v }))}
+              />
+            </View>
+            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <Text className="text-sm font-medium text-gray-700">Available at home</Text>
+              <Switch
+                value={form.supportsAtHome}
+                onValueChange={(v) => setForm((p) => ({ ...p, supportsAtHome: v }))}
+              />
+            </View>
+            {form.supportsAtHome && (
+              <>
+                <FormField
+                  label="At-home radius (km)"
+                  value={form.atHomeRadiusKm}
+                  onChangeText={(t) => setForm((p) => ({ ...p, atHomeRadiusKm: t }))}
+                  placeholder="10"
+                  keyboardType="decimal-pad"
+                />
+                <FormField
+                  label="At-home price adjustment (R)"
+                  value={form.atHomePriceAdjustment}
+                  onChangeText={(t) => setForm((p) => ({ ...p, atHomePriceAdjustment: t }))}
+                  placeholder="0"
+                  keyboardType="decimal-pad"
+                />
+              </>
+            )}
+
+            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <Text className="text-sm font-medium text-gray-700">Team commission</Text>
+              <Switch
+                value={form.teamMemberCommissionEnabled}
+                onValueChange={(v) => setForm((p) => ({ ...p, teamMemberCommissionEnabled: v }))}
+              />
+            </View>
+            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+              <Text className="text-sm font-medium text-gray-700">Active</Text>
+              <Switch
+                value={form.isActive}
+                onValueChange={(v) => setForm((p) => ({ ...p, isActive: v }))}
+              />
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* Category BottomSheet */}
+      <BottomSheet
+        visible={categorySheetOpen}
+        onClose={() => setCategorySheetOpen(false)}
+        title="Category"
+        subtitle="Select or create a category"
+      >
+        <ScrollView className="max-h-80" keyboardShouldPersistTaps="handled">
+          {categories.map((c: ServiceCategory) => (
+            <TouchableOpacity
+              key={c.id}
+              className="border-b border-gray-100 py-3.5"
+              onPress={() => {
+                setForm((p) => ({ ...p, categoryId: c.id }));
+                setCategorySheetOpen(false);
+              }}
+              accessibilityLabel={c.name}
+              accessibilityRole="button"
+            >
+              <Text className="text-base text-gray-900">{c.name}</Text>
+            </TouchableOpacity>
+          ))}
+          <View className="mt-4 border-t border-gray-200 pt-4">
+            <Text className="mb-2 text-sm font-medium text-gray-700">Add new category</Text>
+            <TextInput
+              className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              placeholder="Category name"
+              placeholderTextColor="#9ca3af"
+              value={newCategoryName}
+              onChangeText={setNewCategoryName}
+            />
+            <ActionButton label="Create & select" onPress={handleCreateCategory} fullWidth />
+          </View>
+        </ScrollView>
+      </BottomSheet>
+
+      <BottomSheet
+        visible={serviceTypeSheetOpen}
+        onClose={() => setServiceTypeSheetOpen(false)}
+        title="Service type"
+      >
+        <ScrollView className="max-h-80">
+          {serviceTypeOptions.map((o) => (
+            <TouchableOpacity
+              key={o.value}
+              className="border-b border-gray-100 py-3.5"
+              onPress={() => {
+                setForm((p) => ({ ...p, serviceType: o.value }));
+                setServiceTypeSheetOpen(false);
+              }}
+              accessibilityLabel={o.label}
+              accessibilityRole="button"
+            >
+              <Text className="text-base text-gray-900">{o.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </BottomSheet>
+
+      <BottomSheet
+        visible={availabilitySheetOpen}
+        onClose={() => setAvailabilitySheetOpen(false)}
+        title="Available for"
+      >
+        <ScrollView className="max-h-80">
+          {availabilityOptions.map((o) => (
+            <TouchableOpacity
+              key={o.value}
+              className="border-b border-gray-100 py-3.5"
+              onPress={() => {
+                setForm((p) => ({ ...p, availableFor: o.value }));
+                setAvailabilitySheetOpen(false);
+              }}
+              accessibilityLabel={o.label}
+              accessibilityRole="button"
+            >
+              <Text className="text-base text-gray-900">{o.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </BottomSheet>
+
+      <BottomSheet
+        visible={taxSheetOpen}
+        onClose={() => setTaxSheetOpen(false)}
+        title="Tax rate"
+      >
+        <ScrollView className="max-h-80">
+          {taxRateOptions.map((o) => (
+            <TouchableOpacity
+              key={o.value}
+              className="border-b border-gray-100 py-3.5"
+              onPress={() => {
+                setForm((p) => ({ ...p, taxRate: o.value }));
+                setTaxSheetOpen(false);
+              }}
+              accessibilityLabel={o.label}
+              accessibilityRole="button"
+            >
+              <Text className="text-base text-gray-900">{o.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </BottomSheet>
+
+      <BottomSheet
+        visible={teamSheetOpen}
+        onClose={() => setTeamSheetOpen(false)}
+        title="Team members"
+        subtitle="Who can perform this service"
+      >
+        <ScrollView className="max-h-80">
+          <TouchableOpacity
+            className="border-b border-gray-100 py-3.5"
+            onPress={() => {
+              setForm((p) => ({ ...p, teamMemberIds: [] }));
+              setTeamSheetOpen(false);
+            }}
+            accessibilityLabel="Any team member"
+            accessibilityRole="button"
+          >
+            <Text className="text-base text-gray-500">Any team member</Text>
+          </TouchableOpacity>
+          {staff.map((m: StaffMember) => {
+            const selected = form.teamMemberIds.includes(m.id);
+            return (
+              <TouchableOpacity
+                key={m.id}
+                className="border-b border-gray-100 py-3.5 flex-row items-center justify-between"
+                onPress={() => {
+                  setForm((p) => ({
+                    ...p,
+                    teamMemberIds: selected
+                      ? p.teamMemberIds.filter((id) => id !== m.id)
+                      : [...p.teamMemberIds, m.id],
+                  }));
+                }}
+                accessibilityLabel={`${m.name}, ${selected ? "selected" : "not selected"}`}
+                accessibilityRole="button"
+              >
+                <Text className="text-base text-gray-900">{m.name}</Text>
+                {selected && <Ionicons name="checkmark-circle" size={22} color="#6366f1" />}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </BottomSheet>
+    </ScreenContainer>
+  );
+}

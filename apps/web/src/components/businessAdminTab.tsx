@@ -1,7 +1,7 @@
 import Image from "next/image";
 // Placeholder images - originals were missing
-const Getting = "/images/getting-started-on-airbnb-optimized.jpg";
-const Dashboard = "/images/getting-started-on-airbnb-optimized.jpg";
+const Getting = "/images/getting-started-optimized.jpg";
+  const Dashboard = "/images/getting-started-optimized.jpg";
 const Reservation = "/images/how-booking-and-reservations-work-optimized.jpg";
 const Biling = "/images/help-with-billing-optimized.jpg";
 

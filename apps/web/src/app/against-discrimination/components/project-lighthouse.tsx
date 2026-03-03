@@ -7,7 +7,7 @@ const changes = [
   {
     src: Person,
     title: "Using real data",
-    description: "We examine how guests and Hosts use our platform. Statistical analyses help us find opportunities to build more equitable experiences in our community."
+    description: "We examine how customers and providers use our platform. Statistical analyses help us find opportunities to build more equitable experiences in our community."
   },
   {
     src: Chart,

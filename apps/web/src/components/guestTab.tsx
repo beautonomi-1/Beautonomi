@@ -1,6 +1,6 @@
 import Image, { type StaticImageData } from "next/image";
 // Placeholder images - some originals were missing
-const Getting = "/images/getting-started-on-airbnb-optimized.jpg";
+const Getting = "/images/getting-started-optimized.jpg";
 import Access from "./../../public/images/accessing-your-account-optimized.jpg";
 import Reservation from "./../../public/images/help-with-a-reservation-optimized.jpg";
 import Aircover from "./../../public/images/AC_Guests_HG_EN_S@3x.png";
@@ -37,8 +37,8 @@ const guides: Guide[] = [
   },
   {
     src: Reservation,
-    alt: "Help with hosting",
-    description: "Help with a reservation",
+    alt: "Help with a booking",
+    description: "Help with a booking",
     mobileSrc: Calendar,
     link:"/"
 

@@ -9,24 +9,24 @@ const imageData = [
   {
     src: Image1,
     caption:
-      "Local travel on the rise: See the top trending destinations locals love",
-    date: "August 15,2024",
+      "Beautonomi supports arts and culture in our communities",
+    date: "August 15, 2024",
   },
   {
     src: Image2,
     caption:
-      "Paris 2024 Paralympic Games countdown: Tips to book last-minute on Beautonomi",
-    date: "August 8,2024",
+      "New features for providers: smarter booking and payouts",
+    date: "August 8, 2024",
   },
   {
     src: Image3,
-    caption: "Beautonomi Q2 2024 financial results",
-    date: "August 6,2024",
+    caption: "Beautonomi Q2 2024 company update",
+    date: "August 6, 2024",
   },
   {
     src: Image4,
-    caption: "Joining forces with top financial crimes association to combat travel scams",
-    date: "August 5,2024",
+    caption: "Joining forces with industry partners to combat payment fraud",
+    date: "August 5, 2024",
   },
 ];
 

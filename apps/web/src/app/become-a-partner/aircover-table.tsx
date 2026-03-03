@@ -68,7 +68,7 @@ export default function AirCoverTable() {
         </header>
         <TableHeader className="justify-end  flex max-w-4xl mx-auto">
           <TableRow className="border-none flex gap-4">
-            <TableHead className=" font-normal">Beauotonomi</TableHead>
+            <TableHead className=" font-normal">Beautonomi</TableHead>
             <TableHead className="font-normal ">Competitors</TableHead>
           </TableRow>
         </TableHeader>
@@ -108,7 +108,7 @@ export default function AirCoverTable() {
                   
                   {/* <div className="flex gap-24 ">
                     <TableCell className="hidden md:block">
-                      {row.airbnb ? (
+                      {row.beautonomi ? (
                         <CheckIcon className="text-green-600 mx-auto" />
                       ) : (
                         <XIcon className="text-red-600 mx-auto" />

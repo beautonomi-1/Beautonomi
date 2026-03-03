@@ -1,9 +1,23 @@
 import { MetadataRoute } from "next";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/database.types";
+
+/**
+ * Sitemap must be statically generated (no cookies()). Use a plain anon client
+ * for public read-only data so the route can be built at deploy time.
+ */
+function getSupabaseForSitemap() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key || url.includes("placeholder")) {
+    return null;
+  }
+  return createClient<Database>(url, key);
+}
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://beautonomi.com";
-  
+
   // Static routes
   const staticRoutes: MetadataRoute.Sitemap = [
     {
@@ -30,10 +44,43 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "weekly",
       priority: 0.6,
     },
+    {
+      url: `${baseUrl}/news`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.6,
+    },
+    {
+      url: `${baseUrl}/career`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
+    {
+      url: `${baseUrl}/gift-card`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.5,
+    },
+    {
+      url: `${baseUrl}/privacy-policy`,
+      lastModified: new Date(),
+      changeFrequency: "yearly",
+      priority: 0.4,
+    },
+    {
+      url: `${baseUrl}/terms-and-condition`,
+      lastModified: new Date(),
+      changeFrequency: "yearly",
+      priority: 0.4,
+    },
   ];
 
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabaseForSitemap();
+    if (!supabase) {
+      return staticRoutes;
+    }
     
     // Fetch categories
     const { data: categories } = await supabase

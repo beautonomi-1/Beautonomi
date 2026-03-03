@@ -1,0 +1,171 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "save": "Save",
+    "done": "Done",
+    "back": "Back",
+    "next": "Next",
+    "continue": "Continue",
+    "search": "Search",
+    "noResults": "No results found",
+    "error": "Something went wrong",
+    "offline": "No internet connection",
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "signOut": "Sign out",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "viewMore": "View more",
+    "confirm": "Confirm",
+    "close": "Close",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "tabs": {
+    "dashboard": "Dashboard",
+    "calendar": "Calendar",
+    "clients": "Clients",
+    "sales": "Sales",
+    "more": "More"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "todaysBookings": "Today's Bookings",
+    "revenue": "Revenue",
+    "newClients": "New Clients",
+    "upcomingAppointments": "Upcoming Appointments",
+    "quickActions": "Quick Actions",
+    "newBooking": "New Booking",
+    "addClient": "Add Client",
+    "viewReports": "View Reports"
+  },
+  "calendar": {
+    "title": "Calendar",
+    "day": "Day",
+    "week": "Week",
+    "noBookings": "No bookings for this day",
+    "preferences": "Calendar Preferences"
+  },
+  "bookings": {
+    "title": "Bookings",
+    "new": "New Booking",
+    "upcoming": "Upcoming",
+    "past": "Past",
+    "cancelled": "Cancelled",
+    "noBookings": "No bookings yet",
+    "selectClient": "Select a client",
+    "selectService": "Select a service",
+    "selectDate": "Select date",
+    "selectTime": "Select time",
+    "selectStaff": "Select staff",
+    "confirm": "Confirm Booking",
+    "expressBooking": "Express Booking"
+  },
+  "clients": {
+    "title": "Clients",
+    "addClient": "Add Client",
+    "noClients": "No clients yet",
+    "searchClients": "Search clients...",
+    "totalClients": "Total Clients",
+    "newThisMonth": "New This Month",
+    "details": "Client Details",
+    "bookingHistory": "Booking History"
+  },
+  "catalogue": {
+    "title": "Catalogue",
+    "addService": "Add Service",
+    "noServices": "No services yet",
+    "categories": "Categories",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "team": {
+    "title": "Team",
+    "addMember": "Add Team Member",
+    "noMembers": "No team members yet",
+    "roles": "Roles & Permissions",
+    "commissions": "Commissions",
+    "schedule": "Schedule"
+  },
+  "finance": {
+    "title": "Finance",
+    "revenue": "Revenue",
+    "payouts": "Payouts",
+    "requestPayout": "Request Payout",
+    "transactions": "Transactions",
+    "balance": "Available Balance"
+  },
+  "reports": {
+    "title": "Reports",
+    "revenue": "Revenue Report",
+    "bookings": "Bookings Report",
+    "clients": "Clients Report",
+    "services": "Services Report",
+    "staff": "Staff Report"
+  },
+  "settings": {
+    "title": "Settings",
+    "business": "Business Details",
+    "hours": "Operating Hours",
+    "locations": "Locations",
+    "bookingSettings": "Booking Settings",
+    "cancellationPolicies": "Cancellation Policies",
+    "payments": "Payment Settings",
+    "teamSettings": "Team Settings",
+    "notifications": "Notification Settings",
+    "security": "Security",
+    "biometric": "Biometric Lock",
+    "biometricDesc": "Require authentication to open the app",
+    "version": "Version"
+  },
+  "auth": {
+    "loginTitle": "Welcome back",
+    "signupTitle": "Create your provider account",
+    "phoneLabel": "Phone number",
+    "phonePlaceholder": "Enter your phone number",
+    "emailLabel": "Email",
+    "passwordLabel": "Password",
+    "nameLabel": "Full name",
+    "continueWithPhone": "Continue",
+    "orContinueWith": "Or continue with",
+    "google": "Google",
+    "apple": "Apple"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all as read",
+    "noNotifications": "No notifications",
+    "noNotificationsDesc": "You're all caught up!"
+  },
+  "marketing": {
+    "title": "Marketing",
+    "campaigns": "Campaigns",
+    "automations": "Automations"
+  },
+  "products": {
+    "title": "Products",
+    "addProduct": "Add Product",
+    "noProducts": "No products yet",
+    "stock": "Stock",
+    "lowStock": "Low Stock"
+  },
+  "gallery": {
+    "title": "Gallery",
+    "addPhoto": "Add Photo",
+    "noPhotos": "No photos yet"
+  },
+  "reviews": {
+    "title": "Reviews",
+    "noReviews": "No reviews yet",
+    "respond": "Respond"
+  },
+  "subscription": {
+    "title": "Subscription",
+    "currentPlan": "Current Plan",
+    "changePlan": "Change Plan",
+    "billingHistory": "Billing History"
+  }
+}
