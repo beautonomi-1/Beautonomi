@@ -138,7 +138,7 @@ export async function PATCH(
 
         const { manual_deductions, tax_deduction, uif_contribution, notes } = parsed.data;
 
-        const updateData: Record<string, unknown> = {};
+        const updateData: Record<string, any> = {};
         if (manual_deductions !== undefined) updateData.manual_deductions = manual_deductions;
         if (tax_deduction !== undefined) updateData.tax_deduction = tax_deduction;
         if (uif_contribution !== undefined) updateData.uif_contribution = uif_contribution;

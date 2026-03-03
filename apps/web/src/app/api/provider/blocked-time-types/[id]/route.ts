@@ -94,7 +94,7 @@ export async function PATCH(
     }
 
     // Build update data
-    const updateData: Record<string, unknown> = {};
+    const updateData: Record<string, any> = {};
     const data = validationResult.data;
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;

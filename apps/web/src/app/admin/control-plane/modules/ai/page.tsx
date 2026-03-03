@@ -33,7 +33,7 @@ export default function AiModulePage() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetcher.get<{ data: Record<string, unknown> | null }>(`/api/admin/control-plane/modules/ai?environment=${env}`);
+        const res = await fetcher.get<{ data: Record<string, any> | null }>(`/api/admin/control-plane/modules/ai?environment=${env}`);
         const d = res.data;
         if (d) {
           setForm({

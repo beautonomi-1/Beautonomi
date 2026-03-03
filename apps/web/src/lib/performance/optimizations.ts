@@ -9,7 +9,7 @@ import { useMemo, useCallback, RefObject } from 'react';
 /**
  * Debounce function for API calls and user input
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: any[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
@@ -31,7 +31,7 @@ export function debounce<T extends (...args: any[]) => any>(
 /**
  * Throttle function for scroll and resize events
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: any[]) => unknown>(
   func: T,
   limit: number
 ): (...args: Parameters<T>) => void {
@@ -59,7 +59,7 @@ export function useMemoizedValue<T>(
 /**
  * Create a stable callback reference
  */
-export function useStableCallback<T extends (...args: any[]) => any>(
+export function useStableCallback<T extends (...args: any[]) => unknown>(
   callback: T,
   deps: React.DependencyList
 ): T {

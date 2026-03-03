@@ -26,7 +26,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (!existing) return notFoundResponse("Add-on not found");
 
     const body = await request.json();
-    const updateData: Record<string, unknown> = {};
+    const updateData: Record<string, any> = {};
     if (body.name !== undefined) updateData.title = body.name;
     if (body.price !== undefined) updateData.price = Number(body.price);
     if (body.duration_minutes !== undefined) updateData.duration_minutes = Number(body.duration_minutes);

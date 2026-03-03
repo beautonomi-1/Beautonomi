@@ -21,7 +21,7 @@ const FORBIDDEN_IN_RESPONSE = [
   "onesignal_rest",
 ];
 
-function assertNoSecrets(obj: unknown, path = ""): string[] {
+function assertNoSecrets(obj: any, path = ""): string[] {
   if (obj === null || obj === undefined) return [];
   const found: string[] = [];
   const str = JSON.stringify(obj).toLowerCase();

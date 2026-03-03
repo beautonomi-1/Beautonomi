@@ -58,7 +58,7 @@ export async function PATCH(
     const body = await request.json();
     const { id } = await params;
 
-    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const updateData: Record<string, any> = { updated_at: new Date().toISOString() };
     for (const key of ALLOWED_UPDATE_FIELDS) {
       if (body[key] !== undefined) updateData[key] = body[key];
     }

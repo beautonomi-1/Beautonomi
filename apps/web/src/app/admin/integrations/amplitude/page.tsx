@@ -60,8 +60,7 @@ export default function AmplitudeIntegrationPage() {
       }
     } catch (error) {
       if (error instanceof FetchError && error.status === 404) {
-        // No config exists yet, use defaults
-        console.log("No Amplitude config found, using defaults");
+        // No config exists yet, use defaults (no log in production)
       } else {
         console.error("Failed to load Amplitude config:", error);
         toast.error("Failed to load Amplitude configuration");

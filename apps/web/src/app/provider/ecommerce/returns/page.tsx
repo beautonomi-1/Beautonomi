@@ -98,7 +98,7 @@ export default function ProviderReturnsPage() {
     setUpdating(dialog.returnId);
     setError("");
     try {
-      const payload: Record<string, unknown> = { action: dialog.action };
+      const payload: Record<string, any> = { action: dialog.action };
       if (dialogNotes) payload.provider_notes = dialogNotes;
       if (dialog.action === "approve") {
         payload.return_method = dialogReturnMethod;

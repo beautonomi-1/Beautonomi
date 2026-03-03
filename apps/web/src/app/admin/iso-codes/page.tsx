@@ -117,7 +117,7 @@ export default function AdminIsoCodes() {
     try {
       setIsLoading(true);
       const endpoint = `/api/admin/iso-codes/${activeTab}`;
-      const response = await fetcher.get<{ data?: unknown[]; error?: { message?: string } }>(endpoint);
+      const response = await fetcher.get<{ data?: any[]; error?: { message?: string } }>(endpoint);
       const data = Array.isArray(response?.data) ? response.data : [];
 
       switch (activeTab) {
@@ -164,7 +164,7 @@ export default function AdminIsoCodes() {
     setShowDialog(true);
   };
 
-  function formatFetchError(e: unknown, fallback: string): string {
+  function formatFetchError(e: any, fallback: string): string {
     if (!(e instanceof FetchError)) return e instanceof Error ? e.message : fallback;
     const msg = e.message;
     if (!e.details) return msg;
@@ -186,7 +186,7 @@ export default function AdminIsoCodes() {
     }
   };
 
-  const handleSave = async (formData: Record<string, unknown>) => {
+  const handleSave = async (formData: Record<string, any>) => {
     try {
       if (editingItem) {
         const code = encodeURIComponent(String(editingItem.code));
@@ -213,7 +213,7 @@ export default function AdminIsoCodes() {
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="mb-6">
           <h1 className="text-3xl font-semibold mb-2">ISO Codes Management</h1>
-          <p className="text-gray-600">Manage currencies, languages, countries, locales, and timezones</p>
+          <p className="text-gray-600 mb-2">Manage currencies, languages, countries, locales, and timezones. This reference data drives the platform: active countries power <code className="text-xs bg-gray-100 px-1 rounded">/api/public/countries</code> (forms, onboarding); active languages power the app language selector and <code className="text-xs bg-gray-100 px-1 rounded">/api/public/languages</code>. Align with Admin → Settings → Localization for default language and timezone.</p>
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>

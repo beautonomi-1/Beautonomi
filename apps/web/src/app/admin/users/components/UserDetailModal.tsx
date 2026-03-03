@@ -502,17 +502,19 @@ export default function UserDetailModal({
                           placeholder="Enter new password (min 8 characters)"
                           className="pr-10"
                         />
-                        <button
+                        <Button
                           type="button"
+                          variant="ghost"
+                          size="icon"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 h-8 w-8"
                         >
                           {showPassword ? (
                             <EyeOff className="w-4 h-4" />
                           ) : (
                             <Eye className="w-4 h-4" />
                           )}
-                        </button>
+                        </Button>
                       </div>
                     </div>
                     <div>

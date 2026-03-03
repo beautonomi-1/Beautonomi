@@ -103,7 +103,7 @@ export default function PlatformFeesPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8 max-w-4xl">
         <div className="mb-4 sm:mb-6">
           <h1 className="text-2xl sm:text-3xl font-semibold mb-2 flex items-center gap-2">

@@ -4,10 +4,13 @@
  */
 import { Platform } from "react-native";
 
+// Conditional platform entry; require() needed for Metro bundler resolution
+/* eslint-disable @typescript-eslint/no-require-imports */
 const analyticsRN =
   Platform.OS === "web"
     ? require("@beautonomi/analytics/react-native.web")
     : require("@beautonomi/analytics/react-native");
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 export const initAnalytics = analyticsRN.initAnalytics;
 export const handleEngagementURL = analyticsRN.handleEngagementURL;

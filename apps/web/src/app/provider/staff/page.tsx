@@ -89,10 +89,10 @@ export default function ProviderStaff() {
   };
 
   const filteredStaff = staff.filter((member) => {
-    const matchesSearch = 
-      member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      member.email.toLowerCase().includes(searchQuery.toLowerCase());
-    
+    const matchesSearch =
+      (member?.name ?? "").toLowerCase().includes((searchQuery ?? "").toLowerCase()) ||
+      (member?.email ?? "").toLowerCase().includes((searchQuery ?? "").toLowerCase());
+
     if (!matchesSearch) return false;
     
     // Apply mobile filter

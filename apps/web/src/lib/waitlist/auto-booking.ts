@@ -108,8 +108,8 @@ export async function createAutoBooking(
     const { data: bookingId, error: bookingError } = await adminSupabase.rpc(
       'create_booking_with_locking',
       {
-        p_booking_data: bookingData as any,
-        p_booking_services: bookingServicesData as any,
+        p_booking_data: bookingData as Record<string, unknown>,
+        p_booking_services: bookingServicesData as unknown[],
         p_staff_id: staffId,
         p_start_at: slotDate.toISOString(),
         p_end_at: endTime.toISOString(),

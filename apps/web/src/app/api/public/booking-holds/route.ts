@@ -295,7 +295,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let holdMetadata: Record<string, unknown> = {};
+    let holdMetadata: Record<string, any> = {};
     if (location_type === "at_home" && address && address.latitude != null && address.longitude != null) {
       try {
         const travelResult = await calculateTravelFeeForHold(supabase, provider_id, {

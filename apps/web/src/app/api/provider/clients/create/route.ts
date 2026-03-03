@@ -300,7 +300,7 @@ export async function POST(request: NextRequest) {
       console.log("Successfully created user profile manually");
 
       // Update user profile with all additional fields
-      const userUpdates: Record<string, unknown> = {
+      const userUpdates: Record<string, any> = {
         full_name: full_name,
       };
 
@@ -366,7 +366,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // User exists, update their profile if needed
-      const userUpdates: Record<string, unknown> = {};
+      const userUpdates: Record<string, any> = {};
       
       if (body.preferred_name) userUpdates.preferred_name = body.preferred_name;
       if (body.phone) userUpdates.phone = body.phone;

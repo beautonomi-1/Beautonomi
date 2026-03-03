@@ -12,6 +12,7 @@ import AboutUsModal from '@/components/global/about-us-modal';
 import ShareAppModal from '@/components/global/share-app-modal';
 import EmailVerificationBanner from '@/components/global/email-verification-banner';
 import { UpcomingBookingPreview } from './upcoming-booking-preview';
+import { LoyaltyTeaser } from './LoyaltyTeaser';
 import { useAuth } from '@/providers/AuthProvider';
 
 interface CardData {
@@ -27,6 +28,7 @@ const cardData: CardData[] = [
   { icon: FaShieldAlt, title: "Login & security", description: "Update your password and secure your account", link: "/account-settings/login-and-security" },
   { icon: FaCreditCard, title: "Payments & payouts", description: "Review payments, payouts, coupons, and gift cards", link: "/account-settings/payments" },
   { icon: FaWallet, title: "Wallet", description: "Top up your wallet and view wallet activity", link: "/account-settings/wallet" },
+  { icon: FaTrophy, title: "Loyalty Points", description: "Earn points on every booking, unlock rewards and milestones, redeem for discounts", link: "/account-settings/loyalty" },
   { icon: FaFileAlt, title: "Taxes", description: "Manage taxpayer information and tax documents", link: "/account-settings/taxes" },
   { icon: FaMapMarkerAlt, title: "Saved addresses", description: "Manage your saved addresses for faster checkout", link: "/account-settings/addresses" },
   { icon: FaCalendarAlt, title: "Bookings", description: "View and manage your upcoming, past, and cancelled bookings", link: "/account-settings/bookings" },
@@ -38,7 +40,6 @@ const cardData: CardData[] = [
   { icon: FaGlobe, title: "Global preferences", description: "Set your default language, currency, and timezone", link: "/account-settings/preferences" },
   { icon: FaEye, title: "Privacy & sharing", description: "Manage your personal data, connected services, and data sharing settings", link: "/account-settings/privacy-and-sharing" },
   { icon: FaGift, title: "Referral credit & coupon", description: "You have $0 referral credits and coupon. Learn more.", link: "/account-settings/referrals" },
-  { icon: FaTrophy, title: "Loyalty Points", description: "View your points balance, milestones, and redemption history", link: "/account-settings/loyalty" },
   { icon: FaStar, title: "My Reviews", description: "View and edit your reviews for completed bookings", link: "/account-settings/reviews" },
   { icon: FaHeart, title: "Wishlists & Recently Viewed", description: "Manage your saved wishlists and view recently viewed items", link: "/account-settings/wishlists" },
   { icon: FaBuilding, title: "Business Services", description: "Corporate packages, event bookings, and professional development", link: "/account-settings/business" },
@@ -77,6 +78,7 @@ const AccountSettingsPage: React.FC = () => {
             <UpcomingBookingPreview />
           </div>
         )}
+        {user?.role === "customer" && <LoyaltyTeaser />}
         <div className="mb-4 md:mb-6">
           {isLoadingAuth ? (
             <span className="text-sm md:text-base text-gray-600 font-light">Loading...</span>
@@ -99,7 +101,11 @@ const AccountSettingsPage: React.FC = () => {
                 </div>
               ) : (
                 <Link href={card.link} className="block">
-                  <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-all duration-200 active:scale-[0.98] h-full">
+                  <div className={`p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border transition-all duration-200 active:scale-[0.98] h-full ${
+                    card.link === "/account-settings/loyalty"
+                      ? "bg-gradient-to-br from-white to-[#FF0077]/5 border-[#FF0077]/30 hover:border-[#FF0077]/50"
+                      : "bg-white border-gray-100 hover:border-[#FF0077]/20"
+                  }`}>
                     <card.icon className="text-2xl md:text-3xl mb-3 md:mb-4 text-[#FF0077]" />
                     <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">{card.title}</h2>
                     <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{card.description}</p>

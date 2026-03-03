@@ -241,40 +241,8 @@ export default function BookingFlow() {
     loadPlatformFeeSettings();
   }, []);
 
-  // Store membership discount percent
-  const [membershipDiscountPercent, setMembershipDiscountPercent] = useState(0);
-
-  // Fetch membership discount percent when provider is loaded
-  useEffect(() => {
-    if (!user?.id || !bookingState.providerId) {
-      setMembershipDiscountPercent(0);
-      return;
-    }
-
-    const fetchMembership = async () => {
-      try {
-        const response = await fetch(`/api/me/membership?provider_id=${bookingState.providerId}`);
-        const data = await response.json();
-        if (data.active && data.discount_percent > 0) {
-          setMembershipDiscountPercent(data.discount_percent);
-          updateBookingState({
-            promotions: {
-              ...bookingState.promotions,
-              membershipPlanId: data.plan_id,
-            },
-          });
-        } else {
-          setMembershipDiscountPercent(0);
-        }
-      } catch (error) {
-        console.error("Error fetching membership:", error);
-        setMembershipDiscountPercent(0);
-      }
-    };
-
-    fetchMembership();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, bookingState.providerId]);
+  // Membership discount is applied server-side from provider membership plans (user_memberships) in validate-booking
+  const membershipDiscountPercent = 0;
 
   // Calculate membership discount, tax, and platform service fee whenever relevant values change
   useEffect(() => {

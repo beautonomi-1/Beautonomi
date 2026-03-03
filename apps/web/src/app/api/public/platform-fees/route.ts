@@ -25,7 +25,7 @@ export async function GET(_request: NextRequest) {
       return NextResponse.json({ data: DEFAULT_FEES });
     }
 
-    const payouts = (row?.settings as Record<string, unknown>)?.payouts as Record<string, unknown> | undefined;
+    const payouts = (row?.settings as Record<string, any>)?.payouts as Record<string, any> | undefined;
     const data = payouts
       ? {
           platform_service_fee_type: (payouts.platform_service_fee_type as string) || 'percentage',

@@ -100,14 +100,6 @@ interface ProviderForm {
 
 /* ─── Helpers ─── */
 
-function formatDateTime(s: string) {
-  const d = new Date(s);
-  return d.toLocaleString("en-US", {
-    weekday: "long", month: "long", day: "numeric",
-    hour: "2-digit", minute: "2-digit", hour12: true,
-  });
-}
-
 function formatDateOnly(s: string) {
   return new Date(s).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
@@ -394,6 +386,7 @@ export default function BookCheckoutScreen() {
     if (defaultCard && !selectedCardId && !useNewCard) {
       setSelectedCardId(defaultCard.id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only sync when defaultCard changes
   }, [defaultCard]);
 
   useEffect(() => {
@@ -447,6 +440,7 @@ export default function BookCheckoutScreen() {
 
     load();
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- route params are stable for this screen
   }, [hold_id]);
 
   useEffect(() => {
@@ -651,6 +645,7 @@ export default function BookCheckoutScreen() {
     } finally {
       setConsuming(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- pay helpers and navigateToBooking are stable refs
   }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues]);
 
   /* ─── Loading skeleton ─── */
@@ -1095,7 +1090,7 @@ export default function BookCheckoutScreen() {
                         try {
                           const res = await api.patch<{ data: unknown }>(`/api/me/payment-methods/${id}`, { is_default: true });
                           if (res?.data != null) refreshCards();
-                        } catch (_) {
+                        } catch {
                           Alert.alert("Error", "Could not set default card. Please try again.");
                         }
                       }}

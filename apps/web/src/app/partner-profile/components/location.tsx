@@ -1,35 +1,64 @@
-import React from "react";
+"use client";
 
-const Location = () => {
-  const googleMapsUrl =
-    "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d45645.06754230861!2d55.29782656000002!3d25.277519145000097!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3e5f68a44f5b6abf%3A0x4e1c4f2a4a006b9b!2sDowntown%20Dubai%2C%20Dubai%2C%20United%20Arab%20Emirates!5e0!3m2!1sen!2sus!4v1614646573418!5m2!1sen!2sus";
+import React, { useEffect, useState } from "react";
+
+const DEFAULT_CENTER = { latitude: 25.2775, longitude: 55.2978 }; // Downtown Dubai
+
+export default function Location() {
+  const [mapImageUrl, setMapImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/public/directions-config");
+        const json = await res.json().catch(() => ({}));
+        const data = json?.data;
+        const token = data?.mapboxPublicToken;
+        const styleUrl = data?.mapboxStyleUrl;
+        if (cancelled || !token) return;
+        const stylePath = styleUrl
+          ? (styleUrl.match(/mapbox:\/\/styles\/(.+)/)?.[1] ?? "mapbox/streets-v12")
+          : "mapbox/streets-v12";
+        const pin = `pin-l+FF0077(${DEFAULT_CENTER.longitude},${DEFAULT_CENTER.latitude})`;
+        const centerStr = `${DEFAULT_CENTER.longitude},${DEFAULT_CENTER.latitude},12`;
+        setMapImageUrl(
+          `https://api.mapbox.com/styles/v1/${stylePath}/static/${pin}/${centerStr}/800x400@2x?access_token=${token}`
+        );
+      } catch {
+        if (!cancelled) setMapImageUrl(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   return (
     <div className="container">
       <div className="border-b pb-20 mb-9">
-      <div>
-        <h2 className="text-[22px] font-normal  text-secondary mb-5">
-          Where you’ll be
-        </h2>
-        <p className="text-base font-normal  text-secondary mb-6">
-          Downtown Dubai, United Arab Emirates
-        </p>
-      </div>
-      <div className="map-container">
-        <iframe
-          src={googleMapsUrl}
-          width="100%"
-          height="400"
-          frameBorder="0"
-          className="border-none outline-none"
-          allowFullScreen
-          aria-hidden="false"
-          title="Google Map"
-        ></iframe>
-      </div>
+        <div>
+          <h2 className="text-[22px] font-normal text-secondary mb-5">
+            Where you&apos;ll be
+          </h2>
+          <p className="text-base font-normal text-secondary mb-6">
+            Downtown Dubai, United Arab Emirates
+          </p>
+        </div>
+        <div className="map-container rounded-lg overflow-hidden border">
+          {mapImageUrl ? (
+            <img
+              src={mapImageUrl}
+              alt="Location map"
+              className="w-full h-[400px] object-cover"
+              width={800}
+              height={400}
+            />
+          ) : (
+            <div className="w-full h-[400px] bg-gray-100 flex items-center justify-center text-gray-500">
+              Map unavailable
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
-};
-
-export default Location;
+}

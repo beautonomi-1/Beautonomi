@@ -45,7 +45,7 @@ export async function GET(
     }
 
     const productIds = (products || []).map((p: any) => p.id);
-    let variantsByProduct: Record<string, any[]> = {};
+    const variantsByProduct: Record<string, any[]> = {};
     if (productIds.length > 0) {
       const { data: variants } = await supabase
         .from("product_variants")

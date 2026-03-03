@@ -31,7 +31,7 @@ export default function OnDemandModulePage() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetcher.get<{ data: Record<string, unknown> | null }>(`/api/admin/control-plane/modules/on-demand?environment=${env}`);
+        const res = await fetcher.get<{ data: Record<string, any> | null }>(`/api/admin/control-plane/modules/on-demand?environment=${env}`);
         const d = res.data;
         if (d) {
           setForm({
@@ -55,7 +55,7 @@ export default function OnDemandModulePage() {
   const save = async () => {
     setSaving(true);
     try {
-      let uiCopy: Record<string, unknown> = {};
+      let uiCopy: Record<string, any> = {};
       try {
         uiCopy = JSON.parse(form.ui_copy || "{}");
       } catch {
@@ -139,6 +139,7 @@ export default function OnDemandModulePage() {
               </div>
               <div>
                 <Label>Provider accept window (seconds)</Label>
+                <p className="text-xs text-muted-foreground mb-1">Time the provider has to accept before the request expires. Superadmin can set seconds (e.g. 30) or minutes (e.g. 120). Expiry is applied when the request is next fetched or when the customer timer hits 0—no cron required.</p>
                 <Input type="number" value={form.provider_accept_window_seconds} onChange={(e) => setForm((p) => ({ ...p, provider_accept_window_seconds: parseInt(e.target.value, 10) || 30 }))} />
               </div>
               <div className="flex items-center gap-2">
@@ -148,6 +149,9 @@ export default function OnDemandModulePage() {
             </div>
             <div>
               <Label>UI copy (JSON)</Label>
+              <p className="text-muted-foreground text-sm mt-1 mb-2">
+                Optional keys: waiting_title, waiting_headline, waiting_provider_message (use {"{provider_name}"} for provider name), waiting_help_url, waiting_timer_label, waiting_cancel_cta, plus accepted/declined/expired/provider_* keys.
+              </p>
               <textarea
                 className="w-full min-h-[120px] rounded border p-2 font-mono text-sm"
                 value={form.ui_copy}

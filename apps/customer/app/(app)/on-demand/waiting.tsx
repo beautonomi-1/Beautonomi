@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Linking,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -12,12 +13,14 @@ import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { Colors } from "@/constants/colors";
+import { WaitingIllustration } from "@/components/on-demand/WaitingIllustration";
 
 interface OnDemandRequest {
   id: string;
   status: string;
   expires_at: string;
   booking_id?: string | null;
+  provider_name?: string | null;
 }
 
 export default function OnDemandWaitingScreen() {
@@ -58,6 +61,7 @@ export default function OnDemandWaitingScreen() {
       return;
     }
     load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- load when requestId changes
   }, [requestId]);
 
   useEffect(() => {
@@ -75,7 +79,10 @@ export default function OnDemandWaitingScreen() {
         (payload) => {
           if (payload.new) {
             const row = payload.new as OnDemandRequest;
-            setRequest(row);
+            setRequest((prev) => ({
+              ...row,
+              provider_name: row.provider_name ?? prev?.provider_name ?? null,
+            }));
           }
         }
       )
@@ -91,6 +98,7 @@ export default function OnDemandWaitingScreen() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- load when request id available
   }, [requestId, request?.id]);
 
   useEffect(() => {
@@ -107,6 +115,11 @@ export default function OnDemandWaitingScreen() {
 
   useEffect(() => {
     if (!request) return;
+    // Optimistic expiry: when timer hits 0, treat as expired (no dependency on cron)
+    if (request.status === "requested" && secondsLeft !== null && secondsLeft <= 0) {
+      router.replace({ pathname: "/(app)/on-demand/result", params: { status: "expired", requestId } });
+      return;
+    }
     if (request.status === "accepted") {
       if (request.booking_id) {
         router.replace({ pathname: "/(app)/booking-detail", params: { id: request.booking_id } });
@@ -118,7 +131,8 @@ export default function OnDemandWaitingScreen() {
     if (["declined", "cancelled", "expired"].includes(request.status)) {
       router.replace({ pathname: "/(app)/on-demand/result", params: { status: request.status, requestId } });
     }
-  }, [request?.status, request?.booking_id, requestId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- router/request for redirect only
+  }, [request?.status, request?.booking_id, requestId, secondsLeft]);
 
   const handleCancel = async () => {
     if (!requestId || request?.status !== "requested") return;
@@ -146,10 +160,23 @@ export default function OnDemandWaitingScreen() {
   };
 
   const uiCopy = (onDemandConfig.ui_copy ?? {}) as Record<string, string>;
-  const title = uiCopy.waiting_title ?? "Waiting for provider";
-  const subtitle = uiCopy.waiting_subtitle ?? "We'll hold this request for a short time.";
+  const title = uiCopy.waiting_title ?? "Request sent";
+  const headline = uiCopy.waiting_headline ?? "Connecting you with beauty.";
+  const providerMessageTemplate =
+    uiCopy.waiting_provider_message ??
+    "We'll confirm your booking as soon as we hear back from {provider_name}.";
+  const providerDisplayName = request?.provider_name?.trim() || "your provider";
+  const providerMessage = providerMessageTemplate.replace(
+    /\{provider_name\}/gi,
+    providerDisplayName
+  );
   const timerLabel = uiCopy.waiting_timer_label ?? "Time remaining";
   const cancelCta = uiCopy.waiting_cancel_cta ?? "Cancel request";
+  const helpUrl = uiCopy.waiting_help_url?.trim() || undefined;
+
+  const shortRequestId = requestId
+    ? `#${requestId.replace(/-/g, "").slice(-8).toUpperCase()}`
+    : "";
 
   if (!requestId) {
     return (
@@ -187,19 +214,45 @@ export default function OnDemandWaitingScreen() {
     );
   }
 
+  const openHelp = () => {
+    if (helpUrl) Linking.openURL(helpUrl);
+  };
+
   return (
-    <SafeAreaView className="flex-1 bg-white" edges={["top", "bottom"]}>
-      <View className="flex-1 px-6 pt-8">
-        <View className="items-center mb-8">
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text className="text-xl font-semibold text-gray-900 mt-6">{title}</Text>
-          <Text className="text-gray-600 text-center mt-2">{subtitle}</Text>
+    <SafeAreaView
+      className="flex-1 bg-slate-50"
+      edges={["top", "bottom"]}
+    >
+      <View className="flex-1 px-6 pt-4">
+        {/* Header: title, request ID, optional Help */}
+        <View className="flex-row items-center justify-between mb-2">
+          <Text className="text-lg font-semibold text-gray-900">{title}</Text>
+          {shortRequestId ? (
+            <Text className="text-sm font-mono text-gray-500">{shortRequestId}</Text>
+          ) : null}
         </View>
+        {helpUrl ? (
+          <TouchableOpacity onPress={openHelp} className="self-start mb-4">
+            <Text className="text-sm text-primary font-medium">Help</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* Illustration + waiting animation */}
+        <WaitingIllustration />
+
+        {/* Headline and provider message */}
+        <Text className="text-xl font-semibold text-gray-900 text-center mt-2">
+          {headline}
+        </Text>
+        <Text className="text-gray-600 text-center mt-3 px-2">
+          {providerMessage}
+        </Text>
 
         {secondsLeft !== null && (
-          <View className="items-center py-6">
+          <View className="items-center py-8">
             <Text className="text-3xl font-mono font-semibold text-gray-900">
-              {Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, "0")}
+              {Math.floor(secondsLeft / 60)}:
+              {(secondsLeft % 60).toString().padStart(2, "0")}
             </Text>
             <Text className="text-gray-500 text-sm mt-1">{timerLabel}</Text>
           </View>
@@ -209,7 +262,7 @@ export default function OnDemandWaitingScreen() {
           <TouchableOpacity
             onPress={handleCancel}
             disabled={cancelling}
-            className="border border-gray-300 rounded-2xl py-4 items-center"
+            className="border border-gray-300 rounded-2xl py-4 items-center bg-white"
           >
             {cancelling ? (
               <ActivityIndicator size="small" color="#666" />

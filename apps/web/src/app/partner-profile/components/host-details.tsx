@@ -390,7 +390,6 @@ const ProviderDetails = () => {
   };
 
   const handleShowPopup = () => {
-    //@ts-ignore 
     setActivePopup("All Amenities");
   };
 

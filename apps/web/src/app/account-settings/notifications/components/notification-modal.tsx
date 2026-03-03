@@ -2,7 +2,14 @@ import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 
-const NotificationModal = ({ isOpen, onClose, title, description }:any) => {
+interface NotificationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  description: string;
+}
+
+const NotificationModal = ({ isOpen, onClose, title, description }: NotificationModalProps) => {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px]">

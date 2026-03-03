@@ -128,7 +128,7 @@ export async function PATCH(
     }
 
     // Build update payload
-    const updatePayload: Record<string, unknown> = {};
+    const updatePayload: Record<string, any> = {};
     if (parsed.status) {
       updatePayload.status = parsed.status;
       if (parsed.status === "confirmed") updatePayload.confirmed_at = new Date().toISOString();

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Image from "next/image";
 
 interface PageContent {
   [sectionKey: string]: {
@@ -74,12 +75,14 @@ export default function PickingDesigns({ content }: PickingDesignsProps) {
           <div className="">
             <div className="hidden md:grid grid-cols-1 md:grid-cols-3 gap-6">
               {designs.map((design) => (
-                <div key={design.id} className="rounded-xl overflow-hidden">
+                <div key={design.id} className="rounded-xl overflow-hidden relative aspect-[4/3]">
                   {design.src ? (
-                    <img 
-                      src={design.src} 
-                      alt={design.alt} 
-                      className="rounded-xl w-full h-auto object-cover"
+                    <Image
+                      src={design.src}
+                      alt={design.alt}
+                      fill
+                      className="object-cover rounded-xl"
+                      unoptimized
                     />
                   ) : (
                     <div className="w-full h-[300px] rounded-xl bg-gradient-to-br from-[#FF0077] via-[#D60565] to-[#FF0077] flex items-center justify-center">

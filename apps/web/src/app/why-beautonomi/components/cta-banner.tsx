@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowRight } from "lucide-react";
 
 interface PageContent {
@@ -46,13 +47,9 @@ export default function CTABanner({ content }: CTABannerProps) {
               </Button>
             </Link>
           </div>
-          <div className="w-full md:w-1/2 h-[300px] md:h-auto">
+          <div className="w-full md:w-1/2 h-[300px] md:h-auto relative min-h-[300px]">
             {bannerImage ? (
-              <img 
-                src={bannerImage} 
-                alt="CTA Banner" 
-                className="w-full h-full object-cover" 
-              />
+              <Image src={bannerImage} alt="CTA Banner" fill className="object-cover" unoptimized />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-white/10 to-white/5 flex items-center justify-center">
                 <div className="text-center text-white">

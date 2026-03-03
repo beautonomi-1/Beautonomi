@@ -3,6 +3,8 @@
 import React from "react";
 import { FileText, Edit, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import Image from "next/image";
 
 interface AboutUsContent {
   id: string;
@@ -11,6 +13,7 @@ interface AboutUsContent {
   content: string;
   display_order: number;
   is_active: boolean;
+  image_url?: string | null;
 }
 
 interface AboutUsCardProps {
@@ -29,21 +32,30 @@ export function AboutUsCard({ content, onEdit, onDelete }: AboutUsCardProps) {
             {content.title}
           </CardTitle>
           <div className="flex gap-2">
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => onEdit(content)}
-              className="text-sm text-[#FF0077] hover:text-[#D60565] font-medium"
+              className="h-8 w-8 text-[#FF0077] hover:text-[#D60565]"
             >
               <Edit className="w-4 h-4" />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => onDelete(content.id)}
-              className="text-sm text-red-600 hover:text-red-800 font-medium"
+              className="h-8 w-8 text-red-600 hover:text-red-800"
             >
               <Trash2 className="w-4 h-4" />
-            </button>
+            </Button>
           </div>
         </div>
         <p className="text-xs text-gray-500 mt-1">Section: {content.section_key}</p>
+        {content.image_url && (
+          <div className="relative mt-2 w-full h-24 rounded border border-gray-200 overflow-hidden">
+            <Image src={content.image_url} alt="" fill className="object-cover" unoptimized />
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded border border-gray-200 line-clamp-3">

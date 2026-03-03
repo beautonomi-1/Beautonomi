@@ -508,7 +508,7 @@ export default function GalleryManagementPage() {
       setEditDetailsOpen(false);
       setEditIndex(null);
       setEditCaption("");
-    } catch (err) {
+    } catch (_err) {
       toast.error("Failed to save photo details");
     } finally {
       setIsSavingDetails(false);

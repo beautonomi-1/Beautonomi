@@ -10,7 +10,7 @@ export interface CallGeminiParams {
   user: string;
   temperature?: number;
   maxTokens?: number;
-  schema?: Record<string, unknown>;
+  schema?: Record<string, any>;
 }
 
 export interface CallGeminiResult {
@@ -55,7 +55,7 @@ export async function callGemini(params: CallGeminiParams): Promise<CallGeminiRe
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const body: Record<string, unknown> = {
+  const body: Record<string, any> = {
     contents: [{ parts: [{ text: user }] }],
     generationConfig: {
       temperature,

@@ -13,7 +13,7 @@ export function useErrorHandler() {
   const router = useRouter();
   const { user, role, isLoading } = useAuth();
 
-  const handleError = (error: unknown) => {
+  const handleError = (error: any) => {
     // Only handle FetchError with 403 or 404 status
     if (error instanceof FetchError && (error.status === 403 || error.status === 404)) {
       // Check if user is a provider

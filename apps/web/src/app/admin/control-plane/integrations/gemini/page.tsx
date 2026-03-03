@@ -30,7 +30,7 @@ export default function GeminiIntegrationPage() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetcher.get<{ data: Record<string, unknown> | null }>(`/api/admin/control-plane/integrations/gemini?environment=${env}`);
+        const res = await fetcher.get<{ data: Record<string, any> | null }>(`/api/admin/control-plane/integrations/gemini?environment=${env}`);
         const d = res.data;
         if (d) {
           setForm((p) => ({
@@ -54,7 +54,7 @@ export default function GeminiIntegrationPage() {
     setSaving(true);
     try {
       let allowed_models: string[] = [];
-      let safety_settings: Record<string, unknown> = {};
+      let safety_settings: Record<string, any> = {};
       try {
         allowed_models = JSON.parse(form.allowed_models);
         safety_settings = JSON.parse(form.safety_settings || "{}");

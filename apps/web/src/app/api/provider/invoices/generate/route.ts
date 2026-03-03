@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    const taxes = (settingsRow?.settings as Record<string, unknown>)?.taxes as Record<string, unknown> | undefined;
+    const taxes = (settingsRow?.settings as Record<string, any>)?.taxes as Record<string, any> | undefined;
     const taxRate = (taxes?.default_tax_rate as number) ?? 15;
     const taxAmount = subtotal * (taxRate / 100);
     const totalAmount = subtotal + taxAmount;

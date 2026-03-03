@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
 
   // Redirect: use "next" param if present (e.g. /provider/dashboard when logging in from provider page)
   const nextParam = requestUrl.searchParams.get("next");
-  const allowedPaths = ["/", "/login", "/signup", "/provider/dashboard", "/provider", "/provider/onboarding", "/booking", "/account-settings", "/admin/dashboard"];
+  const allowedPaths = ["/", "/login", "/signup", "/portal", "/provider/dashboard", "/provider", "/provider/onboarding", "/booking", "/account-settings", "/admin/dashboard", "/bookings"];
   let normalizedPath: string | null = null;
   if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
     normalizedPath = new URL(nextParam, requestUrl.origin).pathname;

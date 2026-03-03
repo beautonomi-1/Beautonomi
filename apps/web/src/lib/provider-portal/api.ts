@@ -60,7 +60,7 @@ export interface ReferenceDataItem {
   description?: string;
   display_order: number;
   is_active: boolean;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 export interface ProviderApi {
@@ -145,7 +145,7 @@ export interface ProviderApi {
   createCampaign(data: Partial<Campaign>): Promise<Campaign>;
   updateCampaign(id: string, data: Partial<Campaign>): Promise<Campaign>;
   deleteCampaign(id: string): Promise<void>;
-  sendCampaign(id: string): Promise<unknown>;
+  sendCampaign(id: string): Promise<any>;
   listAutomations(): Promise<Automation[]>;
   createAutomation(data: Partial<Automation>): Promise<Automation>;
   updateAutomation(id: string, data: Partial<Automation>): Promise<Automation>;
@@ -168,7 +168,7 @@ export interface ProviderApi {
     currency?: string;
     appointment_id?: string;
     sale_id?: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }): Promise<YocoPayment>;
   getYocoPayment(id: string): Promise<YocoPayment>;
 
@@ -631,12 +631,12 @@ export class MockProviderApi implements ProviderApi {
       // Apply additional filters that weren't handled by API
       let filtered = appointments;
       if (filters?.search) {
-        const search = filters.search.toLowerCase();
+        const search = (filters.search ?? "").toLowerCase();
         filtered = filtered.filter(
           (a) =>
-            a.client_name.toLowerCase().includes(search) ||
-            a.service_name.toLowerCase().includes(search) ||
-            a.ref_number.toLowerCase().includes(search)
+            (a?.client_name ?? "").toLowerCase().includes(search) ||
+            (a?.service_name ?? "").toLowerCase().includes(search) ||
+            (a?.ref_number ?? "").toLowerCase().includes(search)
         );
       }
 
@@ -2685,7 +2685,7 @@ export class MockProviderApi implements ProviderApi {
     currency?: string;
     appointment_id?: string;
     sale_id?: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }): Promise<YocoPayment> {
     try {
       const { yocoApi } = await import("./yoco-api");
@@ -3037,11 +3037,11 @@ export class MockProviderApi implements ProviderApi {
     let filtered = [...this.recurringAppointments];
 
     if (filters?.search) {
-      const search = filters.search.toLowerCase();
+      const search = (filters.search ?? "").toLowerCase();
       filtered = filtered.filter(
         (a) =>
-          a.client_name.toLowerCase().includes(search) ||
-          a.service_name.toLowerCase().includes(search)
+          (a?.client_name ?? "").toLowerCase().includes(search) ||
+          (a?.service_name ?? "").toLowerCase().includes(search)
       );
     }
 
@@ -3156,8 +3156,8 @@ export class MockProviderApi implements ProviderApi {
       let filtered = [...this.resources];
 
       if (filters?.search) {
-        const search = filters.search.toLowerCase();
-        filtered = filtered.filter((r) => r.name.toLowerCase().includes(search));
+        const search = (filters.search ?? "").toLowerCase();
+        filtered = filtered.filter((r) => (r.name ?? "").toLowerCase().includes(search));
       }
 
       return new Promise((resolve) => setTimeout(() => resolve(filtered), 200));
@@ -4800,7 +4800,7 @@ export class MockProviderApi implements ProviderApi {
       if (filters?.status) params.append("status", filters.status);
       if (filters?.type) params.append("type", filters.type);
       
-      const response = await fetcher.get<{ data: { data: any[] } | any[] }>(
+      const response = await fetcher.get<{ data: { data: any[] } | unknown[] }>(
         `/api/provider/campaigns${params.toString() ? `?${params.toString()}` : ""}`
       );
       return Array.isArray(response.data) ? response.data : (response.data as any)?.data || [];

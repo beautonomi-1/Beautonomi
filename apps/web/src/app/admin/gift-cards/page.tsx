@@ -20,6 +20,8 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AdminFilterBar } from "@/components/admin/AdminFilterBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface GiftCard {
@@ -64,10 +66,12 @@ export default function AdminGiftCards() {
       if (statusFilter !== "all") params.set("status", statusFilter);
 
       const response = await fetcher.get<{
-        gift_cards: GiftCard[];
-        meta: { total: number; page: number; limit: number; has_more: boolean };
+        data: {
+          gift_cards: GiftCard[];
+          meta: { total: number; page: number; limit: number; has_more: boolean };
+        };
       }>(`/api/admin/gift-cards?${params.toString()}`);
-      setGiftCards(response.gift_cards || []);
+      setGiftCards(response.data?.gift_cards ?? []);
     } catch (error) {
       console.error("Failed to load gift cards:", error);
       toast.error("Failed to load gift cards");
@@ -102,10 +106,10 @@ export default function AdminGiftCards() {
 
   const handleView = async (card: GiftCard) => {
     try {
-      const response = await fetcher.get<{ gift_card: GiftCard & { redemptions?: any[] } }>(
+      const response = await fetcher.get<{ data: { gift_card: GiftCard & { redemptions?: any[] } } }>(
         `/api/admin/gift-cards/${card.id}`
       );
-      setViewingCard(response.gift_card);
+      setViewingCard(response.data?.gift_card ?? null);
       setIsViewDialogOpen(true);
     } catch (error) {
       console.error("Failed to load gift card details:", error);
@@ -201,18 +205,19 @@ export default function AdminGiftCards() {
   return (
     <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">Gift Cards Management</h1>
-            <p className="text-gray-600 mt-1">Manage gift cards and view redemption history</p>
-          </div>
-          <Button onClick={handleCreate} className="bg-[#FF0077] hover:bg-[#D60565]">
-            <Plus className="w-4 h-4 mr-2" />
-            Create Gift Card
-          </Button>
-        </div>
+        <AdminPageHeader
+          title="Gift Cards Management"
+          description="Manage gift cards and view redemption history"
+          actions={
+            <Button onClick={handleCreate} className="bg-[#FF0077] hover:bg-[#D60565]">
+              <Plus className="w-4 h-4 mr-2" />
+              Create Gift Card
+            </Button>
+          }
+        />
 
-        <div className="mb-6 flex gap-4">
+        <AdminFilterBar className="mb-6">
+          <div className="flex gap-4 flex-col sm:flex-row">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <Input
@@ -239,7 +244,8 @@ export default function AdminGiftCards() {
               <SelectItem value="zero_balance">Zero Balance</SelectItem>
             </SelectContent>
           </Select>
-        </div>
+          </div>
+        </AdminFilterBar>
 
         {giftCards.length === 0 ? (
           <EmptyState
@@ -272,12 +278,14 @@ export default function AdminGiftCards() {
                     <TableCell className="font-mono font-medium">
                       <div className="flex items-center gap-2">
                         {card.code}
-                        <button
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           onClick={() => handleCopyCode(card.code)}
-                          className="text-gray-400 hover:text-gray-600"
+                          className="h-7 w-7 text-gray-400 hover:text-gray-600"
                         >
                           <Copy className="w-3 h-3" />
-                        </button>
+                        </Button>
                       </div>
                     </TableCell>
                     <TableCell>{formatCurrency(card.initial_balance, card.currency)}</TableCell>
@@ -440,6 +448,9 @@ export default function AdminGiftCards() {
                   className="w-full p-2 border rounded-md font-mono text-sm"
                   placeholder='{"recipient_email": "user@example.com"}'
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Add <code className="bg-gray-100 px-1 rounded">recipient_email</code> so the customer sees this card under Account → Payments → Gift cards.
+                </p>
               </div>
             </div>
 

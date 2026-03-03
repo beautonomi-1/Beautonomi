@@ -13,7 +13,7 @@ export type WebSocketEventType =
 
 export interface WebSocketEvent {
   type: WebSocketEventType;
-  data: any;
+  data: unknown;
   timestamp: string;
 }
 
@@ -190,7 +190,7 @@ class WebSocketManager {
   /**
    * Send message to WebSocket server
    */
-  send(data: any) {
+  send(data: unknown) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
     } else {

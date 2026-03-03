@@ -11,7 +11,7 @@ This doc lists each integration, where its config lives, who manages it, and how
 | **Amplitude** | `platform_settings` + `platform_secrets` | Superadmin (Settings; Integrations → Amplitude) | Web + mobile (existing) |
 | **Sentry** | Env (e.g. `EXPO_PUBLIC_SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`) | Dev/ops | Web (next.config, instrumentation) + customer/provider (lib/sentry.ts) |
 | **Paystack** | `platform_secrets` + Settings UI | Superadmin | Web server + client init (existing) |
-| **Mapbox** | `platform_settings.settings.mapbox`; access token in `platform_secrets` | Superadmin | `GET /api/public/third-party-config?service=mapbox`, web + mobile |
+| **Mapbox** | **Preferred:** Admin → Mapbox (`mapbox_config`: public token + style). Fallback: Settings → Integrations → Mapbox (`platform_settings`). Server token in `platform_secrets` | Superadmin | `GET /api/public/third-party-config?service=mapbox`, `GET /api/public/directions-config`; web + mobile (see docs/MAPBOX_AND_ADDRESS_ALIGNMENT.md) |
 | **OneSignal / Google** | `platform_settings` | Superadmin | third-party-config, web + mobile |
 
 **Principle:** Singular **link URLs** are the same as **Apps** URLs (no new DB fields). Singular **SDK credentials** stay out of the DB and live in EAS Secrets / env for mobile only.

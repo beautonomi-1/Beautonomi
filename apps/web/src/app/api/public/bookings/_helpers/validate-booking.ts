@@ -828,7 +828,7 @@ export async function validateBooking(
   // ── Return enriched data ─────────────────────────────────────────────────
   return {
     customerId,
-    provider: provider as unknown as ProviderRow,
+    provider: provider as any as ProviderRow,
     currency,
 
     offeringById,

@@ -130,7 +130,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const data = validationResult.data;
-    const updates: Record<string, unknown> = {
+    const updates: Record<string, any> = {
       updated_at: new Date().toISOString(),
     };
     if (data.staff_selection_mode !== undefined) updates.staff_selection_mode = data.staff_selection_mode;

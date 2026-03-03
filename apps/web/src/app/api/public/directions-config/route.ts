@@ -14,7 +14,7 @@ export async function GET() {
     // Fetch Mapbox config (public fields only)
     const { data: mapboxConfig, error } = await supabase
       .from("mapbox_config")
-      .select("public_access_token, is_enabled")
+      .select("public_access_token, is_enabled, style_url")
       .single();
 
     if (error && error.code !== "PGRST116") {
@@ -25,16 +25,19 @@ export async function GET() {
     // Determine the provider based on configuration
     let provider: "mapbox" | "google" = "google";
     let mapboxPublicToken: string | undefined;
+    let mapboxStyleUrl: string | undefined;
 
     if (mapboxConfig?.is_enabled && mapboxConfig?.public_access_token) {
       provider = "mapbox";
       mapboxPublicToken = mapboxConfig.public_access_token;
+      mapboxStyleUrl = mapboxConfig.style_url ?? undefined;
     }
 
     return NextResponse.json({
       data: {
         provider,
         mapboxPublicToken,
+        mapboxStyleUrl,
       },
       error: null,
     });

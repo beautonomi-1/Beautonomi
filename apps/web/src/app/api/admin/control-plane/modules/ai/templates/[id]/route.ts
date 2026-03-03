@@ -24,7 +24,7 @@ export async function PATCH(
     } = body;
 
     const supabase = getSupabaseAdmin();
-    const updates: Record<string, unknown> = {};
+    const updates: Record<string, any> = {};
 
     if (enabled !== undefined) updates.enabled = Boolean(enabled);
     if (platform_scopes !== undefined) updates.platform_scopes = platform_scopes ?? null;

@@ -595,7 +595,7 @@ export async function GET(request: Request) {
           );
           let hottest: any[] = sortedProviderIds
             .map((id) => providerMap.get(id))
-            .filter((p): p is any => p !== undefined);
+            .filter((p): p is unknown => p !== undefined);
 
           // If we have fewer than 12 providers with bookings, fill with featured providers
           if (hottest.length < 12) {
@@ -1146,8 +1146,8 @@ export async function GET(request: Request) {
               distance_km: distance,
             };
           })
-          .filter((p): p is any => p !== null)
-          .sort((a, b) => a.distance_km - b.distance_km)
+          .filter((p): p is NonNullable<typeof p> => p !== null)
+          .sort((a, b) => (a as { distance_km: number }).distance_km - (b as { distance_km: number }).distance_km)
           .slice(0, 12)
           .map((providerWithDistance: any) => {
             // Extract distance_km before destructuring
@@ -1736,7 +1736,7 @@ export async function GET(request: Request) {
     const response = NextResponse.json({ ...result, data });
     response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     return response;
-  } catch (error: unknown) {
+  } catch (error: any) {
     const err = error instanceof Error ? error : new Error(String(error));
     console.error("Unexpected error in /api/public/home:", err.message, err.stack);
     // Return empty data instead of error to prevent page crash

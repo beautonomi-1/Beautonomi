@@ -10,6 +10,8 @@
     "start": "next start",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "lint:fix-all": "node scripts/lint-fix-all.mjs",
+    "lint:fix-everything": "node scripts/lint-fix-everything.mjs",
     "lint:unused-report": "node scripts/lint-unused-report.mjs",
     "test": "vitest run",
     "test:run": "vitest run",

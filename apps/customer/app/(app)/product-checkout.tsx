@@ -143,6 +143,7 @@ export default function ProductCheckoutScreen() {
 
       setLoading(false);
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- load by provider_id only
   }, [provider_id]);
 
   const providerCart = provider_id ? cart.groupedByProvider[provider_id] : null;
@@ -265,6 +266,7 @@ export default function ProductCheckoutScreen() {
       }
       router.replace("/product-orders" as any);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- orders/paymentMethod from context
   }, [provider_id, fulfillment, selectedAddress, selectedLocation, orders.createOrder, router, user, total, useWallet]);
 
   if (loading) {

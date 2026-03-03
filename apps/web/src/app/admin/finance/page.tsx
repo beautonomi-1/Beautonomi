@@ -130,37 +130,10 @@ export default function AdminFinance() {
           : "Failed to load finance data";
       setError(errorMessage);
       console.error("Error loading finance data:", err);
-      // Set empty arrays on error to prevent crashes
-      if (!summary) {
-        setTransactions([]);
-      }
+      setTransactions([]);
+      setTotal(0);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-   
-  const _handleExport = async () => {
-    try {
-      const params = new URLSearchParams();
-      if (startDate) params.set("start_date", startDate);
-      if (endDate) params.set("end_date", endDate);
-      
-      const response = await fetch(`/api/admin/export/transactions?${params.toString()}`);
-      if (!response.ok) throw new Error("Export failed");
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `transactions-export-${new Date().toISOString().split("T")[0]}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      toast.success("Export downloaded");
-    } catch {
-      toast.error("Failed to export data");
     }
   };
 
@@ -173,7 +146,7 @@ export default function AdminFinance() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
           <div>
@@ -181,9 +154,9 @@ export default function AdminFinance() {
               <h1 className="text-2xl sm:text-3xl font-semibold">Finance Overview</h1>
               <Popover>
                 <PopoverTrigger asChild>
-                  <button className="mt-1 text-gray-400 hover:text-gray-600 transition-colors">
+                  <Button variant="ghost" size="icon" className="mt-1 text-gray-400 hover:text-gray-600">
                     <Info className="w-5 h-5" />
-                  </button>
+                  </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-96 max-h-[80vh] overflow-y-auto">
                   <div className="space-y-3">
@@ -649,9 +622,9 @@ function SummaryCard({
           {infoTooltip && (
             <Popover>
               <PopoverTrigger asChild>
-                <button className="text-gray-400 hover:text-gray-600 transition-colors">
+                <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-600">
                   <Info className="w-3 h-3 sm:w-4 sm:h-4" />
-                </button>
+                </Button>
               </PopoverTrigger>
               <PopoverContent className="w-72">
                 <p className="text-xs text-gray-600">{infoTooltip}</p>

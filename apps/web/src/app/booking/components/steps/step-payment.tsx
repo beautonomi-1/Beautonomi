@@ -164,7 +164,7 @@ export default function StepPayment({
   useEffect(() => {
     if (!user) return;
     setWalletLoading(true);
-    fetcher.get<{ data: { wallet: { balance: number; currency: string }; transactions: unknown[] } }>("/api/me/wallet", { cache: "no-store" })
+    fetcher.get<{ data: { wallet: { balance: number; currency: string }; transactions: any[] } }>("/api/me/wallet", { cache: "no-store" })
       .then((res) => {
         if (res?.data?.wallet) {
           setWalletBalance(Number(res.data.wallet.balance) || 0);

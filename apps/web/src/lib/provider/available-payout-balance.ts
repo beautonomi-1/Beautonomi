@@ -1,17 +1,27 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export type GetAvailablePayoutBalanceOptions = {
+  /** Earnings created before (now - holdDays) are available. Default 0 = all available. */
+  holdDays?: number;
+};
+
 /**
  * Compute available balance for payout (ledger-based):
  * - Sum provider_earnings (net) excluding direct walk-in (cash/Yoco) — platform doesn't hold that money.
+ * - Optionally exclude earnings newer than holdDays (payout hold period).
  * - Subtract completed payouts (finance_transactions type 'payout').
  * - Subtract pending/processing payout requests (payouts table).
  */
 export async function getAvailablePayoutBalance(
   supabase: SupabaseClient,
-  providerId: string
+  providerId: string,
+  options?: GetAvailablePayoutBalanceOptions
 ): Promise<{ availableBalance: number; pendingPayoutsSum: number }> {
   const allTime = "1970-01-01T00:00:00.000Z";
-  const nowIso = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const holdDays = options?.holdDays ?? 0;
+  const availableFrom = holdDays > 0 ? new Date(now.getTime() - holdDays * 24 * 60 * 60 * 1000).toISOString() : allTime;
 
   const { data: ledgerRows, error: ledgerError } = await supabase
     .from("finance_transactions")
@@ -62,6 +72,7 @@ export async function getAvailablePayoutBalance(
       continue;
     }
     if (row.transaction_type !== "provider_earnings") continue;
+    if (holdDays > 0 && row.created_at && row.created_at > availableFrom) continue;
     // Exclude direct walk-in (platform doesn't hold the money)
     if (row.booking_id && bookingMap[row.booking_id]?.booking_source === "walk_in") {
       if (bookingMap[row.booking_id]?.payment_provider !== "paystack") continue;

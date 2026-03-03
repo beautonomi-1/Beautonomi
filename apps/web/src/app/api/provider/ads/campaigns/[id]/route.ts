@@ -25,7 +25,7 @@ export async function PATCH(
     const { id: campaignId } = await params;
 
     const body = await request.json();
-    const updates: Record<string, unknown> = {};
+    const updates: Record<string, any> = {};
     if (body.status !== undefined) {
       const status = String(body.status);
       if (!["draft", "active", "paused", "ended"].includes(status)) {

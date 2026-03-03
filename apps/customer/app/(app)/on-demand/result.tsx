@@ -3,7 +3,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
-import { Colors } from "@/constants/colors";
 
 export default function OnDemandResultScreen() {
   const router = useRouter();

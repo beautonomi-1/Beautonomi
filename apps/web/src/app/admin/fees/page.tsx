@@ -81,16 +81,16 @@ export default function AdminFees() {
   const [activeTab, setActiveTab] = useState("configs");
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         <div className="mb-4 sm:mb-6">
           <div className="flex items-start gap-2 mb-2">
             <h1 className="text-2xl sm:text-3xl font-semibold">Fee Management</h1>
             <Popover>
               <PopoverTrigger asChild>
-                <button className="mt-1 text-gray-400 hover:text-gray-600 transition-colors">
+                <Button variant="ghost" size="icon" className="mt-1 text-gray-400 hover:text-gray-600">
                   <Info className="w-5 h-5" />
-                </button>
+                </Button>
               </PopoverTrigger>
           <PopoverContent className="w-80 sm:w-96 max-h-[80vh] overflow-y-auto">
               <div className="space-y-3">
@@ -236,9 +236,9 @@ function FeeConfigsTab() {
           <h2 className="text-lg font-semibold">Payment Gateway Fee Configurations</h2>
           <Popover>
             <PopoverTrigger asChild>
-              <button className="text-gray-400 hover:text-gray-600 transition-colors">
+              <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-600">
                 <Info className="w-4 h-4" />
-              </button>
+              </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80 sm:w-96">
               <div className="space-y-2">
@@ -309,9 +309,9 @@ function FeeConfigsTab() {
                     Gateway
                     <Popover>
                       <PopoverTrigger asChild>
-                        <button className="text-gray-400 hover:text-gray-600">
+                        <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-600">
                           <Info className="w-3 h-3" />
-                        </button>
+                        </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-64">
                         <p className="text-xs text-gray-600">
@@ -449,9 +449,9 @@ function FeeConfigModal({
                 <Label htmlFor="fee_type">Fee Type *</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <button type="button" className="text-gray-400 hover:text-gray-600 transition-colors">
+                    <Button variant="ghost" size="icon" type="button" className="text-gray-400 hover:text-gray-600">
                       <Info className="w-3 h-3" />
-                    </button>
+                    </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-72">
                     <div className="space-y-2">
@@ -489,9 +489,9 @@ function FeeConfigModal({
                   <Label htmlFor="fee_percentage">Fee Percentage *</Label>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <button type="button" className="text-gray-400 hover:text-gray-600 transition-colors">
+                      <Button variant="ghost" size="icon" type="button" className="text-gray-400 hover:text-gray-600">
                         <Info className="w-3 h-3" />
-                      </button>
+                      </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-72">
                       <div className="space-y-2">
@@ -537,9 +537,9 @@ function FeeConfigModal({
                   <Label htmlFor="fee_fixed_amount">Fixed Fee Amount *</Label>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <button type="button" className="text-gray-400 hover:text-gray-600 transition-colors">
+                      <Button variant="ghost" size="icon" type="button" className="text-gray-400 hover:text-gray-600">
                         <Info className="w-3 h-3" />
-                      </button>
+                      </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-72">
                       <div className="space-y-2">
@@ -604,9 +604,9 @@ function FeeConfigModal({
                 <Label htmlFor="effective_from">Effective From *</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <button type="button" className="text-gray-400 hover:text-gray-600 transition-colors">
+                    <Button variant="ghost" size="icon" type="button" className="text-gray-400 hover:text-gray-600">
                       <Info className="w-3 h-3" />
-                    </button>
+                    </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-72">
                     <div className="space-y-2">
@@ -724,9 +724,9 @@ function FeeAdjustmentsTab() {
           <h2 className="text-lg font-semibold">Fee Adjustments</h2>
           <Popover>
             <PopoverTrigger asChild>
-              <button className="text-gray-400 hover:text-gray-600 transition-colors">
+              <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-600">
                 <Info className="w-4 h-4" />
-              </button>
+              </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80 sm:w-96">
               <div className="space-y-2">
@@ -786,9 +786,9 @@ function FeeAdjustmentsTab() {
                     Reconciled
                     <Popover>
                       <PopoverTrigger asChild>
-                        <button className="text-gray-400 hover:text-gray-600">
+                        <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-600">
                           <Info className="w-3 h-3" />
-                        </button>
+                        </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-64">
                         <p className="text-xs text-gray-600">
@@ -922,9 +922,9 @@ function ReconciliationsTab() {
           <h2 className="text-lg font-semibold">Fee Reconciliations</h2>
           <Popover>
             <PopoverTrigger asChild>
-              <button className="text-gray-400 hover:text-gray-600 transition-colors">
+              <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-600">
                 <Info className="w-4 h-4" />
-              </button>
+              </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80 sm:w-96">
               <div className="space-y-2">
@@ -996,9 +996,9 @@ function ReconciliationsTab() {
                     Expected
                     <Popover>
                       <PopoverTrigger asChild>
-                        <button className="text-gray-400 hover:text-gray-600">
+                        <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-600">
                           <Info className="w-3 h-3" />
-                        </button>
+                        </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-64">
                         <p className="text-xs text-gray-600">
@@ -1014,9 +1014,9 @@ function ReconciliationsTab() {
                     Actual
                     <Popover>
                       <PopoverTrigger asChild>
-                        <button className="text-gray-400 hover:text-gray-600">
+                        <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-600">
                           <Info className="w-3 h-3" />
-                        </button>
+                        </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-64">
                         <p className="text-xs text-gray-600">
@@ -1032,9 +1032,9 @@ function ReconciliationsTab() {
                     Variance
                     <Popover>
                       <PopoverTrigger asChild>
-                        <button className="text-gray-400 hover:text-gray-600">
+                        <Button variant="ghost" size="icon" className="text-gray-400 hover:text-gray-600">
                           <Info className="w-3 h-3" />
-                        </button>
+                        </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-64">
                         <p className="text-xs text-gray-600">

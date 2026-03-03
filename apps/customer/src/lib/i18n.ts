@@ -7,8 +7,7 @@ initI18n(deviceLocale);
 
 AsyncStorage.getItem("beautonomi_locale").then((saved) => {
   if (saved && saved !== deviceLocale) {
-    const { i18n } = require("@beautonomi/i18n");
-    i18n.changeLanguage(saved);
+    import("@beautonomi/i18n").then(({ i18n }) => i18n.changeLanguage(saved));
   }
 });
 

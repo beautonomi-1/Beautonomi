@@ -25,7 +25,7 @@ export default function RankingModulePage() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetcher.get<{ data: Record<string, unknown> | null }>(`/api/admin/control-plane/modules/ranking?environment=${env}`);
+        const res = await fetcher.get<{ data: Record<string, any> | null }>(`/api/admin/control-plane/modules/ranking?environment=${env}`);
         const d = res.data;
         if (d) {
           setForm({
@@ -44,7 +44,7 @@ export default function RankingModulePage() {
   const save = async () => {
     setSaving(true);
     try {
-      let weights: Record<string, unknown> = {};
+      let weights: Record<string, any> = {};
       try {
         weights = JSON.parse(form.weights || "{}");
       } catch {

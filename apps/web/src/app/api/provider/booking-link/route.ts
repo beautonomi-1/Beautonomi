@@ -83,7 +83,7 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const validated = updateBookingLinkSchema.parse(body);
 
-    const updateData: Record<string, unknown> = {};
+    const updateData: Record<string, any> = {};
 
     if (validated.slug !== undefined) {
       const { data: existing } = await supabase

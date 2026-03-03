@@ -88,6 +88,7 @@ export default function AddLocationScreen() {
     Alert.alert("Saved", "Location added.", [
       { text: "OK", onPress: () => router.back() },
     ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- FIELD_LABELS is static
   }, [name, address_line1, address_line2, city, state, postal_code, country, phone, router, t]);
 
   return (

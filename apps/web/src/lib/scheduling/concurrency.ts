@@ -193,7 +193,7 @@ interface UseConcurrentMutationOptions<T> {
 /**
  * React hook for concurrent-safe mutations
  */
-export function useConcurrentMutation<T, Args extends any[]>(
+export function useConcurrentMutation<T, Args extends unknown[]>(
   mutationFn: (...args: Args) => Promise<T>,
   options: UseConcurrentMutationOptions<T> = {}
 ) {

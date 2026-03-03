@@ -66,6 +66,7 @@ export function ConfigBundleProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     if (!bundle && !error) refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount to load bundle
   }, []);
 
   return (

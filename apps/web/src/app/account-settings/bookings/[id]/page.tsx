@@ -13,6 +13,8 @@ import {
   User,
   Phone,
   Mail,
+  CheckCircle2,
+  HelpCircle,
 } from "lucide-react";
 import type { Booking } from "@/types/beautonomi";
 import { toast } from "sonner";
@@ -21,11 +23,14 @@ import Breadcrumb from "../../components/breadcrumb";
 import BackButton from "../../components/back-button";
 import AuthGuard from "@/components/auth/auth-guard";
 import { SafetyPanicButton } from "@/components/safety/SafetyPanicButton";
+import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 
 export default function BookingDetailPage() {
   const params = useParams();
   const router = useRouter();
   const bookingId = params.id as string;
+  const onDemandConfig = useModuleConfig("on_demand");
+  const helpUrl = (onDemandConfig?.ui_copy as Record<string, string> | undefined)?.waiting_help_url?.trim();
 
   const [booking, setBooking] = useState<Booking | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -147,6 +152,8 @@ export default function BookingDetailPage() {
   const canCancel =
     booking.status === "confirmed" || booking.status === "pending";
   const canReschedule = booking.status === "confirmed";
+  const isActive = ["pending", "confirmed", "started", "in_progress"].includes(booking.status);
+  const providerName = (booking as Booking & { provider?: { business_name?: string } }).provider?.business_name ?? "your provider";
 
   return (
     <AuthGuard>
@@ -160,6 +167,33 @@ export default function BookingDetailPage() {
             { label: `Booking #${booking.booking_number}` }
           ]} 
         />
+      )}
+
+      {isActive && (
+        <div className="mb-6 rounded-2xl border border-green-200 bg-green-50 p-4">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="h-10 w-10 shrink-0 text-green-600" />
+            <div>
+              <p className="font-semibold text-gray-900">
+                Booking confirmed {formatTime(booking.scheduled_at)}
+              </p>
+              <p className="text-sm text-gray-600 mt-0.5">
+                Your booking with {providerName} is confirmed.
+              </p>
+              {helpUrl && (
+                <a
+                  href={helpUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-green-700 hover:underline"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                  Help
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">

@@ -56,7 +56,7 @@ export interface PublicProviderDetail {
   starting_price?: number;
   currency: string;
   description: string;
-  gallery: Array<{ src: string; alt?: string } | string>;
+  gallery: ({ src: string; alt?: string } | string)[];
   categories: string[];
   supports_house_calls: boolean;
   supports_salon: boolean;
@@ -89,23 +89,23 @@ export interface ProviderService {
   supports_at_home: boolean;
   supports_at_salon: boolean;
   has_variants: boolean;
-  variants?: Array<{
+  variants?: {
     id: string;
     title: string;
     variant_name?: string;
     price: number;
     duration_minutes: number;
-  }>;
+  }[];
 }
 
 export interface ProviderServicesResponse {
   provider: { id: string; business_name: string; slug: string };
-  categories: Array<{
+  categories: {
     id: string;
     name: string;
     color?: string | null;
     services: ProviderService[];
-  }>;
+  }[];
   total_services: number;
 }
 
@@ -177,7 +177,7 @@ export interface HomeApiResponse {
   nearest: PublicProviderCard[];
   hottest: PublicProviderCard[];
   upcoming: PublicProviderCard[];
-  browseByCity?: Array<{ city: string; providers: PublicProviderCard[] }>;
+  browseByCity?: { city: string; providers: PublicProviderCard[] }[];
 }
 
 export interface SearchResult {
@@ -231,7 +231,7 @@ export interface PublicProviderProduct {
   quantity: number;
   track_stock_quantity?: boolean;
   hasVariants: boolean;
-  variantOptionTypes?: Array<{ name: string; values: string[] }>;
+  variantOptionTypes?: { name: string; values: string[] }[];
   variants: PublicProductVariant[];
 }
 

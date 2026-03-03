@@ -32,7 +32,7 @@ export default function Preferences({
       try {
         setIsLoadingServices(true);
         // Fetch upcoming bookings - use upcoming status to get confirmed/paid future bookings
-        const response = await fetcher.get<{ data: { data: any[] } | any[] }>("/api/me/bookings?status=upcoming&limit=10");
+        const response = await fetcher.get<{ data: { data: any[] } | unknown[] }>("/api/me/bookings?status=upcoming&limit=10");
         // Handle both paginated and non-paginated responses
         const bookingsData = Array.isArray(response.data) 
           ? response.data 

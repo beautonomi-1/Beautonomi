@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,8 @@ import { Search, Radio, Download } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AdminFilterBar } from "@/components/admin/AdminFilterBar";
 import { Badge } from "@/components/ui/badge";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -40,17 +42,37 @@ export default function AdminAuditLogs() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [isRealtimeEnabled, setIsRealtimeEnabled] = useState(true);
+  const channelRef = useRef<ReturnType<ReturnType<typeof getSupabaseClient>["channel"]> | null>(null);
 
   useEffect(() => {
     loadLogs();
   }, [page, actionFilter, entityTypeFilter, startDate, endDate]); // eslint-disable-line react-hooks/exhaustive-deps -- load when filters change
 
-  // Real-time subscription for new audit logs
+  // Polling fallback when realtime is disabled (10–30s)
+  const POLL_INTERVAL_MS = 30000;
+  useEffect(() => {
+    if (isRealtimeEnabled) return;
+    const intervalId = setInterval(() => {
+      loadLogs();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [isRealtimeEnabled]); // eslint-disable-line react-hooks/exhaustive-deps -- loadLogs is stable
+
+  // Real-time subscription for new audit logs (single subscription guarded by ref)
   useEffect(() => {
     if (!isRealtimeEnabled) return;
 
     const supabase = getSupabaseClient();
     if (!supabase) return;
+
+    if (channelRef.current) {
+      try {
+        supabase.removeChannel(channelRef.current);
+      } catch {
+        // ignore
+      }
+      channelRef.current = null;
+    }
 
     const channel = supabase
       .channel("audit-logs-realtime")
@@ -93,11 +115,16 @@ export default function AdminAuditLogs() {
       )
       .subscribe();
 
+    channelRef.current = channel;
+
     return () => {
       try {
         supabase.removeChannel(channel);
       } catch {
         // Ignore when channel is still connecting (e.g. React Strict Mode unmount)
+      }
+      if (channelRef.current === channel) {
+        channelRef.current = null;
       }
     };
   }, [isRealtimeEnabled]);
@@ -122,10 +149,8 @@ export default function AdminAuditLogs() {
         meta: { page: number; limit: number; total: number; has_more: boolean };
       }>(`/api/admin/audit-logs?${params.toString()}`);
 
-      setLogs(response.data || []);
-      if (response.meta) {
-        setTotal(response.meta.total);
-      }
+      setLogs(response.data ?? []);
+      setTotal(response.meta?.total ?? 0);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -155,64 +180,64 @@ export default function AdminAuditLogs() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold mb-2">Audit Logs</h1>
-            <p className="text-gray-600">Track all administrative actions</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {isRealtimeEnabled && (
-              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                <Radio className="w-3 h-3 mr-1 animate-pulse" />
-                Live
-              </Badge>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsRealtimeEnabled(!isRealtimeEnabled)}
-            >
-              {isRealtimeEnabled ? "Disable" : "Enable"} Real-time
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                try {
-                  const params = new URLSearchParams();
-                  if (actionFilter) params.set("action", actionFilter);
-                  if (entityTypeFilter) params.set("entity_type", entityTypeFilter);
-                  if (startDate) params.set("start_date", startDate);
-                  if (endDate) params.set("end_date", endDate);
-                  
-                  const response = await fetch(`/api/admin/export/audit-logs?${params.toString()}`);
-                  if (!response.ok) throw new Error("Export failed");
-                  
-                  const blob = await response.blob();
-                  const url = window.URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `audit-logs-export-${new Date().toISOString().split("T")[0]}.csv`;
-                  document.body.appendChild(a);
-                  a.click();
-                  window.URL.revokeObjectURL(url);
-                  document.body.removeChild(a);
-                  toast.success("Export downloaded");
-                } catch {
-                  toast.error("Failed to export audit logs");
-                }
-              }}
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export CSV
-            </Button>
-          </div>
-        </div>
+        <AdminPageHeader
+          title="Audit Logs"
+          description="Track all administrative actions"
+          actions={
+            <div className="flex items-center gap-2">
+              {isRealtimeEnabled && (
+                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                  <Radio className="w-3 h-3 mr-1 animate-pulse" />
+                  Live
+                </Badge>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsRealtimeEnabled(!isRealtimeEnabled)}
+              >
+                {isRealtimeEnabled ? "Disable" : "Enable"} Real-time
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const params = new URLSearchParams();
+                    if (actionFilter) params.set("action", actionFilter);
+                    if (entityTypeFilter) params.set("entity_type", entityTypeFilter);
+                    if (startDate) params.set("start_date", startDate);
+                    if (endDate) params.set("end_date", endDate);
+                    
+                    const response = await fetch(`/api/admin/export/audit-logs?${params.toString()}`);
+                    if (!response.ok) throw new Error("Export failed");
+                    
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `audit-logs-export-${new Date().toISOString().split("T")[0]}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    toast.success("Export downloaded");
+                  } catch {
+                    toast.error("Failed to export audit logs");
+                  }
+                }}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export CSV
+              </Button>
+            </div>
+          }
+        />
 
-        {/* Filters */}
-        <div className="mb-6 space-y-4">
+        <AdminFilterBar className="mb-6">
+          <div className="space-y-4">
           <form onSubmit={handleSearch} className="flex gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -281,6 +306,7 @@ export default function AdminAuditLogs() {
             </div>
           </div>
         </div>
+        </AdminFilterBar>
 
         {/* Logs Table */}
         {error ? (

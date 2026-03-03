@@ -489,7 +489,7 @@ export default function ProviderAutomations() {
   const loadExecutionHistory = async (automationId: string) => {
     try {
       setIsLoadingHistory(true);
-      const response = await fetcher.get<{ data: unknown[] }>(`/api/provider/automations/${automationId}/executions`);
+      const response = await fetcher.get<{ data: any[] }>(`/api/provider/automations/${automationId}/executions`);
       setExecutionHistory(response?.data ?? []);
     } catch (error) {
       console.error("Failed to load execution history:", error);

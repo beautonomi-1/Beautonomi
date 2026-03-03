@@ -18,6 +18,7 @@ import {
   Gift,
   Zap
 } from "lucide-react";
+import Image from "next/image";
 import { fetcher } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -245,10 +246,13 @@ export default function ProviderGamificationPage() {
                     style={{ backgroundColor: data.current_badge.color || "#6366f1" }}
                   >
                     {data.current_badge.icon_url ? (
-                      <img 
-                        src={data.current_badge.icon_url} 
+                      <Image
+                        src={data.current_badge.icon_url}
                         alt={data.current_badge.name}
+                        width={80}
+                        height={80}
                         className="w-full h-full rounded-full object-cover"
+                        unoptimized
                       />
                     ) : (
                       <Trophy className="w-10 h-10" />
@@ -260,13 +264,13 @@ export default function ProviderGamificationPage() {
                       <p className="text-sm text-gray-600 mb-2">{data.current_badge.description}</p>
                     )}
                     <div className="flex flex-wrap gap-2">
-                      {data.current_badge.benefits.free_subscription && (
+                      {data.current_badge?.benefits?.free_subscription && (
                         <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                           <Gift className="w-3 h-3 mr-1" />
                           Free Subscription
                         </Badge>
                       )}
-                      {data.current_badge.benefits.featured && (
+                      {data.current_badge?.benefits?.featured && (
                         <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                           <Star className="w-3 h-3 mr-1" />
                           Featured

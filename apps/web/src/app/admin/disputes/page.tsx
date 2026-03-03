@@ -8,6 +8,8 @@ import { Search, AlertCircle } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AdminFilterBar } from "@/components/admin/AdminFilterBar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -69,10 +71,10 @@ export default function AdminDisputes() {
       if (statusFilter !== "all") params.set("status", statusFilter);
 
       const response = await fetcher.get<{
-        data: { disputes: Dispute[]; statistics: any; pagination: any };
+        data?: { disputes?: Dispute[]; statistics?: any; pagination?: any };
       }>(`/api/admin/disputes?${params.toString()}`);
 
-      setDisputes(response.data.disputes);
+      setDisputes(response.data?.disputes ?? []);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -96,10 +98,11 @@ export default function AdminDisputes() {
         notes,
       };
 
-      if (resolution === "refund_full") {
+      if (resolution === "refund_full" && selectedDispute.booking?.total_amount != null) {
         updateData.refund_amount = selectedDispute.booking.total_amount;
       } else if (resolution === "refund_partial") {
-        updateData.refund_amount = parseFloat(refundAmount);
+        const amount = parseFloat(refundAmount);
+        if (!Number.isNaN(amount)) updateData.refund_amount = amount;
       }
 
       await fetcher.patch(`/api/admin/disputes/${selectedDispute.id}`, updateData);
@@ -117,11 +120,11 @@ export default function AdminDisputes() {
 
   const filteredDisputes = disputes.filter((dispute) => {
     const matchesSearch =
-      dispute.booking?.booking_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      dispute.booking?.customer?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      dispute.booking?.customer?.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      dispute.booking?.provider?.business_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      dispute.reason?.toLowerCase().includes(searchQuery.toLowerCase());
+      (dispute.booking?.booking_number ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (dispute.booking?.customer?.full_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (dispute.booking?.customer?.email ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (dispute.booking?.provider?.business_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (dispute.reason ?? "").toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
 
@@ -158,15 +161,12 @@ export default function AdminDisputes() {
   return (
     <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Disputes & Support</h1>
-            <p className="text-gray-600 mt-1">Manage booking disputes and support tickets</p>
-          </div>
-        </div>
+        <AdminPageHeader
+          title="Disputes & Support"
+          description="Manage booking disputes and support tickets"
+        />
 
-        {/* Filters */}
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
+        <AdminFilterBar>
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
@@ -191,7 +191,7 @@ export default function AdminDisputes() {
               <option value="closed">Closed</option>
             </select>
           </div>
-        </div>
+        </AdminFilterBar>
 
         {/* Disputes List */}
         <Tabs defaultValue="all" className="space-y-4">
@@ -259,7 +259,7 @@ export default function AdminDisputes() {
                     value={refundAmount}
                     onChange={(e) => setRefundAmount(e.target.value)}
                     placeholder="Enter refund amount"
-                    max={selectedDispute?.booking.total_amount}
+                    max={selectedDispute?.booking?.total_amount ?? undefined}
                   />
                 </div>
               )}

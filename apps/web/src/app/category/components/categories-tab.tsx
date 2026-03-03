@@ -168,7 +168,6 @@ const CategoriesTab = () => {
             >
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
                 {
-                //@ts-ignore 
                 destinationsData[tab.value].slice(0, visibleCount).map((destination, index) => (
                   <div key={index}>
                     <Link href={destination.path}>
@@ -184,7 +183,6 @@ const CategoriesTab = () => {
                   </div>
                 ))}
                 {
-                //@ts-ignore 
                 visibleCount < destinationsData[tab.value].length && (
                   <div className="col-span-1 col-start-6 flex gap-1 items-center">
                     <button onClick={handleShowMore}>

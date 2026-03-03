@@ -27,7 +27,7 @@ export type CustomFieldDefinition = {
   help_text: string | null;
   default_value: string | null;
   display_order: number;
-  validation_rules: Record<string, unknown> | null;
+  validation_rules: Record<string, any> | null;
 };
 
 export interface CustomFieldsFormProps {
@@ -163,7 +163,7 @@ export function CustomFieldsForm({
     return null;
   }
 
-  const optionsFromRules = (rules: Record<string, unknown> | null): string[] => {
+  const optionsFromRules = (rules: Record<string, any> | null): string[] => {
     if (!rules) return [];
     const opts = rules.options;
     if (Array.isArray(opts)) return opts.map(String);

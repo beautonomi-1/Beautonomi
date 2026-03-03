@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 declare module 'ol/Map' {
   const Map: any;
   export default Map;

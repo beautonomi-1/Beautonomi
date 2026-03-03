@@ -21,6 +21,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -65,10 +66,10 @@ export default function CustomFieldsPage() {
   const loadFields = async () => {
     try {
       setIsLoading(true);
-      // Note: This would need a backend API endpoint
-      // For now, using a placeholder
-      const response = await fetcher.get<{ fields: CustomField[] }>("/api/admin/custom-fields").catch(() => ({ fields: [] }));
-      setFields(response.fields || []);
+      const response = await fetcher
+        .get<{ data?: { fields?: CustomField[] } }>("/api/admin/custom-fields")
+        .catch(() => ({ data: { fields: [] } }));
+      setFields(response.data?.fields ?? []);
     } catch (error) {
       console.error("Failed to load custom fields:", error);
       // Don't show error if endpoint doesn't exist yet
@@ -164,20 +165,20 @@ export default function CustomFieldsPage() {
   return (
     <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Custom Fields</h1>
-            <p className="text-gray-600 mt-1">
-              Platform-level definitions: extra fields that can apply to users, providers, bookings, and services. Managed by superadmin only—not by individual providers.
-            </p>
-            <p className="text-sm text-amber-700 mt-2">
-              <strong>Not provider-managed:</strong> Providers do not define their own custom fields here. You define which fields exist for each entity type; those definitions would be used when editing a user, provider, booking, or service (consumer UI may not be wired yet).
-            </p>
-          </div>
-          <Button onClick={handleCreate} className="bg-[#FF0077] hover:bg-[#D60565]">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Custom Field
-          </Button>
+        <div className="mb-6">
+          <AdminPageHeader
+            title="Custom Fields"
+            description="Platform-level definitions: extra fields that can apply to users, providers, bookings, and services. Managed by superadmin only—not by individual providers."
+            actions={
+              <Button onClick={handleCreate} className="bg-[#FF0077] hover:bg-[#D60565]">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Custom Field
+              </Button>
+            }
+          />
+          <p className="text-sm text-amber-700 mt-2">
+            <strong>Not provider-managed:</strong> Providers do not define their own custom fields here. You define which fields exist for each entity type; those definitions would be used when editing a user, provider, booking, or service (consumer UI may not be wired yet).
+          </p>
         </div>
 
         {fields.length === 0 ? (

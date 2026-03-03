@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse, unauthorizedResponse } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 
@@ -232,7 +232,7 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      data: { ...(addon as Record<string, unknown>), service_ids },
+      data: { ...(addon as Record<string, any>), service_ids },
       error: null,
     });
   } catch (error) {

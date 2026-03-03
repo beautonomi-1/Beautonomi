@@ -468,12 +468,21 @@ export default function ProviderDashboard() {
       {/* Quick Start Banner */}
       <QuickStartBanner />
 
-      {/* Rewards & Achievements Card */}
-      {stats.gamification && (
+      {/* Rewards & Achievements Card - always show to encourage progress */}
+      {stats.gamification ? (
         <>
           <RewardsCard gamification={stats.gamification} />
           <BadgeCongratsModal gamification={stats.gamification} />
         </>
+      ) : (
+        <RewardsCard
+          gamification={{
+            total_points: 0,
+            current_badge: null,
+            badge_earned_at: null,
+            progress_to_next_badge: null,
+          }}
+        />
       )}
 
       {/* Key Metrics - Primary KPIs */}

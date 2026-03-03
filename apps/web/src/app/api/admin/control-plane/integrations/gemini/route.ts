@@ -11,7 +11,7 @@ function parseEnv(s: string | null): string {
 }
 
 /** Safe shape for client: never return api_key_secret */
-function toSafeGeminiRow(row: Record<string, unknown> | null) {
+function toSafeGeminiRow(row: Record<string, any> | null) {
   if (!row) return null;
   return {
     id: row.id,
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (error) throw error;
-    return successResponse(toSafeGeminiRow(data as Record<string, unknown> | null));
+    return successResponse(toSafeGeminiRow(data as Record<string, any> | null));
   } catch (error) {
     return handleApiError(error as Error, "Failed to fetch Gemini config");
   }
@@ -66,7 +66,7 @@ export async function PUT(request: NextRequest) {
       .eq("environment", environment)
       .maybeSingle();
 
-    const payload: Record<string, unknown> = {
+    const payload: Record<string, any> = {
       environment,
       enabled: body.enabled ?? false,
       default_model: body.default_model ?? "gemini-1.5-flash",
@@ -88,11 +88,11 @@ export async function PUT(request: NextRequest) {
       changedBy: user.id,
       area: "integration",
       recordKey: `gemini.${environment}`,
-      before: before as Record<string, unknown> | null,
-      after: toSafeGeminiRow(after as Record<string, unknown>) as Record<string, unknown> | null,
+      before: before as Record<string, any> | null,
+      after: toSafeGeminiRow(after as Record<string, any>) as Record<string, any> | null,
     });
 
-    return successResponse(toSafeGeminiRow(after as Record<string, unknown>));
+    return successResponse(toSafeGeminiRow(after as Record<string, any>));
   } catch (error) {
     return handleApiError(error as Error, "Failed to update Gemini config");
   }

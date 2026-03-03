@@ -20,7 +20,7 @@ export function DatePickerWithRange({ className, img: _img }: any) {
         mode="range"
         defaultMonth={date?.from}
         selected={date}
-        //@ts-ignore 
+        // @ts-expect-error - date library types 
         onSelect={setDate}
         numberOfMonths={numberOfMonths}
       />

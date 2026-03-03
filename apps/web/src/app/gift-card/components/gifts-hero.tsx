@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 
 interface PageContent {
   [sectionKey: string]: {
@@ -54,18 +55,10 @@ const GiftsHero = ({ content, giftCardsEnabled = true }: GiftsHeroProps) => {
         </div>
         <div className="relative mx-auto">
           {cardBackgroundImage && cardOverlayImage ? (
-            <>
-              <img 
-                src={cardBackgroundImage} 
-                alt="Card Background"  
-                className="z-10 w-[900px] h-[650px] mx-auto object-cover rounded-2xl" 
-              />
-              <img 
-                src={cardOverlayImage} 
-                alt="Card Overlay"  
-                className="absolute inset-0 w-[900px] h-[650px] mx-auto object-cover rounded-2xl" 
-              />
-            </>
+            <div className="relative z-10 w-[900px] h-[650px] mx-auto rounded-2xl overflow-hidden">
+              <Image src={cardBackgroundImage} alt="Card Background" fill className="object-cover" unoptimized />
+              <Image src={cardOverlayImage} alt="Card Overlay" fill className="object-cover" unoptimized />
+            </div>
           ) : (
             <div className="w-[900px] h-[650px] mx-auto rounded-2xl bg-gradient-to-br from-[#FF0077] via-[#D60565] to-[#FF0077] flex items-center justify-center shadow-2xl">
               <div className="text-center text-white">

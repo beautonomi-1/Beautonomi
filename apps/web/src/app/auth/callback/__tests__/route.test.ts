@@ -8,7 +8,7 @@ import { NextRequest } from "next/server";
 const mockGetSupabaseServer = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
-  getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+  getSupabaseServer: (...args: any[]) => mockGetSupabaseServer(...args),
 }));
 
 describe("GET /auth/callback", () => {

@@ -12,7 +12,6 @@ interface RoleGateProps {
 
 export function RoleGate({ children }: RoleGateProps) {
   const { user, signOut } = useAuth();
-  const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [blocked, setBlocked] = useState(false);
 
@@ -32,14 +31,10 @@ export function RoleGate({ children }: RoleGateProps) {
 
       if (res.error || !roleFromApi) {
         // API error or no role: allow access and treat as customer.
-        // New signups may not have users table row yet; handle_new_user runs async.
-        setRole("customer");
         return;
       }
       if (!ALLOWED_ROLES.includes(roleFromApi)) {
         setBlocked(true);
-      } else {
-        setRole(roleFromApi);
       }
     })();
     return () => {

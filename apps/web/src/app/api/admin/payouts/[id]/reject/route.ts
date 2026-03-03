@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { writeAuditLog } from "@/lib/audit/audit";
 
 /**
  * POST /api/admin/payouts/[id]/reject
@@ -78,6 +79,15 @@ export async function POST(
     } catch (notifError) {
       console.error("Error sending notification:", notifError);
     }
+
+    await writeAuditLog({
+      actor_user_id: auth.user.id,
+      actor_role: (auth.user as any).role || "superadmin",
+      action: "admin.payout.reject",
+      entity_type: "payout",
+      entity_id: id,
+      metadata: { provider_id: (payout as any).provider_id, amount: (payout as any).amount, reason },
+    });
 
     return successResponse(updatedPayout);
   } catch (error) {

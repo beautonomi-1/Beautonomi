@@ -12,6 +12,8 @@ import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AdminFilterBar } from "@/components/admin/AdminFilterBar";
 import Link from "next/link";
 
 interface SupportTicket {
@@ -47,10 +49,10 @@ export default function SupportTicketsPage() {
       if (statusFilter !== "all") params.append("status", statusFilter);
       if (priorityFilter !== "all") params.append("priority", priorityFilter);
 
-      const response = await fetcher.get<{ tickets: SupportTicket[] }>(
+      const response = await fetcher.get<{ tickets?: SupportTicket[]; data?: { tickets?: SupportTicket[] } }>(
         `/api/admin/support-tickets?${params.toString()}`
       );
-      setTickets(response.tickets || []);
+      setTickets(response.tickets ?? response.data?.tickets ?? []);
     } catch (error) {
       console.error("Failed to load tickets:", error);
       toast.error("Failed to load support tickets");
@@ -91,11 +93,11 @@ export default function SupportTicketsPage() {
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       return (
-        ticket.ticket_number.toLowerCase().includes(searchLower) ||
-        ticket.subject.toLowerCase().includes(searchLower) ||
-        ticket.user?.email.toLowerCase().includes(searchLower) ||
-        ticket.user?.full_name?.toLowerCase().includes(searchLower) ||
-        ticket.provider?.business_name.toLowerCase().includes(searchLower)
+        (ticket.ticket_number ?? "").toLowerCase().includes(searchLower) ||
+        (ticket.subject ?? "").toLowerCase().includes(searchLower) ||
+        (ticket.user?.email ?? "").toLowerCase().includes(searchLower) ||
+        (ticket.user?.full_name ?? "").toLowerCase().includes(searchLower) ||
+        (ticket.provider?.business_name ?? "").toLowerCase().includes(searchLower)
       );
     }
     return true;
@@ -112,14 +114,12 @@ export default function SupportTicketsPage() {
   return (
     <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">Support Tickets</h1>
-            <p className="text-gray-600 mt-1">Manage customer and provider support requests</p>
-          </div>
-        </div>
+        <AdminPageHeader
+          title="Support Tickets"
+          description="Manage customer and provider support requests"
+        />
 
-        <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <AdminFilterBar className="mb-6">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
@@ -156,7 +156,7 @@ export default function SupportTicketsPage() {
               </SelectContent>
             </Select>
           </div>
-        </div>
+        </AdminFilterBar>
 
         {filteredTickets.length === 0 ? (
           <EmptyState

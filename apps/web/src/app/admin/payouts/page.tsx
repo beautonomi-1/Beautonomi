@@ -23,6 +23,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AdminFilterBar } from "@/components/admin/AdminFilterBar";
 
 interface Payout {
   id: string;
@@ -84,10 +86,8 @@ export default function AdminPayouts() {
         meta: { page: number; limit: number; total: number; has_more: boolean };
       }>(`/api/admin/payouts?${params.toString()}`);
 
-      setPayouts(response.data || []);
-      if (response.meta) {
-        setTotal(response.meta.total);
-      }
+      setPayouts(response.data ?? []);
+      setTotal(response.meta?.total ?? 0);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -197,17 +197,16 @@ export default function AdminPayouts() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         <div className="mb-4 sm:mb-6">
-          <h1 className="text-2xl sm:text-3xl font-semibold mb-1 sm:mb-2">Payout Management</h1>
-          <p className="text-sm sm:text-base text-gray-600">
-            Manage provider payout queue. Provider payouts are paid to their linked bank account. Customer refunds are processed via payments/refunds, not this queue.
-          </p>
+          <AdminPageHeader
+            title="Payout Management"
+            description="Manage provider payout queue. Provider payouts are paid to their linked bank account. Customer refunds are processed via payments/refunds, not this queue."
+          />
         </div>
 
-        {/* Filters */}
-        <div className="mb-4 sm:mb-6">
+        <AdminFilterBar className="mb-4 sm:mb-6">
           <select
             value={statusFilter}
             onChange={(e) => {
@@ -222,7 +221,7 @@ export default function AdminPayouts() {
             <option value="completed">Completed</option>
             <option value="failed">Failed</option>
           </select>
-        </div>
+        </AdminFilterBar>
 
         {/* Payouts Table */}
         {error ? (

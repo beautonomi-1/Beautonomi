@@ -15,7 +15,7 @@ import type { UserRole } from '@/types/beautonomi';
 export interface ApiError {
   message: string;
   code?: string;
-  details?: unknown;
+  details?: any;
 }
 
 export interface ApiResponse<T> {
@@ -43,7 +43,7 @@ export function errorResponse(
   message: string,
   code?: string,
   status = 400,
-  details?: unknown
+  details?: any
 ) {
   return NextResponse.json<ApiResponse<null>>(
     {
@@ -88,7 +88,7 @@ export function badRequestResponse(message: string) {
  * Handle API route errors
  */
 export function handleApiError(
-  error: unknown,
+  error: any,
   defaultMessage = "Internal server error",
   _codeOrStatus?: string | number,
   _statusCode?: number

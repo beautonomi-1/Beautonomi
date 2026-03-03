@@ -117,7 +117,7 @@ export default function UserDetailPage() {
 
   if (isLoading) {
     return (
-      <RoleGuard allowedRoles={["superadmin"]}>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
         <div className="container mx-auto px-4 py-8">
           <LoadingTimeout loadingMessage="Loading user details..." />
         </div>
@@ -127,7 +127,7 @@ export default function UserDetailPage() {
 
   if (error || !user) {
     return (
-      <RoleGuard allowedRoles={["superadmin"]}>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
         <div className="container mx-auto px-4 py-8">
           <EmptyState
             title="Failed to load user"
@@ -145,7 +145,7 @@ export default function UserDetailPage() {
   const isDeactivated = !!user.deactivated_at;
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="min-h-screen bg-zinc-50/50">
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
           <motion.div

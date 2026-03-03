@@ -88,7 +88,7 @@ export async function PATCH(
       );
     }
 
-    const update: Record<string, unknown> = {
+    const update: Record<string, any> = {
       status: transitions[parsed.action],
     };
 

@@ -10,7 +10,7 @@ export interface ReferenceDataItem {
   description?: string;
   display_order: number;
   is_active: boolean;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 export interface ReferenceDataResponse {

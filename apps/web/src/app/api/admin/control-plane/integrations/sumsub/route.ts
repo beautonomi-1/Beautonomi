@@ -10,7 +10,7 @@ function parseEnv(s: string | null): string {
   return "production";
 }
 
-function toSafeSumsubRow(row: Record<string, unknown> | null) {
+function toSafeSumsubRow(row: Record<string, any> | null) {
   if (!row) return null;
   return {
     id: row.id,
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (error) throw error;
-    return successResponse(toSafeSumsubRow(data as Record<string, unknown> | null));
+    return successResponse(toSafeSumsubRow(data as Record<string, any> | null));
   } catch (error) {
     return handleApiError(error as Error, "Failed to fetch Sumsub config");
   }
@@ -57,7 +57,7 @@ export async function PUT(request: NextRequest) {
       .eq("environment", environment)
       .maybeSingle();
 
-    const payload: Record<string, unknown> = {
+    const payload: Record<string, any> = {
       environment,
       enabled: body.enabled ?? false,
       level_name: body.level_name ?? null,
@@ -79,11 +79,11 @@ export async function PUT(request: NextRequest) {
       changedBy: user.id,
       area: "integration",
       recordKey: `sumsub.${environment}`,
-      before: before as Record<string, unknown> | null,
-      after: toSafeSumsubRow(after as Record<string, unknown>) as Record<string, unknown> | null,
+      before: before as Record<string, any> | null,
+      after: toSafeSumsubRow(after as Record<string, any>) as Record<string, any> | null,
     });
 
-    return successResponse(toSafeSumsubRow(after as Record<string, unknown>));
+    return successResponse(toSafeSumsubRow(after as Record<string, any>));
   } catch (error) {
     return handleApiError(error as Error, "Failed to update Sumsub config");
   }

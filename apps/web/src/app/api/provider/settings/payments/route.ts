@@ -108,7 +108,7 @@ export async function PATCH(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    const updates: Record<string, unknown> = {};
+    const updates: Record<string, any> = {};
 
     if (body.currency !== undefined) {
       updates.currency = body.currency;

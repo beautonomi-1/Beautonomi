@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
+import { Text, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";

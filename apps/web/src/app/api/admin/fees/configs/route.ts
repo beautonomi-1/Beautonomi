@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole } from "@/lib/supabase/auth-server";
 
 /** Table/schema cache errors when the table does not exist yet (migration not applied). */
-function isTableMissingError(e: unknown): boolean {
+function isTableMissingError(e: any): boolean {
   const msg = typeof (e as any)?.message === "string" ? (e as any).message : "";
   return (
     msg.includes("schema cache") ||
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({ data: data ?? [], error: null });
-  } catch (error: unknown) {
+  } catch (error: any) {
     const err = error as { message?: string };
     console.error("Error fetching fee configs:", err);
     if (isTableMissingError(err)) {

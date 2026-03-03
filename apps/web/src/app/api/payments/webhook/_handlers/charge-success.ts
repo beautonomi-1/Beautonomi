@@ -668,7 +668,7 @@ async function handleCustomOfferSuccess(
   const taxAmount = Number(meta.tax_amount ?? 0);
   const taxRate = Number(meta.tax_rate ?? 0);
   const serviceFeeAmount = Number(meta.service_fee_amount ?? 0);
-  const serviceFeePercentage = Number(meta.service_fee_percentage ?? 0);
+  const _serviceFeePercentage = Number(meta.service_fee_percentage ?? 0);
   const promotionDiscountAmount = Number(meta.promotion_discount_amount ?? 0);
   const promotionId = meta.promotion_id && String(meta.promotion_id).trim() ? meta.promotion_id : null;
 

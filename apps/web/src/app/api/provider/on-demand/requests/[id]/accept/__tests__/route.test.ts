@@ -11,15 +11,15 @@ const mockGetProviderIdForUser = vi.fn();
 const mockGetSupabaseServer = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", () => ({
-  requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
-  getProviderIdForUser: (...args: unknown[]) => mockGetProviderIdForUser(...args),
-  successResponse: (data: unknown) => ({ ok: true, data }),
+  requireRoleInApi: (...args: any[]) => mockRequireRoleInApi(...args),
+  getProviderIdForUser: (...args: any[]) => mockGetProviderIdForUser(...args),
+  successResponse: (data: any) => ({ ok: true, data }),
   errorResponse: (message: string, code: string, status: number) =>
     new Response(JSON.stringify({ data: null, error: { message, code } }), { status }),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
-  getSupabaseServer: (...args: unknown[]) => mockGetSupabaseServer(...args),
+  getSupabaseServer: (...args: any[]) => mockGetSupabaseServer(...args),
 }));
 
 vi.mock("@/lib/supabase/admin", () => ({

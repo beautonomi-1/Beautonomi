@@ -21,7 +21,6 @@ import Animated, {
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
-import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
 
 interface Milestone {

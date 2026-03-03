@@ -21,7 +21,7 @@ const travelFeesSchema = z.object({
  * Get platform travel fee settings
  * Allows providers to read limits (for validation), but only superadmins can modify
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     // Allow providers and superadmins to read platform limits
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin']);

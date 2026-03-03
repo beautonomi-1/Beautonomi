@@ -105,7 +105,7 @@ export default function ProviderMetadata({
       if (url.startsWith("/")) return `${siteUrl}${url}`;
       return url;
     };
-    const schema: Record<string, unknown> = {
+    const schema: Record<string, any> = {
       "@context": "https://schema.org",
       "@type": "LocalBusiness",
       name: provider.business_name || "Provider",

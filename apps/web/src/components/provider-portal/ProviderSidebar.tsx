@@ -17,6 +17,7 @@ import {
   Repeat,
   Package,
   Link as LinkIcon,
+  Trophy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
@@ -26,6 +27,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ProviderRewardsTeaser } from "./ProviderRewardsTeaser";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/provider/dashboard" },
@@ -39,6 +41,7 @@ const menuItems = [
   { icon: Megaphone, label: "Marketing", href: "/provider/marketing/automations" },
   { icon: LinkIcon, label: "Booking Links", href: "/provider/express-booking" },
   { icon: Users, label: "Team", href: "/provider/team/members" },
+  { icon: Trophy, label: "Rewards & Badges", href: "/provider/gamification" },
   { icon: Settings, label: "Settings", href: "/provider/settings" },
 ];
 
@@ -67,6 +70,9 @@ const isActiveRoute = (pathname: string, href: string) => {
   }
   if (href === "/provider/express-booking") {
     return pathname.startsWith("/provider/express-booking");
+  }
+  if (href === "/provider/gamification") {
+    return pathname.startsWith("/provider/gamification");
   }
   return pathname === href || pathname.startsWith(href + "/");
 };
@@ -112,7 +118,14 @@ export function ProviderSidebar() {
                       )}
                     >
                       <Icon className="w-5 h-5 flex-shrink-0" />
-                      {!sidebarCollapsed && <span>{item.label}</span>}
+                      {!sidebarCollapsed && (
+                        <span className="flex-1 min-w-0 flex flex-col items-start">
+                          <span>{item.label}</span>
+                          {item.href === "/provider/gamification" && (
+                            <ProviderRewardsTeaser />
+                          )}
+                        </span>
+                      )}
                     </Link>
                   </TooltipTrigger>
                   {sidebarCollapsed && (

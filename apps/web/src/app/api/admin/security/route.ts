@@ -52,8 +52,8 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    const settings = (row as { settings?: Record<string, unknown> } | null)?.settings ?? {};
-    const security = (settings.security as Record<string, unknown>) ?? {};
+    const settings = (row as { settings?: Record<string, any> } | null)?.settings ?? {};
+    const security = (settings.security as Record<string, any>) ?? {};
     const merged = {
       password_policy: { ...DEFAULTS.password_policy, ...(security.password_policy as object) },
       two_factor: { ...DEFAULTS.two_factor, ...(security.two_factor as object) },
@@ -87,11 +87,11 @@ export async function PATCH(req: NextRequest) {
     if (fetchError) throw fetchError;
 
     let rowId: string;
-    let currentSettings: Record<string, unknown>;
+    let currentSettings: Record<string, any>;
 
     if (row) {
       rowId = (row as { id: string }).id;
-      currentSettings = (row as { settings?: Record<string, unknown> }).settings ?? {};
+      currentSettings = (row as { settings?: Record<string, any> }).settings ?? {};
     } else {
       // No active row: create one so security settings can be stored
       const { data: inserted, error: insertError } = await supabase
@@ -104,7 +104,7 @@ export async function PATCH(req: NextRequest) {
       currentSettings = {};
     }
 
-    const currentSecurity = (currentSettings.security as Record<string, unknown>) ?? {};
+    const currentSecurity = (currentSettings.security as Record<string, any>) ?? {};
     const updatedSecurity = {
       ...currentSecurity,
       password_policy: body.password_policy ?? currentSecurity.password_policy,

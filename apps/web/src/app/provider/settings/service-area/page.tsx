@@ -20,7 +20,7 @@ type ServiceArea = {
   radius_km: number | null;
   home_latitude: number | null;
   home_longitude: number | null;
-  zones: unknown[];
+  zones: any[];
 };
 
 export default function ServiceAreaPage() {

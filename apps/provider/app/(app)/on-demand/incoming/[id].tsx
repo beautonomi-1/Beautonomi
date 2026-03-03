@@ -1,6 +1,9 @@
+import { useEffect, useRef } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useModuleConfig } from "@/providers/ConfigBundleProvider";
+import { playRingtone } from "@/lib/on-demand/ringtone";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -20,6 +23,8 @@ type OnDemandRequest = {
 export default function OnDemandIncomingScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const onDemandConfig = useModuleConfig("on_demand");
+  const ringtoneStopRef = useRef<(() => void) | null>(null);
   const { data, loading, error, refresh } = useApi<OnDemandRequest>(
     `/api/provider/on-demand/requests/${id}`
   );
@@ -33,13 +38,38 @@ export default function OnDemandIncomingScreen() {
     : false;
   const canRespond = isRequested && !expired;
 
+  // Play ringtone when incoming request is shown (same as web overlay)
+  useEffect(() => {
+    return () => {
+      ringtoneStopRef.current?.();
+    };
+  }, []);
+  useEffect(() => {
+    if (!request?.id || request.status !== "requested" || expired) return;
+    if (!onDemandConfig?.enabled || !onDemandConfig.ringtone_asset_path) return;
+    ringtoneStopRef.current?.();
+    playRingtone(onDemandConfig).then((ctrl) => {
+      ringtoneStopRef.current = ctrl.stop;
+    });
+  }, [request?.id, request?.status, expired, onDemandConfig]);
+
+  useEffect(() => {
+    if (expired) ringtoneStopRef.current?.();
+  }, [expired]);
+
   const handleAccept = async () => {
+    ringtoneStopRef.current?.();
     const res = await acceptRequest(
       `/api/provider/on-demand/requests/${id}/accept`,
       {}
     );
-    if (!res.error) {
-      router.back();
+    if (!res.error && res.data) {
+      const payload = res.data as { booking_id?: string };
+      if (payload.booking_id) {
+        router.replace(`/(app)/(tabs)/more/bookings/${payload.booking_id}` as never);
+      } else {
+        router.back();
+      }
     }
   };
 
@@ -53,6 +83,7 @@ export default function OnDemandIncomingScreen() {
           text: "Decline",
           style: "destructive",
           onPress: async () => {
+            ringtoneStopRef.current?.();
             const res = await declineRequest(
               `/api/provider/on-demand/requests/${id}/decline`,
               {}

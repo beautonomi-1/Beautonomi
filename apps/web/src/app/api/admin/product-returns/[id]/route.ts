@@ -66,7 +66,7 @@ export async function PATCH(
 
     const isRefund = ["full_refund", "partial_refund", "store_credit"].includes(parsed.resolution);
 
-    const update: Record<string, unknown> = {
+    const update: Record<string, any> = {
       status: isRefund ? "refunded" : "resolved_by_admin",
       resolution: parsed.resolution,
       admin_notes: parsed.admin_notes ?? null,

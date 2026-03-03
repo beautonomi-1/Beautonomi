@@ -111,13 +111,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (reportType === "customer_reported_provider") {
-      if (reporter.role !== "customer") {
-        return errorResponse(
-          "Only customers can report providers",
-          "FORBIDDEN",
-          403
-        );
-      }
+      // Allow any authenticated user to report a provider (customer, partner, etc.)
+      // No role restriction so reporting works regardless of user role.
     } else {
       const providerId = await getProviderIdForUser(user.id);
       if (!providerId) {

@@ -355,7 +355,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .eq('id', currentSession.user.id)
             .maybeSingle();
           
-          const roleResult = await Promise.race([roleQueryPromise, roleTimeout]) as { data?: { role: UserRole }; error?: unknown } | null;
+          const roleResult = await Promise.race([roleQueryPromise, roleTimeout]) as { data?: { role: UserRole }; error?: any } | null;
           
           if (roleResult && !('error' in roleResult) && roleResult.data) {
             userRole = roleResult.data.role;

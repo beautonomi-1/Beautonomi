@@ -40,9 +40,9 @@ export async function computeCustomOfferPricing(
   const {
     offerPrice,
     travelFee,
-    currency,
+    currency: _currency,
     providerId,
-    customerId,
+    customerId: _customerId,
     tipAmount: inputTip = 0,
     promotionCode = null,
     locationType = "at_salon",

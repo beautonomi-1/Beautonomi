@@ -222,10 +222,10 @@ export default function AdminStaff() {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
-      member.name.toLowerCase().includes(query) ||
-      member.email?.toLowerCase().includes(query) ||
-      member.phone?.toLowerCase().includes(query) ||
-      member.provider.business_name.toLowerCase().includes(query)
+      (member.name ?? "").toLowerCase().includes(query) ||
+      (member.email ?? "").toLowerCase().includes(query) ||
+      (member.phone ?? "").toLowerCase().includes(query) ||
+      (member.provider?.business_name ?? "").toLowerCase().includes(query)
     );
   });
 
@@ -238,7 +238,7 @@ export default function AdminStaff() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-6">

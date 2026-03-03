@@ -145,6 +145,7 @@ const PageContent = () => {
         business_type={provider.business_type}
         supports_house_calls={provider.supports_house_calls}
         supports_salon={provider.supports_salon}
+        current_badge={provider.current_badge}
       />
       
       {/* Desktop Hero */}
@@ -167,6 +168,7 @@ const PageContent = () => {
           business_type={provider.business_type}
           supports_house_calls={provider.supports_house_calls}
           supports_salon={provider.supports_salon}
+          current_badge={provider.current_badge}
         />
       </div>
       

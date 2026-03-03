@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import Image from "next/image";
 import VerificationStatusCard from "./VerificationStatusCard";
 
 interface PersonalInfoData {
@@ -768,8 +769,8 @@ function PersonalInfoModal({ content, onClose, onSave, isSaving, initialData, co
                     required={content.type === 'governmentId'}
                   />
                   {filePreview && (
-                    <div className="mt-2">
-                      <img src={filePreview} alt="Preview" className="max-w-full h-48 object-contain border border-gray-300 rounded-md" />
+                    <div className="mt-2 relative w-full h-48">
+                      <Image src={filePreview} alt="Preview" fill className="object-contain border border-gray-300 rounded-md" unoptimized />
                     </div>
                   )}
                   {selectedFile && !filePreview && (

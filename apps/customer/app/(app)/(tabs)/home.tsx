@@ -134,10 +134,10 @@ function CategoryPill({
 
 export default function HomeScreen() {
   useScreenTracking("Home");
-  const { user } = useAuth();
-  const { coords, loading: locationLoading } = useLocation();
+  useAuth();
+  const { coords } = useLocation();
   const { selectedAddress, setSelectedAddress } = useSelectedAddress();
-  const { cardWidth, contentPadding } = useResponsive();
+  const { cardWidth } = useResponsive();
   const [activeCategory, setActiveCategory] = useState("All");
 
   const { categories: globalCategories } = useGlobalCategories();
@@ -162,7 +162,7 @@ export default function HomeScreen() {
 
   const handleUseCurrentLocation = useCallback(() => {
     setSelectedAddress(null);
-  }, []);
+  }, [setSelectedAddress]);
 
   const addressLabel = selectedAddress?.displayName ?? (coords ? "Current location" : "Select address");
 

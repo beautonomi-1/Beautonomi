@@ -6,6 +6,7 @@ import { ProviderPortalProvider } from "@/providers/provider-portal/ProviderPort
 import { ProviderShell } from "@/components/provider/ProviderShell";
 import { ProviderSidebarProvider } from "@/contexts/ProviderSidebarContext";
 import RoleGuard from "@/components/auth/RoleGuard";
+import { ProviderPortalGate } from "./ProviderPortalGate";
 import { useRouteTracking } from "@/lib/analytics/amplitude/route-tracker";
 
 function RouteTracker() {
@@ -27,12 +28,14 @@ export default function ProviderLayout({ children }: { children: React.ReactNode
   // APIs enforce permissions via requireRoleInApi/requirePermission; staff may have limited actions.
   return (
     <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
-      <RouteTracker />
-      <ProviderPortalProvider>
-        <ProviderSidebarProvider>
-          <ProviderShell>{children}</ProviderShell>
-        </ProviderSidebarProvider>
-      </ProviderPortalProvider>
+      <ProviderPortalGate>
+        <RouteTracker />
+        <ProviderPortalProvider>
+          <ProviderSidebarProvider>
+            <ProviderShell>{children}</ProviderShell>
+          </ProviderSidebarProvider>
+        </ProviderPortalProvider>
+      </ProviderPortalGate>
     </RoleGuard>
   );
 }

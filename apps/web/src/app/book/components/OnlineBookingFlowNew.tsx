@@ -24,7 +24,6 @@ import ResourceSelection from "@/components/booking/ResourceSelection";
 import type {
   BookingData,
   BookingStep,
-  GroupParticipant,
   LocationOption,
   ServiceOption,
   PackageOption,

@@ -58,7 +58,7 @@ export async function GET(
 
     return NextResponse.json({
       data: {
-        ...(category as Record<string, unknown>),
+        ...(category as Record<string, any>),
         service_count: count || 0,
       },
       error: null,

@@ -73,7 +73,7 @@ export default function PortalReschedulePage() {
       setBooking(response.data);
       setSelectedDate(new Date(response.data.scheduled_at));
       setError(null);
-    } catch (err: unknown) {
+    } catch (err: any) {
       const msg = normalizeError(err instanceof Error ? err.message : "Failed to load booking");
       setError(msg);
       toast.error(msg);

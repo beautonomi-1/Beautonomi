@@ -14,11 +14,9 @@ import {
   Switch,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "@beautonomi/i18n";
-import { useApi } from "@/hooks/useApi";
-import { useApiMutation } from "@/hooks/useApi";
+import { useApi , useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { validateRequired, validatePhone } from "@/lib/validation";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -133,6 +131,7 @@ export default function EditLocationScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert("Saved", "Location updated.");
     refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- FIELD_LABELS is static
   }, [locationId, name, address_line1, address_line2, city, state, postal_code, country, phone, is_primary, refresh, t]);
 
   const handleDelete = useCallback(() => {

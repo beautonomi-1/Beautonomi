@@ -121,7 +121,7 @@ export default function ProviderReportPage() {
 
   if (isLoading) {
     return (
-      <RoleGuard allowedRoles={["superadmin"]}>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
         <div className="container mx-auto px-4 py-8">
           <LoadingTimeout loadingMessage="Loading provider report..." />
         </div>
@@ -131,7 +131,7 @@ export default function ProviderReportPage() {
 
   if (error || !data) {
     return (
-      <RoleGuard allowedRoles={["superadmin"]}>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
         <div className="container mx-auto px-4 py-8">
           <EmptyState
             title="Failed to load provider report"
@@ -149,7 +149,7 @@ export default function ProviderReportPage() {
   const topByRevenue = data.providers.slice(0, 10);
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
           <div>

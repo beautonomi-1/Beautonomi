@@ -13,6 +13,7 @@ import {
   X,
   Eye,
 } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -322,11 +323,13 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
                   required={!user?.identity_verification_document_url}
                 />
                 {formData.preview && (
-                  <div className="mt-2">
-                    <img 
-                      src={formData.preview} 
-                      alt="Preview" 
-                      className="max-w-full h-48 object-contain border border-zinc-300 rounded-lg"
+                  <div className="mt-2 relative w-full h-48">
+                    <Image
+                      src={formData.preview}
+                      alt="Preview"
+                      fill
+                      className="object-contain border border-zinc-300 rounded-lg"
+                      unoptimized
                     />
                   </div>
                 )}

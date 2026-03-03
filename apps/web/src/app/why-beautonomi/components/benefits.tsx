@@ -4,6 +4,7 @@ import React from "react";
 import { CheckCircle2, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import Image from "next/image";
 
 interface PageContent {
   [sectionKey: string]: {
@@ -81,11 +82,9 @@ export default function Benefits({ content }: BenefitsProps) {
           </div>
           <div className="w-full lg:w-1/2">
             {benefitsImage ? (
-              <img 
-                src={benefitsImage} 
-                alt="Benefits" 
-                className="w-full h-[400px] md:h-[500px] object-cover rounded-2xl shadow-2xl" 
-              />
+              <div className="relative w-full h-[400px] md:h-[500px] rounded-2xl shadow-2xl overflow-hidden">
+                <Image src={benefitsImage} alt="Benefits" fill className="object-cover" unoptimized />
+              </div>
             ) : (
               <div className="w-full h-[400px] md:h-[500px] rounded-2xl bg-gradient-to-br from-[#FF0077] via-[#D60565] to-[#FF0077] flex items-center justify-center shadow-2xl relative overflow-hidden">
                 <div className="absolute inset-0 opacity-20">

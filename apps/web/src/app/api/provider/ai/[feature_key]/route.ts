@@ -119,7 +119,7 @@ export async function POST(
       return errorResponse(result.errorCode ?? "AI request failed", "AI_ERROR", 502);
     }
 
-    let parsed: unknown = null;
+    let parsed: any = null;
     try {
       const trimmed = result.text.trim();
       const jsonMatch = trimmed.match(/\{[\s\S]*\}/);

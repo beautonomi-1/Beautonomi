@@ -90,22 +90,23 @@ class ErrorLogger {
   async logApiError(
     endpoint: string,
     method: string,
-    error: Error | any,
+    error: Error | unknown,
     userId?: string,
     providerId?: string,
     requestData?: any,
     statusCode?: number
   ): Promise<void> {
+    const err = error as Error;
     const errorLog: ErrorLog = {
-      error_type: error.name || "API_ERROR",
-      error_message: error.message || String(error),
+      error_type: err.name || "API_ERROR",
+      error_message: err.message || String(error),
       endpoint,
       method,
       status_code: statusCode,
       user_id: userId,
       provider_id: providerId,
       request_data: requestData,
-      stack_trace: error.stack,
+      stack_trace: err.stack,
       severity: this.determineSeverity(statusCode, error),
     };
 

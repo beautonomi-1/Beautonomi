@@ -2,10 +2,11 @@
  * When on-demand accept is enabled, subscribes to Realtime for new on-demand
  * requests and navigates to the incoming screen when one appears (deduped by
  * seen ids). Falls back to polling if Realtime is unavailable.
+ * Gated by same feature flags as web: on_demand_accept_enabled and on_demand_accept_provider_enabled.
  */
 import { useEffect, useRef } from "react";
 import { useRouter } from "expo-router";
-import { useModuleConfig } from "@/providers/ConfigBundleProvider";
+import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useProvider } from "@/providers/ProviderContext";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
@@ -18,12 +19,15 @@ interface OnDemandRequestRow {
 export function OnDemandIncomingListener() {
   const router = useRouter();
   const onDemandConfig = useModuleConfig("on_demand");
+  const acceptGlobalEnabled = useFeatureFlag("on_demand_accept_enabled");
+  const acceptProviderEnabled = useFeatureFlag("on_demand_accept_provider_enabled");
+  const onDemandAcceptEnabled = acceptGlobalEnabled && acceptProviderEnabled;
   const { provider } = useProvider();
   const seenIdsRef = useRef<Set<string>>(new Set());
 
   // Realtime: subscribe to INSERTs on on_demand_requests for this provider
   useEffect(() => {
-    if (!onDemandConfig.enabled || !provider?.id) return;
+    if (!onDemandConfig.enabled || !onDemandAcceptEnabled || !provider?.id) return;
 
     const channel = supabase
       .channel(`on-demand-requests:${provider.id}`)
@@ -52,11 +56,11 @@ export function OnDemandIncomingListener() {
         // ignore
       }
     };
-  }, [onDemandConfig.enabled, provider?.id, router]);
+  }, [onDemandConfig.enabled, onDemandAcceptEnabled, provider?.id, router]);
 
   // Fallback poll in case Realtime misses an event or is unavailable
   useEffect(() => {
-    if (!onDemandConfig.enabled) return;
+    if (!onDemandConfig.enabled || !onDemandAcceptEnabled) return;
 
     const poll = async () => {
       try {
@@ -77,7 +81,7 @@ export function OnDemandIncomingListener() {
     const interval = setInterval(poll, 12000);
     poll();
     return () => clearInterval(interval);
-  }, [onDemandConfig.enabled, router]);
+  }, [onDemandConfig.enabled, onDemandAcceptEnabled, router]);
 
   return null;
 }

@@ -84,7 +84,7 @@ export function StepServices({
             Packages
           </h3>
           <div className="space-y-3">
-            {packages.map((pkg, i) => {
+            {packages.map((pkg, _i) => {
               const isSelected = data.selectedPackage?.id === pkg.id;
               const discount = pkg.discount_percentage ?? 0;
               const hasSavings = discount > 0;

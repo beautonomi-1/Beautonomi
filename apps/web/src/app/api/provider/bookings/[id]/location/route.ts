@@ -97,47 +97,55 @@ export async function POST(
       throw insertError;
     }
 
-    // Calculate ETA if we have destination coordinates
+    // ETA: prefer Mapbox Directions API (drive time); fall back to Haversine + 40 km/h
     let etaMinutes: number | null = null;
+    let distanceKm: number | null = null;
     if (booking.address_latitude && booking.address_longitude && !data.is_estimated) {
+      const providerCoords = { latitude: data.latitude, longitude: data.longitude };
+      const destCoords = {
+        latitude: Number(booking.address_latitude),
+        longitude: Number(booking.address_longitude),
+      };
       try {
         const { getMapboxService } = await import("@/lib/mapbox/mapbox");
         const mapbox = await getMapboxService();
-        
-        const distance = mapbox.calculateDistance(
-          { latitude: data.latitude, longitude: data.longitude },
-          { latitude: booking.address_latitude, longitude: booking.address_longitude }
-        );
-        
-        // Estimate travel time (assuming average speed of 40 km/h)
-        etaMinutes = Math.ceil((distance / 40) * 60);
+        const route = await mapbox.calculateRoute([providerCoords, destCoords], {
+          profile: "driving",
+        });
+        etaMinutes = Math.ceil(route.duration / 60);
+        distanceKm = parseFloat((route.distance / 1000).toFixed(2));
       } catch (error) {
-        console.warn("Failed to calculate ETA:", error);
+        console.warn("Mapbox Directions failed, using Haversine fallback:", error);
+        const R = 6371;
+        const dLat = ((destCoords.latitude - providerCoords.latitude) * Math.PI) / 180;
+        const dLon = ((destCoords.longitude - providerCoords.longitude) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos((providerCoords.latitude * Math.PI) / 180) *
+            Math.cos((destCoords.latitude * Math.PI) / 180) *
+            Math.sin(dLon / 2) ** 2;
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        distanceKm = parseFloat((R * c).toFixed(2));
+        etaMinutes = Math.ceil((distanceKm / 40) * 60);
       }
     }
+
+    // Persist latest provider location and ETA on booking for customer status/ETA UI
+    const bookingUpdate: Record<string, unknown> = {
+      provider_location: { latitude: data.latitude, longitude: data.longitude },
+      updated_at: new Date().toISOString(),
+    };
+    if (etaMinutes != null) {
+      const etaDate = new Date();
+      etaDate.setMinutes(etaDate.getMinutes() + etaMinutes);
+      bookingUpdate.estimated_arrival = etaDate.toISOString();
+    }
+    await supabase.from("bookings").update(bookingUpdate).eq("id", bookingId);
 
     return successResponse({
       location: locationUpdate,
       eta_minutes: etaMinutes,
-      distance_km: booking.address_latitude && booking.address_longitude && !data.is_estimated
-        ? (() => {
-            try {
-              const R = 6371; // Earth's radius in km
-              const dLat = ((booking.address_latitude - data.latitude) * Math.PI) / 180;
-              const dLon = ((booking.address_longitude - data.longitude) * Math.PI) / 180;
-              const a =
-                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos((data.latitude * Math.PI) / 180) *
-                  Math.cos((booking.address_latitude * Math.PI) / 180) *
-                  Math.sin(dLon / 2) *
-                  Math.sin(dLon / 2);
-              const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-              return parseFloat((R * c).toFixed(2));
-            } catch {
-              return null;
-            }
-          })()
-        : null,
+      distance_km: distanceKm,
     });
   } catch (error) {
     return handleApiError(error, "Failed to update location");

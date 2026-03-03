@@ -136,7 +136,7 @@ export async function POST(
     }
 
     const mentionUserIds: string[] = Array.isArray(body.mention_user_ids)
-      ? body.mention_user_ids.filter((id: unknown) => typeof id === "string")
+      ? body.mention_user_ids.filter((id: any) => typeof id === "string")
       : [];
 
     const supabaseAdmin = await getSupabaseAdmin();

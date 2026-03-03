@@ -317,7 +317,7 @@ export interface Sale {
   team_member_name?: string;
   location_id?: string;
   service_location_type?: string;
-  house_call_address?: Record<string, unknown>;
+  house_call_address?: Record<string, any>;
   coupon_code?: string;
   gift_card_code?: string;
   gift_card_amount?: number;
@@ -398,7 +398,7 @@ export interface Shift {
   location_id?: string;
   notes?: string;
   is_recurring?: boolean;
-  recurring_pattern?: { type?: "alternating" | "weekly" | string; [key: string]: unknown };
+  recurring_pattern?: { type?: "alternating" | "weekly" | string; [key: string]: any };
 }
 
 export interface Campaign {

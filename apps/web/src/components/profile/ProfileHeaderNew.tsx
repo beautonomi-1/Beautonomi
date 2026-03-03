@@ -111,8 +111,8 @@ export default function ProfileHeaderNew({ user, onUpdate }: ProfileHeaderProps)
 
       toast.success("Profile photo updated");
       onUpdate?.();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to upload photo");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to upload photo");
     } finally {
       setIsUploading(false);
     }
@@ -137,8 +137,8 @@ export default function ProfileHeaderNew({ user, onUpdate }: ProfileHeaderProps)
       toast.success("Handle updated");
       setIsEditingHandle(false);
       onUpdate?.();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to update handle");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to update handle");
     }
   };
 

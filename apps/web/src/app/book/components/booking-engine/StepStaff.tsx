@@ -80,7 +80,7 @@ export function StepStaff({ data, staff, onSelectStaff, onNext }: StepStaffProps
           <ChevronRight className="h-5 w-5 shrink-0" style={{ color: BOOKING_TEXT_SECONDARY }} />
         </button>
 
-        {staff.map((s, i) => {
+        {staff.map((s, _i) => {
           const isSelected = selectedId === s.id;
           return (
             <button

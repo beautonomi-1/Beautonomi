@@ -23,6 +23,7 @@ interface AboutUsContent {
   content: string;
   display_order: number;
   is_active: boolean;
+  image_url?: string | null;
 }
 
 interface AboutUsModalProps {
@@ -43,6 +44,7 @@ export function AboutUsModal({
   const [contentText, setContentText] = useState("");
   const [displayOrder, setDisplayOrder] = useState(0);
   const [isActive, setIsActive] = useState(true);
+  const [imageUrl, setImageUrl] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -52,12 +54,14 @@ export function AboutUsModal({
       setContentText(content.content);
       setDisplayOrder(content.display_order);
       setIsActive(content.is_active);
+      setImageUrl(content.image_url ?? "");
     } else {
       setTitle("");
       setSectionKey("");
       setContentText("");
       setDisplayOrder(0);
       setIsActive(true);
+      setImageUrl("");
     }
   }, [content, isOpen]);
 
@@ -75,6 +79,7 @@ export function AboutUsModal({
           content: contentText.trim(),
           display_order: displayOrder,
           is_active: isActive,
+          image_url: imageUrl.trim() || null,
         });
         toast.success("About Us content updated");
       } else {
@@ -84,6 +89,7 @@ export function AboutUsModal({
           content: contentText.trim(),
           display_order: displayOrder,
           is_active: isActive,
+          image_url: imageUrl.trim() || null,
         });
         toast.success("About Us content created");
       }
@@ -146,6 +152,17 @@ export function AboutUsModal({
               rows={6}
               className="resize-none"
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="image_url">Image URL (optional)</Label>
+            <Input
+              id="image_url"
+              type="url"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="https://..."
+            />
+            <p className="text-xs text-gray-500">Image shown for this section on the About page.</p>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">

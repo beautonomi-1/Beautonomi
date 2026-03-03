@@ -20,7 +20,7 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
 
     const resourceIds = Array.isArray(body.resource_ids)
-      ? body.resource_ids.filter((id: unknown) => typeof id === "string")
+      ? body.resource_ids.filter((id: any) => typeof id === "string")
       : [];
     if (resourceIds.length === 0) {
       return NextResponse.json({ available: {}, error: null });

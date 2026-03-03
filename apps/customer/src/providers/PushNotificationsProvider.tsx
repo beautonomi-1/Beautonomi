@@ -111,6 +111,7 @@ function usePushRegistration() {
     return () => {
       cancelled = true;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run when user id available
   }, [user?.id]);
 
   useEffect(() => {
@@ -178,6 +179,7 @@ function usePushRegistration() {
     return () => {
       unsubscribe?.();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run when appId/user available
   }, [appId, user?.id]);
 }
 
@@ -203,6 +205,7 @@ function useOneSignalLogout() {
       })();
     }
     prevUserRef.current = user?.id ?? null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- track user for logout cleanup
   }, [user?.id]);
 }
 

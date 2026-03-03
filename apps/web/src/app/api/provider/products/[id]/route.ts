@@ -73,7 +73,7 @@ async function updateProductHandler(
     return notFoundResponse("Product not found");
   }
 
-  const updateData: Record<string, unknown> = {};
+  const updateData: Record<string, any> = {};
   if (body.name !== undefined) updateData.name = body.name;
   if (body.barcode !== undefined) updateData.barcode = body.barcode;
   if (body.brand !== undefined) updateData.brand = body.brand;

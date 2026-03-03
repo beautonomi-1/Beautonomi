@@ -123,12 +123,13 @@ function OrderCard({ order, onPress }: { order: ProductOrder; onPress: () => voi
 
 export default function ProductOrdersScreen() {
   const router = useRouter();
-  const { orders, loading, error, fetchOrders } = useProductOrders();
+  const { orders, loading, fetchOrders } = useProductOrders();
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
   useEffect(() => {
     fetchOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
   const handleRefresh = useCallback(async () => {

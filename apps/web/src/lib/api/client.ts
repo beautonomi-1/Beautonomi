@@ -9,7 +9,7 @@ export class ApiError extends Error {
     public status: number,
     public code: string,
     message: string,
-    public details?: unknown
+    public details?: any
   ) {
     super(message);
     this.name = 'ApiError';
@@ -78,7 +78,7 @@ export class ApiClient {
   /**
    * POST request
    */
-  async post<T>(endpoint: string, body: unknown, options?: RequestInit): Promise<T> {
+  async post<T>(endpoint: string, body: any, options?: RequestInit): Promise<T> {
     return this.request<T>(endpoint, {
       ...options,
       method: 'POST',
@@ -89,7 +89,7 @@ export class ApiClient {
   /**
    * PATCH request
    */
-  async patch<T>(endpoint: string, body: unknown, options?: RequestInit): Promise<T> {
+  async patch<T>(endpoint: string, body: any, options?: RequestInit): Promise<T> {
     return this.request<T>(endpoint, {
       ...options,
       method: 'PATCH',
@@ -100,7 +100,7 @@ export class ApiClient {
   /**
    * PUT request
    */
-  async put<T>(endpoint: string, body: unknown, options?: RequestInit): Promise<T> {
+  async put<T>(endpoint: string, body: any, options?: RequestInit): Promise<T> {
     return this.request<T>(endpoint, {
       ...options,
       method: 'PUT',
@@ -125,7 +125,7 @@ export const apiClient = new ApiClient();
 /**
  * Helper function to handle API errors and return user-friendly messages
  */
-export function handleApiError(error: unknown): string {
+export function handleApiError(error: any): string {
   if (error instanceof ApiError) {
     return error.message;
   }

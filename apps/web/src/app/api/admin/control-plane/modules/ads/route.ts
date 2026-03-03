@@ -72,8 +72,8 @@ export async function PUT(request: NextRequest) {
       changedBy: user.id,
       area: "module",
       recordKey: `ads.${environment}`,
-      before: before as Record<string, unknown> | null,
-      after: after as Record<string, unknown> | null,
+      before: before as Record<string, any> | null,
+      after: after as Record<string, any> | null,
     });
 
     return successResponse(after);

@@ -59,18 +59,32 @@ export async function handleTransferEvent(
   }
 
   if (eventType === "transfer.success") {
+    const updatePayload = {
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      payout_provider: "paystack",
+      payout_provider_transaction_id:
+        transferCode || payoutData.payout_provider_transaction_id,
+      payout_provider_response: data,
+      transfer_code: transferCode || payoutData.transfer_code,
+      transfer_id: data?.id || payoutData.transfer_id,
+    };
     await (supabase.from("payouts") as any)
-      .update({
-        status: "completed",
-        completed_at: new Date().toISOString(),
-        payout_provider: "paystack",
-        payout_provider_transaction_id:
-          transferCode || payoutData.payout_provider_transaction_id,
-        payout_provider_response: data,
-        transfer_code: transferCode || payoutData.transfer_code,
-        transfer_id: data?.id || payoutData.transfer_id,
-      })
+      .update(updatePayload)
       .eq("id", payoutData.id);
+
+    try {
+      const { recordPayoutLedger } = await import("@/lib/provider/record-payout-ledger");
+      await recordPayoutLedger(supabase, {
+        id: payoutData.id,
+        provider_id: payoutData.provider_id,
+        net_amount: payoutData.net_amount ?? payoutData.amount,
+        amount: payoutData.amount,
+        payout_number: payoutData.payout_number,
+      });
+    } catch (ledgerErr) {
+      console.error("Transfer success: failed to record payout ledger:", ledgerErr);
+    }
 
     return NextResponse.json({ received: true });
   }

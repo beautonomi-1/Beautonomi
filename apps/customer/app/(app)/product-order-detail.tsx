@@ -57,6 +57,7 @@ export default function ProductOrderDetailScreen() {
       if (result.data) setOrder(result.data);
       setLoading(false);
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when id changes
   }, [id]);
 
   if (loading) {

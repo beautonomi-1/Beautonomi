@@ -91,15 +91,20 @@ export async function POST(
         throw eventError;
       }
 
-      // Update booking - simple confirmation, no verification needed
+      // Update booking - simple confirmation; set provider_arrived_at for status/ETA UI
+      const arriveUpdate: Record<string, unknown> = {
+        current_stage: "provider_arrived",
+        provider_arrived_at: new Date().toISOString(),
+        arrival_otp_verified: true,
+        qr_code_verified: true,
+        updated_at: new Date().toISOString(),
+      };
+      if (latitude != null && longitude != null) {
+        arriveUpdate.provider_location = { latitude, longitude };
+      }
       const { error: updateError } = await supabase
         .from("bookings")
-        .update({
-          current_stage: "provider_arrived",
-          arrival_otp_verified: true, // Auto-verified with simple confirmation
-          qr_code_verified: true,
-          updated_at: new Date().toISOString(),
-        })
+        .update(arriveUpdate)
         .eq("id", id);
 
       if (updateError) {
@@ -156,15 +161,19 @@ export async function POST(
 
     // If both verification methods are disabled, treat as simple confirmation
     if (!otp_enabled && !qr_code_enabled) {
-      // Update booking - simple confirmation, no verification needed
+      const arriveUpdate: Record<string, unknown> = {
+        current_stage: "provider_arrived",
+        provider_arrived_at: new Date().toISOString(),
+        arrival_otp_verified: true,
+        qr_code_verified: true,
+        updated_at: new Date().toISOString(),
+      };
+      if (latitude != null && longitude != null) {
+        arriveUpdate.provider_location = { latitude, longitude };
+      }
       const { error: updateError } = await supabase
         .from("bookings")
-        .update({
-          current_stage: "provider_arrived",
-          arrival_otp_verified: true, // Auto-verified with simple confirmation
-          qr_code_verified: true,
-          updated_at: new Date().toISOString(),
-        })
+        .update(arriveUpdate)
         .eq("id", id);
 
       if (updateError) {
@@ -236,11 +245,15 @@ export async function POST(
         });
     }
 
-    // Update booking with OTP and/or QR code based on settings
+    // Update booking with OTP and/or QR code based on settings; set provider_arrived_at for status/ETA UI
     const updateData: any = {
       current_stage: "provider_arrived",
+      provider_arrived_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+    if (latitude != null && longitude != null) {
+      updateData.provider_location = { latitude, longitude };
+    }
 
     if (otp_enabled && otp && otpExpiresAt) {
       updateData.arrival_otp = otp;

@@ -161,3 +161,19 @@
     );
   }
 }
+
+/* On-demand waiting illustration animations */
+@keyframes on-demand-phone-glow {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 1; }
+}
+@keyframes on-demand-finger-tap {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+.on-demand-phone-glow {
+  animation: on-demand-phone-glow 1.6s ease-in-out infinite;
+}
+.on-demand-finger-tap {
+  animation: on-demand-finger-tap 0.9s ease-in-out infinite;
+}

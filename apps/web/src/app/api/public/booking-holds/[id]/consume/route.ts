@@ -183,7 +183,7 @@ export async function POST(
 
     const selectedDatetime = hold.start_at;
 
-    const address = hold.address_snapshot as Record<string, unknown> | null;
+    const address = hold.address_snapshot as Record<string, any> | null;
     const addressFormatted =
       hold.location_type === "at_home" && address
         ? {
@@ -198,7 +198,7 @@ export async function POST(
           }
         : undefined;
 
-    const holdMeta = (hold.metadata as Record<string, unknown>) || {};
+    const holdMeta = (hold.metadata as Record<string, any>) || {};
     const travelFeeFromHold = holdMeta.travel_fee != null ? Number(holdMeta.travel_fee) : 0;
     const resourceIdsFromHold = Array.isArray(holdMeta.resource_ids)
       ? (holdMeta.resource_ids as string[]).filter((id) => typeof id === "string")
@@ -216,7 +216,7 @@ export async function POST(
         }
       : undefined;
 
-    const draft: Record<string, unknown> = {
+    const draft: Record<string, any> = {
       provider_id: hold.provider_id,
       services,
       selected_datetime: selectedDatetime,
@@ -288,7 +288,7 @@ export async function POST(
         hold_status: "consumed",
         created_by_user_id: user.id,
         metadata: {
-          ...((hold.metadata as Record<string, unknown>) || {}),
+          ...((hold.metadata as Record<string, any>) || {}),
           booking_id: bookingData?.data?.booking_id,
           consumed_at: new Date().toISOString(),
         },

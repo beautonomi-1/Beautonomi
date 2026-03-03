@@ -2,12 +2,13 @@
 
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import Image from "next/image";
 
 interface PageContent {
   [sectionKey: string]: {
     content: string;
     content_type: string;
-    metadata: Record<string, any>;
+    metadata: Record<string, unknown>;
   };
 }
 
@@ -58,12 +59,14 @@ export default function Banner({ content }: BannerProps) {
             </Link>
           </div>
           </div>
-          <div className="">
+          <div className="relative w-full max-w-md aspect-video">
             {bannerImage ? (
-              <img 
-                src={typeof bannerImage === 'string' ? bannerImage : bannerImage} 
-                alt="Gift cards" 
-                className="w-full max-w-md h-auto rounded-lg"
+              <Image
+                src={typeof bannerImage === "string" ? bannerImage : (bannerImage as string)}
+                alt="Gift cards"
+                fill
+                className="object-cover rounded-lg"
+                unoptimized
               />
             ) : (
               <div className="w-full max-w-md h-[300px] rounded-lg bg-gradient-to-br from-[#FF0077] via-[#D60565] to-[#FF0077] flex items-center justify-center shadow-xl">

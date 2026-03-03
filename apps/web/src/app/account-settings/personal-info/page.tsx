@@ -76,8 +76,8 @@ const PersonalInfo: React.FC = () => {
   const [defaultCountryCode, setDefaultCountryCode] = useState<string>("+27");
   const [defaultCountry, setDefaultCountry] = useState<string>("South Africa");
   const [languages] = useState<string[]>(['English']);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [_selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [_filePreview, setFilePreview] = useState<string | null>(null);
 
   // Load countries, default country code, and profile data
   useEffect(() => {
@@ -645,8 +645,8 @@ const Modal: React.FC<ModalProps> = ({ content, onClose, onSave, isSaving, initi
                     required={content.type === 'governmentId'}
                   />
                   {filePreview && (
-                    <div className="mt-2">
-                      <img src={filePreview} alt="Preview" className="max-w-full h-48 object-contain border border-gray-300 rounded-md" />
+                    <div className="mt-2 relative w-full h-48">
+                      <Image src={filePreview} alt="Preview" fill className="object-contain border border-gray-300 rounded-md" unoptimized />
                     </div>
                   )}
                   {selectedFile && !filePreview && (

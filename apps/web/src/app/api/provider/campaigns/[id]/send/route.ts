@@ -218,7 +218,7 @@ export async function POST(
 
     // Send to each recipient (cast via unknown - Supabase dynamic select can infer ParserError)
     type CustomerContact = { id: string; email?: string | null; phone?: string | null };
-    for (const customer of validCustomers as unknown as CustomerContact[]) {
+    for (const customer of validCustomers as any as CustomerContact[]) {
       try {
         const contact = campaign.type === "email" 
           ? customer.email 

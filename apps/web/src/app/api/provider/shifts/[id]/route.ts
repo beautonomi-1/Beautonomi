@@ -118,7 +118,7 @@ export async function PATCH(
     }
 
     // Build update data
-    const updateData: Record<string, unknown> = {};
+    const updateData: Record<string, any> = {};
     if (validationResult.data.date !== undefined) updateData.date = validationResult.data.date;
     if (validationResult.data.start_time !== undefined) updateData.start_time = validationResult.data.start_time;
     if (validationResult.data.end_time !== undefined) updateData.end_time = validationResult.data.end_time;

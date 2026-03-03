@@ -100,9 +100,9 @@ export default function FeatureFlagsPage() {
   // Filter feature flags
   const filteredFlags = featureFlags.filter((flag) => {
     const matchesSearch =
-      flag.feature_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      flag.feature_key.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (flag.description || "").toLowerCase().includes(searchQuery.toLowerCase());
+      (flag.feature_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (flag.feature_key ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (flag.description ?? "").toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesCategory =
       selectedCategory === "all" || flag.category === selectedCategory;
@@ -260,7 +260,7 @@ export default function FeatureFlagsPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>

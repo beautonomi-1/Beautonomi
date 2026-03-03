@@ -162,7 +162,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   const filteredCategories = categories.filter((category) =>
-    category.name.toLowerCase().includes(categorySearch.toLowerCase())
+    (category?.name ?? "").toLowerCase().includes((categorySearch ?? "").toLowerCase())
   );
 
   const handleCategorySelect = (category: string) => {

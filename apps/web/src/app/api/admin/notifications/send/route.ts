@@ -205,22 +205,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await writeAuditLog({
-      actor_user_id: user.id,
-      actor_role: (user as any).role || "superadmin",
-      action: "admin.notifications.send",
-      entity_type: "notification",
-      entity_id: null,
-      metadata: {
-        type,
-        user_id,
-        user_ids,
-        segment,
-        template_key,
-        channels,
-        notification_id: result.notification_id,
-      },
-    });
+    try {
+      await writeAuditLog({
+        actor_user_id: user.id,
+        actor_role: (user as any).role || "superadmin",
+        action: "admin.notifications.send",
+        entity_type: "notification",
+        entity_id: null,
+        metadata: {
+          type,
+          user_id,
+          user_ids,
+          segment,
+          template_key,
+          channels,
+          notification_id: result.notification_id,
+        },
+      });
+    } catch (auditError) {
+      console.error("Audit log failed (notification still sent):", auditError);
+    }
 
     return NextResponse.json({
       data: {
@@ -230,12 +234,15 @@ export async function POST(request: NextRequest) {
       error: null,
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to send notification";
     console.error("Unexpected error in /api/admin/notifications/send:", error);
     return NextResponse.json(
       {
         data: null,
         error: {
-          message: "Failed to send notification",
+          message: message.includes("OneSignal") || message.includes("configured")
+            ? message
+            : "Failed to send notification",
           code: "INTERNAL_ERROR",
         },
       },

@@ -24,7 +24,7 @@ export interface MockUser {
   email: string;
   role: MockUserRole;
   full_name: string;
-  user_metadata: Record<string, unknown>;
+  user_metadata: Record<string, any>;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ export interface MockSupabaseChain {
  * resolve without throwing.
  */
 function createMockQueryBuilder(
-  defaultReturn: { data: unknown; error: null } = { data: null, error: null }
+  defaultReturn: { data: any; error: null } = { data: null, error: null }
 ): MockSupabaseChain {
   const chain: Partial<MockSupabaseChain> = {};
 
@@ -166,7 +166,7 @@ export function createMockSupabaseClient(
 interface MockNextRequestOptions {
   method?: string;
   url?: string;
-  body?: unknown;
+  body?: any;
   headers?: Record<string, string>;
   searchParams?: Record<string, string>;
 }
@@ -209,5 +209,5 @@ export function createMockNextRequest(options: MockNextRequestOptions = {}) {
     text: vi.fn().mockResolvedValue(
       body != null ? JSON.stringify(body) : ""
     ),
-  } as unknown;
+  } as any;
 }

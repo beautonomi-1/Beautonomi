@@ -113,7 +113,7 @@ export default function BookingReportPage() {
 
   if (isLoading) {
     return (
-      <RoleGuard allowedRoles={["superadmin"]}>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
         <div className="container mx-auto px-4 py-8">
           <LoadingTimeout loadingMessage="Loading booking report..." />
         </div>
@@ -123,7 +123,7 @@ export default function BookingReportPage() {
 
   if (error || !data) {
     return (
-      <RoleGuard allowedRoles={["superadmin"]}>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
         <div className="container mx-auto px-4 py-8">
           <EmptyState
             title="Failed to load booking report"
@@ -139,7 +139,7 @@ export default function BookingReportPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
           <div>

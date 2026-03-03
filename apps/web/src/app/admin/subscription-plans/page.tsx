@@ -445,14 +445,14 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
 
   if (loading) {
     return (
-      <RoleGuard allowedRoles={["superadmin"]}>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
         <LoadingTimeout loadingMessage={useMergedPlans ? "Loading plans..." : "Loading subscription plans..."} />
       </RoleGuard>
     );
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>

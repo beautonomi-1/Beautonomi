@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { recordPayoutLedger } from "@/lib/provider/record-payout-ledger";
 
 /**
  * POST /api/admin/payouts/[id]/mark-paid
@@ -100,6 +101,18 @@ export async function POST(
       entity_id: id,
       metadata: { provider_id: (payoutData as any).provider_id, amount: (payoutData as any).amount },
     });
+
+    try {
+      await recordPayoutLedger(supabase, {
+        id: (updatedPayout as any).id,
+        provider_id: (updatedPayout as any).provider_id,
+        net_amount: (updatedPayout as any).net_amount,
+        amount: (updatedPayout as any).amount,
+        payout_number: (updatedPayout as any).payout_number,
+      });
+    } catch (ledgerErr) {
+      console.error("Failed to record payout ledger entry:", ledgerErr);
+    }
 
     // Send OneSignal notification to provider
     try {

@@ -110,6 +110,7 @@ interface AboutUsContent {
   content: string;
   display_order: number;
   is_active: boolean;
+  image_url?: string | null;
 }
 
 export default function AdminContent() {
@@ -205,7 +206,7 @@ export default function AdminContent() {
         const response = await fetcher.get<{ data: PageContent[]; error: null }>("/api/admin/content/pages?page_slug=signup");
         setSignupPageContent(response.data || []);
       }
-    } catch (err: unknown) {
+    } catch (err: any) {
       const errorMessage =
         err instanceof FetchTimeoutError
           ? "Request timed out. Please try again."
@@ -289,46 +290,46 @@ export default function AdminContent() {
 
   const filteredFAQs = faqs.filter(
     (faq) =>
-      faq.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      faq.answer.toLowerCase().includes(searchQuery.toLowerCase())
+      (faq.question ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (faq.answer ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const filteredResources = resources.filter((resource) =>
-    resource.title.toLowerCase().includes(searchQuery.toLowerCase())
+    (resource.title ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const filteredCities = cities.filter((city) =>
-    city.name.toLowerCase().includes(searchQuery.toLowerCase())
+    (city.name ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const filteredPages = pages.filter((page) => {
-    const matchesSearch = 
-      page.page_slug.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      page.section_key.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      page.content.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch =
+      (page.page_slug ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (page.section_key ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (page.content ?? "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchesPageFilter = !pageFilter || page.page_slug === pageFilter;
     return matchesSearch && matchesPageFilter;
   });
 
   const filteredFooterLinks = footerLinks.filter((link) => {
-    const matchesSearch = 
-      link.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      link.href.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      link.section.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch =
+      (link.title ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (link.href ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (link.section ?? "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSectionFilter = !sectionFilter || link.section === sectionFilter;
     return matchesSearch && matchesSectionFilter;
   });
 
   const _filteredAppLinks = appLinks.filter((link) =>
-    link.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    link.href.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    link.platform.toLowerCase().includes(searchQuery.toLowerCase())
+    (link.title ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (link.href ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (link.platform ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   ); // reserved for app links filter UI
 
   const filteredAboutUsContent = aboutUsContent.filter((content) =>
-    content.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    content.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    content.section_key.toLowerCase().includes(searchQuery.toLowerCase())
+    (content.title ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (content.content ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (content.section_key ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   // Get unique page slugs for filter

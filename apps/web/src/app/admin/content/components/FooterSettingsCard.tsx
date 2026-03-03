@@ -3,6 +3,7 @@
 import React from "react";
 import { Settings } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 interface FooterSetting {
   id: string;
@@ -25,12 +26,14 @@ export function FooterSettingsCard({ setting, onEdit }: FooterSettingsCardProps)
             <Settings className="w-4 h-4 text-gray-500" />
             {setting.key}
           </CardTitle>
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => onEdit(setting)}
             className="text-sm text-[#FF0077] hover:text-[#D60565] font-medium"
           >
             Edit
-          </button>
+          </Button>
         </div>
         {setting.description && (
           <p className="text-xs text-gray-500 mt-1">{setting.description}</p>

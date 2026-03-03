@@ -29,9 +29,9 @@ export default function AmplitudeGuidesProvider({ children }: { children: ReactN
     script.onload = () => {
       try {
         // Initialize Guides SDK
-        // @ts-ignore - Guides SDK types may not be available
+        // @ts-expect-error - Guides SDK types may not be available
         if (window.AmplitudeGuides) {
-          // @ts-ignore
+          // @ts-expect-error - Guides SDK
           window.AmplitudeGuides.init({
             apiKey: config.api_key_public,
           });

@@ -11,6 +11,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import Link from "next/link";
+import Image from "next/image";
 import AuthGuard from "@/components/auth/auth-guard";
 import { useAuth } from "@/providers/AuthProvider";
 
@@ -193,10 +194,13 @@ export default function ReviewPage() {
                 <div className="mt-4 flex gap-2">
                   {photos.map((photo, index) => (
                     <div key={index} className="relative">
-                      <img
+                      <Image
                         src={photo}
                         alt={`Review photo ${index + 1}`}
+                        width={80}
+                        height={80}
                         className="w-20 h-20 object-cover rounded"
+                        unoptimized
                       />
                       <button
                         onClick={() => setPhotos(photos.filter((_, i) => i !== index))}

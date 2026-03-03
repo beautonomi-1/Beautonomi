@@ -1006,6 +1006,14 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                     </div>
                     <DropdownMenuItem asChild>
                       <Link
+                        href="/portal"
+                        className="cursor-pointer"
+                      >
+                        Dashboard
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link
                         href="/profile"
                         className="cursor-pointer"
                       >

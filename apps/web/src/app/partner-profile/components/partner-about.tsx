@@ -16,7 +16,7 @@ interface PartnerAboutProps {
     country?: string;
     latitude?: number;
     longitude?: number;
-    working_hours?: Record<string, { open: string; close: string; is_closed?: boolean }> | any;
+    working_hours?: Record<string, { open: string; close: string; is_closed?: boolean }> | unknown;
   }>;
   operating_hours?: Record<string, { open: string; close: string; is_closed?: boolean }>;
 }
@@ -115,7 +115,7 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
             </p>
             {primaryLocation.latitude && primaryLocation.longitude && (
               <Link
-                href={`https://maps.google.com/?q=${primaryLocation.latitude},${primaryLocation.longitude}`}
+                href={`https://www.mapbox.com/directions/?destination=${primaryLocation.longitude},${primaryLocation.latitude}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:text-blue-800 underline text-sm"

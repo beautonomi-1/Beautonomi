@@ -19,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { ServiceCategory, TeamMember, ServiceItem } from "@/lib/provider-portal/types";
+import Image from "next/image";
 import { X, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useReferenceData } from "@/hooks/useReferenceData";
@@ -1141,9 +1142,9 @@ export function ServiceCreateEditDialog({
                               checked={formData.selectedTeamMembers.includes(member.id)}
                               onCheckedChange={(checked) => handleTeamMemberToggle(member.id, checked as boolean)}
                             />
-                            <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center">
+                            <div className="relative w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center">
                               {member.avatar_url ? (
-                                <img src={member.avatar_url} alt={member.name} className="w-full h-full object-cover" />
+                                <Image src={member.avatar_url} alt={member.name} fill className="object-cover" unoptimized />
                               ) : (
                                 <span className="text-xs text-gray-500">{member.name.charAt(0)}</span>
                               )}

@@ -15,7 +15,7 @@ export interface WaitlistMatch {
     customer_email?: string;
     customer_name?: string;
     customer_phone?: string;
-    [key: string]: unknown;
+    [key: string]: any;
   };
   availableSlots: Array<{ date: string; time: string }>;
   matchReason?: string;

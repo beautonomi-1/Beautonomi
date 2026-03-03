@@ -62,7 +62,7 @@ export async function PATCH(request: NextRequest) {
     const currentPreferences = existingProfile?.beauty_preferences || {};
 
     // Merge with new preferences (only update provided fields)
-    const updatedPreferences: Record<string, unknown> = {
+    const updatedPreferences: Record<string, any> = {
       ...currentPreferences,
     };
 

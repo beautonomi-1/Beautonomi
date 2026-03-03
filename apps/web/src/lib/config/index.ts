@@ -212,7 +212,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       }
     : { ...DEFAULT_AMPLITUDE, environment };
 
-  const settings = (platformSettingsRes.data as { settings?: Record<string, unknown> } | null)?.settings;
+  const settings = (platformSettingsRes.data as { settings?: Record<string, any> } | null)?.settings;
   const third_party: SafeThirdPartyConfig = {};
   if (settings?.onesignal && (settings.onesignal as { enabled?: boolean }).enabled) {
     const o = settings.onesignal as { app_id?: string; safari_web_id?: string };
@@ -251,7 +251,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     environment,
   });
 
-  const onDemandRow = onDemandRes.data as Record<string, unknown> | null;
+  const onDemandRow = onDemandRes.data as Record<string, any> | null;
   const on_demand: SafeOnDemandModuleConfig = onDemandRow
     ? {
         enabled: Boolean(onDemandRow.enabled),
@@ -260,11 +260,11 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
         ring_repeat: Boolean(onDemandRow.ring_repeat ?? true),
         waiting_screen_timeout_seconds: Number(onDemandRow.waiting_screen_timeout_seconds ?? 45),
         provider_accept_window_seconds: Number(onDemandRow.provider_accept_window_seconds ?? 30),
-        ui_copy: (typeof onDemandRow.ui_copy === "object" && onDemandRow.ui_copy !== null ? onDemandRow.ui_copy : {}) as Record<string, unknown>,
+        ui_copy: (typeof onDemandRow.ui_copy === "object" && onDemandRow.ui_copy !== null ? onDemandRow.ui_copy : {}) as Record<string, any>,
       }
     : DEFAULT_ON_DEMAND;
 
-  const aiRow = aiModuleRes.data as Record<string, unknown> | null;
+  const aiRow = aiModuleRes.data as Record<string, any> | null;
   const ai: SafeAiModuleConfig = aiRow
     ? {
         enabled: Boolean(aiRow.enabled),
@@ -279,7 +279,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       }
     : DEFAULT_AI_MODULE;
 
-  const adsRow = adsRes.data as Record<string, unknown> | null;
+  const adsRow = adsRes.data as Record<string, any> | null;
   const ads: SafeAdsModuleConfig = adsRow
     ? {
         enabled: Boolean(adsRow.enabled),
@@ -289,15 +289,15 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       }
     : { enabled: false };
 
-  const rankingRow = rankingRes.data as Record<string, unknown> | null;
+  const rankingRow = rankingRes.data as Record<string, any> | null;
   const ranking: SafeRankingModuleConfig = rankingRow
     ? {
         enabled: Boolean(rankingRow.enabled),
-        weights: (typeof rankingRow.weights === "object" && rankingRow.weights !== null ? rankingRow.weights : {}) as Record<string, unknown>,
+        weights: (typeof rankingRow.weights === "object" && rankingRow.weights !== null ? rankingRow.weights : {}) as Record<string, any>,
       }
     : { enabled: false, weights: {} };
 
-  const distanceRow = distanceRes.data as Record<string, unknown> | null;
+  const distanceRow = distanceRes.data as Record<string, any> | null;
   const distance: SafeDistanceModuleConfig = distanceRow
     ? {
         enabled: Boolean(distanceRow.enabled),
@@ -307,22 +307,22 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       }
     : { enabled: false };
 
-  const sumsubRow = sumsubRes.data as Record<string, unknown> | null;
+  const sumsubRow = sumsubRes.data as Record<string, any> | null;
   const sumsub: SafeSumsubModuleConfig = sumsubRow
     ? { enabled: Boolean(sumsubRow.enabled), level_name: (sumsubRow.level_name as string) ?? null }
     : { enabled: false };
 
-  const auraRow = auraRes.data as Record<string, unknown> | null;
+  const auraRow = auraRes.data as Record<string, any> | null;
   const aura: SafeAuraModuleConfig = auraRow ? { enabled: Boolean(auraRow.enabled) } : { enabled: false };
 
-  const safetyRow = safetyRes.data as Record<string, unknown> | null;
+  const safetyRow = safetyRes.data as Record<string, any> | null;
   const safety: SafeSafetyModuleConfig = safetyRow
     ? {
         enabled: Boolean(safetyRow.enabled),
         check_in_enabled: Boolean(safetyRow.check_in_enabled ?? true),
         escalation_enabled: Boolean(safetyRow.escalation_enabled ?? true),
         cooldown_seconds: Number(safetyRow.cooldown_seconds ?? 300),
-        ui_copy: (typeof safetyRow.ui_copy === "object" && safetyRow.ui_copy !== null ? safetyRow.ui_copy : {}) as Record<string, unknown>,
+        ui_copy: (typeof safetyRow.ui_copy === "object" && safetyRow.ui_copy !== null ? safetyRow.ui_copy : {}) as Record<string, any>,
       }
     : { enabled: false, check_in_enabled: true, escalation_enabled: true, cooldown_seconds: 300, ui_copy: {} };
 

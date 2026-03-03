@@ -88,8 +88,8 @@ export default function ProviderCustomRequestsPage() {
       toast.success("Offer sent");
       setOfferOpen(false);
       await load();
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to send offer");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to send offer");
     } finally {
       setIsSubmitting(false);
     }

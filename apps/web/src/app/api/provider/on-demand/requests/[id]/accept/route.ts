@@ -54,6 +54,23 @@ export async function POST(
     const requestPayload = (updatedRow.request_payload ?? {}) as Record<string, unknown>;
     const admin = getSupabaseAdmin();
 
+    // Enrich client_info from users if missing so booking gets guest_name
+    const existingClientInfo = requestPayload.client_info as { firstName?: string; lastName?: string } | undefined;
+    if (!existingClientInfo?.firstName && !existingClientInfo?.lastName) {
+      const { data: userRow } = await admin
+        .from("users")
+        .select("full_name")
+        .eq("id", customerId)
+        .single();
+      const fullName = (userRow?.full_name as string)?.trim() || "";
+      if (fullName) {
+        const parts = fullName.split(/\s+/);
+        const firstName = parts[0] ?? "";
+        const lastName = parts.slice(1).join(" ") ?? "";
+        requestPayload.client_info = { firstName, lastName };
+      }
+    }
+
     // Build draft from request_payload (same shape as booking create body)
     const draft: BookingDraft = {
       provider_id: updatedRow.provider_id as string,

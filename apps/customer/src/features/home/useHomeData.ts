@@ -41,12 +41,12 @@ function normalize(r: unknown): HomeApiResponse {
     hottest: arr(raw?.hottest),
     upcoming: arr(raw?.upcoming),
     browseByCity: Array.isArray(raw?.browseByCity)
-      ? (raw.browseByCity as Array<{ city: string; providers: unknown[] }>).map((g) => ({
+      ? (raw.browseByCity as { city: string; providers: unknown[] }[]).map((g) => ({
           city: g.city,
           providers: arr(g.providers),
         }))
       : Array.isArray(raw?.browse_by_city)
-        ? (raw.browse_by_city as Array<{ city: string; providers: unknown[] }>).map((g) => ({
+        ? (raw.browse_by_city as { city: string; providers: unknown[] }[]).map((g) => ({
             city: g.city,
             providers: arr(g.providers),
           }))

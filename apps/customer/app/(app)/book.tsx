@@ -35,7 +35,6 @@ import type {
 
 type Step = "service" | "venue" | "staff" | "date" | "time";
 
-const STEPS: Step[] = ["service", "venue", "staff", "date", "time"];
 const STEP_LABELS: Record<Step, string> = {
   service: "Service",
   venue: "Venue",
@@ -171,7 +170,7 @@ export default function BookScreen() {
   const { user } = useAuth();
   const { coords } = useLocation();
   const { selectedAddress: primaryAddress } = useSelectedAddress();
-  const { addresses: savedAddresses, loading: addressesLoading } = useAddresses(!!user);
+  const { addresses: savedAddresses } = useAddresses(!!user);
 
   const [provider, setProvider] = useState<PublicProviderDetail | null>(null);
   const [servicesData, setServicesData] = useState<ProviderServicesResponse | null>(null);

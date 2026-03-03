@@ -1,9 +1,9 @@
 /**
  * Directions URL Generator
- * 
- * Generates navigation directions URLs based on platform configuration.
- * Supports Mapbox (when configured) and falls back to Google Maps.
- * 
+ *
+ * Generates navigation/directions URLs. Prefers Mapbox (platform default);
+ * falls back to Google Maps when Mapbox is not configured.
+ *
  * Usage:
  * const url = await getDirectionsUrl({ latitude: -26.1234, longitude: 28.5678 }, "123 Main St, Johannesburg");
  */
@@ -16,6 +16,23 @@ export interface Coordinates {
 export interface DirectionsConfig {
   provider: "mapbox" | "google" | "auto";
   mapboxPublicToken?: string;
+}
+
+/** Mapbox directions URL (no token needed in URL). Use for links when platform uses Mapbox. */
+export function getMapboxDirectionsUrl(
+  destination: Coordinates,
+  origin?: Coordinates
+): string {
+  const dest = `${destination.longitude},${destination.latitude}`;
+  const base = "https://www.mapbox.com/directions/";
+  const params = new URLSearchParams({ destination: dest });
+  if (origin) params.set("origin", `${origin.longitude},${origin.latitude}`);
+  return `${base}?${params.toString()}`;
+}
+
+/** Mapbox “view location” URL (single point, no routing). */
+export function getMapboxMapUrl(location: Coordinates): string {
+  return `https://www.mapbox.com/directions/?destination=${location.longitude},${location.latitude}`;
 }
 
 // Cache the config to avoid repeated API calls
@@ -68,37 +85,18 @@ export async function getDirectionsUrl(
     ? encodeURIComponent(address)
     : `${destination.latitude},${destination.longitude}`;
 
-  // If Mapbox is configured and preferred, use Mapbox navigation deeplink
-  // Note: Mapbox deeplinks work on mobile devices with Mapbox installed
-  // For web, we fall back to a directions page or Google Maps
-  if (config.provider === "mapbox" && config.mapboxPublicToken) {
-    // Mapbox Navigation deeplink format (works on mobile with Mapbox app)
-    // For web users, we'll use Google Maps as Mapbox doesn't have a web directions viewer
-    const isMobile = typeof navigator !== "undefined" && 
-      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    
-    if (isMobile) {
-      // Try Mapbox Navigation deeplink for mobile
-      // Format: mapbox://navigation?destination=longitude,latitude
-      return `mapbox://navigation?destination=${destination.longitude},${destination.latitude}`;
-    }
-    
-    // For web, Mapbox doesn't have a standalone directions viewer
-    // Fall through to Google Maps for web users
+  if (config.provider === "mapbox") {
+    // Mapbox: web directions page (no token in URL)
+    return getMapboxDirectionsUrl(destination, origin);
   }
 
-  // Google Maps Directions URL (universal fallback)
-  // Format: https://www.google.com/maps/dir/?api=1&destination=lat,lng
+  // Google Maps fallback when Mapbox not configured
   const baseUrl = "https://www.google.com/maps/dir/";
   const params = new URLSearchParams({
     api: "1",
     destination: address || `${destination.latitude},${destination.longitude}`,
   });
-
-  if (origin) {
-    params.append("origin", `${origin.latitude},${origin.longitude}`);
-  }
-
+  if (origin) params.append("origin", `${origin.latitude},${origin.longitude}`);
   return `${baseUrl}?${params.toString()}`;
 }
 
@@ -108,35 +106,25 @@ export async function getDirectionsUrl(
  */
 export async function getMapUrl(
   location: Coordinates,
-  address?: string
+  _address?: string
 ): Promise<string> {
   const config = await fetchDirectionsConfig();
-  
-  if (config.provider === "mapbox" && config.mapboxPublicToken) {
-    // Mapbox static map or marker URL
-    // For now, use Google Maps as Mapbox requires embedding
-    // A custom map page could be built for Mapbox
+  if (config.provider === "mapbox") {
+    return getMapboxMapUrl(location);
   }
-
-  // Google Maps location URL
-  const query = address 
-    ? encodeURIComponent(address)
+  const query = _address
+    ? encodeURIComponent(_address)
     : `${location.latitude},${location.longitude}`;
-  
   return `https://www.google.com/maps/search/?api=1&query=${query}`;
 }
 
 /**
- * Synchronous version for simple use cases (uses default Google Maps)
- * Use getDirectionsUrl for proper async configuration loading
+ * Synchronous directions URL. Returns Mapbox URL (platform default).
+ * Use getDirectionsUrl for async config-based provider selection.
  */
 export function getDirectionsUrlSync(
   destination: Coordinates,
-  address?: string
+  _address?: string
 ): string {
-  const destQuery = address 
-    ? encodeURIComponent(`${address}`)
-    : `${destination.latitude},${destination.longitude}`;
-  
-  return `https://www.google.com/maps/dir/?api=1&destination=${destQuery}`;
+  return getMapboxDirectionsUrl(destination);
 }

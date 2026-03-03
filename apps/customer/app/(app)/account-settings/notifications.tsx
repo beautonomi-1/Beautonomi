@@ -8,7 +8,7 @@ export default function NotificationsScreen() {
   const [prefs, setPrefs] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [, setSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);

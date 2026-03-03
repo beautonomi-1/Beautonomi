@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Save, Globe, CreditCard, Bell, Palette, MessageSquare, BarChart3, Smartphone, MapPin, Car, QrCode, Search, Calendar, Building2, Plug, ExternalLink } from "lucide-react";
+import { Save, Globe, CreditCard, Bell, Palette, BarChart3, Smartphone, MapPin, Car, QrCode, Search, Calendar, Building2, Plug, ExternalLink } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import Link from "next/link";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
@@ -34,6 +34,7 @@ interface PlatformSettings {
     provider_payout_percentage: number;
     payout_schedule: "daily" | "weekly" | "monthly";
     minimum_payout_amount: number;
+    payout_hold_days?: number;
     platform_service_fee_type: "percentage" | "fixed";
     platform_service_fee_percentage: number;
     platform_service_fee_fixed: number;
@@ -735,6 +736,7 @@ function PayoutSettings({
     provider_payout_percentage: settings?.provider_payout_percentage ?? 80,
     payout_schedule: (settings?.payout_schedule ?? "weekly") as "daily" | "weekly" | "monthly",
     minimum_payout_amount: settings?.minimum_payout_amount ?? 100,
+    payout_hold_days: settings?.payout_hold_days ?? 0,
     platform_service_fee_type: (settings?.platform_service_fee_type ?? "percentage") as "percentage" | "fixed",
     platform_service_fee_percentage: settings?.platform_service_fee_percentage ?? 5,
     platform_service_fee_fixed: settings?.platform_service_fee_fixed ?? 0,
@@ -978,6 +980,30 @@ function PayoutSettings({
             </div>
             <p className="text-xs sm:text-sm text-gray-600 mt-1">
               Minimum amount required before payout is processed
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="payout_hold_days" className="text-sm sm:text-base">
+              Payout hold (days)
+            </Label>
+            <div className="flex items-center gap-2 mt-1">
+              <Input
+                id="payout_hold_days"
+                type="number"
+                min="0"
+                max="90"
+                step="1"
+                value={safeSettings.payout_hold_days}
+                onChange={(e) =>
+                  onChange({ payout_hold_days: Math.max(0, parseInt(e.target.value, 10) || 0) })
+                }
+                className="flex-1"
+              />
+              <span className="text-xs sm:text-sm text-gray-600">days</span>
+            </div>
+            <p className="text-xs sm:text-sm text-gray-600 mt-1">
+              Earnings become available for payout after this many days (0 = immediate)
             </p>
           </div>
         </div>

@@ -76,7 +76,7 @@ export async function PATCH(
       .eq("id", id)
       .single();
 
-    const updates: Record<string, unknown> = {
+    const updates: Record<string, any> = {
       updated_by: user.id,
     };
 
@@ -130,8 +130,8 @@ export async function PATCH(
       changedBy: user.id,
       area: "flags",
       recordKey: (before as { feature_key?: string })?.feature_key ?? id,
-      before: before as Record<string, unknown> | null,
-      after: after as Record<string, unknown> | null,
+      before: before as Record<string, any> | null,
+      after: after as Record<string, any> | null,
     });
 
     return NextResponse.json({ featureFlag }, { status: 200 });

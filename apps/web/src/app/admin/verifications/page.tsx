@@ -80,10 +80,10 @@ export default function AdminVerifications() {
       setIsLoading(true);
       setError(null);
       const status = activeTab === "all" ? "all" : activeTab;
-      const response = await fetcher.get<{ data: Verification[] }>(
+      const response = await fetcher.get<{ data?: Verification[] }>(
         `/api/admin/verifications?status=${status}`
       );
-      setVerifications(response.data || []);
+      setVerifications(response.data ?? []);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -149,7 +149,7 @@ export default function AdminVerifications() {
 
   if (isLoading && verifications.length === 0) {
     return (
-      <RoleGuard allowedRoles={["superadmin"]}>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
         <div className="min-h-screen bg-zinc-50/50">
           <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
             <LoadingTimeout loadingMessage="Loading verifications..." />
@@ -160,7 +160,7 @@ export default function AdminVerifications() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="min-h-screen bg-zinc-50/50">
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
           <motion.div

@@ -111,7 +111,7 @@ export default function ProviderProductOrdersPage() {
     setUpdating(orderId);
     setError("");
     try {
-      const payload: Record<string, unknown> = { status: newStatus };
+      const payload: Record<string, any> = { status: newStatus };
       if (trackingNumber) payload.tracking_number = trackingNumber;
       await fetcher.patch(`/api/provider/product-orders/${orderId}`, payload);
       fetchOrders();

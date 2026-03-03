@@ -26,7 +26,7 @@ interface ChargeSavedCardParams {
   amount: number;
   email: string;
   currency?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, any>;
 }
 
 interface ChargeResult {

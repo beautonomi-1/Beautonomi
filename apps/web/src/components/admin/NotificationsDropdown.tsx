@@ -25,6 +25,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { fetcher } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
@@ -156,7 +157,7 @@ export default function NotificationsDropdown() {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button className="relative p-2 hover:bg-gray-100 rounded-lg">
+        <Button variant="ghost" size="icon" className="relative rounded-lg">
           <Bell className="w-5 h-5 text-gray-600" />
           {totalUnread > 0 && (
             <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
@@ -169,7 +170,7 @@ export default function NotificationsDropdown() {
               {totalUnread > 99 ? '99+' : totalUnread}
             </Badge>
           )}
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-96 p-0">
         <div className="flex items-center justify-between p-4 border-b">
@@ -180,12 +181,14 @@ export default function NotificationsDropdown() {
                 {totalUnread} new
               </Badge>
             )}
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setOpen(false)}
-              className="p-1 hover:bg-gray-100 rounded"
+              className="h-8 w-8 rounded"
             >
               <X className="w-4 h-4" />
-            </button>
+            </Button>
           </div>
         </div>
         
@@ -212,10 +215,11 @@ export default function NotificationsDropdown() {
               {activities.map((activity) => {
                 const Icon = getActivityIcon(activity.type);
                 return (
-                  <button
+                  <Button
                     key={activity.id}
+                    variant="ghost"
                     onClick={() => handleActivityClick(activity.link)}
-                    className="w-full text-left p-4 hover:bg-gray-50 transition-colors"
+                    className="w-full justify-start text-left p-4 h-auto font-normal hover:bg-gray-50 transition-colors rounded-none"
                   >
                     <div className="flex items-start gap-3">
                       <div
@@ -240,7 +244,7 @@ export default function NotificationsDropdown() {
                         </p>
                       </div>
                     </div>
-                  </button>
+                  </Button>
                 );
               })}
             </div>

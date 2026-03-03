@@ -1,10 +1,22 @@
+import { useState, useEffect, useRef } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { View, Text, ScrollView } from "react-native";
-import { useApi } from "@/hooks/useApi";
+import {
+  Platform,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+} from "react-native";
+import * as Location from "expo-location";
+import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import * as Haptics from "expo-haptics";
+import { api } from "@/lib/api-client";
 
 type BookingDetail = {
   id: string;
@@ -13,6 +25,8 @@ type BookingDetail = {
   scheduled_at: string;
   total_amount?: number;
   currency?: string;
+  location_type?: "at_salon" | "at_home";
+  current_stage?: string | null;
   customers?: { full_name?: string | null } | null;
   locations?: { name?: string | null } | null;
   address?: { line1?: string; city?: string } | null;
@@ -45,10 +59,46 @@ function statusColor(status: string): string {
   }
 }
 
+const ETA_OPTIONS = [15, 30, 45] as const;
+
 export default function BookingDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
   const { data, loading, error, refresh } = useApi<BookingDetail>(`/api/provider/bookings/${id}`);
+  const { execute: postMutation, loading: mutating } = useApiMutation<{ booking?: BookingDetail; message?: string }>("post");
+  const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isAtHomeFromData = data?.location_type === "at_home";
+  const isEnRouteFromData = data?.current_stage === "provider_on_way";
+  useEffect(() => {
+    if (!id || !isAtHomeFromData || !isEnRouteFromData || Platform.OS === "web") return;
+    const sendLocation = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") return;
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        await api.post(`/api/provider/bookings/${id}/location`, {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+          accuracy: loc.coords.accuracy ?? undefined,
+        });
+      } catch {
+        // Ignore; next interval will retry
+      }
+    };
+    sendLocation();
+    const interval = setInterval(sendLocation, 45000);
+    locationIntervalRef.current = interval;
+    return () => {
+      if (locationIntervalRef.current) {
+        clearInterval(locationIntervalRef.current);
+        locationIntervalRef.current = null;
+      }
+    };
+  }, [id, isAtHomeFromData, isEnRouteFromData]);
 
   if (loading && !data) {
     return (
@@ -79,6 +129,54 @@ export default function BookingDetailScreen() {
   const addressLine = b.address
     ? [b.address.line1, b.address.city].filter(Boolean).join(", ")
     : locationName;
+
+  const isAtHome = b.location_type === "at_home";
+  const canStartJourney =
+    isAtHome &&
+    (b.status === "confirmed" || b.status === "pending") &&
+    (b.current_stage == null || b.current_stage === "confirmed");
+  const canMarkArrived = isAtHome && b.current_stage === "provider_on_way";
+  const isEnRoute = b.current_stage === "provider_on_way";
+  const isArrived = b.current_stage === "provider_arrived";
+
+  const handleStartJourney = async () => {
+    if (!id) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const body: Record<string, unknown> = {};
+    if (etaMinutes != null && etaMinutes > 0) {
+      body.estimated_arrival = new Date(Date.now() + etaMinutes * 60 * 1000).toISOString();
+    }
+    const res = await postMutation(`/api/provider/bookings/${id}/start-journey`, body);
+    if (res.error) {
+      Alert.alert("Error", res.error);
+      return;
+    }
+    await refresh();
+  };
+
+  const handleMarkArrived = async () => {
+    if (!id) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const body: Record<string, unknown> = {};
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === "granted") {
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        body.latitude = loc.coords.latitude;
+        body.longitude = loc.coords.longitude;
+      }
+    } catch {
+      // Send without location if permission denied or get position fails
+    }
+    const res = await postMutation(`/api/provider/bookings/${id}/arrive`, body);
+    if (res.error) {
+      Alert.alert("Error", res.error);
+      return;
+    }
+    await refresh();
+  };
 
   return (
     <ScreenContainer>
@@ -111,6 +209,82 @@ export default function BookingDetailScreen() {
             </Text>
           )}
         </View>
+
+        {isAtHome && (canStartJourney || isEnRoute || isArrived) && (
+          <View className="rounded-xl border border-gray-200 bg-white p-4 mb-3">
+            <Text className="text-sm font-medium text-gray-700 mb-3">At-home visit</Text>
+            {isArrived && (
+              <View className="rounded-lg bg-green-50 border border-green-100 py-2 px-3">
+                <Text className="text-sm font-medium text-green-800">Provider arrived</Text>
+              </View>
+            )}
+            {isEnRoute && !isArrived && (
+              <View className="rounded-lg bg-blue-50 border border-blue-100 py-2 px-3 mb-3">
+                <Text className="text-sm font-medium text-blue-800">En route</Text>
+              </View>
+            )}
+            {canStartJourney && (
+              <>
+                <Text className="text-xs text-gray-500 mb-2">Optional: I will arrive in</Text>
+                <View className="flex-row flex-wrap gap-2 mb-3">
+                  {ETA_OPTIONS.map((min) => (
+                    <TouchableOpacity
+                      key={min}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        setEtaMinutes((prev) => (prev === min ? null : min));
+                      }}
+                      className={`rounded-lg border px-3 py-2 ${
+                        etaMinutes === min
+                          ? "bg-primary border-primary"
+                          : "bg-white border-gray-300"
+                      }`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${min} minutes`}
+                      accessibilityState={{ selected: etaMinutes === min }}
+                    >
+                      <Text
+                        className={`text-sm font-medium ${
+                          etaMinutes === min ? "text-white" : "text-gray-700"
+                        }`}
+                      >
+                        {min} min
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity
+                  onPress={handleStartJourney}
+                  disabled={mutating}
+                  className="rounded-xl bg-primary py-3 items-center mb-2"
+                  accessibilityRole="button"
+                  accessibilityLabel="Start journey"
+                >
+                  {mutating ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text className="text-white font-semibold">Start journey</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+            {canMarkArrived && !isArrived && (
+              <TouchableOpacity
+                onPress={handleMarkArrived}
+                disabled={mutating}
+                className="rounded-xl border border-primary py-3 items-center"
+                accessibilityRole="button"
+                accessibilityLabel="Mark arrived"
+              >
+                {mutating ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : (
+                  <Text className="text-primary font-semibold">Mark arrived</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {services.length > 0 && (
           <View className="mb-3">

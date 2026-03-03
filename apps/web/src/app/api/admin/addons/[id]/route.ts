@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, handleApiError, errorResponse, unauthorizedResponse } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 
@@ -83,7 +83,7 @@ export async function GET(
     }
 
     // service_addons view is from offerings; use applicable_service_ids (no service_addon_associations table)
-    const addonData = addon as Record<string, unknown> & { applicable_service_ids?: string[]; title?: string };
+    const addonData = addon as Record<string, any> & { applicable_service_ids?: string[]; title?: string };
     return NextResponse.json({
       data: {
         ...addonData,
@@ -248,7 +248,7 @@ export async function PUT(
 
     return NextResponse.json({
       data: {
-        ...(addon as Record<string, unknown>),
+        ...(addon as Record<string, any>),
         service_ids: associations?.map((a: any) => a.service_id) || [],
       },
       error: null,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { writeAuditLog } from "@/lib/audit/audit";
 
 /**
  * POST /api/admin/webhooks/failures/[id]/retry
@@ -132,6 +133,15 @@ export async function POST(
         retry_count: (eventPayload.retry_count || 0) + 1,
       })
       .eq("id", id);
+
+    await writeAuditLog({
+      actor_user_id: auth.user.id,
+      actor_role: (auth.user as any).role || "superadmin",
+      action: "admin.webhook.retry",
+      entity_type: "webhook_event",
+      entity_id: id,
+      metadata: { endpoint_id: eventPayload.endpoint_id, delivered: response.ok, response_code: response.status },
+    });
 
     return NextResponse.json({
       data: { id, retry_initiated: true, delivered: response.ok },

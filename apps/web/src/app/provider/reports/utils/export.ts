@@ -1,8 +1,9 @@
 /**
  * Utility functions for exporting report data to CSV and PDF
  */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
-export function exportToCSV(data: any[], filename: string) {
+export function exportToCSV(data: Record<string, unknown>[], filename: string) {
   if (!data || data.length === 0) {
     alert("No data to export");
     return;
@@ -57,7 +58,7 @@ export function exportToCSV(data: any[], filename: string) {
  * Export report to PDF using browser print functionality
  * Can export either from a report element ID or from data array
  */
-export function exportToPDF(reportIdOrData: string | any[], filename?: string, title: string = "Report") {
+export function exportToPDF(reportIdOrData: string | unknown[], filename?: string, title: string = "Report") {
   // If first parameter is a string, it's a report ID - export the HTML element
   if (typeof reportIdOrData === "string") {
     const reportElement = document.getElementById(reportIdOrData);
@@ -266,7 +267,7 @@ export function formatReportDataForExport(data: any, reportType: string): any[] 
           Revenue: `ZAR ${service.revenue?.toLocaleString() || 0}`,
         })),
       ];
-    
+
     case "business-dashboard":
       return [
         { Metric: "Today's Revenue", Value: `ZAR ${data.today?.revenue?.toLocaleString() || 0}` },

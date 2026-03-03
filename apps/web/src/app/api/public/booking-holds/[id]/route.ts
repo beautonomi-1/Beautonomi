@@ -65,7 +65,7 @@ export async function GET(
       );
     }
 
-    const metadata = (hold.metadata as Record<string, unknown>) || {};
+    const metadata = (hold.metadata as Record<string, any>) || {};
     const providerSlug = (hold.providers as { slug?: string } | null)?.slug ?? null;
     return successResponse({
       hold_id: hold.id,
