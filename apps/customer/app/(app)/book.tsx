@@ -939,13 +939,21 @@ export default function BookScreen() {
         visible={addressPickerVisible}
         onClose={() => setAddressPickerVisible(false)}
         onSelect={(addr) => {
-          const display = addr.displayName || addr.label || "";
-          const parts = display.split(",").map((s) => s.trim()).filter(Boolean);
-          setAtHomeAddress({
-            line1: parts[0] || display || "",
-            city: parts[1] || parts[0] || "",
-            country: "ZA",
-          });
+          if (addr.structured) {
+            setAtHomeAddress({
+              line1: addr.structured.address_line1,
+              city: addr.structured.city,
+              country: addr.structured.country || "ZA",
+            });
+          } else {
+            const display = addr.displayName || addr.label || "";
+            const parts = display.split(",").map((s) => s.trim()).filter(Boolean);
+            setAtHomeAddress({
+              line1: parts[0] || display || "",
+              city: parts[1] || parts[0] || "",
+              country: "ZA",
+            });
+          }
           setAtHomeCoords({ latitude: addr.latitude, longitude: addr.longitude });
           setAddressPickerVisible(false);
         }}

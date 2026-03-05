@@ -12,6 +12,8 @@
  * Reference: https://docs.mapbox.com/api/
  */
 
+import { haversineDistanceKm } from "@/lib/geo/distance";
+
 export interface MapboxConfig {
   accessToken: string;
   baseUrl?: string;
@@ -147,22 +149,11 @@ class MapboxService {
   }
 
   /**
-   * Calculate distance between two points (Haversine formula)
+   * Calculate straight-line distance between two points (Haversine).
+   * Uses shared geo util so distance is consistent with provider cards, travel fee, and house-call logic.
    */
   calculateDistance(point1: Coordinates, point2: Coordinates): number {
-    const R = 6371; // Earth's radius in kilometers
-    const dLat = this.toRadians(point2.latitude - point1.latitude);
-    const dLon = this.toRadians(point2.longitude - point1.longitude);
-
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRadians(point1.latitude)) *
-        Math.cos(this.toRadians(point2.latitude)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; // Distance in kilometers
+    return haversineDistanceKm(point1, point2);
   }
 
   /**

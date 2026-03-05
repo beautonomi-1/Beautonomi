@@ -131,31 +131,63 @@ export default function DistanceSettingsPage() {
         </div>
 
         {settings.is_distance_filter_enabled && (
-          <div>
+          <div className="space-y-3">
             <Label htmlFor="max_service_distance_km" className="text-sm sm:text-base">
               Maximum Service Distance (km) *
             </Label>
-            <div className="flex items-center gap-2 mt-1">
-              <Input
-                id="max_service_distance_km"
-                type="number"
-                min="1"
-                max="100"
-                step="1"
+            {/* Slider + value display */}
+            <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-2xl font-bold text-gray-900 tabular-nums">
+                  {settings.max_service_distance_km} km
+                </span>
+                <span className="text-sm text-gray-500">Drag to adjust</span>
+              </div>
+              <input
+                type="range"
+                id="max_service_distance_km_slider"
+                min={1}
+                max={100}
+                step={1}
                 value={settings.max_service_distance_km}
                 onChange={(e) =>
                   updateSettings({
                     max_service_distance_km: parseFloat(e.target.value) || 1,
                   })
                 }
-                className="flex-1"
+                className="distance-slider h-3 w-full cursor-pointer appearance-none rounded-full bg-gray-200 focus:outline-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#FF0077] [&::-webkit-slider-thumb]:shadow [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-[#FF0077] [&::-moz-range-thumb]:shadow"
+                style={{ accentColor: "#FF0077" }}
+                aria-valuemin={1}
+                aria-valuemax={100}
+                aria-valuenow={settings.max_service_distance_km}
+                aria-label="Maximum service distance in kilometers"
+              />
+              <div className="flex justify-between text-xs text-gray-400">
+                <span>1 km</span>
+                <span>100 km</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                id="max_service_distance_km"
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                value={settings.max_service_distance_km}
+                onChange={(e) => {
+                  const v = parseFloat(e.target.value);
+                  if (!Number.isNaN(v)) updateSettings({ max_service_distance_km: Math.min(100, Math.max(1, v)) });
+                }}
+                className="w-24"
                 required
               />
-              <span className="text-sm text-gray-600">km</span>
+              <span className="text-sm text-gray-600">km (or type exact value)</span>
             </div>
-            <p className="text-xs sm:text-sm text-gray-600 mt-1">
+            <p className="text-xs sm:text-sm text-gray-600">
               Maximum distance you're willing to travel for house call services. 
-              Customers outside this radius will not be able to book house calls with you.
+              Customers outside this radius will not be able to book house calls with you. 
+              This value is shown on your dashboard.
             </p>
           </div>
         )}
@@ -172,7 +204,7 @@ export default function DistanceSettingsPage() {
       <div className="mt-4 sm:mt-6 flex justify-end">
         <Button
           onClick={handleSave}
-          disabled={isSaving || !settings.is_distance_filter_enabled || !settings.max_service_distance_km}
+          disabled={isSaving || (settings.is_distance_filter_enabled && (!settings.max_service_distance_km || settings.max_service_distance_km < 1))}
           className="w-full sm:w-auto touch-target bg-[#FF0077] hover:bg-[#D60565]"
         >
           {isSaving ? (

@@ -24,6 +24,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 
 type LocationData = {
   id: string;
@@ -35,6 +36,8 @@ type LocationData = {
   postal_code?: string;
   country?: string;
   phone?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   is_primary?: boolean;
   is_active?: boolean;
 };
@@ -58,6 +61,8 @@ export default function EditLocationScreen() {
   const [postal_code, setPostalCode] = useState("");
   const [country, setCountry] = useState("");
   const [phone, setPhone] = useState("");
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [is_primary, setIsPrimary] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -80,6 +85,8 @@ export default function EditLocationScreen() {
     setPostalCode(d.postal_code ?? "");
     setCountry(d.country ?? "");
     setPhone(d.phone ?? "");
+    setLatitude(d.latitude ?? null);
+    setLongitude(d.longitude ?? null);
     setIsPrimary(!!d.is_primary);
   }, [data]);
 
@@ -121,6 +128,8 @@ export default function EditLocationScreen() {
       postal_code: postal_code.trim() || null,
       country: trimmedCountry,
       phone: phone.trim() || null,
+      latitude: latitude ?? null,
+      longitude: longitude ?? null,
       is_primary: is_primary,
     });
     setSaving(false);
@@ -132,7 +141,7 @@ export default function EditLocationScreen() {
     Alert.alert("Saved", "Location updated.");
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- FIELD_LABELS is static
-  }, [locationId, name, address_line1, address_line2, city, state, postal_code, country, phone, is_primary, refresh, t]);
+  }, [locationId, name, address_line1, address_line2, city, state, postal_code, country, phone, latitude, longitude, is_primary, refresh, t]);
 
   const handleDelete = useCallback(() => {
     Alert.alert(
@@ -223,6 +232,30 @@ export default function EditLocationScreen() {
                     : t(errors.name)}
                 </Text>
               ) : null}
+            </View>
+            <View className="mb-4">
+              <Text className="mb-1.5 text-sm font-medium text-gray-700">Address *</Text>
+              <Text className="mb-2 text-xs text-gray-500">
+                Search to fill address and coordinates automatically.
+              </Text>
+              <AddressAutocomplete
+                value={address_line1}
+                onSelect={(addr) => {
+                  setAddressLine1(addr.address_line1);
+                  setCity(addr.city);
+                  setState(addr.state);
+                  setPostalCode(addr.postal_code);
+                  setCountry(addr.country || "");
+                  setLatitude(addr.latitude);
+                  setLongitude(addr.longitude);
+                  if (errors.address_line1) setErrors((e) => ({ ...e, address_line1: "" }));
+                  if (errors.city) setErrors((e) => ({ ...e, city: "" }));
+                  if (errors.country) setErrors((e) => ({ ...e, country: "" }));
+                }}
+                placeholder="Search address…"
+                label={undefined}
+                countryCode={country ? (country.length === 2 ? country : "ZA") : "ZA"}
+              />
             </View>
             <View className="mb-4">
               <Text className="mb-1.5 text-sm font-medium text-gray-700">Address line 1 *</Text>

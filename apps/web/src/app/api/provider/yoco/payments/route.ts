@@ -4,14 +4,21 @@ import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { convertToCents, validateYocoAmount, YOCO_ENDPOINTS } from "@/lib/payments/yoco";
 
-const createPaymentSchema = z.object({
-  device_id: z.string().uuid().min(1, "Device ID is required"),
-  amount: z.number().min(0.01, "Amount must be at least 0.01"),
-  currency: z.string().optional().default("ZAR"),
-  appointment_id: z.string().uuid().optional().nullable(),
-  sale_id: z.string().uuid().optional().nullable(),
-  metadata: z.record(z.string(), z.any()).optional(),
-});/**
+const createPaymentSchema = z
+  .object({
+    device_id: z.string().min(1, "Device ID is required"),
+    amount: z.number().min(0.01).optional(),
+    amount_cents: z.number().int().min(1).optional(),
+    currency: z.string().optional().default("ZAR"),
+    appointment_id: z.string().uuid().optional().nullable(),
+    booking_id: z.string().uuid().optional().nullable(),
+    sale_id: z.string().uuid().optional().nullable(),
+    metadata: z.record(z.string(), z.any()).optional(),
+  })
+  .refine((d) => d.amount != null || d.amount_cents != null, {
+    message: "Either amount or amount_cents is required",
+    path: ["amount"],
+  });/**
  * POST /api/provider/yoco/payments
  * 
  * Create a Yoco Web POS payment
@@ -48,6 +55,15 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    // Resolve amount (Rands) and appointment_id for provider app compatibility
+    const amountInRands =
+      validationResult.data.amount ??
+      (validationResult.data.amount_cents != null
+        ? validationResult.data.amount_cents / 100
+        : undefined);
+    const appointmentId =
+      validationResult.data.appointment_id ?? validationResult.data.booking_id ?? null;
 
     // Get provider ID
     const { data: provider } = await supabase
@@ -127,7 +143,7 @@ export async function POST(request: Request) {
     const yocoDeviceId = (device as any).yoco_device_id;
 
     // Validate amount
-    const amountValidation = validateYocoAmount(validationResult.data.amount);
+    const amountValidation = validateYocoAmount(amountInRands);
     if (!amountValidation.valid) {
       return NextResponse.json(
         {
@@ -142,7 +158,7 @@ export async function POST(request: Request) {
     }
 
     // Convert amount to cents
-    const amountInCents = convertToCents(validationResult.data.amount);
+    const amountInCents = convertToCents(amountInRands);
 
     // Call Yoco Web POS API to create payment
     // According to: https://developer.yoco.com/api-reference/yoco-api/web-pos/create-web-pos-payment-v-1-webpos-webpos-device-id-payments-post
@@ -160,7 +176,7 @@ export async function POST(request: Request) {
           metadata: {
             provider_id: provider.id,
             device_id: device.id,
-            appointment_id: validationResult.data.appointment_id,
+            appointment_id: appointmentId,
             sale_id: validationResult.data.sale_id,
             processed_by: auth.user.id,
             ...validationResult.data.metadata,
@@ -198,7 +214,7 @@ export async function POST(request: Request) {
         amount: amountInCents,
         currency: validationResult.data.currency || "ZAR",
         status: yocoPayment.status || "pending",
-        appointment_id: validationResult.data.appointment_id,
+        appointment_id: appointmentId,
         sale_id: validationResult.data.sale_id,
         metadata: {
           yoco_response: yocoPayment,
@@ -224,17 +240,20 @@ export async function POST(request: Request) {
       })
       .eq("id", device.id);
 
+    const yocoId = yocoPayment.id || yocoPayment.paymentId;
     return NextResponse.json({
       data: {
         id: payment?.id || `temp-${Date.now()}`,
-        yoco_payment_id: yocoPayment.id || yocoPayment.paymentId,
+        yoco_payment_id: yocoId,
+        reference: yocoId,
         device_id: device.id,
         device_name: device.name,
         amount: amountInCents,
+        amount_cents: amountInCents,
         currency: validationResult.data.currency || "ZAR",
         status: yocoPayment.status || "pending",
         payment_date: new Date().toISOString(),
-        appointment_id: validationResult.data.appointment_id,
+        appointment_id: appointmentId,
         sale_id: validationResult.data.sale_id,
         metadata: validationResult.data.metadata,
       },
@@ -300,7 +319,7 @@ export async function GET(request: Request) {
 
     let query = supabase
       .from("provider_yoco_payments")
-      .select("*", { count: "exact" })
+      .select("*, provider_yoco_devices(name)", { count: "exact" })
       .eq("provider_id", provider.id);
 
     // Apply filters
@@ -341,10 +360,12 @@ export async function GET(request: Request) {
         id: p.id,
         yoco_payment_id: p.yoco_payment_id,
         device_id: p.device_id,
-        device_name: p.device_name,
+        device_name: p.provider_yoco_devices?.name ?? null,
         amount: p.amount,
         currency: p.currency,
         status: p.status,
+        refund_status: p.refund_status ?? null,
+        refund_amount: p.refund_amount ?? null,
         payment_date: p.created_at,
         appointment_id: p.appointment_id,
         sale_id: p.sale_id,

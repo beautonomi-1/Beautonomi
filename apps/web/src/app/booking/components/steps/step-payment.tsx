@@ -323,10 +323,9 @@ export default function StepPayment({
       }));
     }
 
-    const response = await fetcher.post<{ data: { booking_id: string; booking_number: string } }>(
-      "/api/public/bookings",
-      bookingData
-    );
+    const response = await fetcher.post<{
+      data: { booking_id: string; booking_number: string; payment_url?: string | null };
+    }>("/api/public/bookings", bookingData);
 
     return response.data;
   };
@@ -373,8 +372,8 @@ export default function StepPayment({
           toast.error(error.message || "This time slot is no longer available. Please select another time.", {
             duration: 5000,
           });
-          // Navigate back to calendar step to select a new time
-          updateBookingState({ currentStepIndex: 2 }); // Step 2 is calendar
+          // Navigate back to calendar step to select a new time (calendar is index 4 in STEP_ORDER)
+          updateBookingState({ currentStepIndex: 4 });
           return;
         }
         
@@ -439,7 +438,13 @@ export default function StepPayment({
         return;
       }
 
-      // New card flow: redirect to Paystack hosted checkout
+      // New card flow: use payment_url from API when present (avoids double Paystack init)
+      if (draftWithUrl.payment_url && draftWithUrl.payment_url.trim() !== "") {
+        window.location.href = draftWithUrl.payment_url;
+        return;
+      }
+
+      // Fallback: initialize payment client-side if API did not return payment_url
       const result = await initializePayment({
         email: bookingState.clientInfo.email,
         amount: amountToCharge,

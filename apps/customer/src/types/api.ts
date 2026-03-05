@@ -2,6 +2,15 @@
  * API response types for customer app - aligned with Next.js backend
  */
 
+/** Gamification badge (from provider_points). */
+export interface ProviderBadge {
+  id: string;
+  name: string;
+  slug?: string;
+  description?: string | null;
+  color?: string | null;
+}
+
 export interface PublicProviderCard {
   id: string;
   slug: string;
@@ -22,6 +31,10 @@ export interface PublicProviderCard {
   distance_km?: number | null;
   supports_house_calls?: boolean;
   supports_salon?: boolean;
+  /** Points/gamification badge (aligned with web). */
+  current_badge?: ProviderBadge | null;
+  /** True when provider is in a sponsored slot (aligned with web). */
+  is_sponsored?: boolean;
 }
 
 export interface ProviderLocation {
@@ -177,7 +190,6 @@ export interface HomeApiResponse {
   nearest: PublicProviderCard[];
   hottest: PublicProviderCard[];
   upcoming: PublicProviderCard[];
-  browseByCity?: { city: string; providers: PublicProviderCard[] }[];
 }
 
 export interface SearchResult {

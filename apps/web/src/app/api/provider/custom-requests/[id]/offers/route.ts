@@ -12,6 +12,7 @@ const createOfferSchema = z.object({
   staff_id: z.string().uuid().optional().nullable(),
   location_id: z.string().uuid().optional().nullable(),
   scheduled_at: z.string().optional().nullable(), // ISO or datetime-local string; proposed appointment time when paid
+  travel_fee: z.number().min(0).optional().nullable(), // For at_home requests
 });
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -55,6 +56,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const expIso = new Date(body.expiration_at).toISOString();
 
+    const travelFeeAmount = body.travel_fee != null && body.travel_fee >= 0 ? Number(body.travel_fee) : 0;
     const { data: offer, error } = await supabase
       .from("custom_offers")
       .insert({
@@ -68,6 +70,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         staff_id: body.staff_id ?? null,
         location_id: body.location_id ?? null,
         scheduled_at: body.scheduled_at ? new Date(body.scheduled_at).toISOString() : null,
+        travel_fee: travelFeeAmount,
         status: "pending",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

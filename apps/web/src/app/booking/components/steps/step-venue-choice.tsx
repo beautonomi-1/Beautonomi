@@ -170,15 +170,26 @@ export default function StepVenueChoice({
       return;
     }
 
+    const struct = addressToSave.structuredAddress;
+    const address_line1 = (struct?.line1 || addressToSave.fullAddress?.split(",")[0] || "").trim();
+    const city = (struct?.city || "").trim();
+    const country = (struct?.country || HOUSE_CALL_CONFIG.DEFAULT_COUNTRY_NAME).trim();
+    if (!address_line1 || !city || !country) {
+      toast.error("Address, city and country are required to save.");
+      return;
+    }
+
     try {
       const addressData = {
-        label: finalLabel,
-        address_line1: addressToSave.structuredAddress?.line1 || addressToSave.fullAddress?.split(",")[0] || "",
-        city: addressToSave.structuredAddress?.city || "",
-        country: addressToSave.structuredAddress?.country || HOUSE_CALL_CONFIG.DEFAULT_COUNTRY_NAME,
-        postal_code: addressToSave.structuredAddress?.postalCode || "",
-        latitude: addressToSave.coordinates?.lat || null,
-        longitude: addressToSave.coordinates?.lng || null,
+        label: finalLabel.trim(),
+        address_line1,
+        address_line2: (addressToSave as { address_line2?: string }).address_line2 || null,
+        city,
+        state: struct?.state || null,
+        postal_code: struct?.postalCode || null,
+        country,
+        latitude: addressToSave.coordinates?.lat ?? null,
+        longitude: addressToSave.coordinates?.lng ?? null,
         is_default: false,
       };
 
@@ -354,8 +365,16 @@ export default function StepVenueChoice({
       });
 
       if (response.data.valid) {
+        const respAddr = response.data.address;
+        const structuredAddress = respAddr ? {
+          line1: respAddr.line1,
+          city: respAddr.city,
+          state: (respAddr as { state?: string }).state,
+          country: respAddr.country,
+          postalCode: respAddr.postalCode,
+        } : undefined;
         const validatedAddress = {
-          fullAddress: response.data.address?.fullAddress || addressString,
+          fullAddress: respAddr?.fullAddress || addressString,
           zoneId: response.data.zoneId || undefined,
           travelFee: response.data.travelFee,
           distanceKm: response.data.distanceKm,
@@ -366,13 +385,9 @@ export default function StepVenueChoice({
             : (selectedAddress.latitude && selectedAddress.longitude
               ? { lat: selectedAddress.latitude, lng: selectedAddress.longitude }
               : undefined),
-          // Store structured address for booking creation
-          structuredAddress: response.data.address ? {
-            line1: response.data.address.line1,
-            city: response.data.address.city,
-            country: response.data.address.country,
-            postalCode: response.data.address.postalCode,
-          } : undefined,
+          structuredAddress,
+          // Preserve from autocomplete for save-address dialog
+          address_line2: (selectedAddress as { address_line2?: string }).address_line2,
         };
 
         updateBookingState({ address: validatedAddress });

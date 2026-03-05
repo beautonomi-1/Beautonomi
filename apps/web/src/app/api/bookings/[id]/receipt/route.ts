@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/supabase/auth-server";
+import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: bookingId } = await params;
     const supabase = await getSupabaseServer();
     const { user } = await requireRole(["customer", "provider_owner", "provider_staff"]);
 
@@ -53,7 +55,7 @@ export async function GET(
           created_at
         )
       `)
-      .eq("id", params.id)
+      .eq("id", bookingId)
       .single();
 
     if (bookingError || !booking) {
@@ -63,11 +65,10 @@ export async function GET(
       );
     }
 
-    // Verify access
-    const isCustomer = user.role === "customer" && booking.customer_id === user.id;
-    const isProvider =
-      (user.role === "provider_owner" || user.role === "provider_staff") &&
-      booking.provider_id === user.id;
+    // Verify access: customer = booking owner; provider = owner or staff of the booking's provider
+    const isCustomer = booking.customer_id === user.id;
+    const providerId = await getProviderIdForUser(user.id, supabase);
+    const isProvider = providerId != null && booking.provider_id === providerId;
 
     if (!isCustomer && !isProvider) {
       return NextResponse.json(
@@ -123,6 +124,7 @@ export async function GET(
       fees,
       discount,
       total,
+      currency: (booking as any).currency || "ZAR",
       payment_status: booking.payment_status,
       transactions: booking.payment_transactions || [],
     };

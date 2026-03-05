@@ -96,10 +96,11 @@ export async function POST(request: NextRequest) {
       longitude: geocodeResult.center[0],
     };
 
-    // Build service address early (needed for zone checking)
+    // Build service address early (needed for zone checking and for clients to save)
     const serviceAddress = {
       line1: geocodeResult.place_name.split(",")[0] || body.address,
       city: geocodeResult.context?.find((c: any) => c.id.startsWith("place."))?.text || "",
+      state: geocodeResult.context?.find((c: any) => c.id.startsWith("region."))?.text || "",
       country: geocodeResult.context?.find((c: any) => c.id.startsWith("country."))?.text || HOUSE_CALL_CONFIG.DEFAULT_COUNTRY_NAME,
       postalCode: geocodeResult.context?.find((c: any) => c.id.startsWith("postcode."))?.text || "",
       coordinates: clientCoordinates,
@@ -180,8 +181,20 @@ export async function POST(request: NextRequest) {
 
     baseLocation = { latitude: nlat, longitude: nlng };
 
-    // Step 4: Calculate distance
-    const distanceKm = mapbox.calculateDistance(baseLocation, clientCoordinates);
+    // Step 4: Calculate distance (prefer Mapbox driving distance; fallback to haversine)
+    let distanceKm: number;
+    try {
+      const route = await mapbox.calculateRoute(
+        [
+          { latitude: baseLocation.latitude, longitude: baseLocation.longitude },
+          { latitude: clientCoordinates.latitude, longitude: clientCoordinates.longitude },
+        ],
+        { profile: "driving", steps: false }
+      );
+      distanceKm = route.distance / 1000;
+    } catch {
+      distanceKm = mapbox.calculateDistance(baseLocation, clientCoordinates);
+    }
 
     // Step 5: Check platform zones and provider zone selections
     const maxDistance = provider.max_service_distance_km || HOUSE_CALL_CONFIG.DEFAULT_MAX_SERVICE_DISTANCE_KM;
@@ -382,8 +395,10 @@ export async function POST(request: NextRequest) {
       defaultMinutesPerKm: HOUSE_CALL_CONFIG.DEFAULT_MINUTES_PER_KM,
     };
 
-    // Calculate travel fee (serviceAddress already defined above)
-    const travelFeeResult = computeTravelFee(baseLocation, serviceAddress, travelFeeRules);
+    // Calculate travel fee (serviceAddress already defined above; use driving distance when available)
+    const travelFeeResult = computeTravelFee(baseLocation, serviceAddress, travelFeeRules, {
+      overrideDistanceKm: distanceKm,
+    });
 
     if (!travelFeeResult.withinServiceArea) {
       return successResponse({
@@ -421,6 +436,7 @@ export async function POST(request: NextRequest) {
       address: {
         line1: serviceAddress.line1,
         city: serviceAddress.city,
+        state: serviceAddress.state,
         country: serviceAddress.country,
         postalCode: serviceAddress.postalCode,
         fullAddress: geocodeResult.place_name,

@@ -162,7 +162,10 @@ const NearestProvidersSection = () => {
               <div className="flex items-center gap-2">
                 <Label htmlFor="radius-select" className="text-sm text-muted-foreground whitespace-nowrap">Within</Label>
                 <Select value={String(radiusKm)} onValueChange={(v) => setRadiusKm(Number(v))}>
-                  <SelectTrigger id="radius-select" className="w-[100px]">
+                  <SelectTrigger
+                    id="radius-select"
+                    className="w-[100px] rounded-full bg-gray-100 border-0 px-4 py-2 h-9 text-sm font-medium text-gray-700 hover:bg-gray-200 focus:ring-2 focus:ring-[#FF0077]/30"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

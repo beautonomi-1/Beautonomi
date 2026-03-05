@@ -108,6 +108,11 @@ export function useDragDrop() {
   return context;
 }
 
+/** Optional drag-drop context for use in components that may render with or without DragDropProvider (e.g. mobile view). */
+export function useOptionalDragDrop(): DragDropContextValue | null {
+  return React.useContext(DragDropContext);
+}
+
 interface DragDropProviderProps {
   children: React.ReactNode;
   teamMembers: TeamMember[];
@@ -519,6 +524,22 @@ interface DraggableAppointmentProps {
   enableKeyboardNav?: boolean;
 }
 
+const LONG_PRESS_MS = 450;
+const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
+
+function findDropTargetFromPoint(clientX: number, clientY: number): { date: string; time: string; staffId: string } | null {
+  const el = document.elementFromPoint(clientX, clientY);
+  let current: Element | null = el;
+  while (current) {
+    const date = current.getAttribute("data-droppable-date");
+    const time = current.getAttribute("data-droppable-time");
+    const staffId = current.getAttribute("data-droppable-staff-id");
+    if (date && time && staffId) return { date, time, staffId };
+    current = current.parentElement;
+  }
+  return null;
+}
+
 export function DraggableAppointment({
   appointment,
   children,
@@ -529,6 +550,7 @@ export function DraggableAppointment({
   const { 
     startDrag, 
     endDrag, 
+    updateDropTarget,
     isDragging, 
     dragState,
     focusedAppointmentId,
@@ -536,6 +558,77 @@ export function DraggableAppointment({
   } = useDragDrop();
   const isDraggingThis = isDragging && dragState?.appointment.id === appointment.id;
   const isFocused = focusedAppointmentId === appointment.id;
+
+  const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchDragActiveRef = React.useRef(false);
+  const touchStartPosRef = React.useRef<{ x: number; y: number } | null>(null);
+
+  const clearLongPressTimer = React.useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleTouchStart = React.useCallback((e: React.TouchEvent) => {
+    if (e.targetTouches.length !== 1) return;
+    const touch = e.targetTouches[0];
+    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+    clearLongPressTimer();
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null;
+      touchDragActiveRef.current = true;
+      startDrag(appointment);
+    }, LONG_PRESS_MS);
+  }, [appointment, startDrag, clearLongPressTimer]);
+
+  const handleTouchMove = React.useCallback((e: React.TouchEvent) => {
+    if (e.targetTouches.length !== 1) return;
+    const touch = e.targetTouches[0];
+    if (longPressTimerRef.current) {
+      const start = touchStartPosRef.current;
+      if (start && (Math.abs(touch.clientX - start.x) > LONG_PRESS_MOVE_TOLERANCE_PX || Math.abs(touch.clientY - start.y) > LONG_PRESS_MOVE_TOLERANCE_PX)) {
+        clearLongPressTimer();
+      }
+      return;
+    }
+    if (touchDragActiveRef.current) {
+      e.preventDefault();
+      const target = findDropTargetFromPoint(touch.clientX, touch.clientY);
+      if (target) updateDropTarget(target);
+      else updateDropTarget(null);
+    }
+  }, [updateDropTarget, clearLongPressTimer]);
+
+  const handleTouchEnd = React.useCallback(() => {
+    clearLongPressTimer();
+    if (touchDragActiveRef.current) {
+      touchDragActiveRef.current = false;
+      endDrag();
+    }
+    touchStartPosRef.current = null;
+  }, [endDrag, clearLongPressTimer]);
+
+  const handleTouchCancel = React.useCallback(() => {
+    clearLongPressTimer();
+    if (touchDragActiveRef.current) {
+      touchDragActiveRef.current = false;
+      endDrag();
+    }
+    touchStartPosRef.current = null;
+  }, [endDrag, clearLongPressTimer]);
+
+  React.useEffect(() => () => clearLongPressTimer(), [clearLongPressTimer]);
+
+  // When touch-dragging, prevent document scroll so the drag is stable
+  React.useEffect(() => {
+    if (!isDraggingThis) return;
+    const preventScroll = (e: TouchEvent) => {
+      if (touchDragActiveRef.current) e.preventDefault();
+    };
+    document.addEventListener("touchmove", preventScroll, { passive: false });
+    return () => document.removeEventListener("touchmove", preventScroll);
+  }, [isDraggingThis]);
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = "move";
@@ -576,9 +669,11 @@ export function DraggableAppointment({
       tabIndex={enableKeyboardNav ? 0 : undefined}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      onFocus={handleFocus}
-      onBlur={handleBlur}
-      onKeyDown={handleKeyDown}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
+      style={{ ...style, touchAction: "manipulation" }}
       className={cn(
         "cursor-grab active:cursor-grabbing",
         "focus:outline-none focus:ring-2 focus:ring-[#FF0077] focus:ring-offset-1",
@@ -586,7 +681,6 @@ export function DraggableAppointment({
         isFocused && "ring-2 ring-[#FF0077] ring-offset-1",
         className
       )}
-      style={style}
       aria-label={`Appointment: ${appointment.client_name} for ${appointment.service_name} at ${appointment.scheduled_time}`}
     >
       {children}
@@ -677,6 +771,9 @@ export function DroppableTimeSlot({
 
   return (
     <div
+      data-droppable-date={date}
+      data-droppable-time={time}
+      data-droppable-staff-id={staffId}
       onDragOver={handleDragOver}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}

@@ -137,7 +137,7 @@ const MinimizedSearchBar: React.FC<MinimizedSearchBarProps> = ({ defaultExpanded
               >
                 <ul className="text-secondary text-base font-normal Beautonomi-semibold">
                   <li className="py-2">
-                    <Link href="/" className="block pl-4">All help topics</Link>  
+                    <Link href="/learn" className="block pl-4">All help topics</Link>  
                   </li>
                   <li className="py-2">
                     <Link href="/" className="block pl-4">Beauty partner</Link>
@@ -185,7 +185,7 @@ const MinimizedSearchBar: React.FC<MinimizedSearchBarProps> = ({ defaultExpanded
                 >
                   <ul className="text-secondary text-base font-normal Beautonomi-semibold">
                     <li className="py-2">
-                      <Link href="/" className="block pl-4">All help topics</Link>  
+                      <Link href="/learn" className="block pl-4">All help topics</Link>  
                     </li>
                     <li className="py-2">
                       <Link href="/" className="block pl-4">Beauty partner</Link>

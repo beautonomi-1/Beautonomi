@@ -228,6 +228,7 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
     description_display: "",
     cta_text: "Get started",
     display_order_pricing: 0,
+    update_existing_subscriptions: false,
   });
 
   // Helper to normalize features from API (handle both legacy array and complex object)
@@ -298,6 +299,7 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
       description_display: "",
       cta_text: "Get started",
       display_order_pricing: plans.length,
+      update_existing_subscriptions: false,
     });
     setIsCreateDialogOpen(true);
   };
@@ -328,6 +330,7 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
       description_display: pp?.description || "",
       cta_text: pp?.cta_text || "Get started",
       display_order_pricing: pp?.display_order ?? plan.display_order,
+      update_existing_subscriptions: false,
     });
     setIsEditDialogOpen(true);
   };
@@ -351,6 +354,9 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
         max_locations: parseInt(formData.max_locations) || 1,
         paystack_plan_code_monthly: formData.paystack_plan_code_monthly || null,
         paystack_plan_code_yearly: formData.paystack_plan_code_yearly || null,
+        ...(selectedPlan && "update_existing_subscriptions" in formData
+          ? { update_existing_subscriptions: (formData as any).update_existing_subscriptions }
+          : {}),
       };
 
       let savedPlan: SubscriptionPlan;
@@ -705,6 +711,21 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
                         placeholder="0.00"
                       />
                     </div>
+                  </div>
+                )}
+
+                {selectedPlan && !formData.is_free && (
+                  <div className="flex items-center space-x-2 rounded-md border p-3 bg-muted/30">
+                    <Checkbox
+                      id="update_existing_subscriptions"
+                      checked={(formData as any).update_existing_subscriptions ?? false}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, update_existing_subscriptions: !!checked })
+                      }
+                    />
+                    <Label htmlFor="update_existing_subscriptions" className="text-sm font-normal cursor-pointer">
+                      Apply price/name changes to existing Paystack subscriptions (takes effect next billing cycle)
+                    </Label>
                   </div>
                 )}
 

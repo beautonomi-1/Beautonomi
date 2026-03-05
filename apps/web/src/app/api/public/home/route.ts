@@ -1696,6 +1696,9 @@ export async function GET(request: Request) {
       };
     }
 
+    // Always return empty browseByCity (feature removed from UI)
+    data = { ...data, browseByCity: [] };
+
     if (adsRow?.data?.enabled && adsRow.data.max_sponsored_slots) {
       const maxSlots = Math.min(Number(adsRow.data.max_sponsored_slots) || 5, 10);
       const { data: campaigns } = await supabaseAdmin.from("ads_campaigns").select("provider_id").eq("status", "active").limit(maxSlots * 2);

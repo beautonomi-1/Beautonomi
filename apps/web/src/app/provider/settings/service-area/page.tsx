@@ -89,12 +89,20 @@ export default function ServiceAreaPage() {
   }
 
   return (
-    <SettingsDetailLayout title="Service area" subtitle="Define how far you travel for at-home bookings (Tinder-style radius).">
+    <SettingsDetailLayout title="Service area" subtitle="Optional radius or zones for display and analytics. To control how far you accept at-home bookings, use Distance Settings.">
       {!enabled && (
         <Alert className="mb-6">
           <AlertDescription>Service area is not enabled. Enable the distance module in Control Plane to use this.</AlertDescription>
         </Alert>
       )}
+
+      <Alert className="mb-6 border-blue-200 bg-blue-50">
+        <AlertDescription>
+          <strong>What actually limits at-home bookings:</strong> The distance that controls whether customers can book you for house calls is set in{" "}
+          <a href="/provider/settings/distance" className="font-medium text-blue-700 underline hover:text-blue-800">Distance Settings</a>
+          {" "}(max service distance). Use this page for optional radius/zones if you use the zones feature.
+        </AlertDescription>
+      </Alert>
 
       <SectionCard title="Service area">
         <div className="space-y-6">

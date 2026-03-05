@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, RefreshControl } from "react-native";
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -10,14 +10,19 @@ import { ErrorState } from "@/components/ui/ErrorState";
 
 type CustomRequest = {
   id: string;
-  message?: string | null;
+  description?: string | null;
   status?: string | null;
   created_at: string;
+  location_type?: string | null;
+  duration_minutes?: number | null;
+  preferred_start_at?: string | null;
+  budget_min?: number | null;
+  budget_max?: number | null;
   customer?: { full_name?: string | null; email?: string | null } | null;
   offers?: { status?: string; price?: number; created_at?: string }[];
 };
 
-export default function CustomRequestsScreen() {
+export default function CustomRequestsListScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<CustomRequest[] | { data?: CustomRequest[] }>(
@@ -78,23 +83,29 @@ export default function CustomRequestsScreen() {
         ) : (
           <View className="pb-4">
             {requests.map((r) => (
-              <View
+              <TouchableOpacity
                 key={r.id}
+                activeOpacity={0.7}
+                onPress={() => router.push(`/(app)/(tabs)/more/custom-requests/${r.id}`)}
                 className="mb-3 rounded-xl border border-gray-200 bg-white p-4"
               >
-                <Text className="font-semibold text-gray-900" numberOfLines={1}>
-                  {r.customer?.full_name ?? "Customer"}
-                </Text>
-                {r.message ? (
+                <View className="flex-row items-center justify-between">
+                  <Text className="font-semibold text-gray-900" numberOfLines={1}>
+                    {r.customer?.full_name ?? r.customer?.email ?? "Customer"}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+                </View>
+                {r.description ? (
                   <Text className="mt-1 text-sm text-gray-600" numberOfLines={2}>
-                    {r.message}
+                    {r.description}
                   </Text>
                 ) : null}
                 <Text className="mt-2 text-xs text-gray-500">
                   {new Date(r.created_at).toLocaleDateString()}
-                  {r.offers?.length ? ` · ${r.offers.length} offer(s)` : ""}
+                  {r.location_type === "at_home" ? " · At home" : " · At salon"}
+                  {r.offers?.length ? ` · ${r.offers.length} offer(s)` : " · No offer yet"}
                 </Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}

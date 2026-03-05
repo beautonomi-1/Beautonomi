@@ -53,7 +53,157 @@ import type { ServiceItem, TimeBlock, AvailabilityBlockDisplay } from "@/lib/pro
 import { AppointmentStatus, mapStatus } from "@/lib/scheduling/mangomintAdapter";
 import { TimeBlockSidebar } from "@/components/calendar/TimeBlockSidebar";
 import { useTimeBlockSidebar, openEditTimeBlockMode } from "@/stores/time-block-sidebar-store";
+import { useCalendarPreferences } from "@/lib/settings/calendarPreferences";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Contrast, Eye, EyeOff, Grid3X3, Tag, DollarSign, Palette, Clock } from "lucide-react";
 import { toast } from "sonner";
+
+/** Inline calendar display preferences for the mobile Filter sheet */
+function MobileCalendarPreferencesSection() {
+  const {
+    preferences,
+    isLoaded,
+    toggleHighContrastMode,
+    toggleShowCanceledAppointments,
+    toggleCompactMode,
+    toggleShowIcons,
+    updatePreference,
+    reset,
+  } = useCalendarPreferences();
+
+  if (!isLoaded) return null;
+
+  return (
+    <div>
+      <h3 className="text-sm font-medium text-gray-700 mb-3">Display preferences</h3>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Contrast className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <Label htmlFor="mobile-high-contrast" className="text-sm font-normal cursor-pointer truncate">
+              High contrast
+            </Label>
+          </div>
+          <Switch
+            id="mobile-high-contrast"
+            checked={preferences.highContrast}
+            onCheckedChange={toggleHighContrastMode}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            {preferences.showCanceled ? (
+              <Eye className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            ) : (
+              <EyeOff className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            )}
+            <Label htmlFor="mobile-show-canceled" className="text-sm font-normal cursor-pointer truncate">
+              Show canceled
+            </Label>
+          </div>
+          <Switch
+            id="mobile-show-canceled"
+            checked={preferences.showCanceled}
+            onCheckedChange={toggleShowCanceledAppointments}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Grid3X3 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <Label htmlFor="mobile-compact" className="text-sm font-normal cursor-pointer truncate">
+              Compact blocks
+            </Label>
+          </div>
+          <Switch
+            id="mobile-compact"
+            checked={preferences.compactMode}
+            onCheckedChange={toggleCompactMode}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Tag className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <Label htmlFor="mobile-show-icons" className="text-sm font-normal cursor-pointer truncate">
+              Show icons
+            </Label>
+          </div>
+          <Switch
+            id="mobile-show-icons"
+            checked={preferences.showAppointmentIcons}
+            onCheckedChange={toggleShowIcons}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <DollarSign className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <Label htmlFor="mobile-show-prices" className="text-sm font-normal cursor-pointer truncate">
+              Show prices
+            </Label>
+          </div>
+          <Switch
+            id="mobile-show-prices"
+            checked={preferences.showPrices}
+            onCheckedChange={(checked) => updatePreference("showPrices", checked)}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Palette className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <Label className="text-sm font-normal">Color by</Label>
+          </div>
+          <Select
+            value={preferences.colorBy}
+            onValueChange={(value: "status" | "service" | "team_member") =>
+              updatePreference("colorBy", value)
+            }
+          >
+            <SelectTrigger className="w-24 h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="status">Status</SelectItem>
+              <SelectItem value="service">Service</SelectItem>
+              <SelectItem value="team_member">Staff</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <Label htmlFor="mobile-scroll-now" className="text-sm font-normal cursor-pointer truncate">
+              Scroll to now
+            </Label>
+          </div>
+          <Switch
+            id="mobile-scroll-now"
+            checked={preferences.scrollToNow}
+            onCheckedChange={(checked) => updatePreference("scrollToNow", checked)}
+          />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 mt-3">
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs h-8"
+          onClick={() => reset()}
+        >
+          Reset to defaults
+        </Button>
+        <Button
+          variant="link"
+          size="sm"
+          className="text-xs text-muted-foreground p-0 h-auto"
+          onClick={() => window.location.href = "/provider/settings/calendar/display-preferences"}
+        >
+          More display settings →
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function ProviderCalendar() {
   const { dateView, setDateView, provider, isLoading: isLoadingProvider, salons, selectedLocationId } = useProviderPortal();
@@ -1371,6 +1521,13 @@ export default function ProviderCalendar() {
                 <span className="text-xs text-gray-600">Refreshing...</span>
               </div>
             )}
+            <DragDropProvider
+              teamMembers={filteredTeamMembers}
+              allAppointments={appointments}
+              timeBlocks={timeBlocks}
+              enableConflictValidation={true}
+              onReschedule={handleReschedule}
+            >
             <CalendarMobileView
               appointments={appointments}
               teamMembers={filteredTeamMembers}
@@ -1432,6 +1589,7 @@ export default function ProviderCalendar() {
                 setDateView(view === "week" ? "week" : "day");
               }}
             />
+            </DragDropProvider>
           </>
         )}
         
@@ -1455,11 +1613,11 @@ export default function ProviderCalendar() {
 
       {/* Mobile Filter Sheet */}
       <Sheet open={isFilterSheetOpen} onOpenChange={setIsFilterSheetOpen}>
-        <SheetContent side="left" className="w-80">
-          <SheetHeader>
+        <SheetContent side="left" className="w-80 flex flex-col p-0 overflow-hidden">
+          <SheetHeader className="flex-shrink-0 px-6 pt-6 pb-3 border-b border-gray-100">
             <SheetTitle>Filters</SheetTitle>
           </SheetHeader>
-          <div className="mt-6 space-y-6">
+          <div className="flex-1 overflow-y-auto min-h-0 px-6 pb-8 mt-4 space-y-6">
             {/* View Selector */}
             <div>
               <h3 className="text-sm font-medium text-gray-700 mb-3">View</h3>
@@ -1547,6 +1705,10 @@ export default function ProviderCalendar() {
                 ))}
               </div>
             </div>
+
+            {/* Display preferences (mobile) */}
+            <Separator />
+            <MobileCalendarPreferencesSection />
 
             {/* Quick Actions - Print, Group Booking, Walk-in, Settings */}
             <Separator />

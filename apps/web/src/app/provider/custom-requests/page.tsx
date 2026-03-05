@@ -38,6 +38,7 @@ export default function ProviderCustomRequestsPage() {
   const [durationMinutes, setDurationMinutes] = useState<number>(60);
   const [expirationAt, setExpirationAt] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
+  const [travelFee, setTravelFee] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const load = async () => {
@@ -72,19 +73,25 @@ export default function ProviderCustomRequestsPage() {
     exp.setDate(exp.getDate() + 2);
     setExpirationAt(exp.toISOString().slice(0, 16));
     setNotes("");
+    setTravelFee("");
   };
 
   const sendOffer = async () => {
     if (!selected) return;
     try {
       setIsSubmitting(true);
-      await fetcher.post(`/api/provider/custom-requests/${selected.id}/offers`, {
+      const payload: Record<string, unknown> = {
         price: Number(price || 0),
         currency: "ZAR",
         duration_minutes: Number(durationMinutes || 60),
         expiration_at: expirationAt,
         notes: notes || null,
-      });
+      };
+      if (selected.location_type === "at_home" && travelFee.trim() !== "") {
+        const fee = Number(travelFee);
+        if (!Number.isNaN(fee) && fee >= 0) payload.travel_fee = fee;
+      }
+      await fetcher.post(`/api/provider/custom-requests/${selected.id}/offers`, payload);
       toast.success("Offer sent");
       setOfferOpen(false);
       await load();
@@ -163,6 +170,19 @@ export default function ProviderCustomRequestsPage() {
                   <Input type="datetime-local" value={expirationAt} onChange={(e) => setExpirationAt(e.target.value)} />
                 </div>
               </div>
+              {selected?.location_type === "at_home" && (
+                <div className="space-y-2">
+                  <Label>Travel fee (ZAR, optional)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={travelFee}
+                    onChange={(e) => setTravelFee(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Notes (optional)</Label>
                 <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} />

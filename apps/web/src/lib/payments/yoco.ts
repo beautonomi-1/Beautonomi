@@ -67,20 +67,26 @@ export function validateYocoAmount(amount: number): {
 }
 
 /**
- * Yoco API base URL
+ * Yoco API base URL (Checkout, OAuth, etc.)
  */
 export const YOCO_API_BASE = "https://online.yoco.com";
+
+/**
+ * Web POS API base (Create device, payments - https://developer.yoco.com/api-reference/yoco-api/web-pos/create-web-pos-device-v-1-webpos-post)
+ */
+export const YOCO_WEBPOS_API_BASE =
+  process.env.YOCO_WEBPOS_API_BASE ?? "https://api.yoco.com";
 
 /**
  * Yoco API endpoints
  * Based on: https://developer.yoco.com/api-reference
  */
 export const YOCO_ENDPOINTS = {
-  // Web POS
-  createWebPosDevice: `${YOCO_API_BASE}/v1/webpos`,
-  createWebPosPayment: (deviceId: string) => `${YOCO_API_BASE}/v1/webpos/${deviceId}/payments`,
-  getWebPosDevice: (deviceId: string) => `${YOCO_API_BASE}/v1/webpos/${deviceId}`,
-  getWebPosPayment: (deviceId: string, paymentId: string) => `${YOCO_API_BASE}/v1/webpos/${deviceId}/payments/${paymentId}`,
+  // Web POS (api.yoco.com)
+  createWebPosDevice: `${YOCO_WEBPOS_API_BASE}/v1/webpos`,
+  createWebPosPayment: (deviceId: string) => `${YOCO_WEBPOS_API_BASE}/v1/webpos/${deviceId}/payments`,
+  getWebPosDevice: (deviceId: string) => `${YOCO_WEBPOS_API_BASE}/v1/webpos/${deviceId}`,
+  getWebPosPayment: (deviceId: string, paymentId: string) => `${YOCO_WEBPOS_API_BASE}/v1/webpos/${deviceId}/payments/${paymentId}`,
   
   // OAuth
   authorize: `${YOCO_API_BASE}/oauth2/authorize`,

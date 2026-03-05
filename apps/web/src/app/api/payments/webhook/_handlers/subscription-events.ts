@@ -2,16 +2,24 @@
  * Subscription Event Handlers
  *
  * Handles subscription-related webhook events from Paystack:
- *   - subscription.create   — New subscription created
- *   - subscription.disable  — Subscription disabled / cancelled
- *   - subscription.enable   — Subscription re-enabled
- *   - subscription.not_renew — Subscription flagged as non-renewing
- *   - invoice.create        — New invoice for subscription renewal
- *   - invoice.payment_failed — Subscription payment failed
+ *   - subscription.create       — New subscription created
+ *   - subscription.disable     — Subscription disabled / cancelled
+ *   - subscription.enable      — Subscription re-enabled
+ *   - subscription.not_renew   — Subscription flagged as non-renewing
+ *   - subscription.expiring_cards — Cards expiring this month (notify)
+ *   - invoice.create           — New invoice for subscription renewal
+ *   - invoice.update            — Invoice status updated after charge attempt
+ *   - invoice.payment_failed    — Subscription payment failed
  */
 import { NextResponse } from "next/server";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import type { PaystackEvent, SupabaseClient } from "./shared";
+
+/** Map Paystack subscription status to provider_subscriptions status (active | cancelled | expired | past_due). */
+function mapPaystackStatusToDb(status: string): "active" | "past_due" {
+  if (status === "attention") return "past_due";
+  return "active";
+}
 
 // ─── Exported Handler ────────────────────────────────────────────────────────
 
@@ -32,7 +40,13 @@ export async function handleSubscriptionEvent(
     await handleSubscriptionEnable(data, supabase);
   } else if (eventType === "subscription.not_renew") {
     await handleSubscriptionNotRenew(data, supabase);
-  } else if (eventType === "invoice.create" || eventType === "invoice.payment_failed") {
+  } else if (eventType === "subscription.expiring_cards") {
+    await handleSubscriptionExpiringCards(data, supabase);
+  } else if (
+    eventType === "invoice.create" ||
+    eventType === "invoice.update" ||
+    eventType === "invoice.payment_failed"
+  ) {
     await handleSubscriptionInvoice(data, eventType, supabase);
   } else {
     console.log(`Unhandled subscription event type: ${eventType}`);
@@ -100,12 +114,14 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
   const billingPeriod =
     (planDetails as any)?.paystack_plan_code_monthly === planCode ? "monthly" : "yearly";
 
+  const dbStatus = mapPaystackStatusToDb(status || "active");
+
   // Update or create subscription
   await (supabase.from("provider_subscriptions") as any).upsert(
     {
       provider_id: provider.id,
       plan_id: plan.id,
-      status: status === "active" ? "active" : "inactive",
+      status: dbStatus,
       paystack_subscription_code: subscriptionCode,
       paystack_customer_code: customerCode,
       paystack_authorization_code: payload.authorization?.authorization_code,
@@ -181,6 +197,47 @@ async function handleSubscriptionNotRenew(payload: any, supabase: SupabaseClient
   console.log(`Subscription ${subscriptionCode} marked as non-renewing`);
 }
 
+async function handleSubscriptionExpiringCards(payload: any, supabase: SupabaseClient) {
+  const items = Array.isArray(payload) ? payload : [payload];
+  for (const item of items) {
+    const sub = item.subscription;
+    const subscriptionCode = sub?.subscription_code;
+    const customer = item.customer;
+    const expiryDate = item.expiry_date;
+    const description = item.description;
+    if (!subscriptionCode) continue;
+
+    const { data: row } = await supabase
+      .from("provider_subscriptions")
+      .select("provider_id, providers:provider_id(user_id)")
+      .eq("paystack_subscription_code", subscriptionCode)
+      .single();
+
+    const provider = Array.isArray(row?.providers) ? row.providers[0] : row?.providers;
+    const userId = provider && typeof provider === "object" && "user_id" in provider ? (provider as { user_id: string }).user_id : null;
+    if (userId) {
+      try {
+        const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+        await sendTemplateNotification(
+          "subscription_card_expiring",
+          [userId],
+          {
+            expiry_date: expiryDate || "",
+            description: description || "Card ending soon",
+            customer_email: customer?.email || "",
+            app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
+            year: new Date().getFullYear().toString(),
+          },
+          ["push", "email"],
+        );
+      } catch (e) {
+        console.error("Error sending expiring card notification:", e);
+      }
+    }
+    console.log(`Subscription ${subscriptionCode} card expiring: ${expiryDate}`, description);
+  }
+}
+
 async function handleSubscriptionInvoice(
   payload: any,
   eventType: string,
@@ -213,12 +270,28 @@ async function handleSubscriptionInvoice(
   const providerId = (subscription as any).provider_id;
 
   if (eventType === "invoice.create") {
-    const dueDate = payload.due_date;
+    const dueDate = payload.due_date || payload.period_end;
     await (supabase.from("provider_subscriptions") as any)
       .update({
         next_payment_date: dueDate ? new Date(dueDate).toISOString() : null,
         updated_at: new Date().toISOString(),
       })
+      .eq("paystack_subscription_code", subscriptionCode);
+  } else if (eventType === "invoice.update") {
+    const dueDate = payload.due_date || payload.period_end || payload.next_payment_date;
+    const invoiceStatus = payload.status;
+    const updatePayload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (dueDate) updatePayload.next_payment_date = new Date(dueDate).toISOString();
+    if (invoiceStatus === "failed" || invoiceStatus === "attention") {
+      updatePayload.status = "past_due";
+    } else if (invoiceStatus === "success" && paidAt) {
+      updatePayload.status = "active";
+      updatePayload.last_payment_date = new Date(paidAt).toISOString();
+    }
+    await (supabase.from("provider_subscriptions") as any)
+      .update(updatePayload)
       .eq("paystack_subscription_code", subscriptionCode);
   } else if (eventType === "invoice.payment_failed") {
     await (supabase.from("provider_subscriptions") as any)

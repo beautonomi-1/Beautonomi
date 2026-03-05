@@ -10,6 +10,8 @@
  * @module lib/travel/travelFeeEngine
  */
 
+import { haversineDistanceKm } from "@/lib/geo/distance";
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -208,29 +210,14 @@ export const SOUTH_AFRICA_ZONE_RULES: TravelFeeRules = {
 // ============================================================================
 
 /**
- * Calculate distance between two coordinates using Haversine formula
+ * Calculate distance between two coordinates (Haversine).
+ * Uses shared geo util so distance matches provider cards, location validate, and Mapbox service.
  */
 export function calculateDistance(
   from: Coordinates,
   to: Coordinates
 ): number {
-  const R = 6371; // Earth's radius in km
-  const dLat = toRad(to.latitude - from.latitude);
-  const dLon = toRad(to.longitude - from.longitude);
-  
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(from.latitude)) *
-      Math.cos(toRad(to.latitude)) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-function toRad(deg: number): number {
-  return deg * (Math.PI / 180);
+  return haversineDistanceKm(from, to);
 }
 
 /**
@@ -283,12 +270,21 @@ export function findTier(
 }
 
 /**
+ * Options for computeTravelFee (e.g. override distance when using Mapbox driving distance).
+ */
+export interface ComputeTravelFeeOptions {
+  /** When set, use this distance (km) instead of haversine between baseLocation and client coordinates. */
+  overrideDistanceKm?: number;
+}
+
+/**
  * Calculate travel fee based on rules
  */
 export function computeTravelFee(
   baseLocation: Coordinates | null,
   clientAddress: ServiceAddress,
-  rules: TravelFeeRules = DEFAULT_TRAVEL_FEE_RULES
+  rules: TravelFeeRules = DEFAULT_TRAVEL_FEE_RULES,
+  options?: ComputeTravelFeeOptions
 ): TravelFeeResult {
   const breakdown: { label: string; amount: number }[] = [];
   
@@ -348,8 +344,11 @@ export function computeTravelFee(
     };
   }
   
-  // Calculate distance
-  const distanceKm = calculateDistance(baseLocation, clientAddress.coordinates);
+  // Calculate distance (use override when provided, e.g. Mapbox driving distance)
+  const distanceKm =
+    options?.overrideDistanceKm != null && Number.isFinite(options.overrideDistanceKm)
+      ? options.overrideDistanceKm
+      : calculateDistance(baseLocation, clientAddress.coordinates);
   
   // Check if within max radius
   if (rules.maxRadiusKm && distanceKm > rules.maxRadiusKm) {

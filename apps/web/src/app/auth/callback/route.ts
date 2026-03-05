@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getUserRoleServer, getPortalForUser, getDefaultRouteForPortal } from "@/lib/auth/role";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
@@ -130,9 +131,22 @@ export async function GET(request: NextRequest) {
     normalizedPath !== null &&
     allowedPaths.some((p) => normalizedPath === p || normalizedPath!.startsWith(p + "/"));
 
-  if (isAllowedNext && normalizedPath) {
+  if (isAllowedNext && normalizedPath && normalizedPath !== "/") {
     return NextResponse.redirect(new URL(normalizedPath, requestUrl.origin));
   }
 
-  return NextResponse.redirect(new URL("/booking", requestUrl.origin));
+  // When next is "/" or missing, redirect by role so provider/admin land in the right place
+  if (!normalizedPath || normalizedPath === "/") {
+    const roleResult = await getUserRoleServer(supabase);
+    if (roleResult) {
+      const portal = getPortalForUser({
+        role: roleResult.role,
+        provider_status: roleResult.provider_status,
+      });
+      const target = getDefaultRouteForPortal(portal);
+      return NextResponse.redirect(new URL(target, requestUrl.origin));
+    }
+  }
+
+  return NextResponse.redirect(new URL("/bookings", requestUrl.origin));
 }

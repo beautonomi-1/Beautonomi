@@ -2,11 +2,13 @@
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Play } from "lucide-react";
+import { Play, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 import { usePageContent } from "@/hooks/usePageContent";
+import { getVideoEmbedUrl } from "../lib/video-embed";
+import { DemoBookingModal } from "./demo-booking-modal";
 
 interface PartnerHeroProps {
   activeTab: string;
@@ -18,17 +20,24 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
   const { user, role, isLoading } = useAuth();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalMode, _setLoginModalMode] = useState<"login" | "signup">("login");
+  const [showVideoSection, setShowVideoSection] = useState(false);
+  const [showDemoModal, setShowDemoModal] = useState(false);
   const { getSectionContent } = usePageContent("become-a-partner");
 
   // Get content from API or use defaults
   const heroTitle = getSectionContent("hero_title") || "Everything you need to grow your beauty business";
   const heroDescription = getSectionContent("hero_description") || "Manage bookings, accept payments, automate your workflow, and more. A complete platform built for beauty professionals—fast, beautiful, intuitive, and works on any device.";
+  const videoTourUrl = getSectionContent("video_tour_url")?.trim() || null;
+  const videoEmbedUrl = videoTourUrl ? getVideoEmbedUrl(videoTourUrl) : null;
+  const demoBookingType = (getSectionContent("demo_booking_type")?.trim().toLowerCase() || "calendly") as "calendly" | "zoho";
+  const demoBookingEmbed = getSectionContent("demo_booking_embed")?.trim() || null;
+  const hasDemoEmbed = Boolean(demoBookingEmbed);
 
   const handleVideoTour = () => {
-    // For video tour, we can either:
-    // 1. Open a video modal/player
-    // 2. Navigate to a video page
-    // 3. Or redirect to dashboard if logged in
+    if (videoEmbedUrl) {
+      setShowVideoSection((prev) => !prev);
+      return;
+    }
     if (!user) {
       setIsLoginModalOpen(true);
     } else if (role === "provider_owner" || role === "provider_staff") {
@@ -70,7 +79,10 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
 
   const handleBookDemo = () => {
     if (isLoading) return;
-    
+    if (hasDemoEmbed) {
+      setShowDemoModal(true);
+      return;
+    }
     if (!user) {
       setIsLoginModalOpen(true);
     } else if (role === "provider_owner" || role === "provider_staff") {
@@ -140,8 +152,8 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
               </Button>
             </div>
 
-            {/* Video Tour Button */}
-            <div className="flex justify-center mb-8 md:mb-12 px-4">
+            {/* Video Tour Button - toggles inline section when video_tour_url is set in CMS */}
+            <div className="flex justify-center mb-4 md:mb-6 px-4">
               <Button
                 size="lg"
                 variant="ghost"
@@ -153,6 +165,32 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
                 <span className="sm:hidden">VIDEO TOUR</span>
               </Button>
             </div>
+
+            {/* Inline expandable video section (CMS: video_tour_url) */}
+            {showVideoSection && videoEmbedUrl && (
+              <div className="mb-8 md:mb-12 px-4">
+                <div className="relative max-w-4xl mx-auto rounded-xl overflow-hidden border-2 border-pink-200 bg-black/5 shadow-lg">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full bg-white/90 hover:bg-white shadow"
+                    onClick={() => setShowVideoSection(false)}
+                    aria-label="Close video"
+                  >
+                    <X className="h-4 w-4 text-gray-700" />
+                  </Button>
+                  <div className="aspect-video w-full">
+                    <iframe
+                      title="Video tour"
+                      src={videoEmbedUrl}
+                      className="absolute inset-0 w-full h-full"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
           {/* Feature Pills/Tabs */}
           <div className="flex flex-wrap justify-center gap-2 sm:gap-3 md:gap-4 px-4 mb-8 md:mb-12">
@@ -184,6 +222,12 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
         setOpen={setIsLoginModalOpen}
         initialMode={loginModalMode}
         redirectContext="provider"
+      />
+      <DemoBookingModal
+        open={showDemoModal}
+        onOpenChange={setShowDemoModal}
+        embedType={demoBookingType}
+        embedContent={demoBookingEmbed}
       />
     </>
   );

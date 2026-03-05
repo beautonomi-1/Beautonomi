@@ -36,13 +36,26 @@ export default function LoginPage() {
     return `${base}/auth/callback?next=${encodeURIComponent(next)}`;
   };
 
-  const redirectByRole = (_finalRole: string) => {
+  const redirectByRole = (finalRole: string) => {
     const next = nextUrl && nextUrl.startsWith("/") ? nextUrl : null;
     if (next && next !== "/login" && !next.includes("signup")) {
       router.replace(next);
       return;
     }
-    // Single entrypoint: /portal routes by role and provider status server-side
+    // Redirect by role immediately so provider/admin land in the right place (avoids /portal server session delay)
+    if (finalRole === "provider_owner" || finalRole === "provider_staff") {
+      router.replace("/provider/dashboard");
+      return;
+    }
+    if (finalRole === "superadmin") {
+      router.replace("/admin/dashboard");
+      return;
+    }
+    if (finalRole === "customer") {
+      router.replace("/bookings");
+      return;
+    }
+    // Fallback: /portal routes by role server-side (e.g. provider_onboarding)
     router.replace("/portal");
   };
 

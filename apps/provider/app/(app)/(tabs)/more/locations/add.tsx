@@ -19,6 +19,7 @@ import { validateRequired, validatePhone } from "@/lib/validation";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 
 export default function AddLocationScreen() {
   const router = useRouter();
@@ -29,8 +30,10 @@ export default function AddLocationScreen() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [postal_code, setPostalCode] = useState("");
-  const [country, setCountry] = useState("");
+  const [country, setCountry] = useState("South Africa");
   const [phone, setPhone] = useState("");
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const { t } = useTranslation();
@@ -78,6 +81,8 @@ export default function AddLocationScreen() {
       postal_code: postal_code.trim() || undefined,
       country: trimmedCountry,
       phone: phone.trim() || undefined,
+      latitude: latitude ?? undefined,
+      longitude: longitude ?? undefined,
     });
     setSaving(false);
     if (res.error) {
@@ -89,7 +94,7 @@ export default function AddLocationScreen() {
       { text: "OK", onPress: () => router.back() },
     ]);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- FIELD_LABELS is static
-  }, [name, address_line1, address_line2, city, state, postal_code, country, phone, router, t]);
+  }, [name, address_line1, address_line2, city, state, postal_code, country, phone, latitude, longitude, router, t]);
 
   return (
     <ScreenContainer scrollable={false}>
@@ -126,7 +131,31 @@ export default function AddLocationScreen() {
               ) : null}
             </View>
             <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Address line 1 *</Text>
+              <Text className="mb-1.5 text-sm font-medium text-gray-700">Address *</Text>
+              <Text className="mb-2 text-xs text-gray-500">
+                Search for an address to fill the form and set coordinates automatically.
+              </Text>
+              <AddressAutocomplete
+                value={address_line1}
+                onSelect={(addr) => {
+                  setAddressLine1(addr.address_line1);
+                  setCity(addr.city);
+                  setState(addr.state);
+                  setPostalCode(addr.postal_code);
+                  setCountry(addr.country || "South Africa");
+                  setLatitude(addr.latitude);
+                  setLongitude(addr.longitude);
+                  if (errors.address_line1) setErrors((e) => ({ ...e, address_line1: "" }));
+                  if (errors.city) setErrors((e) => ({ ...e, city: "" }));
+                  if (errors.country) setErrors((e) => ({ ...e, country: "" }));
+                }}
+                placeholder="Search address…"
+                label={undefined}
+                countryCode="ZA"
+              />
+            </View>
+            <View className="mb-4">
+              <Text className="mb-1.5 text-sm font-medium text-gray-700">Address line 1</Text>
               <TextInput
                 className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.address_line1 ? "border-red-500" : "border-gray-200"}`}
                 value={address_line1}
@@ -134,7 +163,7 @@ export default function AddLocationScreen() {
                   setAddressLine1(t);
                   if (errors.address_line1) setErrors((e) => ({ ...e, address_line1: "" }));
                 }}
-                placeholder="Street address"
+                placeholder="Street address (or use search above)"
                 placeholderTextColor="#9ca3af"
               />
               {errors.address_line1 ? (

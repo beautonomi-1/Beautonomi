@@ -75,6 +75,9 @@ export default function ExploreMore() {
                 <Button variant="outline" className="w-72 text-base" size="md" asChild>
                   <Link href="/help/my-tickets">My tickets</Link>
                 </Button>
+                <Button variant="outline" className="w-72 text-base border-white text-white hover:bg-white/10" size="md" asChild>
+                  <Link href="/learn">Learning Center</Link>
+                </Button>
               </div>
               <p className="text-base font-light ">
                 You can also{" "}

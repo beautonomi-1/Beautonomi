@@ -21,6 +21,8 @@ import { Image } from "expo-image";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
+import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
+import { useLocation } from "@/hooks/useLocation";
 import { api } from "@/lib/api-client";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { APP_URL } from "@/config/public-env";
@@ -605,14 +607,20 @@ export default function PartnerProfileScreen() {
   const [providerProducts, setProviderProducts] = useState<PublicProviderProduct[]>([]);
   const [providerProductsLoading, setProviderProductsLoading] = useState(false);
 
+  const { selectedAddress } = useSelectedAddress();
+  const { coords } = useLocation();
+
   /* ── Data Loading ── */
   const load = useCallback(async () => {
     if (!slug) return;
     setLoading(true);
     setError(null);
+    const lat = selectedAddress?.latitude ?? coords?.latitude;
+    const lng = selectedAddress?.longitude ?? coords?.longitude;
+    const qs = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : "";
     try {
       const [provRes, svcRes] = await Promise.all([
-        api.get<PublicProviderDetail>(`/api/public/providers/${encodeURIComponent(slug)}`),
+        api.get<PublicProviderDetail>(`/api/public/providers/${encodeURIComponent(slug)}${qs}`),
         api.get<ProviderServicesResponse>(`/api/public/providers/${encodeURIComponent(slug)}/services`),
       ]);
       if (provRes.error) {
@@ -630,7 +638,7 @@ export default function PartnerProfileScreen() {
     } finally {
       setLoading(false);
     }
-  }, [slug]);
+  }, [slug, selectedAddress?.latitude, selectedAddress?.longitude, coords?.latitude, coords?.longitude]);
 
   useEffect(() => { load(); }, [load]);
 

@@ -113,7 +113,9 @@ export async function POST(request: Request) {
         eventType === "subscription.disable" ||
         eventType === "subscription.enable" ||
         eventType === "subscription.not_renew" ||
+        eventType === "subscription.expiring_cards" ||
         eventType === "invoice.create" ||
+        eventType === "invoice.update" ||
         eventType === "invoice.payment_failed"
       ) {
         response = await handleSubscriptionEvent(event, supabase);

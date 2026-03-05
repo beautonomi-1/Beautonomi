@@ -309,22 +309,21 @@ function ExpressBookingLinkDialog({
     setIsLoading(true);
 
     try {
+      const slug = formData.short_code.trim().toLowerCase().replace(/[^a-z0-9-]/g, "") || undefined;
+      if (!slug) {
+        toast.error("Short code must contain at least one letter or number");
+        return;
+      }
       const linkData: any = {
         name: formData.name,
-        short_code: formData.short_code,
+        short_code: formData.short_code.trim(),
         is_active: formData.is_active,
         expires_at: formData.expires_at
           ? new Date(formData.expires_at).toISOString()
           : undefined,
       };
-
-      if (formData.service_id) {
-        linkData.service_id = formData.service_id;
-      }
-
-      if (formData.team_member_id) {
-        linkData.team_member_id = formData.team_member_id;
-      }
+      if (formData.service_id) linkData.service_id = formData.service_id;
+      if (formData.team_member_id) linkData.team_member_id = formData.team_member_id;
 
       if (link) {
         await providerApi.updateExpressBookingLink(link.id, linkData);
@@ -389,8 +388,8 @@ function ExpressBookingLinkDialog({
               </Button>
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              URL will be: {typeof window !== "undefined" && window.location.origin}/book/
-              {formData.short_code}
+              URL: {typeof window !== "undefined" && window.location.origin}/book/l/
+              {formData.short_code ? formData.short_code.toLowerCase().replace(/[^a-z0-9-]/g, "") : "…"}
             </p>
           </div>
 

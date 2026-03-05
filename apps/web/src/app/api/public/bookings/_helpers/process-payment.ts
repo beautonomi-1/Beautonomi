@@ -228,7 +228,8 @@ export async function processPayment(
     }
 
     const reference = generateTransactionReference("booking", booking.id);
-    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/checkout/success`;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    const callbackUrl = `${baseUrl}/checkout/success?booking_id=${encodeURIComponent(booking.id)}&booking_number=${encodeURIComponent((booking as any).booking_number || "")}`;
 
     const savedPaymentMethodId = (draft as any).payment_method_id;
     const saveCard = (draft as any).save_card === true;

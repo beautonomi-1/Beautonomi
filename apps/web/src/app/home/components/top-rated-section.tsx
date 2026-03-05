@@ -6,13 +6,15 @@ import Link from "next/link";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
-import { useTranslation } from "@beautonomi/i18n";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import ProviderCard from "./provider-card";
 import Stars from '../../../../public/images/Group 1.8f1d86be 1.svg';
 
+// Use static strings to avoid useTranslation() running before i18n is ready (prevents hook-order and .length errors)
+const LABEL_TOP_RATED = "Top rated";
+const LABEL_VIEW_ALL = "View all";
+
 const TopRatedSection = () => {
-  const { t } = useTranslation();
   const [providers, setProviders] = useState<PublicProviderCard[]>([]);
   const [isLoading, setIsLoading] = useState(false); // Start false to render immediately
   const [error, setError] = useState<string | null>(null);
@@ -104,11 +106,11 @@ const TopRatedSection = () => {
       <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
         <div className="flex justify-between items-center mb-4 md:mb-6">
           <div className="flex items-center gap-2">
-            <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">{t("customer.topRated")}</h2>
+            <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">{LABEL_TOP_RATED}</h2>
             <Image src={Stars} alt="Stars" className="h-6 w-6 md:h-8 md:w-8 lg:h-12 lg:w-12" />
           </div>
           <Link href="/more-top-rated-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-[#FF0077]">
-            {t("common.viewAll")}
+            {LABEL_VIEW_ALL}
             <ArrowRight className="ml-1 h-3 w-3 md:h-4 md:w-4" />
           </Link>
         </div>

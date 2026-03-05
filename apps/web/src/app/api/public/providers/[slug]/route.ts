@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getMapboxService } from "@/lib/mapbox/mapbox";
 import type { PublicProviderDetail } from "@/types/beautonomi";
 
 // Increase timeout for this route
@@ -19,7 +20,13 @@ export async function GET(
   try {
     const supabase = await getSupabaseServer();
     const { slug: rawSlug } = await params;
-    
+    const { searchParams } = new URL(request.url);
+    const latParam = searchParams.get("lat");
+    const lngParam = searchParams.get("lng");
+    const userLat = latParam != null && lngParam != null ? parseFloat(latParam) : NaN;
+    const userLng = lngParam != null && latParam != null ? parseFloat(lngParam) : NaN;
+    const hasUserLocation = !Number.isNaN(userLat) && !Number.isNaN(userLng) && userLat >= -90 && userLat <= 90 && userLng >= -180 && userLng <= 180;
+
     // Decode slug in case it's URL encoded (safely)
     let slug: string;
     let decodedSlug: string;
@@ -351,6 +358,27 @@ export async function GET(
     const city = primaryLocation?.city || "";
     const country = primaryLocation?.country || "";
 
+    // Distance from user to provider (nearest location) when lat/lng provided - same Haversine as home API
+    let distance_km: number | null = null;
+    if (hasUserLocation && locations && locations.length > 0) {
+      try {
+        const mapbox = await getMapboxService();
+        const userCoords = { latitude: userLat, longitude: userLng };
+        let minDistance = Infinity;
+        for (const loc of locations as any[]) {
+          const locLat = loc.latitude ?? loc.address_lat;
+          const locLng = loc.longitude ?? loc.address_lng;
+          if (locLat != null && locLng != null) {
+            const d = mapbox.calculateDistance(userCoords, { latitude: Number(locLat), longitude: Number(locLng) });
+            if (d < minDistance) minDistance = d;
+          }
+        }
+        if (Number.isFinite(minDistance)) distance_km = Math.round(minDistance * 10) / 10;
+      } catch {
+        // Leave distance_km null if Mapbox unavailable
+      }
+    }
+
     // Calculate starting_price from offerings
     let startingPrice: number | undefined;
     if (offerings && offerings.length > 0) {
@@ -465,6 +493,7 @@ export async function GET(
       languages_spoken: languagesSpoken,
       current_badge: currentBadge,
       total_points: pointsData?.total_points || undefined,
+      distance_km: distance_km ?? undefined,
     };
 
     const response = NextResponse.json({

@@ -25,15 +25,26 @@ import {
 } from "@/hooks/useAddresses";
 import { haptic } from "@/lib/haptics";
 
+export interface AddressPickerSelection {
+  label: string;
+  latitude: number;
+  longitude: number;
+  displayName: string;
+  /** When selecting a Mapbox suggestion or saved address, full fields for save/hold */
+  structured?: {
+    address_line1: string;
+    address_line2?: string;
+    city: string;
+    state?: string;
+    postal_code?: string;
+    country: string;
+  };
+}
+
 interface AddressPickerProps {
   visible: boolean;
   onClose: () => void;
-  onSelect: (address: {
-    label: string;
-    latitude: number;
-    longitude: number;
-    displayName: string;
-  }) => void;
+  onSelect: (address: AddressPickerSelection) => void;
   onUseCurrentLocation: () => void;
 }
 
@@ -82,6 +93,13 @@ export function AddressPicker({
           latitude: addr.latitude,
           longitude: addr.longitude,
           displayName: `${addr.address_line1}, ${addr.city}`,
+          structured: {
+            address_line1: addr.address_line1,
+            city: addr.city,
+            state: addr.state ?? undefined,
+            postal_code: addr.postal_code ?? undefined,
+            country: addr.country,
+          },
         });
       }
       onClose();
@@ -89,15 +107,32 @@ export function AddressPicker({
     [onSelect, onClose],
   );
 
+  function parseStructuredFromSuggestion(s: GeocodeSuggestion): AddressPickerSelection["structured"] {
+    const context = s.context ?? [];
+    const find = (prefix: string) => context.find((c) => c.id.startsWith(prefix))?.text ?? "";
+    const place = find("place.") || find("locality.") || find("district.");
+    const country = find("country.");
+    const parts = (s.place_name || "").split(",").map((p) => p.trim()).filter(Boolean);
+    return {
+      address_line1: parts[0] || s.text || "",
+      city: place || parts[1] || "",
+      state: find("region.") || undefined,
+      postal_code: find("postcode.") || undefined,
+      country: country || "South Africa",
+    };
+  }
+
   const handleSuggestionSelect = useCallback(
     (s: GeocodeSuggestion) => {
       haptic.light();
       Keyboard.dismiss();
+      const structured = parseStructuredFromSuggestion(s);
       onSelect({
         label: s.text,
         latitude: s.center[1],
         longitude: s.center[0],
         displayName: s.place_name,
+        structured,
       });
       onClose();
     },

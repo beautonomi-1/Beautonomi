@@ -37,6 +37,9 @@ Audit date: 2025-02. Ensures provider mobile app (Expo) and provider portal (Nex
 | `/api/provider/bookings/available-slots` | GET | New booking | `?date=&duration_minutes=&staff_ids=&location_id=` → `{ slots, date }` | OK |
 | `/api/provider/bookings/check-availability` | GET | New booking | Returns `{ available?, conflicts? }` | OK |
 | `/api/provider/bookings` | POST | New booking (create) | Body: `scheduled_at`, `customer_id`, services, amounts, etc. | OK |
+| `/api/provider/custom-requests` | GET | List (inbox) | Array of requests with customer, attachments, offers | OK |
+| `/api/provider/custom-requests/[id]` | GET | Detail (single request) | Single request, same shape as list item; 404 if not found | OK |
+| `/api/provider/custom-requests/[id]/offers` | POST | Send offer | Body: price, currency, duration_minutes, expiration_at, etc. | OK |
 
 ## Fix applied
 
@@ -71,3 +74,9 @@ Audit date: 2025-02. Ensures provider mobile app (Expo) and provider portal (Nex
 
 - **Products, product-orders, returns, staff, locations, settings, subscription, billing-history, inventory**  
   Response shapes verified; mobile types align with API (including optional pagination/metadata where used).
+
+## Error handling (2025-03)
+
+- **Resources screen** (`more/resources.tsx`): Initial load failure for resources or resource-groups now shows `ErrorState` with retry (both lists refreshed on retry).
+- **Express booking** (`more/express-booking.tsx`): Short links list load failure shows inline error message and "Try again" instead of an empty list.
+- **Custom request detail** (`more/custom-requests/[id].tsx`): Uses GET `/api/provider/custom-requests/[id]` for the single request (no longer derived from list). Shows `ErrorState` with retry on error or not found.

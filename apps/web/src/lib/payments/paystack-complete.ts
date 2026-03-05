@@ -1127,7 +1127,7 @@ export async function fetchPlan(
 
 export async function updatePlan(
   idOrCode: string,
-  updates: Partial<CreatePlanRequest>
+  updates: Partial<CreatePlanRequest> & { update_existing_subscriptions?: boolean }
 ): Promise<PaystackResponse<Plan>> {
   return paystackRequest(`/plan/${idOrCode}`, {
     method: "PUT",
@@ -1200,6 +1200,21 @@ export async function disableSubscription(
       token,
     },
   });
+}
+
+/**
+ * Disable a Paystack subscription by code. Fetches the subscription to get
+ * email_token (required by Paystack disable API), then calls disable.
+ */
+export async function disableSubscriptionByCode(
+  code: string
+): Promise<PaystackResponse<Subscription>> {
+  const res = await fetchSubscription(code);
+  const emailToken = res.data?.email_token;
+  if (!emailToken) {
+    throw new Error("Could not get subscription email_token from Paystack");
+  }
+  return disableSubscription(code, emailToken);
 }
 
 /**

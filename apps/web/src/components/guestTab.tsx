@@ -96,7 +96,9 @@ export default function CustomerTab() {
             <Image
               src={guide.src}
               alt={guide.alt}
-              className="h-[255px] w-full lg:w-[255px] rounded-xl mb-3"
+              className="h-[255px] w-full lg:w-[255px] rounded-xl mb-3 object-cover"
+              width={255}
+              height={255}
               sizes="(max-width: 640px) 640px, 1024px"
             />
             <p className="text-lg  font-normal">

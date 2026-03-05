@@ -302,31 +302,7 @@ export default function HomeScreen() {
               <ProviderSection title="Top Rated" providers={data.topRated || []} badge="topRated" cardWidth={cardWidth} />
               <ProviderSection title="Nearest Providers" providers={data.nearest || []} badge="nearest" cardWidth={cardWidth} />
               <ProviderSection title="Hottest Picks" providers={data.hottest || []} badge="hottest" cardWidth={cardWidth} />
-              <ProviderSection title="Upcoming Talent" providers={data.upcoming || []} badge="upcoming" cardWidth={cardWidth} />{
-                data.browseByCity && data.browseByCity.length > 0 ? (
-                  <View className="mb-6">
-                    <SectionHeader title="Browse by City" />
-                    {data.browseByCity.map((cityGroup) => (
-                      <View key={cityGroup.city} className="mb-4">
-                        <Text className="text-base font-medium text-gray-700 mb-2 px-4">{cityGroup.city}</Text>
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          contentContainerStyle={{ paddingHorizontal: SCREEN_PADDING, gap: GAP }}
-                          accessibilityRole="list"
-                          accessibilityLabel={`Providers in ${cityGroup.city}`}
-                        >
-                          {(cityGroup.providers || []).slice(0, 4).map((p) => (
-                            <View key={p.id} style={{ width: cardWidth }}>
-                              <ProviderCard provider={p} />
-                            </View>
-                          ))}
-                        </ScrollView>
-                      </View>
-                    ))}
-                  </View>
-                ) : null
-              }
+              <ProviderSection title="Upcoming Talent" providers={data.upcoming || []} badge="upcoming" cardWidth={cardWidth} />
             </View>
           </FadeIn>
         ) : null

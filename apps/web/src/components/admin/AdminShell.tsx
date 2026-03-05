@@ -47,6 +47,7 @@ import {
   Undo2,
   Store,
   Layers,
+  GraduationCap,
   Smartphone,
   Link2,
 } from "lucide-react";
@@ -129,6 +130,7 @@ const navGroups: NavGroup[] = [
     label: "Content & catalog",
     items: [
       { title: "Content", href: "/admin/content", icon: FileText },
+      { title: "Learning Center", href: "/admin/content/learning", icon: GraduationCap },
       { title: "Catalog", href: "/admin/catalog", icon: Tag },
       { title: "Explore", href: "/admin/explore", icon: ImageIcon },
     ],

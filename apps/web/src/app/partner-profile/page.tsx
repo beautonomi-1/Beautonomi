@@ -48,10 +48,40 @@ const PageContent = () => {
       try {
         setIsLoading(true);
         setError(null);
+        // Pass user lat/lng when available so provider detail can return distance_km (same Haversine as home/cards)
+        let lat: number | undefined;
+        let lng: number | undefined;
+        const urlLat = searchParams.get("lat");
+        const urlLng = searchParams.get("lng");
+        if (urlLat != null && urlLng != null) {
+          const a = parseFloat(urlLat), b = parseFloat(urlLng);
+          if (!Number.isNaN(a) && !Number.isNaN(b) && a >= -90 && a <= 90 && b >= -180 && b <= 180) {
+            lat = a;
+            lng = b;
+          }
+        }
+        if (lat == null && typeof window !== "undefined") {
+          try {
+            const saved = localStorage.getItem("userLocation");
+            if (saved) {
+              const parsed = JSON.parse(saved) as { latitude?: number; longitude?: number };
+              if (parsed?.latitude != null && parsed?.longitude != null) {
+                lat = parsed.latitude;
+                lng = parsed.longitude;
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
+        const providerUrl =
+          lat != null && lng != null
+            ? `/api/public/providers/${encodeURIComponent(slug)}?lat=${lat}&lng=${lng}`
+            : `/api/public/providers/${encodeURIComponent(slug)}`;
         const response = await fetcher.get<{
           data: PublicProviderDetail;
           error: null;
-        }>(`/api/public/providers/${encodeURIComponent(slug)}`, {
+        }>(providerUrl, {
           timeoutMs: 15000, // 15 seconds for provider detail page
         });
         setProvider(response.data);
@@ -86,7 +116,7 @@ const PageContent = () => {
     };
 
     loadProvider();
-  }, [slug]);
+  }, [slug, searchParams]);
 
   if (isLoading) {
     return (

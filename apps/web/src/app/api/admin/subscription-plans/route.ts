@@ -82,7 +82,9 @@ const createPlanSchema = z.object({
   max_locations: z.number().default(1),
 });
 
-const updatePlanSchema = createPlanSchema.partial();
+const updatePlanSchema = createPlanSchema.partial().extend({
+  update_existing_subscriptions: z.boolean().optional(),
+});
 
 /**
  * GET /api/admin/subscription-plans
@@ -239,8 +241,11 @@ export async function PUT(request: NextRequest) {
       throw new Error('Plan not found');
     }
 
+    const updateExisting = data.update_existing_subscriptions;
+
     // Update Paystack plans if prices changed and plan is not free
     if (!data.is_free && !existingPlan.is_free) {
+      const commonOpts = updateExisting !== undefined ? { update_existing_subscriptions: updateExisting } : {};
       // Update monthly plan
       if (data.price_monthly !== undefined && existingPlan.paystack_plan_code_monthly) {
         try {
@@ -249,6 +254,7 @@ export async function PUT(request: NextRequest) {
             {
               name: `${data.name || existingPlan.name} (Monthly)`,
               amount: data.price_monthly ? convertToSmallestUnit(data.price_monthly) : undefined,
+              ...commonOpts,
             }
           );
         } catch (err: any) {
@@ -264,6 +270,7 @@ export async function PUT(request: NextRequest) {
             {
               name: `${data.name || existingPlan.name} (Yearly)`,
               amount: data.price_yearly ? convertToSmallestUnit(data.price_yearly) : undefined,
+              ...commonOpts,
             }
           );
         } catch (err: any) {
@@ -274,6 +281,7 @@ export async function PUT(request: NextRequest) {
 
     // Normalize features to JSONB object format if provided
     const updateData: any = { ...data };
+    delete updateData.update_existing_subscriptions;
     if (updateData.features !== undefined) {
       // If features is an array (legacy format), preserve existing structure
       if (Array.isArray(updateData.features)) {

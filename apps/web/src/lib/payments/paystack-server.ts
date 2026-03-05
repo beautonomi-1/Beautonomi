@@ -11,6 +11,16 @@ export type PaystackInitParams = {
   subaccount?: string;
 };
 
+/** Initialize a subscription payment: customer pays once and is subscribed to the plan (Paystack creates subscription). */
+export type PaystackInitSubscriptionParams = {
+  email: string;
+  plan: string; // Paystack plan_code (e.g. PLN_xxx)
+  callback_url: string;
+  reference?: string;
+  metadata?: Record<string, any>;
+  currency?: string;
+};
+
 export async function getPaystackSecretKey(): Promise<string> {
   // Prefer DB-managed secret, fallback to env
   try {
@@ -55,6 +65,44 @@ export async function initializePaystackTransaction(params: PaystackInitParams) 
   const data = await res.json().catch(() => null);
   if (!res.ok) {
     throw new Error(data?.message || "Paystack initialize failed");
+  }
+
+  return data as {
+    status: boolean;
+    message: string;
+    data: { authorization_url: string; access_code: string; reference: string };
+  };
+}
+
+/**
+ * Initialize a transaction with a subscription plan code.
+ * When the customer pays, Paystack creates the subscription and sends subscription.create.
+ * Amount is taken from the plan; optional amount can be sent for display.
+ */
+export async function initializePaystackTransactionWithPlan(
+  params: PaystackInitSubscriptionParams
+) {
+  const secretKey = await getPaystackSecretKey();
+
+  const res = await fetch("https://api.paystack.co/transaction/initialize", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: params.email,
+      plan: params.plan,
+      callback_url: params.callback_url,
+      reference: params.reference,
+      metadata: params.metadata,
+      ...(params.currency ? { currency: params.currency } : {}),
+    }),
+  });
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(data?.message || "Paystack initialize subscription failed");
   }
 
   return data as {

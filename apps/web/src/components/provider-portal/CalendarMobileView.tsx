@@ -55,6 +55,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DirectionsLink } from "@/components/ui/directions-link";
+import { useOptionalDragDrop, DraggableAppointment, DroppableTimeSlot } from "@/components/provider-portal/DragDropCalendar";
+import { MangomintStatusLegend } from "@/components/calendar/MangomintStatusLegend";
 
 interface CalendarMobileViewProps {
   appointments: Appointment[];
@@ -275,6 +277,7 @@ export function CalendarMobileView({
   const [selectedStaffIndex, setSelectedStaffIndex] = useState(0);
   const [layoutMode, setLayoutMode] = useState<MobileLayoutMode>("columns"); // Default to columns view like Mangomint
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const dragDrop = useOptionalDragDrop();
   const currentTimeRef = useRef<HTMLDivElement>(null);
   const dateSelectorRef = useRef<HTMLDivElement>(null);
   const _columnsScrollRef = useRef<HTMLDivElement>(null);
@@ -493,17 +496,26 @@ export function CalendarMobileView({
             )}
           </div>
           
-          <button 
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onAddAppointment();
-            }}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95"
-            aria-label="Add appointment"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <MangomintStatusLegend
+              variant="popover"
+              showKinds={false}
+              showBlocks={false}
+              compact
+              className="text-white hover:bg-white/10 rounded-lg p-2"
+            />
+            <button 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onAddAppointment();
+              }}
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95"
+              aria-label="Add appointment"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Scrollable Date Selector */}
@@ -772,23 +784,15 @@ export function CalendarMobileView({
                       const outsideStaffHours = isOutsideStaffHours(selectedDate, hour, member.working_hours ?? undefined);
                       const inAvailabilityBlock = isSlotInAvailabilityBlock(format(selectedDate, "yyyy-MM-dd"), hour, member.id, availabilityBlocks);
                       const isNonWorking = isOutsideLocationHours || outsideStaffHours || inAvailabilityBlock;
-                      
-                      return (
-                        <div 
-                          key={time} 
-                          className={cn(
-                            "h-[60px] border-b-2 border-gray-300 relative transition-colors group/slot",
-                            slotIdx % 2 === 1 ? "bg-gray-100/60" : "bg-white",
-                            isNonWorking 
-                              ? "cursor-not-allowed opacity-30 bg-gray-200"
-                              : "cursor-pointer hover:bg-blue-50/30"
-                          )}
-                          onClick={() => {
-                            if (!isNonWorking) {
-                              onTimeSlotClick(selectedDate, time, member.id);
-                            }
-                          }}
-                        >
+                      const slotClassName = cn(
+                        "h-[60px] border-b-2 border-gray-300 relative transition-colors group/slot",
+                        slotIdx % 2 === 1 ? "bg-gray-100/60" : "bg-white",
+                        isNonWorking 
+                          ? "cursor-not-allowed opacity-30 bg-gray-200"
+                          : "cursor-pointer hover:bg-blue-50/30"
+                      );
+                      const slotContent = (
+                        <>
                           {isNonWorking && (
                             <div className="absolute inset-0 bg-gray-300/50 pointer-events-none z-10" />
                           )}
@@ -818,10 +822,9 @@ export function CalendarMobileView({
                             // Get icon flags for tags
                             const flags = extractIconFlags(apt);
                             const activeIcons = getActiveIcons(flags);
-                            
-                            return (
+                            const canDrag = dragDrop && apt.status !== "completed" && apt.status !== "cancelled";
+                            const cardContent = (
                               <div
-                                key={apt.id}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleAppointmentCardClick(apt);
@@ -886,7 +889,63 @@ export function CalendarMobileView({
                                     })}
                                   </div>
                             );
+                            return canDrag ? (
+                              <DraggableAppointment
+                                key={apt.id}
+                                appointment={apt}
+                                className={cn(
+                                  "absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
+                                  "transition-all shadow-sm active:scale-[0.98] hover:shadow-md",
+                                  "border-l-[3px]"
+                                )}
+                                style={{
+                                  ...colorStyle,
+                                  height: `${height - 2}px`,
+                                  minHeight: "28px",
+                                }}
+                                enableKeyboardNav={false}
+                              >
+                                {cardContent}
+                              </DraggableAppointment>
+                            ) : (
+                              <React.Fragment key={apt.id}>{cardContent}</React.Fragment>
+                            );
                           })}
+                        </>
+                      );
+                      const slotInner = (
+                        <div
+                          className="relative"
+                          onClick={() => {
+                            if (!isNonWorking) {
+                              onTimeSlotClick(selectedDate, time, member.id);
+                            }
+                          }}
+                        >
+                          {slotContent}
+                        </div>
+                      );
+                      return dragDrop ? (
+                        <DroppableTimeSlot
+                          key={time}
+                          date={dateStr}
+                          time={time}
+                          staffId={member.id}
+                          className={slotClassName}
+                        >
+                          {slotInner}
+                        </DroppableTimeSlot>
+                      ) : (
+                        <div
+                          key={time}
+                          className={slotClassName}
+                          onClick={() => {
+                            if (!isNonWorking) {
+                              onTimeSlotClick(selectedDate, time, member.id);
+                            }
+                          }}
+                        >
+                          {slotContent}
                         </div>
                       );
                     })}
@@ -948,17 +1007,15 @@ export function CalendarMobileView({
                 const outsideStaffHours = selectedStaff ? isOutsideStaffHours(selectedDate, hour, selectedStaff.working_hours ?? undefined) : false;
                 const inAvailabilityBlock = selectedStaff ? isSlotInAvailabilityBlock(format(selectedDate, "yyyy-MM-dd"), hour, selectedStaff.id, availabilityBlocks) : false;
                 const isNonWorking = isOutsideLocationHours || outsideStaffHours || inAvailabilityBlock;
-
-                return (
-                  <div 
-                    key={time} 
-                    className={cn(
-                      "flex border-b border-gray-200 min-h-[64px] sm:min-h-[80px] w-full box-border transition-colors relative",
-                      isNonWorking 
-                        ? "cursor-not-allowed opacity-30 bg-gray-200"
-                        : "cursor-pointer hover:bg-gray-50"
-                    )}
-                  >
+                const dateStr = format(selectedDate, "yyyy-MM-dd");
+                const rowClassName = cn(
+                  "flex border-b border-gray-200 min-h-[64px] sm:min-h-[80px] w-full box-border transition-colors relative",
+                  isNonWorking 
+                    ? "cursor-not-allowed opacity-30 bg-gray-200"
+                    : "cursor-pointer hover:bg-gray-50"
+                );
+                const rowContent = (
+                  <>
                     {isNonWorking && (
                       <div className="absolute inset-0 bg-gray-300/50 pointer-events-none z-10" />
                     )}
@@ -1000,10 +1057,9 @@ export function CalendarMobileView({
                         // Calculate top position based on minutes within the hour
                         const [_aptHour, aptMin] = apt.scheduled_time.split(":").map(Number);
                         const topOffset = (aptMin / 60) * slotHeight;
-                        
-                        return (
+                        const canDragSingle = dragDrop && apt.status !== "completed" && apt.status !== "cancelled";
+                        const singleCardContent = (
                           <div
-                            key={apt.id}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleAppointmentCardClick(apt);
@@ -1079,8 +1135,45 @@ export function CalendarMobileView({
                                 })()}
                               </div>
                         );
+                        return canDragSingle ? (
+                          <DraggableAppointment
+                            key={apt.id}
+                            appointment={apt}
+                            className={cn(
+                              "absolute left-0 right-0 rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
+                              "transition-all duration-200 shadow-md hover:shadow-lg active:shadow-xl",
+                              "border-l-[3px] sm:border-l-4 active:scale-[0.98]"
+                            )}
+                            style={{
+                              ...colorStyle,
+                              top: `${topOffset}px`,
+                              height: `${height}px`,
+                              minHeight: "52px",
+                            }}
+                            enableKeyboardNav={false}
+                          >
+                            {singleCardContent}
+                          </DraggableAppointment>
+                        ) : (
+                          <React.Fragment key={apt.id}>{singleCardContent}</React.Fragment>
+                        );
                       })}
                     </div>
+                  </>
+                );
+                return dragDrop && selectedStaff ? (
+                  <DroppableTimeSlot
+                    key={time}
+                    date={dateStr}
+                    time={time}
+                    staffId={selectedStaff.id}
+                    className={rowClassName}
+                  >
+                    {rowContent}
+                  </DroppableTimeSlot>
+                ) : (
+                  <div key={time} className={rowClassName}>
+                    {rowContent}
                   </div>
                 );
               })}

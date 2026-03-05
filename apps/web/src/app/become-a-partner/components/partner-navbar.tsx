@@ -15,6 +15,9 @@ import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 import SolutionsDropdown from "./solutions-dropdown";
 import FeaturesDropdown from "./features-dropdown";
+import { usePageContent } from "@/hooks/usePageContent";
+
+const TOP_BANNER_ENABLED_VALUES = new Set(["true", "1", "yes"]);
 
 export default function PartnerNavbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -22,6 +25,15 @@ export default function PartnerNavbar() {
   const [loginModalMode, setLoginModalMode] = useState<"login" | "signup">("login");
   const router = useRouter();
   const { user, role, isLoading } = useAuth();
+  const { getSectionContent } = usePageContent("become-a-partner");
+  const topBannerEnabledRaw = getSectionContent("top_banner_enabled")?.trim().toLowerCase();
+  const topBannerEnabled = topBannerEnabledRaw ? TOP_BANNER_ENABLED_VALUES.has(topBannerEnabledRaw) : false;
+  const topBannerContent = getSectionContent("top_banner_content")?.trim();
+  const topBannerLink = getSectionContent("top_banner_link")?.trim();
+  const defaultBannerText = "Introducing Beautonomi Connect: Phone calls, text messages, and web chats.";
+  const defaultBannerLink = "/resources";
+  const bannerText = topBannerContent || defaultBannerText;
+  const bannerLink = topBannerLink || defaultBannerLink;
 
   const handleTryItNow = () => {
     if (isLoading) return;
@@ -69,15 +81,17 @@ export default function PartnerNavbar() {
 
   return (
     <>
-      {/* Top Banner */}
-      <div className="bg-[#1a1a2e] text-white text-center py-2 text-sm">
-        <p>
-          Introducing Beautonomi Connect: Phone calls, text messages, and web chats.{" "}
-          <Link href="/resources" className="underline hover:text-pink-300">
-            Learn more
-          </Link>
-        </p>
-      </div>
+      {/* Top notification strip – shown only when enabled in CMS (top_banner_enabled = true/1/yes) */}
+      {topBannerEnabled && (
+        <div className="bg-[#1a1a2e] text-white text-center py-2 text-sm">
+          <p>
+            {bannerText}{" "}
+            <Link href={bannerLink} className="underline hover:text-pink-300">
+              Learn more
+            </Link>
+          </p>
+        </div>
+      )}
 
       {/* Main Navbar */}
       <nav className="sticky top-0 z-50 bg-white border-b shadow-sm">

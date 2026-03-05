@@ -5,6 +5,14 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 
+/** Routes that do not require auth; render children immediately without waiting for auth. */
+const PUBLIC_ROUTES_PREFIXES = ["/learn", "/help", "/login", "/signup", "/forgot-password", "/partner-profile", "/category", "/explore", "/gift-card", "/privacy-policy", "/terms-and-condition", "/accessibility", "/against-discrimination", "/BCover-for-partners", "/beautonomi-friendly", "/career", "/news", "/resources", "/become-a-partner"];
+
+function isPublicRoute(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return pathname === "/" || PUBLIC_ROUTES_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
 /**
  * AccountStatusGuard - Redirects suspended/deactivated users to appropriate pages
  */
@@ -71,6 +79,11 @@ export default function AccountStatusGuard({ children }: { children: React.React
 
     checkAccountStatus();
   }, [user, isLoading, pathname, router, signOut]);
+
+  // On public routes (e.g. /learn), never block on auth — render immediately
+  if (isPublicRoute(pathname)) {
+    return <>{children}</>;
+  }
 
   if (isLoading || isChecking) {
     return <LoadingTimeout />;

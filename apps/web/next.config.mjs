@@ -17,6 +17,7 @@ const nextConfig = {
   // Transpile monorepo packages for proper module resolution
   transpilePackages: [
     "@beautonomi/ui-tokens",
+    "@beautonomi/i18n",
     "@beautonomi/types",
     "@beautonomi/api",
     "@beautonomi/analytics",
