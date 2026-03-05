@@ -55,7 +55,7 @@ export default function CarouselCard({
     >
       <Carousel
         className="w-full mb-3"
-        //@ts-ignore
+        // @ts-expect-error - dynamic icon/category types
         index={currentIndex}
         onSelect={handleSlideChange}
       >
@@ -124,7 +124,6 @@ export default function CarouselCard({
         </div>
         <div className="flex justify-center absolute bottom-3 left-0 right-0">
           {
-            //@ts-ignore
             slides?.map((_, index) => (
               <div
                 key={index}

@@ -46,7 +46,7 @@ export async function GET(
       .eq("global_category_id", id);
 
     return successResponse({
-      ...(category as Record<string, unknown>),
+      ...(category as Record<string, any>),
       provider_count: count || 0,
     });
   } catch (error) {

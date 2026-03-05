@@ -6,7 +6,7 @@ import { APP_URL } from "@/config/public-env";
 
 export interface ThirdPartyConfig {
   onesignal?: { app_id: string; enabled: boolean };
-  mapbox?: { public_token: string };
+  mapbox?: { public_token: string; style_url?: string };
 }
 
 let cachedConfig: ThirdPartyConfig | null = null;
@@ -41,17 +41,23 @@ export async function getOneSignalAppId(): Promise<string | null> {
   return cfg?.enabled && cfg?.app_id ? cfg.app_id : null;
 }
 
-let mapboxTokenCache: string | null = null;
+let mapboxConfigCache: { token: string; style_url?: string } | null = null;
 
 export async function getMapboxToken(): Promise<string | null> {
-  if (mapboxTokenCache) return mapboxTokenCache;
+  const cfg = await getMapboxConfig();
+  return cfg?.token ?? null;
+}
+
+/** Mapbox client config (token + optional style). Aligned with web and customer app; source: superadmin Mapbox config. */
+export async function getMapboxConfig(): Promise<{ token: string; style_url?: string } | null> {
+  if (mapboxConfigCache) return mapboxConfigCache;
   try {
     const data = await getThirdPartyConfig("mapbox");
     const mapbox = (data as Record<string, unknown>)?.mapbox ?? data;
-    const cfg = mapbox as { public_token?: string };
+    const cfg = mapbox as { public_token?: string; style_url?: string };
     if (cfg?.public_token) {
-      mapboxTokenCache = cfg.public_token;
-      return cfg.public_token;
+      mapboxConfigCache = { token: cfg.public_token, style_url: cfg.style_url };
+      return mapboxConfigCache;
     }
     return null;
   } catch {

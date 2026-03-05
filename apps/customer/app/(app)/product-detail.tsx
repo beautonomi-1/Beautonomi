@@ -30,15 +30,15 @@ interface ProductDetailResponse {
     currency: string;
     image_urls: string[];
     has_variants: boolean;
-    variant_option_types?: Array<{ name: string; values: string[] }>;
-    variants: Array<{
+    variant_option_types?: { name: string; values: string[] }[];
+    variants: {
       id: string;
       option_values?: Record<string, string>;
       retail_price: number;
       quantity: number;
       sort_order?: number;
       image_url?: string | null;
-    }>;
+    }[];
     provider?: { id: string; business_name: string; slug: string };
   };
 }

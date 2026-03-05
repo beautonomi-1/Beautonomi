@@ -74,8 +74,8 @@ export default function AdminPromotions() {
   };
 
   const filteredPromotions = promotions.filter((promo) =>
-    promo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    promo.code.toLowerCase().includes(searchQuery.toLowerCase())
+    (promo.name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (promo.code ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (isLoading) {
@@ -87,7 +87,7 @@ export default function AdminPromotions() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
@@ -191,18 +191,22 @@ function PromotionCard({
           </div>
         </div>
         <div className="flex gap-2">
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onEdit}
-            className="p-1 text-gray-600 hover:text-blue-600 transition-colors"
+            className="h-8 w-8 text-gray-600 hover:text-blue-600"
           >
             <Edit className="w-4 h-4" />
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onDelete}
-            className="p-1 text-gray-600 hover:text-red-600 transition-colors"
+            className="h-8 w-8 text-gray-600 hover:text-red-600"
           >
             <Trash2 className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
       </div>
 

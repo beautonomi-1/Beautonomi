@@ -126,8 +126,8 @@ export default function AdminBillingDashboard() {
 
   const filteredInvoices = invoices.filter((invoice) => {
     const providerName = invoice.provider?.business_name ?? "";
-    const matchesSearch = searchQuery === "" || 
-      invoice.invoice_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch = searchQuery === "" ||
+      (invoice.invoice_number ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       providerName.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "all" || invoice.status === statusFilter;
     return matchesSearch && matchesStatus;

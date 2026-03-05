@@ -116,7 +116,7 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const supabase = await getSupabaseServer(request);
 
-    const updates: Record<string, unknown> = {};
+    const updates: Record<string, any> = {};
 
     // Handle first_name and last_name (combine into full_name)
     if (body.first_name !== undefined || body.last_name !== undefined) {

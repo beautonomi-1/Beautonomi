@@ -10,7 +10,7 @@ import {
 } from "./operationalState";
 import type { Booking } from "@/types/beautonomi";
 
-function baseBooking(overrides: Partial<Booking> & Record<string, unknown> = {}): Booking {
+function baseBooking(overrides: Partial<Booking> & Record<string, any> = {}): Booking {
   const now = new Date();
   return {
     id: "test-id",

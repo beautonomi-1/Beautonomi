@@ -35,7 +35,7 @@ So for any pricing plan that can be subscribed to, **`subscription_plan_id` must
 - **Public pricing page** – `getPricingPlans()` in `lib/supabase/pricing.ts` (from `pricing_plans` + `pricing_plan_features`).
 - **Admin → Pricing Plans** – `/admin/pricing-plans` and `/api/admin/pricing-plans` (CRUD on `pricing_plans`; optional “link” = `subscription_plan_id`).
 - **Provider onboarding** – Plans shown in the plan step come from **`/api/public/pricing`** (pricing plans). The chosen plan id is a **pricing plan id**.
-- **First-time subscription create** – `POST /api/provider/subscriptions/create` expects a **pricing plan id** (`plan_id`). It reads Paystack codes and `subscription_plan_id` from that pricing plan and creates a Paystack subscription, then creates **provider_subscriptions** with `plan_id = subscription_plan_id` (see route and fix below).
+- **First-time subscription create** – `POST /api/provider/subscriptions/create` expects a **pricing plan id** (`plan_id`) and `billing_period`. It validates `subscription_plan_id` and Paystack plan codes, then calls Paystack **transaction/initialize** with the plan code. The response includes `authorization_url`; the frontend redirects the user there to pay. When the customer pays, Paystack creates the subscription and sends **subscription.create** (and **charge.success**). The **subscription.create** webhook handler creates/updates **provider_subscriptions** with `plan_id = subscription_plan_id` (resolving provider by customer email and plan by Paystack plan code).
 
 ### Subscription plans (`subscription_plans`)
 
@@ -80,12 +80,28 @@ If you use both flows, keep the corresponding Paystack codes in sync for the sam
 - **Requirement:** Every pricing plan that can be subscribed to (e.g. has Paystack codes and is used in onboarding or “Get started”) **must** have `subscription_plan_id` set. The create route should reject when it’s missing instead of falling back to the pricing plan id (see fix below).
 - **Admin (consolidated):** Use **Admin → Plans** (`/admin/plans`) to manage subscription plans and optional public pricing page entry in one place; enable **Show on public pricing page** to sync the linked pricing plan. The old **“link”** to the correct **subscription plan**. The old Pricing Plans and Subscription Plans nav entries are consolidated into **Plans**; `/admin/pricing-plans` redirects to `/admin/plans`.
 
-## Fix: subscription create when `subscription_plan_id` is null
+## Paystack webhooks (provider subscriptions)
 
-In **`apps/web/src/app/api/provider/subscriptions/create/route.ts`**, the code currently does:
+The app handles these Paystack events at `POST /api/payments/webhook` (signature-verified, idempotent via `webhook_events`):
 
-```ts
-plan_id: subscriptionPlanId || plan_id  // plan_id here is the pricing plan id
-```
+| Event | Action |
+|-------|--------|
+| `subscription.create` | Resolve provider by customer email → upsert `provider_subscriptions` (plan from Paystack plan code). Paystack status `attention` → DB `past_due`. |
+| `subscription.disable` | Set `provider_subscriptions` to `cancelled`, `auto_renew: false`. |
+| `subscription.enable` | Set `active`, `auto_renew: true`, update `next_payment_date`. |
+| `subscription.not_renew` | Set `auto_renew: false`. |
+| `subscription.expiring_cards` | Notify provider (push/email) using template `subscription_card_expiring`. |
+| `invoice.create` | Update `next_payment_date`. |
+| `invoice.update` | Sync `next_payment_date` and status (`past_due` on failed/attention, `active` on success). |
+| `invoice.payment_failed` | Set `past_due`, insert failed transaction record. |
 
-If `subscription_plan_id` is null, this would write the **pricing plan** id into `provider_subscriptions.plan_id`, which is a FK to **subscription_plans**. That would be wrong (and can violate the FK). The create route should require `subscription_plan_id` when creating a provider_subscription from a pricing plan and return a clear error if it’s missing, instead of using `plan_id`.
+Successful renewals (in invoice payload with `status: success` and `paid_at`) update `last_payment_date`, `expires_at`, `next_payment_date`, insert into `payment_transactions` and `finance_transactions`, and send the `subscription_renewed` notification.
+
+## Superadmin: updating plans and existing subscriptions
+
+- **Admin → Plans** (or **Subscription Plans**): When editing a paid plan, you can set **“Apply price/name changes to existing Paystack subscriptions”**. If checked, the Paystack plan update is sent with `update_existing_subscriptions: true` so current subscribers get the new price/interval on the next billing cycle. If unchecked, only new subscriptions use the updated plan.
+- **Cancel flow**: Provider (or superadmin) cancels via `POST /api/provider/subscription/cancel`. The app fetches the Paystack subscription to get `email_token`, then calls Paystack’s disable API with that token so cancellation is reliable.
+
+## Requirement: `subscription_plan_id` when subscribing via pricing plan
+
+The create route **requires** `pricing_plan.subscription_plan_id` and returns 400 with a clear message if it’s missing. No fallback to the pricing plan id is used, so `provider_subscriptions.plan_id` always references `subscription_plans(id)`.

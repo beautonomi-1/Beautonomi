@@ -42,7 +42,7 @@ interface Product {
   brand?: string | null;
   supplier?: string | null;
   has_variants?: boolean;
-  variant_option_types?: Array<{ name: string; values: string[] }>;
+  variant_option_types?: { name: string; values: string[] }[];
   variants?: ProductVariant[];
 }
 
@@ -109,7 +109,7 @@ export function ProductsContent() {
     if (hasVariants && (!p.variant_option_types?.length || !p.variants?.length)) {
       setLoadingProduct(true);
       try {
-        const res = await api.get<{ variants?: ProductVariant[]; variant_option_types?: Array<{ name: string; values: string[] }> }>(
+        const res = await api.get<{ variants?: ProductVariant[]; variant_option_types?: { name: string; values: string[] }[] }>(
           `/api/provider/products/${p.id}`
         );
         const data = res.data as any;

@@ -3,10 +3,12 @@
 import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { X, MapPin, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { X, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
+import MapboxMapPreview, { MapboxMapPreviewUnavailable } from "@/components/mapbox/MapboxMapPreview";
 import { useServiceAvailability } from "@/hooks/useServiceAvailability";
 import { useRecentLocations } from "@/hooks/useRecentLocations";
+import { fetcher } from "@/lib/http/fetcher";
 
 interface EnhancedAddressDialogProps {
   isOpen: boolean;
@@ -38,21 +40,36 @@ export default function EnhancedAddressDialog({
     longitude: number;
     place_name?: string;
   } | null>(null);
-  const [mapUrl, setMapUrl] = useState<string>("");
+  const [mapboxConfig, setMapboxConfig] = useState<{
+    token: string;
+    styleUrl?: string | null;
+  } | null>(null);
   const { availability, checkAvailability } = useServiceAvailability();
   const { addLocation } = useRecentLocations();
+
+  // Fetch Mapbox config when dialog opens (for map preview)
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    fetcher
+      .get<{ data: { mapboxPublicToken?: string; mapboxStyleUrl?: string | null } }>("/api/public/directions-config")
+      .then((res) => {
+        if (cancelled || !res?.data?.mapboxPublicToken) return;
+        setMapboxConfig({
+          token: res.data.mapboxPublicToken,
+          styleUrl: res.data.mapboxStyleUrl ?? null,
+        });
+      })
+      .catch(() => setMapboxConfig(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     queueMicrotask(() => {
       if (selectedAddress) {
-        const lat = selectedAddress.latitude;
-        const lng = selectedAddress.longitude;
-        setMapUrl(
-          `https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ""}&q=${lat},${lng}&zoom=15`
-        );
-        checkAvailability(lat, lng);
-      } else {
-        setMapUrl("");
+        checkAvailability(selectedAddress.latitude, selectedAddress.longitude);
       }
     });
   }, [selectedAddress, checkAvailability]);
@@ -113,28 +130,25 @@ export default function EnhancedAddressDialog({
             />
           </div>
 
-          {/* Map Preview */}
-          {selectedAddress && mapUrl && (
+          {/* Map Preview (Mapbox) */}
+          {selectedAddress && (
             <div className="border rounded-lg overflow-hidden">
               <div className="aspect-video w-full">
-                {process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (
-                  <iframe
-                    src={mapUrl}
-                    width="100%"
-                    height="100%"
-                    style={{ border: 0 }}
-                    allowFullScreen
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
+                {mapboxConfig?.token ? (
+                  <MapboxMapPreview
+                    latitude={selectedAddress.latitude}
+                    longitude={selectedAddress.longitude}
+                    accessToken={mapboxConfig.token}
+                    styleUrl={mapboxConfig.styleUrl}
+                    className="w-full h-full"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                    <div className="text-center text-gray-500">
-                      <MapPin className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                      <p className="text-sm">Map preview unavailable</p>
-                      <p className="text-xs mt-1">{selectedAddress.place_name || `${selectedAddress.address_line1}, ${selectedAddress.city}`}</p>
-                    </div>
-                  </div>
+                  <MapboxMapPreviewUnavailable
+                    placeName={selectedAddress.place_name}
+                    addressLine1={selectedAddress.address_line1}
+                    city={selectedAddress.city}
+                    className="w-full h-full"
+                  />
                 )}
               </div>
             </div>

@@ -76,7 +76,7 @@ export default function MarketingCampaignsPage() {
     try {
       setIsLoading(true);
       const data = await providerApi.listCampaigns();
-      setCampaigns((data || []) as unknown as Campaign[]);
+      setCampaigns((data || []) as any as Campaign[]);
     } catch (error) {
       console.error("Failed to load campaigns:", error);
       toast.error("Failed to load campaigns");

@@ -144,7 +144,7 @@ export default function AdminCatalog() {
   };
 
   const filteredGlobalCategories = globalCategories.filter((cat) =>
-    cat.name.toLowerCase().includes(searchQuery.toLowerCase())
+    (cat.name ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (isLoading) {
@@ -156,7 +156,7 @@ export default function AdminCatalog() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
@@ -177,7 +177,12 @@ export default function AdminCatalog() {
               className="pl-10"
             />
           </div>
-          <Button onClick={() => setShowGlobalCategoryModal(true)}>
+          <Button
+            onClick={() => {
+              setEditingGlobalCategory(null);
+              setShowGlobalCategoryModal(true);
+            }}
+          >
             <Plus className="w-4 h-4 mr-2" />
             Add Global Category
           </Button>
@@ -208,7 +213,10 @@ export default function AdminCatalog() {
               <GlobalCategoryCard
                 key={category.id}
                 category={category}
-                onEdit={() => setEditingGlobalCategory(category)}
+                onEdit={() => {
+                  setEditingGlobalCategory(category);
+                  setShowGlobalCategoryModal(true);
+                }}
                 onDelete={() => handleDeleteGlobalCategory(category.id)}
               />
             ))}
@@ -362,18 +370,34 @@ function GlobalCategoryCard({
           </div>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={onEdit}
-            className="p-1 text-gray-600 hover:text-blue-600 transition-colors"
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onEdit();
+            }}
+            className="text-gray-600 hover:text-blue-600 hover:bg-blue-50"
+            title="Edit category"
           >
             <Edit className="w-4 h-4" />
-          </button>
-          <button
-            onClick={onDelete}
-            className="p-1 text-gray-600 hover:text-red-600 transition-colors"
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="text-gray-600 hover:text-red-600 hover:bg-red-50"
+            title="Delete category"
           >
             <Trash2 className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -552,7 +576,7 @@ function GlobalCategoryModal({
   const iconCategories = ["All", ...Array.from(new Set(BEAUTY_ICONS.map(item => item.category)))];
   
   const filteredIcons = BEAUTY_ICONS.filter((item) => {
-    const matchesSearch = item.name.toLowerCase().includes(iconSearch.toLowerCase());
+    const matchesSearch = (item.name ?? "").toLowerCase().includes(iconSearch.toLowerCase());
     const matchesCategory = selectedIconCategory === "All" || item.category === selectedIconCategory;
     return matchesSearch && matchesCategory;
   });
@@ -649,8 +673,9 @@ function GlobalCategoryModal({
             
             {/* Toggle between Icon and Image */}
             <div className="flex gap-2 mb-3">
-              <button
+              <Button
                 type="button"
+                size="sm"
                 onClick={() => {
                   setIconType("icon");
                   if (isImageUrl(formData.icon)) {
@@ -658,32 +683,27 @@ function GlobalCategoryModal({
                     setImagePreview(null);
                   }
                 }}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  iconType === "icon"
-                    ? "bg-purple-600 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
+                variant={iconType === "icon" ? "secondary" : "outline"}
+                className={iconType === "icon" ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}
               >
                 <Tag className="w-4 h-4 inline mr-2" />
                 Icon
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                size="sm"
                 onClick={() => {
                   setIconType("image");
                   if (!isImageUrl(formData.icon) && formData.icon) {
                     setFormData((prev) => ({ ...prev, icon: "" }));
                   }
                 }}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  iconType === "image"
-                    ? "bg-purple-600 text-white"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                }`}
+                variant={iconType === "image" ? "secondary" : "outline"}
+                className={iconType === "image" ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}
               >
                 <ImageIcon className="w-4 h-4 inline mr-2" />
                 Image
-              </button>
+              </Button>
             </div>
 
             {iconType === "icon" ? (
@@ -725,13 +745,15 @@ function GlobalCategoryModal({
                       alt="Icon preview"
                       className="w-20 h-20 object-contain border rounded-lg p-2 bg-gray-50"
                     />
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="icon"
                       onClick={handleRemoveImage}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                      className="absolute -top-2 -right-2 h-7 w-7 bg-red-500 text-white rounded-full p-0 hover:bg-red-600"
                     >
                       <X className="w-3 h-3" />
-                    </button>
+                    </Button>
                   </div>
                 )}
                 
@@ -781,18 +803,16 @@ function GlobalCategoryModal({
                   />
                   <div className="flex flex-wrap gap-2">
                     {iconCategories.map((cat) => (
-                      <button
+                      <Button
                         key={cat}
                         type="button"
+                        size="sm"
+                        variant={selectedIconCategory === cat ? "secondary" : "outline"}
                         onClick={() => setSelectedIconCategory(cat)}
-                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                          selectedIconCategory === cat
-                            ? "bg-purple-600 text-white"
-                            : "bg-white text-gray-700 border border-gray-300 hover:bg-gray-100"
-                        }`}
+                        className={selectedIconCategory === cat ? "rounded-full bg-purple-600 hover:bg-purple-700 text-white text-xs" : "rounded-full text-xs"}
                       >
                         {cat}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -801,11 +821,12 @@ function GlobalCategoryModal({
                 </p>
                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                   {filteredIcons.map(({ name, icon: IconComponent, category }, index) => (
-                    <button
+                    <Button
                       key={`${category}-${name}-${index}`}
                       type="button"
+                      variant="outline"
                       onClick={() => handleIconSelect(name)}
-                      className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all hover:bg-white hover:border-purple-400 hover:scale-105 ${
+                      className={`flex flex-col items-center justify-center p-3 h-auto rounded-lg border-2 transition-all hover:bg-white hover:border-purple-400 hover:scale-105 ${
                         formData.icon === name
                           ? "bg-purple-100 border-purple-500"
                           : "bg-white border-gray-200"
@@ -816,7 +837,7 @@ function GlobalCategoryModal({
                       <span className="text-xs text-gray-600 truncate w-full text-center">
                         {name}
                       </span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 {filteredIcons.length === 0 && (

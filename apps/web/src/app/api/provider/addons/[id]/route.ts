@@ -61,7 +61,7 @@ export async function GET(
       .eq("addon_id", id);
 
     return successResponse({
-      ...(addon as Record<string, unknown>),
+      ...(addon as Record<string, any>),
       service_ids: associations?.map((a: any) => a.service_id) || [],
     });
   } catch (error) {
@@ -141,7 +141,7 @@ export async function PUT(
       .eq("addon_id", id);
 
     return successResponse({
-      ...(addon as Record<string, unknown>),
+      ...(addon as Record<string, any>),
       service_ids: associations?.map((a: any) => a.service_id) || [],
     });
   } catch (error) {

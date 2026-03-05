@@ -184,7 +184,7 @@ export function ExplorePostForm({
       fd.append("file", file);
       const res = await fetcher.post<{ data: { path: string } }>(
         "/api/explore/upload",
-        fd as unknown
+        fd as any
       );
       const path = (res as any)?.data?.path;
       if (path) {

@@ -20,7 +20,7 @@ import { ArrowLeft } from "lucide-react";
 import RoleGuard from "@/components/auth/RoleGuard";
 
 export default function ControlPlaneFeatureFlagsPage() {
-  const [flags, setFlags] = useState<Array<Record<string, unknown>>>([]);
+  const [flags, setFlags] = useState<Array<Record<string, any>>>([]);
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<Record<string, { enabled: boolean }> | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -35,7 +35,7 @@ export default function ControlPlaneFeatureFlagsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetcher.get<{ data: Array<Record<string, unknown>> }>("/api/admin/feature-flags");
+        const res = await fetcher.get<{ data: Array<Record<string, any>> }>("/api/admin/feature-flags");
         setFlags(res.data ?? []);
       } catch {
         toast.error("Failed to load feature flags");

@@ -131,7 +131,37 @@ async function getProviderSubscriptionTier(
     };
   }
 
-  // If no active subscription, check for free tier
+  // If no active subscription, check badge free_subscription (get_provider_subscription_status)
+  const { data: badgeStatus } = await supabase.rpc("get_provider_subscription_status", {
+    p_provider_id: providerId,
+  });
+  if (badgeStatus === "active") {
+    const { data: freePlan } = await supabase
+      .from("subscription_plans")
+      .select("id, name, features, is_free")
+      .eq("is_free", true)
+      .eq("is_active", true)
+      .order("display_order")
+      .limit(1)
+      .maybeSingle();
+    if (freePlan) {
+      return {
+        planId: freePlan.id,
+        planName: freePlan.name,
+        features: freePlan.features || {},
+        isFree: true,
+      };
+    }
+    // No free plan in DB: return minimal tier so feature checks pass
+    return {
+      planId: undefined,
+      planName: "Badge benefit",
+      features: { booking_online: true, reviews_ratings: true, basic_analytics: true },
+      isFree: true,
+    };
+  }
+
+  // Check for free tier from subscription_plans (existing behavior)
   const { data: freePlan } = await supabase
     .from("subscription_plans")
     .select("id, name, features, is_free")

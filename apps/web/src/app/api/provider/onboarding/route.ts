@@ -361,7 +361,7 @@ export async function POST(request: NextRequest) {
       try {
         const response = await fetch(avatar_url);
         const blob = await response.blob();
-        const fileExt = blob.type.split("/")[1] || "jpg";
+        const _fileExt = blob.type.split("/")[1] || "jpg";
         const fileName = `${providerId}/avatar`;
         const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
           .from("provider-gallery")

@@ -9,7 +9,7 @@ const DEBUG_LOG_URL =
     : undefined;
 const SESSION_ID = "50ed8b";
 
-function sendLog(data: Record<string, unknown>) {
+function sendLog(data: Record<string, any>) {
   if (!DEBUG_LOG_URL) return;
   fetch(DEBUG_LOG_URL, {
     method: "POST",

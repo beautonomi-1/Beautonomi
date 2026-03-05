@@ -2,12 +2,13 @@
 
 import dynamic from "next/dynamic";
 import type { OsType } from "@/lib/utils/os-type";
+import { BeautonomiLoadingIcon } from "@/components/BeautonomiLoadingIcon";
 
 const ClientAppShell = dynamic(() => import("@/app/ClientAppShell"), {
   ssr: false,
   loading: () => (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "sans-serif" }}>
-      Loading…
+    <div className="min-h-screen flex items-center justify-center bg-white" aria-busy="true" aria-live="polite">
+      <BeautonomiLoadingIcon size={56} />
     </div>
   ),
 });

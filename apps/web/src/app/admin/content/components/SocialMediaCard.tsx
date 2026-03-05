@@ -3,6 +3,7 @@
 import React from "react";
 import { Edit, Trash2, Facebook, Twitter, Linkedin, Instagram, Youtube, ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 interface SocialMediaLink {
   id: string;
@@ -28,7 +29,7 @@ const iconMap: Record<string, React.ReactNode> = {
 };
 
 export function SocialMediaCard({ link, onEdit, onDelete }: SocialMediaCardProps) {
-  const iconKey = link.title.toLowerCase().replace(/\s+/g, '');
+  const iconKey = (link.title ?? "").toLowerCase().replace(/\s+/g, '');
   const icon = iconMap[iconKey] || <ArrowRight className="w-5 h-5" />;
 
   return (
@@ -65,20 +66,24 @@ export function SocialMediaCard({ link, onEdit, onDelete }: SocialMediaCardProps
             </div>
           </div>
           <div className="flex gap-2 ml-4">
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => onEdit(link)}
-              className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+              className="h-8 w-8 text-gray-600 hover:text-blue-600 hover:bg-blue-50"
               title="Edit"
             >
               <Edit className="w-4 h-4" />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => onDelete(link.id)}
-              className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+              className="h-8 w-8 text-gray-600 hover:text-red-600 hover:bg-red-50"
               title="Delete"
             >
               <Trash2 className="w-4 h-4" />
-            </button>
+            </Button>
           </div>
         </div>
       </CardContent>

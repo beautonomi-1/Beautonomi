@@ -1,3 +1,4 @@
+import React from "react";
 import Image from "next/image";
 // Placeholder images - originals were missing
 const Getting = "/images/getting-started-optimized.jpg";
@@ -14,7 +15,7 @@ interface Guide {
   src: string;
   alt: string;
   description: string;
-  mobileSrc: any;
+  mobileSrc: string;
 }
 
 const guides: Guide[] = [
@@ -106,7 +107,7 @@ export default function BusinessAdmin() {
   );
 }
 
-function ArrowRightIcon(props: any) {
+function ArrowRightIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       {...props}

@@ -39,11 +39,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
   // If has badge, show progress to next badge
   const displayBadge = currentBadge || nextBadgeProgress?.badge;
   const showProgress = nextBadgeProgress;
-
-  if (!displayBadge && !showProgress) {
-    return null; // Don't show if no gamification data
-  }
-
+  const showGetStarted = !displayBadge && !showProgress;
 
   return (
     <div className="mb-4 sm:mb-6">
@@ -59,7 +55,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
               </div>
               <div>
                 <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Rewards & Achievements</h3>
-                {currentBadge && (
+                {currentBadge ? (
                   <>
                     <p className="text-sm sm:text-base text-gray-600 mt-0.5">Current: {currentBadge.name}</p>
                     {gamification.badge_earned_at && (() => {
@@ -75,7 +71,9 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                       return null;
                     })()}
                   </>
-                )}
+                ) : showGetStarted ? (
+                  <p className="text-sm sm:text-base text-gray-600 mt-0.5">Earn points and unlock badges</p>
+                ) : null}
               </div>
             </div>
           </div>
@@ -125,6 +123,9 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                     <p className="text-sm sm:text-base text-gray-700">
                       <span className="font-semibold text-[#FF0077]">{showProgress.points_needed.toLocaleString()}</span> more points needed
                     </p>
+                    <p className="text-sm font-medium text-gray-800">
+                      You’re {showProgress.points_needed.toLocaleString()} points away from {showProgress.badge.name}.
+                    </p>
                     <p className="text-xs sm:text-sm text-gray-600 italic">
                       💡 Keep earning points by completing bookings and receiving great reviews!
                     </p>
@@ -138,17 +139,23 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
             </div>
           )}
 
-          {/* No Progress (First Badge) */}
-          {!showProgress && !currentBadge && displayBadge && (
+          {/* No Progress (First Badge) or Get Started when no data yet */}
+          {(!showProgress && !currentBadge && displayBadge) || showGetStarted ? (
             <div className="space-y-4">
               <div>
-                <h4 className="text-lg sm:text-xl font-bold mb-2 text-gray-900">Get Started</h4>
+                <h4 className="text-lg sm:text-xl font-bold mb-2 text-gray-900">
+                  {showGetStarted ? "Start earning" : "Get Started"}
+                </h4>
                 <p className="text-sm sm:text-base text-gray-700 mb-4">
-                  Start earning points to unlock your first badge: <span className="font-semibold text-[#FF0077]">{displayBadge.name}</span>
+                  {showGetStarted ? (
+                    <>Complete bookings and get great reviews to earn points and unlock badges. Higher tiers unlock perks like featured placement and more.</>
+                  ) : (
+                    <>Start earning points to unlock your first badge: <span className="font-semibold text-[#FF0077]">{displayBadge.name}</span></>
+                  )}
                 </p>
                 <div className="flex items-baseline gap-2 mb-3">
                   <span className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-2">
-                    {gamification.total_points.toLocaleString()}
+                    {(gamification.total_points ?? 0).toLocaleString()}
                     <Star className="w-5 h-5 sm:w-6 sm:h-6 text-[#FF0077] fill-[#FF0077]" />
                   </span>
                   <span className="text-base sm:text-lg text-gray-600">points earned</span>
@@ -158,7 +165,7 @@ export function RewardsCard({ gamification }: RewardsCardProps) {
                 </p>
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Details Button */}
           <div className="mt-6 pt-6 border-t border-gray-200">

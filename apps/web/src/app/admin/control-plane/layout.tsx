@@ -30,6 +30,7 @@ const controlPlaneNav = [
   { title: "AI Entitlements", href: "/admin/control-plane/modules/ai/entitlements", icon: ListChecks },
   { title: "Ads Module", href: "/admin/control-plane/modules/ads", icon: Megaphone },
   { title: "Ranking Module", href: "/admin/control-plane/modules/ranking", icon: TrendingUp },
+  { title: "Quality Scores", href: "/admin/control-plane/modules/ranking/scores", icon: TrendingUp },
   { title: "Distance Module", href: "/admin/control-plane/modules/distance", icon: MapPin },
   { title: "Safety Module", href: "/admin/control-plane/modules/safety", icon: ShieldAlert },
   { title: "Safety Logs", href: "/admin/control-plane/safety-logs", icon: ShieldAlert },

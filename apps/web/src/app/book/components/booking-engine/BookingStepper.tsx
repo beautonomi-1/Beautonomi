@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import type { BookingStep } from "../../types/booking-engine";
-import { getStepIndex, getStepLabel, STEP_ORDER } from "../../types/booking-engine";
+import { getStepLabel, STEP_ORDER } from "../../types/booking-engine";
 import { BOOKING_ACCENT } from "../../constants";
 
 interface BookingStepperProps {

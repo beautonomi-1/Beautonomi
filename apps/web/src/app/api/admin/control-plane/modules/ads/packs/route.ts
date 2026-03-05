@@ -31,7 +31,7 @@ export async function PATCH(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     for (const p of packs) {
       if (!p.id) continue;
-      const update: Record<string, unknown> = {};
+      const update: Record<string, any> = {};
       if (p.price_zar != null) update.price_zar = Number(p.price_zar);
       if (p.is_active != null) update.is_active = Boolean(p.is_active);
       if (p.display_order != null) update.display_order = Number(p.display_order);

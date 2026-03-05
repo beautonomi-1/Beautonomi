@@ -107,8 +107,8 @@ export async function GET(request: NextRequest) {
 
     // Get staff information separately to avoid deep nesting issues
     const staffIds = new Set<string>();
-    bookings?.forEach((booking: any) => {
-      booking.booking_services?.forEach((service: any) => {
+    bookings?.forEach((booking: { booking_services?: Array<{ staff_id?: string }> }) => {
+      booking.booking_services?.forEach((service: { staff_id?: string }) => {
         if (service.staff_id) {
           staffIds.add(service.staff_id);
         }
@@ -126,8 +126,8 @@ export async function GET(request: NextRequest) {
         console.warn("Error fetching staff information:", staffError);
         // Continue without staff names - will default to "Unassigned"
       } else {
-        staffMembers?.forEach((staff: any) => {
-          const staffName = staff.users?.full_name || "Unassigned";
+        staffMembers?.forEach((staff: { id: string; users?: Array<{ full_name?: string }> | { full_name?: string } }) => {
+          const staffName = (Array.isArray(staff.users) ? staff.users[0]?.full_name : staff.users?.full_name) || "Unassigned";
           staffMap.set(staff.id, staffName);
         });
       }
@@ -200,11 +200,11 @@ export async function GET(request: NextRequest) {
       }
       // Distribute booking revenue proportionally across services
       const totalServicePrice = booking.booking_services.reduce(
-        (sum: number, s: any) => sum + Number(s.price || 0),
+        (sum: number, s: { price?: number }) => sum + Number(s.price || 0),
         0
       );
-      booking.booking_services.forEach((service: any) => {
-        const serviceName = service.offerings?.title || "Unknown Service";
+      booking.booking_services.forEach((service: { price?: number; offerings?: { title?: string } | Array<{ title?: string }>; staff_id?: string }) => {
+        const serviceName = (Array.isArray(service.offerings) ? service.offerings[0]?.title : service.offerings?.title) || "Unknown Service";
         const serviceProportion =
           totalServicePrice > 0
             ? Number(service.price || 0) / totalServicePrice
@@ -238,10 +238,10 @@ export async function GET(request: NextRequest) {
       }
       // Distribute booking revenue proportionally across services/staff
       const totalServicePrice = booking.booking_services.reduce(
-        (sum: number, s: any) => sum + Number(s.price || 0),
+        (sum: number, s: { price?: number }) => sum + Number(s.price || 0),
         0
       );
-      booking.booking_services.forEach((service: any) => {
+      booking.booking_services.forEach((service: { price?: number; staff_id?: string }) => {
         const staffName = service.staff_id 
           ? (staffMap.get(service.staff_id) || "Unassigned")
           : "Unassigned";

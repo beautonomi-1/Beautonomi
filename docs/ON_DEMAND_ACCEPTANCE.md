@@ -70,7 +70,7 @@ Apps should also use fallback polling (e.g. every 10–15s) if realtime is unava
 ## Config and feature flags
 
 - **Module config:** Existing `on_demand_module_config`: `enabled`, `ringtone_asset_path`, `ring_duration_seconds`, `ring_repeat`, `provider_accept_window_seconds`, `waiting_screen_timeout_seconds`, `ui_copy` (JSON).
-- **ui_copy keys (optional):** `waiting_title`, `waiting_subtitle`, `waiting_timer_label`, `waiting_cancel_cta`, `accepted_title`, `accepted_subtitle`, `declined_title`, `declined_subtitle`, `expired_title`, `expired_subtitle`, `provider_incoming_title`, `provider_incoming_subtitle`, `provider_accept_cta`, `provider_decline_cta`.
+- **ui_copy keys (optional):** `waiting_title`, `waiting_headline`, `waiting_provider_message` (use `{provider_name}` placeholder), `waiting_help_url`, `waiting_timer_label`, `waiting_cancel_cta`, `accepted_title`, `accepted_subtitle`, `declined_title`, `declined_subtitle`, `expired_title`, `expired_subtitle`, `provider_incoming_title`, `provider_incoming_subtitle`, `provider_accept_cta`, `provider_decline_cta`.
 - **Feature flags (in `feature_flags`):**  
   - `on_demand_accept_enabled` — global  
   - `on_demand_accept_customer_enabled` — customer app  
@@ -95,3 +95,20 @@ Accept, decline, and cancel use a single `UPDATE ... WHERE status='requested' AN
 ## Ringtone
 
 Reuses existing `GET /api/public/on-demand/ringtone-url?environment=...` (signed URL). No secrets in client.
+
+## Cross-platform wiring checklist
+
+| Platform | Flow | Entry | API / Realtime | Redirects / Next screen |
+|----------|------|--------|----------------|-------------------------|
+| **Customer (Expo)** | Create request | `book-checkout` → "Request now" | `POST /api/me/on-demand/requests` → `requestId` | → `(app)/on-demand/waiting?requestId` |
+| | Waiting | `(app)/on-demand/waiting` | `GET /api/me/on-demand/requests/[id]` (returns `provider_name`), Realtime `on_demand_requests` filter `id`, poll 12s | Accept+booking_id → `(app)/booking-detail?id=booking_id`; else accept → `(app)/on-demand/result?status=accepted`; declined/expired/cancelled → `(app)/on-demand/result?status=...` |
+| | Result | `(app)/on-demand/result` | — | "View my bookings" → `(app)/(tabs)/bookings`; "Back to home" → `(app)/(tabs)` |
+| | Post-accept | `(app)/booking-detail` | `GET /api/me/bookings/[id]`, Realtime `bookings` | Booking # in header, acceptance strip, Tracking/Receipt/Details tabs, Help from `ui_copy.waiting_help_url` |
+| **Web (customer)** | Waiting | `/book/on-demand/waiting?requestId=` | `GET /api/me/on-demand/requests/[id]`, poll 12s | Accept+booking_id → `/account-settings/bookings/[id]`; else → `/book/on-demand/result?status=...&requestId=` |
+| | Result | `/book/on-demand/result?status=&requestId=` | — | "View my bookings" → `/account-settings/bookings`; "Back to home" → `/` |
+| | Post-accept | `/account-settings/bookings/[id]` | `GET /api/me/bookings/[id]` | Booking # in title, acceptance strip for confirmed/pending/started, Help from `ui_copy.waiting_help_url` |
+| **Provider (Expo)** | Incoming | Realtime INSERT `on_demand_requests` filter `provider_id` or poll `/api/provider/on-demand/requests` | Navigate to `(app)/on-demand/incoming/[id]` | Ringtone plays when screen shows requested request; stops on accept/decline/expiry |
+| | Accept/Decline | `(app)/on-demand/incoming/[id]` | `GET /api/provider/on-demand/requests/[id]`, `POST .../accept`, `POST .../decline` | Accept → `(app)/(tabs)/more/bookings/[booking_id]` or back; Decline → back |
+| **Web (provider)** | Incoming | `OnDemandIncomingOverlay` polls `/api/provider/on-demand/requests` | Ringtone on new request; accept → `POST .../accept` → `window.location.href=/provider/bookings/[booking_id]`; decline → `POST .../decline`, close overlay |
+
+**Config:** All customer waiting/result and provider incoming use `useModuleConfig('on_demand')` (or web `ConfigBundleProvider`). Same `ui_copy` keys across platforms: `waiting_title`, `waiting_headline`, `waiting_provider_message`, `waiting_help_url`, `waiting_timer_label`, `waiting_cancel_cta`, accepted/declined/expired titles and subtitles.

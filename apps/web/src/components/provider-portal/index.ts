@@ -30,7 +30,7 @@ export { EditWorkHoursDialog } from "./EditWorkHoursDialog";
 export { CheckoutDialog } from "./CheckoutDialog";
 
 // Drag & Drop
-export { DragDropProvider, useDragDrop, DraggableAppointment, DroppableTimeSlot, DragIndicator } from "./DragDropCalendar";
+export { DragDropProvider, useDragDrop, useOptionalDragDrop, DraggableAppointment, DroppableTimeSlot, DragIndicator } from "./DragDropCalendar";
 
 // Time Blocks
 export { TimeBlockDialog } from "./TimeBlockDialog";

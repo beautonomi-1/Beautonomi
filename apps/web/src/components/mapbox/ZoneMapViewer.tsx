@@ -22,9 +22,11 @@ interface ZoneMapViewerProps {
   onZoneClick?: (zone: ServiceZone) => void;
 }
 
+const DEFAULT_STYLE = "mapbox/streets-v12";
+
 /**
- * Simple zone map viewer using iframe with Mapbox Static Images API
- * Falls back to a simple visualization if Mapbox is not available
+ * Zone map viewer using Mapbox Static Images API (aligned with platform Mapbox config).
+ * Falls back to list view when Mapbox is not configured.
  */
 export default function ZoneMapViewer({
   zones,
@@ -32,36 +34,40 @@ export default function ZoneMapViewer({
   height = "400px",
   onZoneClick,
 }: ZoneMapViewerProps) {
-  const [mapUrl, setMapUrl] = useState<string | null>(null);
+  const [staticImageUrl, setStaticImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const generateMapUrl = async () => {
+    let cancelled = false;
+    const center = providerLocation || { latitude: -26.2041, longitude: 28.0473 };
+
+    (async () => {
       try {
-        // Try to get Mapbox token
-        await fetch("/api/mapbox/geocode", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: "test", limit: 1 }),
-        });
+        const res = await fetch("/api/public/directions-config");
+        const json = await res.json().catch(() => ({}));
+        const data = json?.data;
+        const token = data?.mapboxPublicToken;
+        const styleUrl = data?.mapboxStyleUrl;
 
-        // If Mapbox is configured, we can use it
-        // For now, use a simple Google Maps embed or static image
-        const center = providerLocation || { latitude: -26.2041, longitude: 28.0473 };
-        
-        // Create a simple map using Google Maps embed (fallback)
-        const googleMapsUrl = `https://www.google.com/maps/embed/v1/place?key=AIzaSyBFw0Qbyq9zTFTd-tUY6d-s6U4uO3vJz8&q=${center.latitude},${center.longitude}&zoom=12`;
-        setMapUrl(googleMapsUrl);
+        if (cancelled || !token) {
+          setStaticImageUrl(null);
+          return;
+        }
+        const stylePath = styleUrl
+          ? (styleUrl.match(/mapbox:\/\/styles\/(.+)/)?.[1] ?? DEFAULT_STYLE)
+          : DEFAULT_STYLE;
+        const pin = `pin-l+FF0077(${center.longitude},${center.latitude})`;
+        const centerStr = `${center.longitude},${center.latitude},12`;
+        const url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pin}/${centerStr}/600x400@2x?access_token=${token}`;
+        setStaticImageUrl(url);
       } catch {
-        console.warn("Mapbox not available, using fallback");
-        // Fallback: use a simple visualization
-        setMapUrl(null);
+        if (!cancelled) setStaticImageUrl(null);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
-    };
+    })();
 
-    generateMapUrl();
+    return () => { cancelled = true; };
   }, [providerLocation, zones]);
 
   if (isLoading) {
@@ -72,8 +78,7 @@ export default function ZoneMapViewer({
     );
   }
 
-  if (!mapUrl) {
-    // Fallback: Simple list view
+  if (!staticImageUrl) {
     return (
       <div className="border rounded-lg p-4" style={{ height, overflowY: "auto" }}>
         <h3 className="font-semibold mb-4">Service Zones</h3>
@@ -113,14 +118,12 @@ export default function ZoneMapViewer({
 
   return (
     <div className="border rounded-lg overflow-hidden" style={{ height }}>
-      <iframe
-        src={mapUrl}
-        width="100%"
-        height="100%"
-        style={{ border: 0 }}
-        allowFullScreen
-        loading="lazy"
-        referrerPolicy="no-referrer-when-downgrade"
+      <img
+        src={staticImageUrl}
+        alt="Service zone location"
+        className="w-full h-full object-cover"
+        width={600}
+        height={400}
       />
     </div>
   );

@@ -34,9 +34,23 @@ export const GET = unstable_cache(
           }
         }
 
-        // Mapbox - return public token only
+        // Mapbox - single source for web + mobile: prefer mapbox_config (Admin > Mapbox); fallback to platform_settings
         if (!service || service === "mapbox") {
-          if ((settings as any).settings.mapbox?.enabled) {
+          const { data: mapboxConfigRow } = await (supabase
+            .from("mapbox_config") as any)
+            .select("public_access_token, style_url, is_enabled")
+            .eq("is_enabled", true)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (mapboxConfigRow?.public_access_token) {
+            config.mapbox = {
+              public_token: mapboxConfigRow.public_access_token,
+              style_url: mapboxConfigRow.style_url ?? undefined,
+              enabled: true,
+            };
+          } else if ((settings as any).settings.mapbox?.enabled && (settings as any).settings.mapbox?.public_token) {
             config.mapbox = {
               public_token: (settings as any).settings.mapbox.public_token,
               enabled: true,

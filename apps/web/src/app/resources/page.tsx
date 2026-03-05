@@ -11,7 +11,7 @@ interface PageContent {
   [sectionKey: string]: {
     content: string;
     content_type: string;
-    metadata: Record<string, unknown>;
+    metadata: Record<string, any>;
   };
 }
 

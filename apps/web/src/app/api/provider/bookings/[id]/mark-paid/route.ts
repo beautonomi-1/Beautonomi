@@ -172,9 +172,13 @@ export async function POST(
         notes: notes || `Payment received via ${payment_method}`,
         created_by: user.id,
       };
-      
+
       if (reference) {
         paymentData.reference = reference;
+        // Yoco: store payment_provider_id so webhook idempotency skips duplicate booking_payment
+        if (paymentProvider === 'yoco') {
+          paymentData.payment_provider_id = reference;
+        }
       }
       
       // Try insert with status

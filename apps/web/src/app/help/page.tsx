@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
@@ -40,6 +41,9 @@ const Page = () => {
       <BeautonomiHeader />
       <div className="text-center pt-4 pb-0">
         <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Help centre</p>
+        <p className="mt-1 text-sm text-gray-600">
+          <Link href="/learn" className="text-[#FF0077] hover:underline">Browse guides and articles</Link>
+        </p>
       </div>
       <SearchBox />
       <div id="help-tabs">

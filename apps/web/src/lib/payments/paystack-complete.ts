@@ -17,7 +17,7 @@ export interface PaystackConfig {
   baseUrl: string;
 }
 
-export interface PaystackResponse<T = any> {
+export interface PaystackResponse<T = unknown> {
   status: boolean;
   message: string;
   data: T;
@@ -26,7 +26,7 @@ export interface PaystackResponse<T = any> {
 export interface PaystackError {
   status: boolean;
   message: string;
-  errors?: any;
+  errors?: unknown;
 }
 
 // Transactions
@@ -38,7 +38,7 @@ export interface InitializeTransactionRequest {
   callback_url?: string;
   plan?: string;
   invoice_limit?: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   channels?: string[];
   split_code?: string;
   subaccount?: string;
@@ -66,10 +66,10 @@ export interface Transaction {
   channel: string;
   currency: string;
   ip_address?: string;
-  metadata?: Record<string, any>;
-  log?: any;
+  metadata?: Record<string, unknown>;
+  log?: unknown;
   fees?: number;
-  fees_split?: any;
+  fees_split?: unknown;
   authorization: {
     authorization_code: string;
     bin: string;
@@ -92,19 +92,19 @@ export interface Transaction {
     email: string;
     customer_code: string;
     phone?: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
     risk_action: string;
     international_format_phone?: string;
   };
-  plan?: any;
-  split?: any;
-  order_id?: any;
+  plan?: unknown;
+  split?: unknown;
+  order_id?: unknown;
   paidAt?: string;
   createdAt?: string;
   requested_amount: number;
-  pos_transaction_data?: any;
-  source?: any;
-  fees_breakdown?: any;
+  pos_transaction_data?: unknown;
+  source?: unknown;
+  fees_breakdown?: unknown;
 }
 
 // Transaction Splits
@@ -142,7 +142,7 @@ export interface Split {
       primary_contact_name?: string;
       primary_contact_email?: string;
       primary_contact_phone?: string;
-      metadata?: Record<string, any>;
+      metadata?: Record<string, unknown>;
       percentage_charge: number;
       settlement_bank: string;
       account_number: string;
@@ -162,7 +162,7 @@ export interface CreateCustomerRequest {
   first_name?: string;
   last_name?: string;
   phone?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Customer {
@@ -172,7 +172,7 @@ export interface Customer {
   email: string;
   customer_code: string;
   phone?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   risk_action: string;
   international_format_phone?: string;
   created_at: string;
@@ -188,7 +188,7 @@ export interface CreateTransferRecipientRequest {
   currency?: string; // default: NGN
   description?: string;
   email?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface TransferRecipient {
@@ -210,7 +210,7 @@ export interface TransferRecipient {
     bank_code: string;
     bank_name: string;
   };
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   description?: string;
   email?: string;
 }
@@ -249,7 +249,7 @@ export interface CreateSubaccountRequest {
   primary_contact_email?: string;
   primary_contact_name?: string;
   primary_contact_phone?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   description?: string;
 }
 
@@ -261,7 +261,7 @@ export interface Subaccount {
   primary_contact_name?: string;
   primary_contact_email?: string;
   primary_contact_phone?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   percentage_charge: number;
   settlement_bank: string;
   account_number: string;
@@ -285,7 +285,7 @@ export interface CreatePlanRequest {
   hosted_page?: boolean;
   hosted_page_url?: string;
   hosted_page_summary?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Plan {
@@ -323,7 +323,7 @@ export interface Subscription {
   amount: number;
   subscription_code: string;
   email_token: string;
-  easy_cron_id?: any;
+  easy_cron_id?: unknown;
   cron_expression?: string;
   next_payment_date: string;
   open_invoice?: string;
@@ -379,7 +379,7 @@ export interface PaymentPage {
   amount?: number;
   currency: string;
   slug: string;
-  custom_fields: any[];
+  custom_fields: unknown[];
   redirect_url?: string;
   success_message?: string;
 }
@@ -400,7 +400,7 @@ export interface CreatePaymentRequest {
     name: string;
     amount: number;
   }>;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   send_notification?: boolean;
   draft?: boolean;
   has_invoice?: boolean;
@@ -417,8 +417,8 @@ export interface PaymentRequest {
   invoice_number?: number;
   description?: string;
   pdf_url?: string;
-  line_items: any[];
-  tax: any[];
+  line_items: unknown[];
+  tax: unknown[];
   customer: number;
   request_code: string;
   status: string;
@@ -472,14 +472,14 @@ export interface Dispute {
     channel: string;
     currency: string;
     ip_address?: string;
-    metadata?: Record<string, any>;
-    log?: any;
+    metadata?: Record<string, unknown>;
+    log?: unknown;
     fees?: number;
-    fees_split?: any;
-    authorization: any;
-    customer: any;
-    plan?: any;
-    split?: any;
+    fees_split?: unknown;
+    authorization: unknown;
+    customer: unknown;
+    plan?: unknown;
+    split?: unknown;
   };
   evidence?: {
     customer_email: string;
@@ -632,11 +632,11 @@ export function generateTransactionReference(prefix: string, id: string): string
 /**
  * Make Paystack API request
  */
-export async function paystackRequest<T = any>(
+export async function paystackRequest<T = unknown>(
   endpoint: string,
   options: {
     method?: "GET" | "POST" | "PUT" | "DELETE";
-    body?: any;
+    body?: unknown;
     secretKey?: string;
   } = {}
 ): Promise<PaystackResponse<T>> {
@@ -720,7 +720,7 @@ export async function chargeAuthorization(
   authorizationCode: string,
   email: string,
   amount: number,
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 ): Promise<PaystackResponse<Transaction>> {
   return paystackRequest("/transaction/charge_authorization", {
     method: "POST",
@@ -935,7 +935,7 @@ export async function updateTransferRecipient(
 
 export async function deleteTransferRecipient(
   idOrCode: string
-): Promise<PaystackResponse<any>> {
+): Promise<PaystackResponse<unknown>> {
   return paystackRequest(`/transferrecipient/${idOrCode}`, {
     method: "DELETE",
   });
@@ -1003,13 +1003,13 @@ export async function verifyTransfer(
  * TRANSFERS CONTROL
  */
 
-export async function enableTransferOtp(): Promise<PaystackResponse<any>> {
+export async function enableTransferOtp(): Promise<PaystackResponse<unknown>> {
   return paystackRequest("/transfer/enable_otp", {
     method: "POST",
   });
 }
 
-export async function disableTransferOtp(): Promise<PaystackResponse<any>> {
+export async function disableTransferOtp(): Promise<PaystackResponse<unknown>> {
   return paystackRequest("/transfer/disable_otp", {
     method: "POST",
   });
@@ -1017,7 +1017,7 @@ export async function disableTransferOtp(): Promise<PaystackResponse<any>> {
 
 export async function disableTransferOtpFinalize(
   transferCode: string
-): Promise<PaystackResponse<any>> {
+): Promise<PaystackResponse<unknown>> {
   return paystackRequest("/transfer/disable_otp_finalize", {
     method: "POST",
     body: {
@@ -1029,7 +1029,7 @@ export async function disableTransferOtpFinalize(
 export async function resendTransferOtp(
   transferCode: string,
   reason: "resend_otp" | "transfer"
-): Promise<PaystackResponse<any>> {
+): Promise<PaystackResponse<unknown>> {
   return paystackRequest("/transfer/resend_otp", {
     method: "POST",
     body: {
@@ -1127,7 +1127,7 @@ export async function fetchPlan(
 
 export async function updatePlan(
   idOrCode: string,
-  updates: Partial<CreatePlanRequest>
+  updates: Partial<CreatePlanRequest> & { update_existing_subscriptions?: boolean }
 ): Promise<PaystackResponse<Plan>> {
   return paystackRequest(`/plan/${idOrCode}`, {
     method: "PUT",
@@ -1200,6 +1200,21 @@ export async function disableSubscription(
       token,
     },
   });
+}
+
+/**
+ * Disable a Paystack subscription by code. Fetches the subscription to get
+ * email_token (required by Paystack disable API), then calls disable.
+ */
+export async function disableSubscriptionByCode(
+  code: string
+): Promise<PaystackResponse<Subscription>> {
+  const res = await fetchSubscription(code);
+  const emailToken = res.data?.email_token;
+  if (!emailToken) {
+    throw new Error("Could not get subscription email_token from Paystack");
+  }
+  return disableSubscription(code, emailToken);
 }
 
 /**
@@ -1539,7 +1554,7 @@ export async function listBanks(params?: {
   gateway?: string;
   type?: string;
   currency?: string;
-}): Promise<PaystackResponse<any[]>> {
+}): Promise<PaystackResponse<unknown[]>> {
   const queryParams = new URLSearchParams();
   if (params?.country) queryParams.append("country", params.country);
   if (params?.use_cursor) queryParams.append("use_cursor", params.use_cursor.toString());
@@ -1574,9 +1589,9 @@ export async function createBulkCharge(
     amount: number;
     email: string;
     reference?: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }>
-): Promise<PaystackResponse<any>> {
+): Promise<PaystackResponse<unknown>> {
   return paystackRequest("/bulkcharge", {
     method: "POST",
     body: {
@@ -1590,7 +1605,7 @@ export async function listBulkCharges(params?: {
   page?: number;
   from?: string;
   to?: string;
-}): Promise<PaystackResponse<any[]>> {
+}): Promise<PaystackResponse<unknown[]>> {
   const queryParams = new URLSearchParams();
   if (params?.perPage) queryParams.append("perPage", params.perPage.toString());
   if (params?.page) queryParams.append("page", params.page.toString());
@@ -1603,13 +1618,13 @@ export async function listBulkCharges(params?: {
 
 export async function fetchBulkCharge(
   idOrCode: string
-): Promise<PaystackResponse<any>> {
+): Promise<PaystackResponse<unknown>> {
   return paystackRequest(`/bulkcharge/${idOrCode}`);
 }
 
 export async function pauseBulkCharge(
   batchCode: string
-): Promise<PaystackResponse<any>> {
+): Promise<PaystackResponse<unknown>> {
   return paystackRequest(`/bulkcharge/pause/${batchCode}`, {
     method: "POST",
   });
@@ -1617,7 +1632,7 @@ export async function pauseBulkCharge(
 
 export async function resumeBulkCharge(
   batchCode: string
-): Promise<PaystackResponse<any>> {
+): Promise<PaystackResponse<unknown>> {
   return paystackRequest(`/bulkcharge/resume/${batchCode}`, {
     method: "POST",
   });
@@ -1627,13 +1642,13 @@ export async function resumeBulkCharge(
  * APPLE PAY
  */
 
-export async function listApplePayDomains(): Promise<PaystackResponse<any[]>> {
+export async function listApplePayDomains(): Promise<PaystackResponse<unknown[]>> {
   return paystackRequest("/apple-pay/domain");
 }
 
 export async function registerApplePayDomain(
   domainName: string
-): Promise<PaystackResponse<any>> {
+): Promise<PaystackResponse<unknown>> {
   return paystackRequest("/apple-pay/domain", {
     method: "POST",
     body: {
@@ -1644,7 +1659,7 @@ export async function registerApplePayDomain(
 
 export async function unregisterApplePayDomain(
   domainName: string
-): Promise<PaystackResponse<any>> {
+): Promise<PaystackResponse<unknown>> {
   return paystackRequest(`/apple-pay/domain/${domainName}`, {
     method: "DELETE",
   });

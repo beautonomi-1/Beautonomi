@@ -65,6 +65,8 @@ export function ProviderCard({
             provider.business_type === "freelancer" && <View key="free" className="bg-orange-500 px-2 py-1 rounded-full"><Text className="text-white text-[10px] font-medium">Freelancer</Text></View>,
             provider.supports_house_calls && <View key="house" className="bg-green-500 px-2 py-1 rounded-full"><Text className="text-white text-[10px] font-medium">House Calls</Text></View>,
             provider.supports_salon && <View key="salon" className="bg-purple-500 px-2 py-1 rounded-full"><Text className="text-white text-[10px] font-medium">At Salon</Text></View>,
+            provider.current_badge && <View key="badge" className="px-2 py-1 rounded-full" style={{ backgroundColor: provider.current_badge.color ?? "#6366f1" }}><Text className="text-white text-[10px] font-medium">{provider.current_badge.name}</Text></View>,
+            provider.is_sponsored && <View key="spon" className="bg-amber-600 px-2 py-1 rounded-full"><Text className="text-white text-[10px] font-medium">Sponsored</Text></View>,
           ].filter(Boolean)
         }</View>
         <View

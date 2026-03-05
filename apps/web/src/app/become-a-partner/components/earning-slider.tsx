@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Slider } from "@/components/ui/slider";
 import {
   Dialog,
@@ -14,6 +14,54 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
+
+/** Map placeholder for Faisalabad; uses Mapbox static image when config available. */
+function EarningSliderMapPlaceholder() {
+  const [mapImageUrl, setMapImageUrl] = useState<string | null>(null);
+  const center = { longitude: 73.0602, latitude: 31.4316 }; // Faisalabad
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/public/directions-config");
+        const json = await res.json().catch(() => ({}));
+        const data = json?.data;
+        const token = data?.mapboxPublicToken;
+        const styleUrl = data?.mapboxStyleUrl;
+        if (cancelled || !token) return;
+        const stylePath = styleUrl
+          ? (styleUrl.match(/mapbox:\/\/styles\/(.+)/)?.[1] ?? "mapbox/streets-v12")
+          : "mapbox/streets-v12";
+        const pin = `pin-l+FF0077(${center.longitude},${center.latitude})`;
+        const centerStr = `${center.longitude},${center.latitude},11`;
+        setMapImageUrl(
+          `https://api.mapbox.com/styles/v1/${stylePath}/static/${pin}/${centerStr}/600x384@2x?access_token=${token}`
+        );
+      } catch {
+        if (!cancelled) setMapImageUrl(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (mapImageUrl) {
+    return (
+      <img
+        src={mapImageUrl}
+        alt="Location map"
+        className="w-full h-full min-h-96 object-cover rounded-2xl"
+        width={600}
+        height={384}
+      />
+    );
+  }
+  return (
+    <div className="w-full h-96 rounded-2xl bg-gray-100 flex items-center justify-center text-gray-500">
+      Map
+    </div>
+  );
+}
 
 export default function EarningSlider() {
   const [activeTab, setActiveTab] = useState<"entire-place" | "private-room">(
@@ -162,16 +210,8 @@ export default function EarningSlider() {
             </DialogContent>
           </Dialog>
         </div>
-        <div className=" w-full h-96 lg:h-auto mt-0 lg:ml-8 ">
-          <iframe
-            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d13795.846601011666!2d73.06024654999999!3d31.43094615!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x39190428e9ed19cf%3A0x6c010fbb3d905b6d!2sFaisalabad%2C%20Punjab%2C%20Pakistan!5e0!3m2!1sen!2sus!4v1690208942705!5m2!1sen!2sus"
-            width="100%"
-            height="100%"
-            style={{ border: 0 }}
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            className="rounded-2xl"
-          ></iframe>
+        <div className="w-full h-96 lg:h-auto mt-0 lg:ml-8">
+          <EarningSliderMapPlaceholder />
         </div>
       </div>
     </div>

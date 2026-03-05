@@ -526,7 +526,7 @@ const Navbar: React.FC = () => {
                   >
                     <ul className="text-secondary text-base font-normal Beautonomi-semibold">
                       <li className="pr-20 pl-5 mb-5">
-                        <Link href="/">All help topics</Link>
+                        <Link href="/learn">All help topics</Link>
                       </li>
                       <li className=" mb-5">
                         <Link href="/" className="pr-20 pl-5">

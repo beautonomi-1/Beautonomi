@@ -35,13 +35,14 @@ export async function PUT(
     const body = await request.json();
     const { id } = await params;
 
-    const { title, content, display_order, is_active } = body;
+    const { title, content, display_order, is_active, image_url } = body;
 
     const updateData: any = {};
     if (title !== undefined) updateData.title = title;
     if (content !== undefined) updateData.content = content;
     if (display_order !== undefined) updateData.display_order = display_order;
     if (is_active !== undefined) updateData.is_active = is_active;
+    if (image_url !== undefined) updateData.image_url = image_url || null;
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(

@@ -11,7 +11,6 @@ import NearestProvidersSection from "./home/components/nearest-providers-section
 import HottestPicksSection from "./home/components/hottest-picks-section";
 import SponsoredSection from "./home/components/sponsored-section";
 import UpcomingTalentSection from "./home/components/upcoming-talent-section";
-import BrowseByCitySection from "./home/components/browse-by-city-section";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import HomeLoginHandler from "./home-login-handler";
@@ -48,7 +47,6 @@ const Page = () => {
         <HottestPicksSection />
         <UpcomingTalentSection />
       </div>
-      <BrowseByCitySection />
       <Footer />
       <BottomNav />
       <HomeLoginHandler />

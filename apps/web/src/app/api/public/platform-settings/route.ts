@@ -37,13 +37,35 @@ export async function GET() {
       }
     }
 
+    // Supported languages from iso_languages (single source with Admin ISO Codes)
+    let supportedLanguages: string[] = settings?.localization?.supported_languages ?? [];
+    let languages_meta: Array<{ code: string; name: string; nativeName: string; isDefault: boolean }> = [];
+    const { data: isoLanguages } = await supabase
+      .from("iso_languages")
+      .select("code, name, native_name, is_default")
+      .eq("is_active", true)
+      .order("name", { ascending: true });
+    if (isoLanguages?.length) {
+      supportedLanguages = isoLanguages.map((r) => r.code);
+      languages_meta = isoLanguages.map((r) => ({
+        code: r.code,
+        name: r.name,
+        nativeName: r.native_name ?? r.name,
+        isDefault: Boolean(r.is_default),
+      }));
+    }
+    if (!supportedLanguages.length) {
+      supportedLanguages = ["en", "af", "zu"];
+    }
+
     // Merge settings with currency info
     const response = {
       default_currency: settings?.localization?.default_currency || "ZAR",
       default_language: settings?.localization?.default_language || "en",
       timezone: settings?.localization?.timezone || "Africa/Johannesburg",
       supported_currencies: settings?.localization?.supported_currencies || ["ZAR", "USD", "EUR"],
-      supported_languages: settings?.localization?.supported_languages || ["en", "af", "zu"],
+      supported_languages: supportedLanguages,
+      languages_meta: languages_meta.length ? languages_meta : undefined,
       currency_info: currencyInfo || {
         code: settings?.localization?.default_currency || "ZAR",
         symbol: "R",
@@ -66,6 +88,7 @@ export async function GET() {
           timezone: "Africa/Johannesburg",
           supported_currencies: ["ZAR", "USD", "EUR"],
           supported_languages: ["en", "af", "zu"],
+          languages_meta: undefined,
           currency_info: {
             code: "ZAR",
             symbol: "R",

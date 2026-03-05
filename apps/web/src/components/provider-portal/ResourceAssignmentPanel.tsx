@@ -40,8 +40,8 @@ interface ResourceAssignmentPanelProps {
 
 export default function ResourceAssignmentPanel({
   bookingId,
-  bookingDate,
-  bookingTime,
+  bookingDate: _bookingDate,
+  bookingTime: _bookingTime,
   onUpdate,
 }: ResourceAssignmentPanelProps) {
   const [availableResources, setAvailableResources] = useState<Resource[]>([]);

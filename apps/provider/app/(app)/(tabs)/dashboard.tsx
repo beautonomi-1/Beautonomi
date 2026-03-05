@@ -63,6 +63,11 @@ interface DashboardMetrics {
       progress_percentage: number;
     } | null;
   } | null;
+  provider_profile?: {
+    supports_house_calls: boolean;
+    supports_salon: boolean;
+    max_service_distance_km: number | null;
+  };
 }
 
 interface Booking {
@@ -402,6 +407,84 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         }
       />
+
+      {/* Identity strip: rating, badge, service type, at-home radius */}
+      {m && (
+        <View
+          className="mb-4 flex-row flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5"
+          accessibilityLabel={`Rating ${m.average_rating?.toFixed(1) ?? "0.0"}, ${m.total_reviews ?? 0} reviews. Level: ${gam?.current_badge?.name ?? "Getting started"}. ${m.provider_profile?.supports_house_calls ? "At-home" : ""} ${m.provider_profile?.supports_salon ? "At-salon" : ""}. ${m.provider_profile?.supports_house_calls && m.provider_profile?.max_service_distance_km ? `Within ${m.provider_profile.max_service_distance_km} km` : ""}`}
+        >
+            <TouchableOpacity
+              className="flex-row items-center gap-1 rounded-lg px-2 py-1 active:opacity-80"
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push("/(app)/(tabs)/more/reviews" as any);
+              }}
+              accessibilityLabel={`Rating ${m.average_rating?.toFixed(1) ?? "0.0"} from ${m.total_reviews ?? 0} reviews`}
+            >
+              <Ionicons name="star" size={16} color="#f59e0b" />
+              <Text className="text-base font-bold text-gray-900">
+                {m.average_rating?.toFixed(1) ?? "0.0"}
+              </Text>
+              <Text className="text-xs text-gray-500">
+                ({m.total_reviews ?? 0})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="flex-row items-center gap-1 rounded-lg px-2 py-1 active:opacity-80"
+              onPress={() => router.push("/(app)/(tabs)/more/rewards" as any)}
+              accessibilityLabel={gam?.current_badge?.name ? `Level ${gam.current_badge.name}` : "View rewards"}
+            >
+              <Ionicons name="trophy" size={16} color="#92400e" />
+              <View
+                className="rounded-full px-2 py-0.5"
+                style={{
+                  backgroundColor:
+                    (gam?.current_badge?.color && /^#/.test(gam.current_badge.color))
+                      ? gam.current_badge.color
+                      : "#6366f1",
+                }}
+              >
+                <Text className="text-xs font-semibold text-white">
+                  {gam?.current_badge?.name ?? "Getting started"}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            {(m.provider_profile?.supports_house_calls || m.provider_profile?.supports_salon) && (
+              <View className="flex-row items-center gap-1.5">
+                {m.provider_profile.supports_house_calls && (
+                  <View className="flex-row items-center rounded bg-green-100 px-2 py-0.5">
+                    <Ionicons name="home-outline" size={12} color="#166534" />
+                    <Text className="ml-0.5 text-xs font-medium text-green-800">At-home</Text>
+                  </View>
+                )}
+                {m.provider_profile.supports_salon && (
+                  <View className="flex-row items-center rounded bg-purple-100 px-2 py-0.5">
+                    <Ionicons name="business-outline" size={12} color="#6b21a8" />
+                    <Text className="ml-0.5 text-xs font-medium text-purple-800">At-salon</Text>
+                  </View>
+                )}
+              </View>
+            )}
+            {m.provider_profile?.supports_house_calls &&
+              m.provider_profile?.max_service_distance_km != null &&
+              m.provider_profile.max_service_distance_km > 0 && (
+                <TouchableOpacity
+                  className="flex-row items-center gap-1 rounded bg-indigo-50 px-2 py-0.5 active:opacity-80"
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push("/(app)/(tabs)/more/settings/distance-settings" as any);
+                  }}
+                  accessibilityLabel={`Within ${m.provider_profile.max_service_distance_km} km. Tap to change distance settings.`}
+                >
+                  <Ionicons name="location-outline" size={12} color="#4338ca" />
+                  <Text className="text-xs font-medium text-indigo-800">
+                    Within {m.provider_profile.max_service_distance_km} km
+                  </Text>
+                </TouchableOpacity>
+              )}
+        </View>
+      )}
 
       {/* Quick Actions */}
       <View className="mb-4 flex-row gap-3">

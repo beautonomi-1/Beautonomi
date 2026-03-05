@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
       .limit(1)
       .maybeSingle();
     const minimumPayout = (platformRow?.settings as any)?.payouts?.minimum_payout_amount ?? 100;
+    const holdDays = (platformRow?.settings as any)?.payouts?.payout_hold_days ?? 0;
     if (numAmount < minimumPayout) {
       return errorResponse(
         `Minimum payout amount is ${minimumPayout} ZAR. You requested ${numAmount}.`,
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { availableBalance } = await getAvailablePayoutBalance(supabase, providerId);
+    const { availableBalance } = await getAvailablePayoutBalance(supabase, providerId, { holdDays });
 
     if (amount > availableBalance) {
       return errorResponse(

@@ -42,6 +42,7 @@ interface Receipt {
   fees: number;
   discount: number;
   total: number;
+  currency?: string;
   payment_status: string;
 }
 
@@ -76,16 +77,81 @@ export default function ReceiptPage() {
     window.print();
   };
 
-  const handleDownload = () => {
-    // In a real implementation, generate PDF and download
-    toast.info("PDF download functionality coming soon");
+  const formatCurrency = (amount: number, currency?: string) => {
+    return new Intl.NumberFormat("en-ZA", {
+      style: "currency",
+      currency: currency || receipt?.currency || "ZAR",
+    }).format(amount);
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
+  const handleDownload = () => {
+    if (!receipt) return;
+    const currency = receipt.currency || "ZAR";
+    const fmt = (n: number) =>
+      new Intl.NumberFormat("en-ZA", { style: "currency", currency }).format(n);
+    const fmtDate = (d: string) =>
+      new Date(d).toLocaleDateString("en-ZA", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    const items = [
+      ...receipt.services.map((s) => ({ name: s.name, qty: s.quantity, price: s.price, total: s.total })),
+      ...receipt.products.map((p) => ({ name: p.name, qty: p.quantity, price: p.price, total: p.total })),
+    ];
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Receipt #${receipt.booking_number}</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #333; }
+    .header { border-bottom: 2px solid #FF0077; padding-bottom: 12px; margin-bottom: 20px; }
+    .section { margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px 0; text-align: left; border-bottom: 1px solid #eee; }
+    .text-right { text-align: right; }
+    .total { font-weight: bold; font-size: 1.1em; margin-top: 12px; padding-top: 8px; border-top: 2px solid #333; }
+    .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 style="margin: 0; color: #FF0077;">Receipt</h1>
+    <p style="margin: 4px 0 0;">Booking #${receipt.booking_number}</p>
+  </div>
+  <div class="section">
+    <p><strong>Customer:</strong> ${receipt.customer.full_name || "—"}<br>
+    <strong>Provider:</strong> ${receipt.provider.business_name}</p>
+    <p>Booking date: ${fmtDate(receipt.booking_date)}<br>Service date: ${fmtDate(receipt.service_date)}</p>
+  </div>
+  <table>
+    <thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Price</th><th class="text-right">Total</th></tr></thead>
+    <tbody>
+      ${items.map((i) => `<tr><td>${i.name}</td><td class="text-right">${i.qty}</td><td class="text-right">${fmt(i.price)}</td><td class="text-right">${fmt(i.total)}</td></tr>`).join("")}
+    </tbody>
+  </table>
+  <div class="section">
+    <p>Subtotal: ${fmt(receipt.subtotal)}</p>
+    ${receipt.tax > 0 ? `<p>Tax: ${fmt(receipt.tax)}</p>` : ""}
+    ${receipt.fees > 0 ? `<p>Platform fee: ${fmt(receipt.fees)}</p>` : ""}
+    ${receipt.discount > 0 ? `<p>Discount: -${fmt(receipt.discount)}</p>` : ""}
+    <p class="total">Total: ${fmt(receipt.total)}</p>
+    <p>Payment status: ${receipt.payment_status}</p>
+  </div>
+  <div class="footer">
+    <p>You can print this page or use your browser’s Print → Save as PDF.</p>
+  </div>
+</body>
+</html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `receipt-${receipt.booking_number}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Receipt downloaded. Open the file or use Print → Save as PDF.");
   };
 
   const formatDate = (dateString: string) => {
@@ -132,7 +198,7 @@ export default function ReceiptPage() {
           <div className="flex gap-2">
             <Button variant="outline" onClick={handleDownload}>
               <Download className="w-4 h-4 mr-2" />
-              Download PDF
+              Download receipt
             </Button>
             <Button variant="outline" onClick={handlePrint}>
               <Printer className="w-4 h-4 mr-2" />

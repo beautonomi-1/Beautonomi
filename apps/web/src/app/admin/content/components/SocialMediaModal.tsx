@@ -120,7 +120,7 @@ export function SocialMediaModal({
     setFormData({
       ...formData,
       title: platform,
-      href: formData.href || `https://${platform.toLowerCase()}.com/`,
+      href: formData.href || `https://${(platform ?? "").toLowerCase()}.com/`,
     });
   };
 

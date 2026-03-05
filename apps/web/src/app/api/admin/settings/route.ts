@@ -23,6 +23,8 @@ interface PlatformSettings {
     provider_payout_percentage: number;
     payout_schedule: "daily" | "weekly" | "monthly";
     minimum_payout_amount: number;
+    /** Earnings become available for payout after this many days (0 = immediate). */
+    payout_hold_days?: number;
     platform_service_fee_type: "percentage" | "fixed";
     platform_service_fee_percentage: number;
     platform_service_fee_fixed: number;
@@ -165,6 +167,7 @@ function getDefaultPlatformSettings(): PlatformSettings {
         provider_payout_percentage: 85,
         payout_schedule: "weekly",
         minimum_payout_amount: 100,
+        payout_hold_days: 0,
         platform_service_fee_type: "percentage",
         platform_service_fee_percentage: 5,
         platform_service_fee_fixed: 0,

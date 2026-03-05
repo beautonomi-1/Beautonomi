@@ -53,7 +53,9 @@ export default function GettingStartedGuides() {
             <Image
               src={guide.src}
               alt={guide.alt}
-              className="h-[255px] w-[255px] rounded-lg mb-3"
+              className="h-[255px] w-[255px] rounded-lg mb-3 object-cover"
+              width={255}
+              height={255}
             />
             <p className=" text-lg  font-normal">
               {guide.description}

@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
       await (supabase as any).from("service_addon_associations").insert(associations);
     }
 
-    return successResponse({ ...(addon as Record<string, unknown>), service_ids: service_ids || [] });
+    return successResponse({ ...(addon as Record<string, any>), service_ids: service_ids || [] });
   } catch (error) {
     return handleApiError(error, "Failed to create addon");
   }

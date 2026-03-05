@@ -14,7 +14,7 @@ interface OnDemandRequestRow {
   status: string;
   requested_at: string;
   expires_at: string;
-  request_payload?: Record<string, unknown>;
+  request_payload?: Record<string, any>;
 }
 
 export function OnDemandIncomingOverlay() {
@@ -88,7 +88,7 @@ export function OnDemandIncomingOverlay() {
     return () => clearInterval(interval);
   }, [incomingRequest?.expires_at, incomingRequest?.status]);
 
-  const stopRingtoneAndClose = () => {
+  const _stopRingtoneAndClose = () => {
     ringtoneStopRef.current?.();
     setIncomingRequest(null);
   };
@@ -153,7 +153,7 @@ export function OnDemandIncomingOverlay() {
         </div>
         {incomingRequest.request_payload?.services && (
           <p className="text-gray-500 text-sm mb-4">
-            {(incomingRequest.request_payload.services as unknown[]).length} service(s) selected
+            {(incomingRequest.request_payload.services as any[]).length} service(s) selected
           </p>
         )}
         {secondsLeft !== null && (

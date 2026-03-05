@@ -982,6 +982,13 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                       >
                         Help Centre
                       </Link>
+                      <Link 
+                        href="/learn"
+                        className="flex items-center w-full justify-start text-base font-normal h-14 px-4 hover:bg-gray-50 rounded-xl text-gray-700"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        Learning Center
+                      </Link>
                     </div>
                   </SheetContent>
                 </Sheet>
@@ -1004,6 +1011,14 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                       </p>
                       <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                     </div>
+                    <DropdownMenuItem asChild>
+                      <Link
+                        href="/portal"
+                        className="cursor-pointer"
+                      >
+                        Dashboard
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link
                         href="/profile"

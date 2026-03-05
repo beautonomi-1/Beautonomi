@@ -29,24 +29,24 @@ export interface OnDemandModuleConfig {
   ring_repeat: boolean;
   waiting_screen_timeout_seconds: number;
   provider_accept_window_seconds: number;
-  ui_copy: Record<string, unknown>;
+  ui_copy: Record<string, any>;
 }
 
 export interface PublicConfigBundle {
   meta: ConfigBundleMeta;
-  amplitude: Record<string, unknown>;
-  third_party: Record<string, unknown>;
-  branding: Record<string, unknown>;
+  amplitude: Record<string, any>;
+  third_party: Record<string, any>;
+  branding: Record<string, any>;
   flags: Record<string, ResolvedFlag>;
   modules: {
     on_demand: OnDemandModuleConfig;
-    ai: Record<string, unknown>;
-    ads: Record<string, unknown>;
-    ranking: Record<string, unknown>;
-    distance: Record<string, unknown>;
-    sumsub: Record<string, unknown>;
-    aura: Record<string, unknown>;
-    safety: Record<string, unknown>;
+    ai: Record<string, any>;
+    ads: Record<string, any>;
+    ranking: Record<string, any>;
+    distance: Record<string, any>;
+    sumsub: Record<string, any>;
+    aura: Record<string, any>;
+    safety: Record<string, any>;
   };
 }
 

@@ -79,8 +79,8 @@ export default function WalkInSalePage() {
 
   const filtered = products.filter(
     (p) =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      (p.brand && p.brand.toLowerCase().includes(search.toLowerCase())),
+      (p?.name ?? "").toLowerCase().includes((search ?? "").toLowerCase()) ||
+      (p?.brand ?? "").toLowerCase().includes((search ?? "").toLowerCase()),
   );
 
   const addToCart = (product: Product) => {

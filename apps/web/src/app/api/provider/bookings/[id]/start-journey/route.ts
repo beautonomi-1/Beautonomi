@@ -82,12 +82,17 @@ export async function POST(
     }
 
     // Update booking current_stage (if field exists, otherwise use status)
+    const updatePayload: Record<string, unknown> = {
+      current_stage: "provider_on_way",
+      provider_en_route_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    if (estimated_arrival) {
+      updatePayload.estimated_arrival = estimated_arrival;
+    }
     const { error: updateError } = await supabase
       .from("bookings")
-      .update({
-        current_stage: "provider_on_way",
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", id);
 
     if (updateError) {

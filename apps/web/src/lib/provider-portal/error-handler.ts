@@ -15,7 +15,7 @@ export interface ErrorContext {
 /**
  * Get user-friendly error message from various error types
  */
-export function getErrorMessage(error: unknown, context?: ErrorContext): string {
+export function getErrorMessage(error: any, context?: ErrorContext): string {
   if (error instanceof FetchTimeoutError) {
     return "Request timed out. Please check your connection and try again.";
   }
@@ -68,7 +68,7 @@ export function getErrorMessage(error: unknown, context?: ErrorContext): string 
  * Handle error with user notification and optional retry
  */
 export function handleError(
-  error: unknown,
+  error: any,
   context?: ErrorContext,
   options?: {
     showToast?: boolean;
@@ -118,14 +118,14 @@ export async function withRetry<T>(
     maxRetries?: number;
     retryDelay?: number;
     onRetry?: (attempt: number) => void;
-    shouldRetry?: (error: unknown) => boolean;
+    shouldRetry?: (error: any) => boolean;
   }
 ): Promise<T> {
   const {
     maxRetries = 3,
     retryDelay = 1000,
     onRetry,
-    shouldRetry = (error: unknown) => {
+    shouldRetry = (error: any) => {
       // Retry on network errors and 5xx errors
       if (error instanceof FetchError) {
         return error.status >= 500 || error.status === 429;
@@ -134,7 +134,7 @@ export async function withRetry<T>(
     },
   } = options || {};
 
-  let lastError: unknown;
+  let lastError: any;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();

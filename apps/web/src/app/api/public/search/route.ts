@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { runAdsAuction, recordAdImpressions } from "@/lib/ads/auction";
+import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
 import type { SearchFilters, SearchResult } from "@/types/beautonomi";
 
 export const dynamic = "force-dynamic";
@@ -203,25 +204,42 @@ export async function GET(request: Request) {
     // Get provider IDs to fetch additional data
     const providerIds = providers.map((p: any) => p.id);
 
-    // Fetch locations for all providers
+    // Fetch locations for all providers (city, country; and lat/lng when user coords present for distance_km)
+    const userLat = filters.location?.latitude;
+    const userLng = filters.location?.longitude;
     const { data: locations } = await supabase
       .from("provider_locations")
-      .select("provider_id, city, country, is_primary")
+      .select("provider_id, city, country, is_primary, latitude, longitude")
       .in("provider_id", providerIds)
       .eq("is_active", true)
-      .order("is_primary", { ascending: false }); // Primary location first
+      .order("is_primary", { ascending: false });
 
     // Create a map of provider_id -> location (prefer primary)
     const locationMap = new Map<string, { city: string; country: string }>();
+    const distanceMap = new Map<string, number>();
     if (locations) {
+      const byProvider = new Map<string, any[]>();
       locations.forEach((loc: any) => {
         if (!locationMap.has(loc.provider_id)) {
-          locationMap.set(loc.provider_id, {
-            city: loc.city,
-            country: loc.country,
-          });
+          locationMap.set(loc.provider_id, { city: loc.city || "", country: loc.country || "" });
         }
+        if (!byProvider.has(loc.provider_id)) byProvider.set(loc.provider_id, []);
+        byProvider.get(loc.provider_id)!.push(loc);
       });
+      if (userLat != null && userLng != null && Number.isFinite(userLat) && Number.isFinite(userLng)) {
+        byProvider.forEach((locs, providerId) => {
+          let minKm = Infinity;
+          for (const loc of locs) {
+            const lat = loc.latitude ?? loc.address_lat;
+            const lng = loc.longitude ?? loc.address_lng;
+            if (lat != null && lng != null) {
+              const km = haversineDistanceKmFromCoords(userLat, userLng, Number(lat), Number(lng));
+              if (km < minKm) minKm = km;
+            }
+          }
+          if (Number.isFinite(minKm)) distanceMap.set(providerId, Math.round(minKm * 10) / 10);
+        });
+      }
     }
 
     // Fetch minimum prices from offerings for each provider
@@ -249,6 +267,7 @@ export async function GET(request: Request) {
     const transformedProviders = providers.map((provider: any) => {
       const location = locationMap.get(provider.id);
       const priceInfo = priceMap.get(provider.id);
+      const distance_km = distanceMap.get(provider.id) ?? null;
 
       return {
         id: provider.id,
@@ -265,6 +284,7 @@ export async function GET(request: Request) {
         is_verified: provider.is_verified || false,
         starting_price: priceInfo?.price,
         currency: priceInfo?.currency || provider.currency || "ZAR",
+        ...(distance_km != null ? { distance_km } : {}),
       };
     });
 
@@ -288,7 +308,7 @@ export async function GET(request: Request) {
           .eq("status", "active");
         const { data: sponsoredLocations } = await supabaseAdmin
           .from("provider_locations")
-          .select("provider_id, city, country, is_primary")
+          .select("provider_id, city, country, is_primary, latitude, longitude")
           .in("provider_id", winnerProviderIds)
           .eq("is_active", true)
           .order("is_primary", { ascending: false });
@@ -298,6 +318,27 @@ export async function GET(request: Request) {
           .in("provider_id", winnerProviderIds)
           .eq("is_active", true);
         const locMap = new Map<string, { city: string; country: string }>();
+        const sponsoredDistanceMap = new Map<string, number>();
+        const hasUserCoords = userLat != null && userLng != null && Number.isFinite(userLat) && Number.isFinite(userLng);
+        if (hasUserCoords && (sponsoredLocations ?? []).length > 0) {
+          const byProvider = new Map<string, any[]>();
+          (sponsoredLocations ?? []).forEach((loc: any) => {
+            if (!byProvider.has(loc.provider_id)) byProvider.set(loc.provider_id, []);
+            byProvider.get(loc.provider_id)!.push(loc);
+          });
+          byProvider.forEach((locs, providerId) => {
+            let minKm = Infinity;
+            for (const loc of locs) {
+              const lat = loc.latitude ?? loc.address_lat;
+              const lng = loc.longitude ?? loc.address_lng;
+              if (lat != null && lng != null) {
+                const km = haversineDistanceKmFromCoords(userLat!, userLng!, Number(lat), Number(lng));
+                if (km < minKm) minKm = km;
+              }
+            }
+            if (Number.isFinite(minKm)) sponsoredDistanceMap.set(providerId, Math.round(minKm * 10) / 10);
+          });
+        }
         (sponsoredLocations ?? []).forEach((loc: any) => {
           if (!locMap.has(loc.provider_id)) locMap.set(loc.provider_id, { city: loc.city || "", country: loc.country || "" });
         });
@@ -310,6 +351,7 @@ export async function GET(request: Request) {
           sponsoredProviderIds.add(p.id);
           const loc = locMap.get(p.id);
           const priceInfo = priceMapSponsored.get(p.id);
+          const distance_km = sponsoredDistanceMap.get(p.id) ?? null;
           return {
             id: p.id,
             slug: p.slug,
@@ -327,6 +369,7 @@ export async function GET(request: Request) {
             currency: priceInfo?.currency ?? p.currency ?? "ZAR",
             is_sponsored: true,
             campaign_id: winnerToCampaign.get(p.id) ?? null,
+            ...(distance_km != null ? { distance_km } : {}),
           };
         });
         // Order sponsored by auction order (winners order)
@@ -339,6 +382,35 @@ export async function GET(request: Request) {
       }
     } catch (e) {
       console.warn("Ads auction failed, returning organic only:", e);
+    }
+
+    // When sort is relevance and ranking module is enabled, re-sort organic results by quality score
+    const sortByRelevance = !filters.sort_by || filters.sort_by === "relevance";
+    if (sortByRelevance && finalProviders.length > 0) {
+      try {
+        const supabaseAdmin = getSupabaseAdmin();
+        const { data: rankingRow } = await supabaseAdmin
+          .from("ranking_module_config")
+          .select("enabled")
+          .eq("environment", process.env.NODE_ENV === "production" ? "production" : "development")
+          .maybeSingle();
+        if (rankingRow?.enabled) {
+          const ids = [...new Set(finalProviders.map((p: any) => p.id))];
+          const { data: scores } = await supabaseAdmin
+            .from("provider_quality_score")
+            .select("provider_id, computed_score")
+            .in("provider_id", ids);
+          const scoreMap = new Map<string, number>(
+            (scores ?? []).map((s: { provider_id: string; computed_score: number }) => [s.provider_id, Number(s.computed_score)])
+          );
+          const sponsoredList = finalProviders.filter((p: any) => sponsoredProviderIds.has(p.id));
+          const organicList = finalProviders.filter((p: any) => !sponsoredProviderIds.has(p.id));
+          organicList.sort((a: any, b: any) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0));
+          finalProviders = [...sponsoredList, ...organicList];
+        }
+      } catch (e) {
+        console.warn("Ranking re-sort failed:", e);
+      }
     }
 
     console.log(`Returning ${finalProviders.length} providers (${sponsoredProviderIds.size} sponsored)`);

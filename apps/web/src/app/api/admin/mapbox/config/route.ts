@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     // Response contains only non-secret config; secret token lives in platform_secrets
     if (config) {
       const maskedConfig = {
-        ...(config as Record<string, unknown>),
+        ...(config as Record<string, any>),
         public_access_token: (config as any).public_access_token
           ? `${(config as any).public_access_token.substring(0, 8)}...`
           : null,
@@ -216,8 +216,8 @@ export async function PUT(request: Request) {
     try {
       const { data: psRow } = await (admin.from("platform_settings") as any).select("id, settings").single();
       if (psRow?.settings) {
-        const settings = { ...(psRow.settings as Record<string, unknown>) };
-        const mapbox = (settings.mapbox as Record<string, unknown>) || {};
+        const settings = { ...(psRow.settings as Record<string, any>) };
+        const mapbox = (settings.mapbox as Record<string, any>) || {};
         settings.mapbox = {
           ...mapbox,
           public_token: (publicTokenForClients || (mapbox.public_token as string)) ?? "",

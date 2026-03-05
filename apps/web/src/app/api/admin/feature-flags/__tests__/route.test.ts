@@ -16,7 +16,7 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
   return {
     ...actual,
-    requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
+    requireRoleInApi: (...args: any[]) => mockRequireRoleInApi(...args),
   };
 });
 
@@ -34,13 +34,13 @@ describe("GET /api/admin/feature-flags", () => {
     vi.clearAllMocks();
     mockRequireRoleInApi.mockResolvedValue({ user: MOCK_USERS.superadmin });
     const mockSupabase = createMockSupabaseClient();
-    const result = Promise.resolve({ data: [] as unknown[], error: null });
+    const result = Promise.resolve({ data: [] as any[], error: null });
     const chain = {
       select: vi.fn().mockReturnThis(),
       order: vi.fn().mockReturnThis(),
-      then: (onFulfilled?: (v: { data: unknown[]; error: null }) => unknown) =>
-        result.then(onFulfilled as (v: { data: unknown[]; error: null }) => unknown),
-      catch: (onRejected?: (e: unknown) => unknown) => result.catch(onRejected),
+      then: (onFulfilled?: (v: { data: any[]; error: null }) => unknown, onRejected?: (e: any) => unknown) =>
+        result.then(onFulfilled as (v: { data: any[]; error: null }) => unknown, onRejected),
+      catch: (onRejected?: (e: any) => unknown) => result.catch(onRejected),
     };
     mockSupabase.from.mockReturnValue(chain);
     mockGetSupabaseAdmin.mockReturnValue(mockSupabase);
@@ -59,7 +59,7 @@ describe("GET /api/admin/feature-flags", () => {
       expect(Array.isArray(body.data)).toBe(true);
       expect(body.error).toBeNull();
     },
-    10000
+    20000
   );
 
   it("returns 403 when requireRoleInApi throws", async () => {

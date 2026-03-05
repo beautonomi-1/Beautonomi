@@ -1,7 +1,9 @@
 /**
  * API client for provider app - calls apps/web with Bearer token.
+ * Includes session recovery: on 401, refresh session and retry once; if still 401, sign out.
  */
 import { createApiClient } from "@beautonomi/api";
+import type { ApiResponse } from "@beautonomi/types";
 import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase/client";
 import { APP_URL } from "@/config/public-env";
@@ -50,15 +52,37 @@ function getApi(): ReturnType<typeof createApiClient> {
   return _api;
 }
 
-/** API client – baseUrl is resolved on first use so Expo web always gets localhost:3000 when at :8081/:8082. */
+/** On 401: refresh session, retry request once; if still 401, sign out. */
+async function withSessionRecovery<T>(
+  fn: () => Promise<ApiResponse<T>>
+): Promise<ApiResponse<T>> {
+  const res = await fn();
+  const status = (res.error as { status?: number } | undefined)?.status;
+  if (status !== 401) return res;
+  const { error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError) {
+    await supabase.auth.signOut();
+    return res;
+  }
+  const retry = await fn();
+  if ((retry.error as { status?: number } | undefined)?.status === 401) {
+    await supabase.auth.signOut();
+  }
+  return retry;
+}
+
+/** API client – baseUrl is resolved on first use; session recovery on 401. */
 export const api = {
-  get: <T>(path: string, init?: RequestInit) => getApi().get<T>(path, init),
+  get: <T>(path: string, init?: RequestInit) =>
+    withSessionRecovery<T>(() => getApi().get<T>(path, init)),
   post: <T>(path: string, body?: Record<string, unknown>, init?: RequestInit) =>
-    getApi().post<T>(path, body, init),
+    withSessionRecovery<T>(() => getApi().post<T>(path, body, init)),
   put: <T>(path: string, body?: Record<string, unknown>, init?: RequestInit) =>
-    getApi().put<T>(path, body, init),
+    withSessionRecovery<T>(() => getApi().put<T>(path, body, init)),
   patch: <T>(path: string, body?: Record<string, unknown>, init?: RequestInit) =>
-    getApi().patch<T>(path, body, init),
-  delete: <T>(path: string, init?: RequestInit) => getApi().delete<T>(path, init),
-  fetch: <T>(path: string, options?: Record<string, unknown>) => getApi().fetch<T>(path, options),
+    withSessionRecovery<T>(() => getApi().patch<T>(path, body, init)),
+  delete: <T>(path: string, init?: RequestInit) =>
+    withSessionRecovery<T>(() => getApi().delete<T>(path, init)),
+  fetch: <T>(path: string, options?: Record<string, unknown>) =>
+    withSessionRecovery<T>(() => getApi().fetch<T>(path, options)),
 };

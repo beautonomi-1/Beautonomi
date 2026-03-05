@@ -7,6 +7,8 @@ import { APP_URL } from "@/config/public-env";
 export interface MapboxConfig {
   public_token: string;
   enabled: boolean;
+  /** Optional style URL from superadmin (e.g. mapbox://styles/mapbox/streets-v12). Used for maps and static images. */
+  style_url?: string;
 }
 
 export interface ThirdPartyConfig {
@@ -36,9 +38,19 @@ export async function getThirdPartyConfig(
 }
 
 export async function getMapboxToken(): Promise<string | null> {
+  const cfg = await getMapboxConfig();
+  return cfg?.token ?? null;
+}
+
+/** Mapbox client config (token + optional style). Aligned with web; source: superadmin Mapbox config. */
+export async function getMapboxConfig(): Promise<{ token: string; style_url?: string } | null> {
   const data = await getThirdPartyConfig("mapbox");
   const mapbox = (data as any)?.mapbox ?? data;
-  return mapbox?.enabled && mapbox?.public_token ? mapbox.public_token : null;
+  if (!mapbox?.enabled || !mapbox?.public_token) return null;
+  return {
+    token: mapbox.public_token,
+    style_url: mapbox.style_url,
+  };
 }
 
 /** OneSignal app_id from superadmin – used by customer mobile app for push notifications */

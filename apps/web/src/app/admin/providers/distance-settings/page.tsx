@@ -84,7 +84,7 @@ export default function AdminDistanceSettingsPage() {
   };
 
   const filteredProviders = providers.filter((provider) =>
-    provider.name?.toLowerCase().includes(searchQuery.toLowerCase())
+    (provider.name ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (isLoading) {

@@ -50,7 +50,7 @@ export default function BusinessDescriptionPage() {
         return;
       }
 
-      const response = await fetcher.patch<{ data?: unknown }>("/api/provider/profile", {
+      const response = await fetcher.patch<{ data?: any }>("/api/provider/profile", {
         description: description || null,
       });
 

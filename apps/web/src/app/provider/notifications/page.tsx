@@ -35,7 +35,7 @@ interface Notification {
   link?: string;
   priority: "low" | "medium" | "high";
   read: boolean;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, any>;
 }
 
 const getNotificationIcon = (type: string) => {

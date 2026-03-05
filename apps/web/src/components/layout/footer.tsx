@@ -157,18 +157,19 @@ export default function Footer() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 text-sm">
-              {linksBySection.about && linksBySection.about.length > 0 && (
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-900 mb-3">About Beautonomi</h4>
-                  <ul className="space-y-2 text-sm font-light text-gray-600">
-                    {linksBySection.about.map((link) => (
-                      <li key={link.id} className="hover:underline">
-                        {renderLink(link)}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              <div>
+                <h4 className="font-semibold text-sm text-gray-900 mb-3">About Beautonomi</h4>
+                <ul className="space-y-2 text-sm font-light text-gray-600">
+                  <li className="hover:underline">
+                    <Link href="/learn">Learning Center</Link>
+                  </li>
+                  {(linksBySection.about ?? []).map((link) => (
+                    <li key={link.id} className="hover:underline">
+                      {renderLink(link)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
               {linksBySection.business && linksBySection.business.length > 0 && (
                 <div>
                   <h4 className="font-semibold text-sm text-gray-900 mb-3">For Business</h4>
@@ -279,6 +280,8 @@ export default function Footer() {
               </span>
               <span className="text-gray-400 hidden sm:inline">·</span>
               <Link href="/sitemap.xml" className="hover:underline text-center md:text-right">Sitemap</Link>
+              <span className="text-gray-400 hidden sm:inline">·</span>
+              <Link href="/learn" className="hover:underline text-center md:text-right">Learning Center</Link>
             </div>
           </div>
         </div>

@@ -76,7 +76,7 @@ export default function MyTicketDetailPage() {
       setReply("");
       await loadTicket();
       toast.success("Reply sent");
-    } catch (err: unknown) {
+    } catch (err: any) {
       toast.error(err instanceof Error ? err.message : "Failed to send reply");
     } finally {
       setSending(false);

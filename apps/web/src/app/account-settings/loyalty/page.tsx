@@ -10,7 +10,7 @@ import BottomNav from "@/components/layout/bottom-nav";
 import { toast } from "sonner";
 import { usePlatformCurrency } from "@/hooks/usePlatformCurrency";
 import { motion } from "framer-motion";
-import { Gift, Award, History, Loader2, Sparkles } from "lucide-react";
+import { Gift, Award, History, Loader2, Sparkles, TrendingUp, CreditCard } from "lucide-react";
 import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 
@@ -99,6 +99,40 @@ export default function LoyaltyPage() {
               </div>
             ) : loyaltyData ? (
               <div className="space-y-6">
+                {/* How you earn & How to redeem */}
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.05 }}
+                  className="backdrop-blur-2xl bg-white/80 border border-[#FF0077]/20 shadow-xl rounded-2xl p-5 md:p-6"
+                >
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">How rewards work</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 p-2.5 rounded-lg bg-[#FF0077]/10 h-fit">
+                        <TrendingUp className="w-5 h-5 text-[#FF0077]" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900 mb-1">How you earn</p>
+                        <p className="text-sm text-gray-600">
+                          You earn <strong>{loyaltyData.points_per_currency_unit} point{loyaltyData.points_per_currency_unit !== 1 ? "s" : ""}</strong> for every {loyaltyData.redemption_currency} 1 you spend on <strong>completed bookings</strong>. Points are credited after your appointment is completed.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 p-2.5 rounded-lg bg-[#FF0077]/10 h-fit">
+                        <CreditCard className="w-5 h-5 text-[#FF0077]" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900 mb-1">How you redeem</p>
+                        <p className="text-sm text-gray-600">
+                          <strong>{loyaltyData.redemption_rate} points = 1 {loyaltyData.redemption_currency}</strong>. Redeem on this page or at checkout — points become <strong>wallet credit</strong> for future bookings.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+
                 {/* Points Balance Card */}
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
@@ -137,6 +171,11 @@ export default function LoyaltyPage() {
                       </p>
                     </div>
                   </div>
+                  {loyaltyData.points_balance === 0 && (
+                    <p className="mt-4 text-sm text-gray-600 bg-[#FF0077]/5 border border-[#FF0077]/20 rounded-xl p-4">
+                      Book and complete an appointment to start earning points — they’re added automatically.
+                    </p>
+                  )}
                 </motion.div>
 
                 {/* Next Milestone Card */}

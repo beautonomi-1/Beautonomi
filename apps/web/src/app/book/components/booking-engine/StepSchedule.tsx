@@ -108,7 +108,7 @@ export function StepSchedule({
     new Date(start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const hasSelection = data.selectedDate != null && data.selectedSlot != null;
 
-  const availableSlots = slots.filter((s) => s.is_available !== false);
+  const _availableSlots = slots.filter((s) => s.is_available !== false);
   const morningSlots = slots.filter((s) => getSlotPeriod(s.start) === "morning");
   const afternoonSlots = slots.filter((s) => getSlotPeriod(s.start) === "afternoon");
   const eveningSlots = slots.filter((s) => getSlotPeriod(s.start) === "evening");
@@ -140,7 +140,7 @@ export function StepSchedule({
       const phoneE164 = rawPhone
         ? normalizePhoneToE164(rawPhone, DEFAULT_PHONE_COUNTRY_CODE) || normalizePhoneToE164(rawPhone) || rawPhone
         : undefined;
-      const body: Record<string, unknown> = {
+      const body: Record<string, any> = {
         provider_id: providerId,
         customer_name: waitlistForm.name.trim(),
         customer_email: waitlistForm.email.trim() || undefined,

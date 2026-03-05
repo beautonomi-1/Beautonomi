@@ -101,7 +101,7 @@ export default function RoleGuard({
   const finalRedirectTo = redirectTo ?? defaultRedirect;
   const hasRefreshed = useRef(false);
   const isRedirecting = useRef(false);
-  const [hasTimedOut, setHasTimedOut] = useState(false);
+  const [_hasTimedOut, setHasTimedOut] = useState(false);
   // When user exists but role is null (profile still loading), wait before redirecting so superadmin role can load
   const [roleLoadGraceExpired, setRoleLoadGraceExpired] = useState(false);
 

@@ -411,6 +411,11 @@ export function ProviderTopbar() {
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
+                <Link href="/learn" className="cursor-pointer">
+                  Learning Center
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
                 <Link href="/help/submit-ticket" className="cursor-pointer">
                   Contact support
                 </Link>

@@ -69,10 +69,25 @@ export async function POST(request: Request) {
     }
 
     if (!zones || zones.length === 0) {
+      let platformZones: { zone_id: string; zone_name: string }[] = [];
+      try {
+        const { data } = await supabase.rpc("check_point_in_platform_zones", {
+          p_lng: validationResult.data.point.longitude,
+          p_lat: validationResult.data.point.latitude,
+        });
+        platformZones = (data ?? []).map((r: { zone_id: string; zone_name: string }) => ({
+          zone_id: r.zone_id,
+          zone_name: r.zone_name,
+        }));
+      } catch {
+        // RPC may not exist; ignore
+      }
       return NextResponse.json({
         data: {
           in_zone: false,
           zones: [],
+          platform_in_zone: platformZones.length > 0,
+          platform_zones: platformZones,
         },
         error: null,
       });
@@ -80,24 +95,60 @@ export async function POST(request: Request) {
 
     const mapbox = await getMapboxService();
     const matchingZones = [];
+    const point = validationResult.data.point;
+
+    // Optional: check platform coverage (active platform_zones with PostGIS geometry)
+    let platformZones: { zone_id: string; zone_name: string }[] = [];
+    try {
+      const { data } = await supabase.rpc("check_point_in_platform_zones", {
+        p_lng: point.longitude,
+        p_lat: point.latitude,
+      });
+      platformZones = (data ?? []).map((r: { zone_id: string; zone_name: string }) => ({
+        zone_id: r.zone_id,
+        zone_name: r.zone_name,
+      }));
+    } catch {
+      // RPC may not exist before migration 295; ignore
+    }
 
     for (const zone of zones) {
+      const z = zone as any;
+      let coordinates: { longitude: number; latitude: number }[] | { longitude: number; latitude: number };
+
+      if (z.zone_type === "radius") {
+        if (z.center_latitude == null || z.center_longitude == null) continue;
+        coordinates = { longitude: Number(z.center_longitude), latitude: Number(z.center_latitude) };
+      } else if (z.zone_type === "polygon" && Array.isArray(z.polygon_coordinates)) {
+        coordinates = z.polygon_coordinates.map((c: number[] | { lat?: number; lng?: number; latitude?: number; longitude?: number }) => {
+          if (Array.isArray(c) && c.length >= 2) {
+            return { longitude: Number(c[1]), latitude: Number(c[0]) };
+          }
+          if (typeof c === "object" && c !== null) {
+            const coord = c as { longitude?: number; latitude?: number; lng?: number; lat?: number };
+            return {
+              longitude: Number(coord.longitude ?? coord.lng ?? 0),
+              latitude: Number(coord.latitude ?? coord.lat ?? 0),
+            };
+          }
+          return { longitude: 0, latitude: 0 };
+        });
+      } else {
+        continue;
+      }
+
       const zoneData = {
-        id: (zone as any).id,
-        name: (zone as any).name,
-        type: (zone as any).type,
-        coordinates: JSON.parse((zone as any).coordinates),
-        radius_km: (zone as any).radius_km,
-        is_active: (zone as any).is_active,
+        id: z.id,
+        name: z.name,
+        type: z.zone_type,
+        coordinates,
+        radius_km: z.radius_km != null ? Number(z.radius_km) : undefined,
+        is_active: z.is_active,
       };
 
-      const isInZone = mapbox.isPointInZone(validationResult.data.point, zoneData);
+      const isInZone = mapbox.isPointInZone(point, zoneData);
       if (isInZone) {
-        matchingZones.push({
-          id: zoneData.id,
-          name: zoneData.name,
-          type: zoneData.type,
-        });
+        matchingZones.push({ id: zoneData.id, name: zoneData.name, type: zoneData.type });
       }
     }
 
@@ -105,6 +156,8 @@ export async function POST(request: Request) {
       data: {
         in_zone: matchingZones.length > 0,
         zones: matchingZones,
+        platform_in_zone: platformZones.length > 0,
+        platform_zones: platformZones,
       },
       error: null,
     });

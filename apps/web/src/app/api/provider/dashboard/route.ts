@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     const { data: providerData, error: providerError } = await supabaseAdmin
       .from('providers')
-      .select('id, status, business_name, rating_average, review_count')
+      .select('id, status, business_name, rating_average, review_count, offers_mobile_services, max_service_distance_km')
       .eq('id', providerId)
       .maybeSingle();
     if (providerError || !providerData) {
@@ -39,6 +39,17 @@ export async function GET(request: NextRequest) {
         500
       );
     }
+
+    // Provider visibility: what service types they offer (for identity strip)
+    const supportsHouseCalls = providerData.offers_mobile_services !== false;
+    const { count: salonLocationCount } = await supabaseAdmin
+      .from('provider_locations')
+      .select('id', { count: 'exact', head: true })
+      .eq('provider_id', providerId)
+      .eq('is_active', true)
+      .eq('location_type', 'salon');
+    const supportsSalon = (salonLocationCount ?? 0) > 0;
+    const maxServiceDistanceKm = providerData.max_service_distance_km ?? null;
 
     const now = new Date();
     const startOfToday = new Date(now);
@@ -504,6 +515,13 @@ export async function GET(request: NextRequest) {
       
       // Gamification
       gamification: gamification,
+
+      // Provider profile summary (rating, badge, service types, distance) for identity strip
+      provider_profile: {
+        supports_house_calls: supportsHouseCalls,
+        supports_salon: supportsSalon,
+        max_service_distance_km: maxServiceDistanceKm,
+      },
     });
 
     // Add cache headers for faster subsequent requests (5 seconds)

@@ -191,8 +191,16 @@ export async function GET(request: NextRequest) {
     const growthPercentage =
       lastMonthTotal !== 0 ? ((thisMonthTotal - lastMonthTotal) / Math.abs(lastMonthTotal)) * 100 : (thisMonthTotal > 0 ? 100 : 0);
 
+    const { data: platformRowForBalance } = await (supabase as any)
+      .from("platform_settings")
+      .select("settings")
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+    const holdDays = (platformRowForBalance?.settings as any)?.payouts?.payout_hold_days ?? 0;
+
     // Available balance and pending payouts: use ledger + payouts table (aligned with payouts API validation).
-    const { availableBalance, pendingPayoutsSum } = await getAvailablePayoutBalance(supabase, providerId);
+    const { availableBalance, pendingPayoutsSum } = await getAvailablePayoutBalance(supabase, providerId, { holdDays });
     const pendingPayouts = pendingPayoutsSum;
 
     // Filter out internal transaction types that providers shouldn't see
@@ -232,13 +240,7 @@ export async function GET(request: NextRequest) {
         description: r.description || r.transaction_type,
       }));
 
-    const { data: platformRow } = await (supabase as any)
-      .from("platform_settings")
-      .select("settings")
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-    const minimumPayoutAmount = (platformRow?.settings as any)?.payouts?.minimum_payout_amount ?? 100;
+    const minimumPayoutAmount = (platformRowForBalance?.settings as any)?.payouts?.minimum_payout_amount ?? 100;
 
     return successResponse({
       earnings: {

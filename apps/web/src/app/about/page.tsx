@@ -5,24 +5,24 @@ import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import { fetcher } from "@/lib/http/fetcher";
+import { Mail, Phone, HelpCircle } from "lucide-react";
 
-interface PageContent {
-  [sectionKey: string]: {
-    content: string;
-    content_type: string;
-    metadata: Record<string, any>;
-  };
+export interface AboutSection {
+  section_key: string;
+  title: string;
+  content: string;
+  image_url?: string | null;
 }
 
 export default function AboutPage() {
-  const [content, setContent] = useState<PageContent | null>(null);
+  const [sections, setSections] = useState<AboutSection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadContent = async () => {
       try {
-        const response = await fetcher.get<{ data: PageContent }>("/api/public/page-content?page_slug=about");
-        setContent(response.data);
+        const response = await fetcher.get<{ data: AboutSection[] }>("/api/public/about-us");
+        setSections(response.data ?? []);
       } catch (error) {
         console.error("Failed to load about page content:", error);
       } finally {
@@ -36,11 +36,12 @@ export default function AboutPage() {
     return (
       <div className="min-h-screen bg-white pb-20 md:pb-0">
         <BeautonomiHeader />
-        <div className="container mx-auto px-4 py-16">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
-            <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
-            <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+        <div className="container mx-auto px-4 py-24">
+          <div className="animate-pulse space-y-6 max-w-2xl">
+            <div className="h-12 bg-gray-200 rounded w-3/4" />
+            <div className="h-4 bg-gray-200 rounded w-full" />
+            <div className="h-4 bg-gray-200 rounded w-5/6" />
+            <div className="h-4 bg-gray-200 rounded w-4/6" />
           </div>
         </div>
         <Footer />
@@ -49,50 +50,168 @@ export default function AboutPage() {
     );
   }
 
+  const hero = sections[0];
+  const storySections = sections.filter(
+    (s) => ["what_we_do", "for_professionals"].includes(s.section_key)
+  );
+  const trustSection = sections.find((s) => s.section_key === "safety_trust");
+  const contactIntro = sections.find((s) => s.section_key === "contact_intro");
+  const contactItems = sections.filter((s) =>
+    ["contact_email", "contact_phone", "contact_help_center"].includes(s.section_key)
+  );
+
   return (
     <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
       <BeautonomiHeader />
-      <div className="container mx-auto px-4 py-16">
-        {content?.hero_title && (
-          <h1 className="text-4xl md:text-5xl font-bold mb-8 text-gray-900">
-            {content.hero_title.content}
-          </h1>
-        )}
-        {content?.hero_content && content.hero_content.content_type === "html" ? (
-          <div 
-            className="prose prose-lg max-w-none"
-            dangerouslySetInnerHTML={{ __html: content.hero_content.content }}
-          />
-        ) : content?.hero_content ? (
-          <p className="text-lg text-gray-700 whitespace-pre-line">
-            {content.hero_content.content}
-          </p>
-        ) : (
-          <div className="prose prose-lg max-w-none">
-            <h2>About Beautonomi</h2>
-            <p>Welcome to Beautonomi - your trusted platform for beauty and wellness services.</p>
-          </div>
-        )}
-        {content?.sections && content.sections.content_type === "json" && (
-          <div className="mt-12 space-y-8">
-            {JSON.parse(content.sections.content).map((section: any, index: number) => (
-              <div key={index} className="mb-8">
-                {section.title && (
-                  <h2 className="text-2xl md:text-3xl font-semibold mb-4 text-gray-900">
-                    {section.title}
-                  </h2>
-                )}
-                {section.content && (
-                  <div 
-                    className="prose prose-lg max-w-none"
-                    dangerouslySetInnerHTML={{ __html: section.content }}
-                  />
-                )}
+
+      {/* Hero — first section (e.g. Our Mission) — Revolut-style bold hero */}
+      {hero && (
+        <section className="relative bg-gradient-to-b from-[#FF0077]/5 to-white pt-16 md:pt-24 pb-20 md:pb-28">
+          <div className="container mx-auto px-4 max-w-6xl">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+              <div className="order-2 lg:order-1">
+                <p className="text-sm font-semibold uppercase tracking-wider text-[#FF0077] mb-4">
+                  About us
+                </p>
+                <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 tracking-tight leading-tight mb-6">
+                  {hero.title}
+                </h1>
+                <div
+                  className="prose prose-lg max-w-none text-gray-600 leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: hero.content }}
+                />
               </div>
-            ))}
+              {hero.image_url && (
+                <div className="order-1 lg:order-2 relative aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 shadow-xl">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={hero.image_url}
+                    alt={hero.title}
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
+        </section>
+      )}
+
+      {/* Story blocks — alternating image/text (what_we_do, for_professionals) */}
+      {storySections.map((section, index) => (
+        <section
+          key={section.section_key}
+          className={`py-16 md:py-24 ${index % 2 === 1 ? "bg-gray-50/80" : "bg-white"}`}
+        >
+          <div className="container mx-auto px-4 max-w-6xl">
+            <div
+              className={`grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-16 items-center ${
+                index % 2 === 1 ? "md:flex-row-reverse" : ""
+              }`}
+            >
+              <div className={index % 2 === 1 ? "md:order-2" : ""}>
+                <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6">
+                  {section.title}
+                </h2>
+                <div
+                  className="prose prose-lg max-w-none text-gray-600"
+                  dangerouslySetInnerHTML={{ __html: section.content }}
+                />
+              </div>
+              {section.image_url ? (
+                <div
+                  className={`relative aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100 ${
+                    index % 2 === 1 ? "md:order-1" : ""
+                  }`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={section.image_url}
+                    alt={section.title}
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div
+                  className={`relative aspect-[4/3] rounded-2xl bg-gray-100 flex items-center justify-center ${
+                    index % 2 === 1 ? "md:order-1" : ""
+                  }`}
+                >
+                  <div className="text-gray-300 text-6xl font-bold opacity-50">
+                    {index + 1}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      ))}
+
+      {/* Trust — safety_trust, distinct block */}
+      {trustSection && (
+        <section className="py-20 md:py-28 bg-[#222222] text-white">
+          <div className="container mx-auto px-4 max-w-3xl text-center">
+            <h2 className="text-2xl md:text-3xl font-bold mb-6">
+              {trustSection.title}
+            </h2>
+            <div
+              className="prose prose-lg prose-invert max-w-none mx-auto text-gray-300"
+              dangerouslySetInnerHTML={{ __html: trustSection.content }}
+            />
+          </div>
+        </section>
+      )}
+
+      {/* Contact — intro + grid of contact items */}
+      {(contactIntro || contactItems.length > 0) && (
+        <section className="py-20 md:py-28 bg-white">
+          <div className="container mx-auto px-4 max-w-4xl">
+            {contactIntro && (
+              <div className="text-center mb-12">
+                <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
+                  {contactIntro.title}
+                </h2>
+                <div
+                  className="prose prose-lg max-w-none mx-auto text-gray-600"
+                  dangerouslySetInnerHTML={{ __html: contactIntro.content }}
+                />
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 md:gap-8">
+              {contactItems.map((item) => {
+                const isEmail = item.section_key === "contact_email";
+                const isPhone = item.section_key === "contact_phone";
+                const isHelp = item.section_key === "contact_help_center";
+                const href = isEmail
+                  ? `mailto:${item.content.trim()}`
+                  : isPhone
+                    ? `tel:${item.content.replace(/\s/g, "")}`
+                    : isHelp
+                      ? (item.content.startsWith("http")
+                          ? item.content
+                          : `https://${item.content.replace(/^\/+/, "")}`)
+                      : undefined;
+                const Icon = isEmail ? Mail : isPhone ? Phone : HelpCircle;
+                return (
+                  <a
+                    key={item.section_key}
+                    href={href}
+                    target={isHelp ? "_blank" : undefined}
+                    rel={isHelp ? "noopener noreferrer" : undefined}
+                    className="flex flex-col items-center text-center p-6 rounded-2xl border border-gray-200 hover:border-[#FF0077]/40 hover:bg-[#FF0077]/5 transition-all group"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-[#FF0077]/10 flex items-center justify-center mb-4 group-hover:bg-[#FF0077]/20 transition-colors">
+                      <Icon className="w-6 h-6 text-[#FF0077]" />
+                    </div>
+                    <h3 className="font-semibold text-gray-900 mb-2">{item.title}</h3>
+                    <span className="text-sm text-gray-600 break-all">{item.content}</span>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+
       <Footer />
       <BottomNav />
     </div>

@@ -3,8 +3,7 @@ import { getSupabaseServer } from '@/lib/supabase/server';
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
 import { createClient } from '@supabase/supabase-js';
-import { disableSubscription } from '@/lib/payments/paystack-complete';
-import { getPaystackSecretKey } from '@/lib/payments/paystack-server';
+import { disableSubscriptionByCode } from '@/lib/payments/paystack-complete';
 
 /**
  * POST /api/provider/subscription/cancel
@@ -36,15 +35,14 @@ export async function POST(request: NextRequest) {
       return handleApiError(new Error('No active subscription found'), 'No active subscription found');
     }
 
-    // Cancel Paystack subscription if it exists
+    // Cancel Paystack subscription if it exists (fetch email_token then disable)
     const paystackSubscriptionCode = (subscriptionToCancel as any).paystack_subscription_code;
     if (paystackSubscriptionCode) {
       try {
-        const secretKey = await getPaystackSecretKey();
-        await disableSubscription(paystackSubscriptionCode, secretKey);
+        await disableSubscriptionByCode(paystackSubscriptionCode);
       } catch (paystackError) {
         console.error("Error disabling Paystack subscription:", paystackError);
-        // Continue with cancellation even if Paystack call fails
+        // Continue with local cancellation even if Paystack call fails
       }
     }
 

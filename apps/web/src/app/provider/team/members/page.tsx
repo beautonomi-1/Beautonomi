@@ -98,8 +98,8 @@ export default function ProviderTeamMembers() {
   };
 
   const filteredMembers = members.filter((member) =>
-    member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    member.email.toLowerCase().includes(searchQuery.toLowerCase())
+    (member?.name ?? "").toLowerCase().includes((searchQuery ?? "").toLowerCase()) ||
+    (member?.email ?? "").toLowerCase().includes((searchQuery ?? "").toLowerCase())
   );
 
   const handleCreate = () => {

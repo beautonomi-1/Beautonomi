@@ -46,6 +46,7 @@ interface PartnerHeroProps {
   business_type?: 'freelancer' | 'salon';
   supports_house_calls?: boolean;
   supports_salon?: boolean;
+  current_badge?: { id: string; name: string; color?: string | null; description?: string | null } | null;
 }
 
 const PartnerHero: React.FC<PartnerHeroProps> = ({
@@ -70,6 +71,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
   business_type,
   supports_house_calls,
   supports_salon,
+  current_badge,
 }) => {
   const { user, isLoading: authLoading } = useAuth();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -341,6 +343,15 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
                     Freelancer
                   </div>
                 )}
+                {current_badge && (
+                  <div
+                    className="text-white rounded-full px-3 py-1.5 text-xs font-medium shadow-lg border border-white/30"
+                    style={{ backgroundColor: current_badge.color || "#6366f1" }}
+                    title={current_badge.description || current_badge.name}
+                  >
+                    {current_badge.name}
+                  </div>
+                )}
               </div>
             </Link>
           </div>
@@ -437,9 +448,20 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
           <div className="flex-1">
             {/* Provider Name and Location */}
             <div className="mb-4">
-              <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2 leading-tight">
-                {businessName || "Provider"}
-              </h1>
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <h1 className="text-3xl md:text-4xl font-bold text-gray-900 leading-tight">
+                  {businessName || "Provider"}
+                </h1>
+                {current_badge && (
+                  <span
+                    className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium text-white border border-white/30"
+                    style={{ backgroundColor: current_badge.color || "#6366f1" }}
+                    title={current_badge.description || current_badge.name}
+                  >
+                    {current_badge.name}
+                  </span>
+                )}
+              </div>
               <div className="flex flex-col gap-1 mb-3">
                 {(city || country) && (
                   <div className="flex items-center gap-1 text-gray-600 text-sm md:text-base">

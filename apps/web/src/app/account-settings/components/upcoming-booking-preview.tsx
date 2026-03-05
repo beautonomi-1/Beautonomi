@@ -61,7 +61,7 @@ export function UpcomingBookingPreview() {
             Next appointment
           </p>
           <p className="font-semibold text-gray-900 truncate">
-            {(booking as any).provider_name || "Beauty Service"}
+            {booking.provider_name || "Beauty Service"}
           </p>
           <div className="flex items-center gap-2 mt-1 text-sm text-gray-600">
             <Calendar className="h-4 w-4 text-pink-500 shrink-0" />

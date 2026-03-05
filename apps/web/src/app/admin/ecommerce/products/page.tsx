@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { fetcher } from "@/lib/http/fetcher";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Package, ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
@@ -166,13 +167,23 @@ export default function AdminProductCatalogPage() {
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">
-          <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page <= 1}
+          >
             <ChevronLeft className="w-4 h-4" />
-          </button>
+          </Button>
           <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
-          <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages}
+          >
             <ChevronRight className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
       )}
     </div>

@@ -142,11 +142,6 @@ export function InlineSearch({ onSearch }: InlineSearchProps) {
     );
   }
 
-  const dropdownHeight = animHeight.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, suggestions.length > 0 ? Math.min(suggestions.length * 52 + 56, 320) : 56],
-  });
-
   return (
     <View style={{ position: "relative", zIndex: 100 }}>
       <View

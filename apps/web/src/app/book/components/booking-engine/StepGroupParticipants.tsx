@@ -7,7 +7,6 @@ import type {
   BookingData,
   GroupParticipant,
   ServiceOption,
-  BookingServiceEntry,
 } from "../../types/booking-engine";
 import {
   BOOKING_ACCENT,

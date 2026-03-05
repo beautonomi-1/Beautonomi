@@ -1,6 +1,6 @@
 /**
  * API client for customer app - calls apps/web with Bearer token.
- * Includes centralized error handling for auth failures.
+ * Includes session recovery: on 401, refresh session and retry once; if still 401, sign out.
  */
 import { createApiClient } from "@beautonomi/api";
 import type { ApiResponse } from "@beautonomi/types";
@@ -12,10 +12,44 @@ async function getAccessToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
-export const api = createApiClient({
+const baseApi = createApiClient({
   baseUrl: APP_URL,
   getAccessToken,
 });
+
+/** On 401: refresh session, retry request once; if still 401, sign out. */
+async function withSessionRecovery<T>(
+  fn: () => Promise<ApiResponse<T>>
+): Promise<ApiResponse<T>> {
+  const res = await fn();
+  const status = (res.error as { status?: number } | undefined)?.status;
+  if (status !== 401) return res;
+  const { error: refreshError } = await supabase.auth.refreshSession();
+  if (refreshError) {
+    await supabase.auth.signOut();
+    return res;
+  }
+  const retry = await fn();
+  if ((retry.error as { status?: number } | undefined)?.status === 401) {
+    await supabase.auth.signOut();
+  }
+  return retry;
+}
+
+export const api = {
+  get: <T>(path: string, init?: RequestInit) =>
+    withSessionRecovery<T>(() => baseApi.get<T>(path, init)),
+  post: <T>(path: string, body?: Record<string, unknown>, init?: RequestInit) =>
+    withSessionRecovery<T>(() => baseApi.post<T>(path, body, init)),
+  put: <T>(path: string, body?: Record<string, unknown>, init?: RequestInit) =>
+    withSessionRecovery<T>(() => baseApi.put<T>(path, body, init)),
+  patch: <T>(path: string, body?: Record<string, unknown>, init?: RequestInit) =>
+    withSessionRecovery<T>(() => baseApi.patch<T>(path, body, init)),
+  delete: <T>(path: string, init?: RequestInit) =>
+    withSessionRecovery<T>(() => baseApi.delete<T>(path, init)),
+  fetch: <T>(path: string, options?: Record<string, unknown>) =>
+    withSessionRecovery<T>(() => baseApi.fetch<T>(path, options)),
+};
 
 /**
  * Check if an API error indicates the session has expired.

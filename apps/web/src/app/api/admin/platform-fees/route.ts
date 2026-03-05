@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       return successResponse(DEFAULT_PLATFORM_FEES);
     }
 
-    const payouts = (row?.settings as Record<string, unknown>)?.payouts as Record<string, unknown> | undefined;
+    const payouts = (row?.settings as Record<string, any>)?.payouts as Record<string, any> | undefined;
     return successResponse({
       platform_service_fee_type: (payouts?.platform_service_fee_type as string) || 'percentage',
       platform_service_fee_percentage: (payouts?.platform_service_fee_percentage as number) ?? 5,
@@ -75,8 +75,8 @@ export async function PATCH(request: NextRequest) {
       throw fetchError;
     }
 
-    const currentSettings = (existingRow?.settings as Record<string, unknown>) || {};
-    const payouts = { ...(currentSettings.payouts as Record<string, unknown> || {}) };
+    const currentSettings = (existingRow?.settings as Record<string, any>) || {};
+    const payouts = { ...(currentSettings.payouts as Record<string, any> || {}) };
     payouts.platform_service_fee_type = validatedData.platform_service_fee_type ?? payouts.platform_service_fee_type ?? 'percentage';
     payouts.platform_service_fee_percentage = validatedData.platform_service_fee_percentage ?? (payouts.platform_service_fee_percentage as number) ?? 0;
     payouts.platform_service_fee_fixed = validatedData.platform_service_fee_fixed ?? (payouts.platform_service_fee_fixed as number) ?? 0;
@@ -100,7 +100,7 @@ export async function PATCH(request: NextRequest) {
         throw updateError || new Error('Failed to update platform fee settings');
       }
 
-      const outPayouts = (updated?.settings as Record<string, unknown>)?.payouts as Record<string, unknown> | undefined;
+      const outPayouts = (updated?.settings as Record<string, any>)?.payouts as Record<string, any> | undefined;
       return successResponse({
         platform_service_fee_type: (outPayouts?.platform_service_fee_type as string) || 'percentage',
         platform_service_fee_percentage: (outPayouts?.platform_service_fee_percentage as number) ?? 5,
@@ -123,7 +123,7 @@ export async function PATCH(request: NextRequest) {
       throw insertError || new Error('Failed to create platform fee settings');
     }
 
-    const outPayouts = (inserted?.settings as Record<string, unknown>)?.payouts as Record<string, unknown> | undefined;
+    const outPayouts = (inserted?.settings as Record<string, any>)?.payouts as Record<string, any> | undefined;
     return successResponse({
       platform_service_fee_type: (outPayouts?.platform_service_fee_type as string) || 'percentage',
       platform_service_fee_percentage: (outPayouts?.platform_service_fee_percentage as number) ?? 5,

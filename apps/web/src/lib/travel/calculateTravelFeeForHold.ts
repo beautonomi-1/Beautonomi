@@ -89,7 +89,20 @@ export async function calculateTravelFeeForHold(
 
   baseLocation = { latitude: nlat, longitude: nlng };
 
-  const distanceKm = mapbox.calculateDistance(baseLocation, clientCoordinates);
+  // Prefer Mapbox driving distance when available; fallback to haversine
+  let distanceKm: number;
+  try {
+    const route = await mapbox.calculateRoute(
+      [
+        { latitude: baseLocation.latitude, longitude: baseLocation.longitude },
+        { latitude: clientCoordinates.latitude, longitude: clientCoordinates.longitude },
+      ],
+      { profile: "driving", steps: false }
+    );
+    distanceKm = route.distance / 1000;
+  } catch {
+    distanceKm = mapbox.calculateDistance(baseLocation, clientCoordinates);
+  }
   const maxDistance = provider.max_service_distance_km || HOUSE_CALL_CONFIG.DEFAULT_MAX_SERVICE_DISTANCE_KM;
   const isDistanceFilterEnabled = provider.is_distance_filter_enabled || false;
 
@@ -210,7 +223,9 @@ export async function calculateTravelFeeForHold(
     defaultMinutesPerKm: HOUSE_CALL_CONFIG.DEFAULT_MINUTES_PER_KM,
   };
 
-  const travelFeeResult = computeTravelFee(baseLocation, serviceAddress, travelFeeRules);
+  const travelFeeResult = computeTravelFee(baseLocation, serviceAddress, travelFeeRules, {
+    overrideDistanceKm: distanceKm,
+  });
   if (!travelFeeResult.withinServiceArea) {
     return {
       travelFee: 0,

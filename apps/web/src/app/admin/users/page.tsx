@@ -309,9 +309,9 @@ export default function AdminUsers() {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
-      user.full_name?.toLowerCase().includes(query) ||
-      user.email.toLowerCase().includes(query) ||
-      user.phone?.toLowerCase().includes(query)
+      (user.full_name ?? "").toLowerCase().includes(query) ||
+      (user.email ?? "").toLowerCase().includes(query) ||
+      (user.phone ?? "").toLowerCase().includes(query)
     );
   });
 
@@ -326,7 +326,7 @@ export default function AdminUsers() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="min-h-screen bg-zinc-50/50">
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
           <motion.div

@@ -8,7 +8,7 @@ export async function GET(_request: NextRequest) {
 
     const { data, error } = await supabase
       .from('about_us_content')
-      .select('section_key, title, content')
+      .select('section_key, title, content, image_url')
       .eq('is_active', true)
       .order('display_order', { ascending: true });
 

@@ -3,9 +3,11 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { checkYocoFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { z } from "zod";
+import { YOCO_ENDPOINTS } from "@/lib/payments/yoco";
+
+/** Create Web POS device: only name required (Yoco API). Optional fields for our DB. */
 const createDeviceSchema = z.object({
   name: z.string().min(1, "Device name is required"),
-  device_id: z.string().min(1, "Yoco device ID is required"),
   location_id: z.string().uuid().optional().nullable(),
   is_active: z.boolean().optional().default(true),
 });
@@ -68,11 +70,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Map database fields to API response format
+    // Map database fields to API response format (provider app expects serial_number)
     const mappedDevices = (devices || []).map((device: any) => ({
       id: device.id,
       name: device.name,
-      device_id: device.yoco_device_id, // Map yoco_device_id to device_id for API
+      device_id: device.yoco_device_id,
+      serial_number: device.yoco_device_id, // App display; same as device_id
       location_id: device.location_id,
       location_name: device.location_name,
       is_active: device.is_active,
@@ -211,19 +214,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const _secretKey = (integration as any).secret_key;
+    const secretKey = (integration as any).secret_key as string;
 
-    // Verify device exists in Yoco (optional - can skip if device_id is trusted)
-    // For now, we'll just store the device_id as provided
-    // In production, you might want to verify it exists via Yoco API
+    // Create Web POS device on Yoco (https://developer.yoco.com/api-reference/yoco-api/web-pos/create-web-pos-device-v-1-webpos-post)
+    const yocoCreateRes = await fetch(YOCO_ENDPOINTS.createWebPosDevice, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name: validationResult.data.name }),
+    });
 
-    // Store device in database
+    if (!yocoCreateRes.ok) {
+      const errBody = await yocoCreateRes.json().catch(() => ({}));
+      const message =
+        (errBody as any)?.detail ?? (errBody as any)?.message ?? "Yoco API error";
+      console.error("Yoco create device error:", yocoCreateRes.status, errBody);
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: String(message),
+            code: "YOCO_API_ERROR",
+            details: errBody,
+          },
+        },
+        { status: yocoCreateRes.status >= 500 ? 502 : 400 }
+      );
+    }
+
+    const yocoDevice = (await yocoCreateRes.json()) as { id?: string; name?: string };
+    const yocoDeviceId = yocoDevice?.id ?? "";
+    if (!yocoDeviceId) {
+      console.error("Yoco create device response missing id:", yocoDevice);
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "Invalid response from Yoco",
+            code: "YOCO_API_ERROR",
+          },
+        },
+        { status: 502 }
+      );
+    }
+
+    // Store device in database (yoco_device_id = Yoco's returned id)
     const { data: device, error: insertError } = await (supabase
       .from("provider_yoco_devices") as any)
       .insert({
         provider_id: providerId,
-        name: validationResult.data.name,
-        yoco_device_id: validationResult.data.device_id,
+        name: yocoDevice?.name ?? validationResult.data.name,
+        yoco_device_id: yocoDeviceId,
         location_id: validationResult.data.location_id,
         is_active: validationResult.data.is_active,
         created_at: new Date().toISOString(),
@@ -232,12 +275,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError || !device) {
-      console.error("Error creating Yoco device:", insertError);
+      console.error("Error storing Yoco device:", insertError);
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: "Failed to create device",
+            message: "Failed to save device",
             code: "CREATE_ERROR",
           },
         },
@@ -250,6 +293,7 @@ export async function POST(request: NextRequest) {
         id: device.id,
         name: device.name,
         device_id: device.yoco_device_id,
+        serial_number: device.yoco_device_id,
         location_id: device.location_id,
         is_active: device.is_active,
         created_date: device.created_at,

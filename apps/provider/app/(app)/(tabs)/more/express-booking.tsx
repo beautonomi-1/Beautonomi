@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,12 +6,15 @@ import {
   TextInput,
   Share,
   Alert,
+  Linking,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import QRCode from "react-native-qrcode-svg";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { api } from "@/lib/api-client";
+import { APP_URL } from "@/config/public-env";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -27,21 +30,52 @@ interface BookingLink {
   business_name?: string;
 }
 
+interface ExpressLinkRow {
+  id: string;
+  name: string;
+  slug: string;
+  is_active?: boolean;
+  use_count?: number;
+}
+
 export default function ExpressBookingScreen() {
   const { data: link, loading, refresh } = useApi<BookingLink>(
     "/api/provider/booking-link"
   );
   const { execute: updateLink, loading: saving } = useApiMutation("patch");
   const [copied, setCopied] = useState(false);
+  const [copiedShortId, setCopiedShortId] = useState<string | null>(null);
   const [customSlug, setCustomSlug] = useState("");
   const [editingSlug, setEditingSlug] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [expressLinks, setExpressLinks] = useState<ExpressLinkRow[]>([]);
+  const [expressLinksError, setExpressLinksError] = useState<string | null>(null);
+
+  const loadExpressLinks = useCallback(async () => {
+    setExpressLinksError(null);
+    try {
+      const res = await api.get<ExpressLinkRow[] | { data?: ExpressLinkRow[] }>(
+        "/api/provider/express-booking"
+      );
+      const raw = res.data;
+      const list = Array.isArray(raw) ? raw : (raw as { data?: ExpressLinkRow[] })?.data ?? [];
+      setExpressLinks(Array.isArray(list) ? list : []);
+    } catch (e) {
+      setExpressLinks([]);
+      setExpressLinksError(e instanceof Error ? e.message : "Failed to load short links");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!loading && link) loadExpressLinks();
+  }, [loading, link, loadExpressLinks]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await refresh();
+    await loadExpressLinks();
     setRefreshing(false);
-  }, [refresh]);
+  }, [refresh, loadExpressLinks]);
 
   async function handleCopyLink() {
     if (!link?.url) return;
@@ -275,6 +309,106 @@ export default function ExpressBookingScreen() {
                     : "Link is disabled"}
                 </Text>
               </View>
+            </>
+          )}
+
+          {/* Short links (express booking links) */}
+          {(expressLinks.length > 0 || expressLinksError) && (
+            <>
+              <SectionHeader title="Short links" />
+              {expressLinksError ? (
+                <View className="rounded-xl border border-red-100 bg-red-50 p-4">
+                  <Text className="text-sm text-red-800">{expressLinksError}</Text>
+                  <TouchableOpacity
+                    className="mt-3 self-start rounded-xl bg-red-600 px-4 py-2"
+                    onPress={loadExpressLinks}
+                    accessibilityLabel="Retry loading short links"
+                    accessibilityRole="button"
+                  >
+                    <Text className="font-medium text-white">Try again</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <Text className="mb-2 text-xs text-gray-500">
+                    Pre-filled booking links. Create or edit on the web portal.
+                  </Text>
+                  <View className="gap-3">
+                    {expressLinks.map((el) => {
+                  const fullUrl = `${(APP_URL || "").replace(/\/$/, "")}/book/l/${encodeURIComponent(el.slug)}`;
+                  const isCopied = copiedShortId === el.id;
+                  return (
+                    <View
+                      key={el.id}
+                      className="rounded-xl border border-gray-100 bg-white p-4"
+                    >
+                      <View className="flex-row items-center justify-between">
+                        <View className="flex-1">
+                          <Text className="font-medium text-gray-900">
+                            {el.name}
+                          </Text>
+                          <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={1}>
+                            {fullUrl}
+                          </Text>
+                          {el.use_count != null && (
+                            <Text className="mt-1 text-xs text-gray-400">
+                              {el.use_count} click{el.use_count !== 1 ? "s" : ""}
+                            </Text>
+                          )}
+                        </View>
+                        <View className="flex-row gap-2">
+                          <TouchableOpacity
+                            className="rounded-lg bg-gray-100 px-3 py-2"
+                            onPress={async () => {
+                              try {
+                                await Clipboard.setStringAsync(fullUrl);
+                                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                setCopiedShortId(el.id);
+                                setTimeout(() => setCopiedShortId(null), 2000);
+                              } catch {
+                                Alert.alert("Error", "Failed to copy");
+                              }
+                            }}
+                            accessibilityLabel="Copy short link"
+                            accessibilityRole="button"
+                          >
+                            <Ionicons
+                              name={isCopied ? "checkmark-circle" : "copy-outline"}
+                              size={18}
+                              color={isCopied ? "#059669" : "#6b7280"}
+                            />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            className="rounded-lg bg-gray-100 px-3 py-2"
+                            onPress={() =>
+                              Share.share({
+                                message: `Book with me: ${fullUrl}`,
+                                url: fullUrl,
+                              })
+                            }
+                            accessibilityLabel="Share short link"
+                            accessibilityRole="button"
+                          >
+                            <Ionicons name="share-outline" size={18} color="#6b7280" />
+                          </TouchableOpacity>
+                          {APP_URL && (
+                            <TouchableOpacity
+                              className="rounded-lg bg-indigo-100 px-3 py-2"
+                              onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/provider/express-booking`)}
+                              accessibilityLabel="Manage links on web"
+                              accessibilityRole="button"
+                            >
+                              <Ionicons name="open-outline" size={18} color="#6366f1" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                  );
+                    })}
+                  </View>
+                </>
+              )}
             </>
           )}
 

@@ -24,8 +24,10 @@ type SettingsItem = {
   isUpgrade?: boolean;
   /** Special action instead of navigation (e.g. signOut) */
   action?: "signOut";
-  /** Style as destructive (e.g. deactivate, delete) */
+  /** Style as destructive (e.g. deactivate) */
   isDestructive?: boolean;
+  /** Style as subtle/muted (e.g. delete account – less prominent) */
+  isSubtle?: boolean;
 };
 
 type SettingsCategory = {
@@ -144,8 +146,8 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
       { title: "Privacy Policy", description: "How we use your data", href: "/privacy-policy", mobileRoute: "/(auth)/privacy" },
       { title: "Terms of Service", description: "Terms and conditions", href: "/terms-and-condition", mobileRoute: "/(auth)/terms" },
       { title: "Deactivate account", description: "Temporarily disable your account", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-deactivate-account", isDestructive: true },
-      { title: "Delete account", description: "Permanently delete account and data", href: "/account-settings/privacy-and-sharing", mobileRoute: "/(app)/(tabs)/more/delete-account-info", isDestructive: true },
       { title: "Sign out", description: "Sign out of your account", href: "#", action: "signOut" as const },
+      { title: "Delete account", description: "Permanently delete account and data", href: "/account-settings/privacy-and-sharing", mobileRoute: "/(app)/(tabs)/more/delete-account-info", isSubtle: true },
     ],
   },
 ];
@@ -272,11 +274,12 @@ export default function SettingsAccountHubScreen() {
                   {items.map((item, idx) => {
                     const isSignOut = item.action === "signOut";
                     const isDestructive = item.isDestructive ?? isSignOut;
+                    const isSubtle = item.isSubtle ?? false;
                     return (
                       <TouchableOpacity
                         key={idx}
                         onPress={() => handleItemPress(item)}
-                        className={`flex-row items-center justify-between px-4 py-3.5 ${idx < items.length - 1 ? "border-b border-gray-100" : ""} ${item.isUpgrade ? "bg-pink-50/50" : ""} ${isDestructive ? "bg-red-50/50" : ""}`}
+                        className={`flex-row items-center justify-between px-4 py-3.5 ${idx < items.length - 1 ? "border-b border-gray-100" : ""} ${item.isUpgrade ? "bg-pink-50/50" : ""} ${isDestructive ? "bg-red-50/50" : ""} ${isSubtle ? "bg-gray-50/50" : ""}`}
                         activeOpacity={0.6}
                         accessibilityLabel={item.description ? `${item.title}, ${item.description}` : item.title}
                         accessibilityRole="button"
@@ -285,10 +288,10 @@ export default function SettingsAccountHubScreen() {
                           {item.isUpgrade && (
                             <Ionicons name="sparkles" size={16} color="#ec4899" style={{ position: "absolute", left: 0, top: 2 }} />
                           )}
-                          <Text className={`text-[15px] font-medium ${item.isUpgrade ? "text-pink-800" : isDestructive ? "text-red-700" : "text-gray-900"}`}>
+                          <Text className={`text-[15px] font-medium ${item.isUpgrade ? "text-pink-800" : isDestructive ? "text-red-700" : isSubtle ? "text-gray-500" : "text-gray-900"}`}>
                             {item.title}
                           </Text>
-                          <Text className={`mt-0.5 text-xs ${isDestructive ? "text-red-600/90" : "text-gray-500"}`} numberOfLines={1}>
+                          <Text className={`mt-0.5 text-xs ${isDestructive ? "text-red-600/90" : isSubtle ? "text-gray-400" : "text-gray-500"}`} numberOfLines={1}>
                             {item.description}
                           </Text>
                         </View>

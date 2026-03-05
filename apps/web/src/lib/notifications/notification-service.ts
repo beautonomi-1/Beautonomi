@@ -485,6 +485,11 @@ export async function notifySalonDirections(bookingId: string, channels?: Notifi
     .eq("id", booking.location_id)
     .single();
 
+  const hasCoords = location?.latitude != null && location?.longitude != null;
+  const directionsUrl = hasCoords
+    ? `https://www.mapbox.com/directions/?destination=${Number(location!.longitude)},${Number(location!.latitude)}`
+    : `https://www.mapbox.com/directions/?query=${encodeURIComponent(location?.address || "")}`;
+
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
     salon_name: location?.name || booking.provider?.business_name || "Salon",
@@ -492,7 +497,7 @@ export async function notifySalonDirections(bookingId: string, channels?: Notifi
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
     parking_info: location?.parking_info || "Available",
-    directions_url: `https://maps.google.com/?q=${encodeURIComponent(location?.address || "")}`,
+    directions_url: directionsUrl,
     booking_id: bookingId,
   };
 

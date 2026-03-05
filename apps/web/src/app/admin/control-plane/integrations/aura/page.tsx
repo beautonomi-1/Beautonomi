@@ -28,7 +28,7 @@ export default function AuraIntegrationPage() {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetcher.get<{ data: Record<string, unknown> | null }>(`/api/admin/control-plane/integrations/aura?environment=${env}`);
+        const res = await fetcher.get<{ data: Record<string, any> | null }>(`/api/admin/control-plane/integrations/aura?environment=${env}`);
         const d = res.data;
         if (d) {
           setForm((p) => ({

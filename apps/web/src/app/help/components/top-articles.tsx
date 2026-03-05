@@ -37,7 +37,10 @@ const articles = [
 export default function TopArticles() {
   return (
     <section className="max-w-6xl mx-auto px-4">
-      <h2 className="text-[26px] font-normal  mb-6 text-secondary">Top articles</h2>
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <h2 className="text-[26px] font-normal text-secondary">Top articles</h2>
+        <Link href="/learn" className="text-sm font-medium text-[#FF0077] hover:underline">More in Learning Center</Link>
+      </div>
       <div className="grid gap-8 gap-y-0 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 mb-8">
         {articles.map((article, index) => (
           <div key={index} className='border-b pb-8 mb-8'>

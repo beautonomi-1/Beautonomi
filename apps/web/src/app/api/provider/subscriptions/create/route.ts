@@ -1,18 +1,22 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { getPaystackSecretKey } from "@/lib/payments/paystack-server";
+import { initializePaystackTransactionWithPlan } from "@/lib/payments/paystack-server";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 
 const createSubscriptionSchema = z.object({
   plan_id: z.string().uuid("Invalid plan ID"),
   billing_period: z.enum(["monthly", "yearly"]),
-});/**
+});
+
+/**
  * POST /api/provider/subscriptions/create
- * 
- * Create a Paystack subscription for a provider
- * Following Paystack subscription API: https://paystack.com/docs/payments/subscriptions/
+ *
+ * Start a provider subscription by initializing a Paystack transaction with the plan code.
+ * Customer is sent to Paystack to pay; on success Paystack creates the subscription and
+ * sends subscription.create webhook, which creates/updates provider_subscriptions.
+ * Returns authorization_url for the frontend to redirect the user.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -90,7 +94,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user email for Paystack customer
+    const subscriptionPlanId = (pricingPlan as any).subscription_plan_id;
+    if (!subscriptionPlanId) {
+      return errorResponse(
+        "This pricing plan is not linked to a subscription plan. Link it in Admin → Pricing Plans.",
+        "CONFIGURATION_ERROR",
+        400
+      );
+    }
+
     const { data: userData } = await supabaseAdmin
       .from("users")
       .select("email, full_name")
@@ -102,12 +114,11 @@ export async function POST(request: NextRequest) {
       return errorResponse("User email is required for subscription", "VALIDATION_ERROR", 400);
     }
 
-    // Check if provider already has an active subscription
     const { data: existingSubscription } = await supabaseAdmin
       .from("provider_subscriptions")
       .select("id, status")
       .eq("provider_id", providerId)
-      .in("status", ["active", "trialing"])
+      .in("status", ["active", "past_due"])
       .maybeSingle();
 
     if (existingSubscription) {
@@ -118,146 +129,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get Paystack secret key
-    const secretKey = await getPaystackSecretKey();
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    const callbackUrl = `${baseUrl}/provider/subscription?payment_success=true&billing_period=${billing_period}`;
 
-    // Create Paystack customer if doesn't exist
-    let paystackCustomerCode: string;
-    try {
-      // Check if customer exists
-      const customerResponse = await fetch(
-        `https://api.paystack.co/customer?email=${encodeURIComponent(customerEmail)}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${secretKey}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+    const init = await initializePaystackTransactionWithPlan({
+      email: customerEmail,
+      plan: paystackPlanCode,
+      callback_url: callbackUrl,
+      metadata: {
+        provider_id: providerId,
+        pricing_plan_id: plan_id,
+        subscription_plan_id: subscriptionPlanId,
+        billing_period,
+      },
+      currency: "ZAR",
+    });
 
-      const customerData = await customerResponse.json();
-      
-      if (customerData.status && customerData.data && customerData.data.length > 0) {
-        // Customer exists
-        paystackCustomerCode = customerData.data[0].customer_code;
-      } else {
-        // Create new customer
-        const createCustomerResponse = await fetch("https://api.paystack.co/customer", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${secretKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: customerEmail,
-            first_name: userData?.full_name?.split(" ")[0] || "",
-            last_name: userData?.full_name?.split(" ").slice(1).join(" ") || "",
-            phone: (provider as any).phone || "",
-          }),
-        });
-
-        const createCustomerData = await createCustomerResponse.json();
-        if (!createCustomerResponse.ok || !createCustomerData.status) {
-          throw new Error(createCustomerData.message || "Failed to create Paystack customer");
-        }
-
-        paystackCustomerCode = createCustomerData.data.customer_code;
-      }
-    } catch (error: any) {
-      console.error("Error creating/fetching Paystack customer:", error);
+    const authorizationUrl = init?.data?.authorization_url || null;
+    if (!authorizationUrl) {
       return errorResponse(
-        `Failed to create Paystack customer: ${error.message}`,
+        "Paystack did not return a payment URL",
         "PAYSTACK_ERROR",
         500
       );
     }
 
-    // Create Paystack subscription
-    // Note: For subscriptions, we need to initialize a transaction first to get authorization
-    // Then create the subscription with that authorization
-    // This is a simplified version - in production, you'd handle the payment authorization flow first
-    try {
-      const subscriptionResponse = await fetch("https://api.paystack.co/subscription", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${secretKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          customer: paystackCustomerCode,
-          plan: paystackPlanCode,
-        }),
-      });
-
-      const subscriptionData = await subscriptionResponse.json();
-      
-      if (!subscriptionResponse.ok || !subscriptionData.status) {
-        throw new Error(subscriptionData.message || "Failed to create Paystack subscription");
-      }
-
-      const paystackSubscription = subscriptionData.data;
-
-      // provider_subscriptions.plan_id must reference subscription_plans(id), not pricing_plans
-      const subscriptionPlanId = (pricingPlan as any).subscription_plan_id;
-      if (!subscriptionPlanId) {
-        return errorResponse(
-          "This pricing plan is not linked to a subscription plan. Link it in Admin → Pricing Plans.",
-          "CONFIGURATION_ERROR",
-          400
-        );
-      }
-
-      // Create provider_subscription record
-      const { data: providerSubscription, error: subError } = await (supabaseAdmin
-        .from("provider_subscriptions") as any)
-        .insert({
-          provider_id: providerId,
-          plan_id: subscriptionPlanId,
-          status: paystackSubscription.status === "active" ? "active" : "trialing",
-          paystack_subscription_code: paystackSubscription.subscription_code,
-          paystack_customer_code: paystackCustomerCode,
-          paystack_authorization_code: paystackSubscription.authorization?.authorization_code || null,
-          billing_period: billing_period,
-          auto_renew: true,
-          next_payment_date: paystackSubscription.next_payment_date 
-            ? new Date(paystackSubscription.next_payment_date).toISOString() 
-            : null,
-          started_at: paystackSubscription.createdAt 
-            ? new Date(paystackSubscription.createdAt).toISOString() 
-            : new Date().toISOString(),
-          expires_at: billing_period === "monthly"
-            ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 days
-            : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 365 days
-        })
-        .select()
-        .single();
-
-      if (subError || !providerSubscription) {
-        console.error("Error creating provider subscription:", subError);
-        // Note: Paystack subscription was created, but DB record failed
-        // In production, you might want to handle this differently
-        return errorResponse(
-          "Subscription created in Paystack but failed to save locally",
-          "DATABASE_ERROR",
-          500
-        );
-      }
-
-      return successResponse({
-        subscription: providerSubscription,
-        paystack_subscription_code: paystackSubscription.subscription_code,
-        authorization_url: paystackSubscription.authorization?.authorization_url || null,
-        message: "Subscription created successfully",
-      });
-    } catch (error: any) {
-      console.error("Error creating Paystack subscription:", error);
-      return errorResponse(
-        `Failed to create Paystack subscription: ${error.message}`,
-        "PAYSTACK_ERROR",
-        500
-      );
-    }
+    return successResponse({
+      authorization_url: authorizationUrl,
+      access_code: init?.data?.access_code ?? null,
+      reference: init?.data?.reference ?? null,
+      message: "Redirect the user to authorization_url to complete subscription payment. After payment, Paystack will create the subscription and we will sync it via webhook.",
+    });
   } catch (error) {
     return handleApiError(error, "Failed to create subscription");
   }

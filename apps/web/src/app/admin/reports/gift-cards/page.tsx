@@ -99,7 +99,7 @@ export default function GiftCardReportPage() {
 
   if (isLoading) {
     return (
-      <RoleGuard allowedRoles={["superadmin"]}>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
         <div className="container mx-auto px-4 py-8">
           <LoadingTimeout loadingMessage="Loading gift card report..." />
         </div>
@@ -109,7 +109,7 @@ export default function GiftCardReportPage() {
 
   if (error || !data) {
     return (
-      <RoleGuard allowedRoles={["superadmin"]}>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
         <div className="container mx-auto px-4 py-8">
           <EmptyState
             title="Failed to load gift card report"
@@ -125,7 +125,7 @@ export default function GiftCardReportPage() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
           <div>

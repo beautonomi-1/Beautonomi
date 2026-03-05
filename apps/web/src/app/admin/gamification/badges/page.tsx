@@ -45,7 +45,7 @@ type ProviderBadge = {
   tier: number;
   color: string | null;
   requirements: Record<string, number>;
-  benefits: Record<string, unknown>;
+  benefits: Record<string, any>;
   is_active: boolean;
   display_order: number;
   created_at?: string;
@@ -59,7 +59,7 @@ const defaultRequirements = {
   min_bookings: 0,
 };
 
-const defaultBenefits: Record<string, unknown> = {};
+const _defaultBenefits: Record<string, any> = {};
 
 function slugFromName(name: string): string {
   return name
@@ -73,6 +73,7 @@ export default function AdminProviderBadgesPage() {
   const [badges, setBadges] = useState<ProviderBadge[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [includeInactive, setIncludeInactive] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -135,10 +136,10 @@ export default function AdminProviderBadgesPage() {
     setEditingId(badge.id);
     const req = badge.requirements && typeof badge.requirements === "object"
       ? {
-          points: Number((badge.requirements as Record<string, unknown>).points) || 0,
-          min_rating: Number((badge.requirements as Record<string, unknown>).min_rating) || 0,
-          min_reviews: Number((badge.requirements as Record<string, unknown>).min_reviews) || 0,
-          min_bookings: Number((badge.requirements as Record<string, unknown>).min_bookings) || 0,
+          points: Number((badge.requirements as Record<string, any>).points) || 0,
+          min_rating: Number((badge.requirements as Record<string, any>).min_rating) || 0,
+          min_reviews: Number((badge.requirements as Record<string, any>).min_reviews) || 0,
+          min_bookings: Number((badge.requirements as Record<string, any>).min_bookings) || 0,
         }
       : { ...defaultRequirements };
     setForm({
@@ -175,7 +176,7 @@ export default function AdminProviderBadgesPage() {
       toast.error("Name, slug and color are required");
       return;
     }
-    let benefits: Record<string, unknown>;
+    let benefits: Record<string, any>;
     try {
       benefits = JSON.parse(form.benefitsJson || "{}");
     } catch {
@@ -211,7 +212,7 @@ export default function AdminProviderBadgesPage() {
       }
       setDialogOpen(false);
       loadBadges();
-    } catch (e: unknown) {
+    } catch (e: any) {
       const msg = e && typeof e === "object" && "message" in e ? String((e as { message: string }).message) : "Failed to save";
       toast.error(msg);
     } finally {
@@ -227,11 +228,25 @@ export default function AdminProviderBadgesPage() {
       toast.success("Badge deleted");
       setDeleteId(null);
       loadBadges();
-    } catch (e: unknown) {
+    } catch (e: any) {
       const msg = e && typeof e === "object" && "message" in e ? String((e as { message: string }).message) : "Failed to delete";
       toast.error(msg);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleRecalculateAll = async () => {
+    try {
+      setIsRecalculating(true);
+      const res = await fetcher.put<{ data?: { providers_processed?: number } }>("/api/admin/gamification/backfill/initialize");
+      const count = res?.data?.providers_processed ?? 0;
+      toast.success(`Recalculated badges for ${count} providers. Refresh the homepage or provider pages to see badges.`);
+    } catch (e: any) {
+      const msg = e && typeof e === "object" && "message" in e ? String((e as { message: string }).message) : "Failed to recalculate";
+      toast.error(msg);
+    } finally {
+      setIsRecalculating(false);
     }
   };
 
@@ -255,7 +270,7 @@ export default function AdminProviderBadgesPage() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2 text-sm text-gray-600">
               <Checkbox
                 checked={includeInactive}
@@ -263,6 +278,15 @@ export default function AdminProviderBadgesPage() {
               />
               Include inactive
             </label>
+            <Button
+              variant="outline"
+              onClick={handleRecalculateAll}
+              disabled={isRecalculating}
+              title="Create or update provider_points for all active providers and assign badges from current requirements"
+            >
+              {isRecalculating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Medal className="w-4 h-4 mr-2" />}
+              {isRecalculating ? "Recalculating…" : "Recalculate all badges"}
+            </Button>
             <Button onClick={openCreate}>
               <Plus className="w-4 h-4 mr-2" />
               Add badge
@@ -294,7 +318,7 @@ export default function AdminProviderBadgesPage() {
                 </thead>
                 <tbody>
                   {badges.map((b) => {
-                    const req = (b.requirements || {}) as Record<string, unknown>;
+                    const req = (b.requirements || {}) as Record<string, any>;
                     const pts = Number(req.points) ?? 0;
                     const rating = Number(req.min_rating) ?? 0;
                     const reviews = Number(req.min_reviews) ?? 0;

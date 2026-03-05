@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { View, Text, TextInput, Alert, Switch, TouchableOpacity } from "react-native";
+import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -69,6 +70,7 @@ export default function DistanceSettingsScreen() {
   if (loading && !settings) return <LoadingState />;
 
   const dist = parseFloat(maxDistance) || 0;
+  const sliderValue = Math.min(100, Math.max(1, dist || 10));
 
   return (
     <ScreenContainer>
@@ -112,6 +114,36 @@ export default function DistanceSettingsScreen() {
               <Text className="mb-1 text-sm font-medium text-gray-700">
                 Max Service Distance (km)
               </Text>
+              {/* Slider + big value */}
+              <View className="mb-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                <View className="mb-2 flex-row items-baseline justify-between">
+                  <Text className="text-2xl font-bold text-gray-900 tabular-nums">
+                    {dist} km
+                  </Text>
+                  <Text className="text-xs text-gray-500">Drag to adjust</Text>
+                </View>
+                <Slider
+                  style={{ width: "100%", height: 40 }}
+                  minimumValue={1}
+                  maximumValue={100}
+                  step={1}
+                  value={sliderValue}
+                  onValueChange={(value) =>
+                    update(() => setMaxDistance(String(Math.round(value))))
+                  }
+                  onSlidingStart={() =>
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+                  }
+                  minimumTrackTintColor="#6366f1"
+                  maximumTrackTintColor="#e5e7eb"
+                  thumbTintColor="#6366f1"
+                  accessibilityLabel="Maximum service distance in kilometers"
+                />
+                <View className="mt-1 flex-row justify-between">
+                  <Text className="text-xs text-gray-400">1 km</Text>
+                  <Text className="text-xs text-gray-400">100 km</Text>
+                </View>
+              </View>
               <TextInput
                 className="mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
                 value={maxDistance}

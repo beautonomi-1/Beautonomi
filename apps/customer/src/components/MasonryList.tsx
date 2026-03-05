@@ -4,7 +4,7 @@
  * producing the staggered Pinterest-style grid.
  */
 import { useMemo } from "react";
-import { View, ScrollView, RefreshControl, type ViewStyle, type RefreshControlProps } from "react-native";
+import { View, ScrollView, type ViewStyle, type RefreshControlProps } from "react-native";
 
 interface MasonryListProps<T> {
   data: T[];

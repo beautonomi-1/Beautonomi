@@ -29,9 +29,9 @@ export default function AmplitudeSurveysProvider({ children }: { children: React
     script.onload = () => {
       try {
         // Initialize Surveys SDK
-        // @ts-ignore - Surveys SDK types may not be available
+        // @ts-expect-error - Surveys SDK types may not be available
         if (window.AmplitudeSurveys) {
-          // @ts-ignore
+          // @ts-expect-error - Surveys SDK
           window.AmplitudeSurveys.init({
             apiKey: config.api_key_public,
           });

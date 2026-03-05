@@ -3,7 +3,7 @@
  * Status from API; verification flow runs in in-app browser (Sumsub on web).
  */
 import { useCallback, useState } from "react";
-import { View, Text, TouchableOpacity, ScrollView, RefreshControl } from "react-native";
+import { View, Text, ScrollView, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";

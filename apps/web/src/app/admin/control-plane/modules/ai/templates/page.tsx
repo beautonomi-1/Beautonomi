@@ -32,7 +32,7 @@ interface TemplateRow {
   role_scopes: string[] | null;
   template: string;
   system_instructions: string;
-  output_schema: Record<string, unknown>;
+  output_schema: Record<string, any>;
   updated_at: string;
 }
 
@@ -101,9 +101,9 @@ export default function AiTemplatesPage() {
       const role_scopes = form.role_scopes
         ? form.role_scopes.split(",").map((s) => s.trim()).filter(Boolean)
         : null;
-      let output_schema: Record<string, unknown> = {};
+      let output_schema: Record<string, any> = {};
       try {
-        if (form.output_schema.trim()) output_schema = JSON.parse(form.output_schema) as Record<string, unknown>;
+        if (form.output_schema.trim()) output_schema = JSON.parse(form.output_schema) as Record<string, any>;
       } catch {
         toast.error("output_schema must be valid JSON");
         setSubmitting(false);
@@ -123,7 +123,7 @@ export default function AiTemplatesPage() {
       setForm(defaultForm);
       setCreateOpen(false);
       await fetchTemplates();
-    } catch (e: unknown) {
+    } catch (e: any) {
       const msg = e && typeof e === "object" && "message" in e ? String((e as { message: string }).message) : "Failed to create template";
       toast.error(msg);
     } finally {
@@ -154,10 +154,10 @@ export default function AiTemplatesPage() {
       const role_scopes = editForm.role_scopes
         ? editForm.role_scopes.split(",").map((s) => s.trim()).filter(Boolean)
         : null;
-      let output_schema: Record<string, unknown> = {};
+      let output_schema: Record<string, any> = {};
       try {
         if (editForm.output_schema.trim()) {
-          output_schema = JSON.parse(editForm.output_schema) as Record<string, unknown>;
+          output_schema = JSON.parse(editForm.output_schema) as Record<string, any>;
         }
       } catch {
         toast.error("output_schema must be valid JSON");
@@ -176,7 +176,7 @@ export default function AiTemplatesPage() {
       setEditOpen(false);
       setEditingTemplate(null);
       await fetchTemplates();
-    } catch (e: unknown) {
+    } catch (e: any) {
       const msg = e && typeof e === "object" && "message" in e ? String((e as { message: string }).message) : "Failed to update template";
       toast.error(msg);
     } finally {

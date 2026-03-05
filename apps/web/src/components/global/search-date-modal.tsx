@@ -21,7 +21,7 @@ const SearchDateModal: React.FC<SearchDateModalProps> = ({ dateRange = { from: u
 
   const handleDateSelect = (range: DateRange | undefined) => {
     if (range) {
-      //@ts-ignore 
+      // @ts-expect-error - date library types 
       onDateSelect(range);
     }
   };

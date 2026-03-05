@@ -98,16 +98,14 @@ const DateSelector: React.FC<DateSelectorProps> = ({
         <div className="w-full">
           <Calendar
             mode="single"
-            //@ts-ignore 
             selected={isCheckInSelected ? checkInDate : checkOutDate}
-            //@ts-ignore 
             onSelect={handleDateSelect}
             initialFocus
             numberOfMonths={numberOfMonths} // Set the number of months based on screen size
             to={checkOutDate ? checkOutDate : undefined}
             className="w-full"
             classNames={{
-              //@ts-ignore
+              // @ts-expect-error
               day: ({ date }: any) => {
                 const isSelected =
                   date?.toDateString() === checkInDate?.toDateString() ||

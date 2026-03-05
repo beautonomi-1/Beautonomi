@@ -2,7 +2,6 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { writeAuditLog } from "@/lib/audit/audit";
 
 /**
  * GET /api/admin/staff

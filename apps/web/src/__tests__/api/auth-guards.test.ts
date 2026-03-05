@@ -32,15 +32,15 @@ const mockRequireRoleInApi = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async () => {
   return {
-    requireRoleInApi: (...args: unknown[]) => mockRequireRoleInApi(...args),
-    successResponse: (data: unknown, status = 200) => {
+    requireRoleInApi: (...args: any[]) => mockRequireRoleInApi(...args),
+    successResponse: (data: any, status = 200) => {
       return new Response(JSON.stringify({ data, error: null }), {
         status,
         headers: { "content-type": "application/json" },
       });
     },
     handleApiError: (
-      _err: unknown,
+      _err: any,
       message = "Error",
       code = "ERROR",
       status = 500
@@ -57,7 +57,7 @@ vi.mock("@/lib/supabase/api-helpers", async () => {
       );
     },
     getPaginationParams: () => ({ page: 1, limit: 20, offset: 0 }),
-    createPaginatedResponse: (data: unknown) =>
+    createPaginatedResponse: (data: any) =>
       new Response(JSON.stringify({ data, error: null }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -107,9 +107,9 @@ async function expectAuthError(response: Response) {
 // Helpers to parse JSON from a Response robustly
 // ---------------------------------------------------------------------------
 
-async function safeJson(res: Response): Promise<Record<string, unknown>> {
+async function safeJson(res: Response): Promise<Record<string, any>> {
   try {
-    return (await res.json()) as Record<string, unknown>;
+    return (await res.json()) as Record<string, any>;
   } catch {
     return { data: null, error: { message: "Non-JSON response" } };
   }
@@ -162,7 +162,7 @@ describe("Paystack routes – authentication", () => {
     const body = await safeJson(res);
     if (res.status >= 400) {
       // The error should be about Paystack config, not auth
-      const errMsg = (body.error as Record<string, unknown>)?.message as string ?? "";
+      const errMsg = (body.error as Record<string, any>)?.message as string ?? "";
       expect(errMsg).not.toContain("Authentication required");
     }
   });

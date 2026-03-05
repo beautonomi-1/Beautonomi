@@ -127,6 +127,7 @@ export default function ShopScreen() {
 
   useEffect(() => {
     catalog.initialLoad();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
   const handleFilter = useCallback(
@@ -137,6 +138,7 @@ export default function ShopScreen() {
         sort: overrides?.sort ?? sortBy,
       });
     },
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- catalog from context
     [search, selectedCategory, sortBy, catalog.applyFilters],
   );
 
@@ -167,6 +169,7 @@ export default function ShopScreen() {
         // Could show toast here
       }
     },
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- cart from context
     [cart.addToCart],
   );
 

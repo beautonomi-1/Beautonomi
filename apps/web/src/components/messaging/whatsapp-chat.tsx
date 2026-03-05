@@ -400,17 +400,17 @@ export default function WhatsAppChat({
       const endpoint = messagesEndpoint
         ? `/api/provider/conversations/${conversation.id}/messages`
         : `/api/me/messages?conversation_id=${conversation.id}`;
-      const response = await fetcher.get<unknown>(endpoint);
+      const response = await fetcher.get<any>(endpoint);
       // Normalize: API may return { data: [...] }, { data: { messages: [...] } }, { messages: [...] }, or raw array
-      const data = response && typeof response === "object" && "data" in response ? (response as { data: unknown }).data : response;
-      let raw: unknown = [];
+      const data = response && typeof response === "object" && "data" in response ? (response as { data: any }).data : response;
+      let raw: any = [];
       if (Array.isArray(data)) {
         raw = data;
       } else if (data && typeof data === "object" && "messages" in data) {
-        const m = (data as { messages: unknown }).messages;
+        const m = (data as { messages: any }).messages;
         raw = Array.isArray(m) ? m : [];
       } else if (data && typeof data === "object" && "data" in data) {
-        const d = (data as { data: unknown }).data;
+        const d = (data as { data: any }).data;
         raw = Array.isArray(d) ? d : [];
       }
       const list: Message[] = Array.isArray(raw) ? raw : [];
@@ -937,7 +937,7 @@ export default function WhatsAppChat({
                                     toast.success("Offer withdrawn");
                                     loadMessages();
                                     onConversationUpdate?.();
-                                  } catch (err) {
+                                  } catch (_err) {
                                     toast.error("Failed to retract offer");
                                   }
                                 }}

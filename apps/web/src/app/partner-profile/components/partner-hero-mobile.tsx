@@ -28,6 +28,7 @@ interface PartnerHeroMobileProps {
   business_type?: 'freelancer' | 'salon';
   supports_house_calls?: boolean;
   supports_salon?: boolean;
+  current_badge?: { id: string; name: string; color?: string | null; description?: string | null } | null;
 }
 
 const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
@@ -48,6 +49,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
   business_type,
   supports_house_calls,
   supports_salon,
+  current_badge,
 }) => {
   const { user, isLoading: authLoading } = useAuth();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -359,9 +361,20 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
 
         {/* Provider Name and Location */}
         <div className="px-4 mt-8 mb-4">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2 leading-tight">
-            {businessName || "Provider"}
-          </h1>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 leading-tight">
+              {businessName || "Provider"}
+            </h1>
+            {current_badge && (
+              <span
+                className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium text-white"
+                style={{ backgroundColor: current_badge.color || "#6366f1" }}
+                title={current_badge.description || current_badge.name}
+              >
+                {current_badge.name}
+              </span>
+            )}
+          </div>
           <div className="flex flex-col gap-1 mb-3">
             {(city || country) && (
               <div className="flex items-center gap-1 text-gray-600 text-sm">

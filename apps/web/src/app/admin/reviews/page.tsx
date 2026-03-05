@@ -117,15 +117,15 @@ export default function AdminReviews() {
       if (endDate) params.set("end_date", endDate);
 
       const response = await fetcher.get<{
-        data: {
-          reviews: Review[];
-          statistics: ReviewStatistics;
-          pagination: any;
+        data?: {
+          reviews?: Review[];
+          statistics?: ReviewStatistics;
+          pagination?: any;
         };
       }>(`/api/admin/reviews?${params.toString()}`);
 
-      setReviews(response.data.reviews);
-      setStatistics(response.data.statistics);
+      setReviews(response.data?.reviews ?? []);
+      setStatistics(response.data?.statistics ?? null);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -184,11 +184,11 @@ export default function AdminReviews() {
 
   const filteredReviews = reviews.filter((review) => {
     const matchesSearch =
-      review.customer?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      review.customer?.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      review.provider?.business_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      review.booking?.booking_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      review.comment?.toLowerCase().includes(searchQuery.toLowerCase());
+      (review.customer?.full_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (review.customer?.email ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (review.provider?.business_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (review.booking?.booking_number ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (review.comment ?? "").toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
 

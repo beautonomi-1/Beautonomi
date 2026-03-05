@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -216,7 +217,7 @@ export default function ProviderFinance() {
       // If transaction has a booking_id, fetch booking details
       if (transaction.booking_id) {
         try {
-          const response = await fetcher.get<{ data: unknown }>(`/api/provider/bookings/${transaction.booking_id}`);
+          const response = await fetcher.get<{ data: any }>(`/api/provider/bookings/${transaction.booking_id}`);
           setTransactionDetails(response?.data ?? null);
         } catch (bookingError: any) {
           // Booking might not exist or provider doesn't have access
@@ -266,7 +267,13 @@ export default function ProviderFinance() {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
           <div>
             <h1 className="text-3xl font-semibold mb-2">Finance & Earnings</h1>
-            <p className="text-gray-600">Track your revenue and earnings</p>
+            <p className="text-gray-600">
+              Track your revenue and earnings
+              {" · "}
+              <Link href="/provider/payouts" className="text-primary-600 hover:underline">
+                Payout center
+              </Link>
+            </p>
           </div>
           <div className="flex flex-wrap gap-2 mt-4 md:mt-0 items-center">
             {canRequestPayout ? (

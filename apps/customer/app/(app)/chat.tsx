@@ -24,7 +24,7 @@ interface Message {
   sender_id: string;
   sender_name: string;
   content: string;
-  attachments?: Array<{ url: string }> | string[];
+  attachments?: { url: string }[] | string[];
   created_at: string;
 }
 
@@ -161,12 +161,12 @@ export default function ChatScreen() {
   }, [hasMore, nextCursor, loadingMore, loadMessages]);
 
   const send = async (
-    attachments?: Array<{
+    attachments?: {
       url: string;
       type?: string;
       name?: string;
       size?: number;
-    }>
+    }[]
   ) => {
     const text = input.trim();
     if ((!text && (!attachments || attachments.length === 0)) || !id || sending)

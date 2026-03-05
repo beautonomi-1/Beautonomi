@@ -16,8 +16,8 @@ interface LogEntry {
   changed_by: string | null;
   area: string;
   record_key: string;
-  before_state: Record<string, unknown> | null;
-  after_state: Record<string, unknown> | null;
+  before_state: Record<string, any> | null;
+  after_state: Record<string, any> | null;
   created_at: string;
 }
 

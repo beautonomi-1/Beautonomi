@@ -54,7 +54,7 @@ export interface SafeOnDemandModuleConfig {
   ring_repeat: boolean;
   waiting_screen_timeout_seconds: number;
   provider_accept_window_seconds: number;
-  ui_copy: Record<string, unknown>;
+  ui_copy: Record<string, any>;
 }
 
 export interface SafeAiModuleConfig {
@@ -78,7 +78,7 @@ export interface SafeAdsModuleConfig {
 
 export interface SafeRankingModuleConfig {
   enabled: boolean;
-  weights: Record<string, unknown>;
+  weights: Record<string, any>;
 }
 
 export interface SafeDistanceModuleConfig {
@@ -102,7 +102,7 @@ export interface SafeSafetyModuleConfig {
   check_in_enabled: boolean;
   escalation_enabled: boolean;
   cooldown_seconds: number;
-  ui_copy: Record<string, unknown>;
+  ui_copy: Record<string, any>;
 }
 
 export interface PublicConfigBundle {

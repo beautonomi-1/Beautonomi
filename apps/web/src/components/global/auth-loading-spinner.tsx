@@ -1,19 +1,28 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
-import { Loader2 } from "lucide-react";
+import { BeautonomiLoadingIcon } from "@/components/BeautonomiLoadingIcon";
+
+/** Routes that do not show auth overlay so they can load immediately. */
+const PUBLIC_ROUTES_PREFIXES = ["/learn", "/help", "/login", "/signup", "/forgot-password", "/partner-profile", "/category", "/explore", "/gift-card", "/privacy-policy", "/terms-and-condition", "/accessibility", "/against-discrimination", "/BCover-for-partners", "/beautonomi-friendly", "/career", "/news", "/resources", "/become-a-partner"];
+
+function isPublicRoute(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return pathname === "/" || PUBLIC_ROUTES_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
 
 /**
  * AuthLoadingSpinner Component
  *
- * Shows a loading spinner overlay when authentication is being checked.
- * Uses CSS/Tailwind only to avoid framer-motion (and its process polyfill) in the
- * root layout, which triggers Turbopack HMR "module factory is not available" errors.
+ * Shows Beautonomi logo loading overlay when authentication is being checked.
+ * Hidden on public routes (e.g. /learn) so those pages load immediately.
  */
 export default function AuthLoadingSpinner() {
+  const pathname = usePathname();
   const { isLoading } = useAuth();
 
-  if (!isLoading) return null;
+  if (!isLoading || isPublicRoute(pathname)) return null;
 
   return (
     <div
@@ -21,11 +30,9 @@ export default function AuthLoadingSpinner() {
       aria-live="polite"
       aria-busy="true"
     >
-      <div className="backdrop-blur-2xl bg-white/90 border border-white/40 shadow-2xl rounded-2xl p-8 flex flex-col items-center gap-4 animate-in zoom-in-95 fade-in duration-200">
-        <div className="animate-spin">
-          <Loader2 className="h-12 w-12 text-[#FF0077]" strokeWidth={2.5} />
-        </div>
-        <p className="text-sm font-medium text-gray-700 tracking-tight animate-in fade-in slide-in-from-bottom-2 duration-200 delay-75">
+      <div className="backdrop-blur-2xl bg-white/90 border border-border shadow-2xl rounded-2xl p-8 flex flex-col items-center gap-4 animate-in zoom-in-95 fade-in duration-200">
+        <BeautonomiLoadingIcon size={56} />
+        <p className="text-sm font-medium text-muted-foreground tracking-tight animate-in fade-in slide-in-from-bottom-2 duration-200 delay-75">
           Checking authentication...
         </p>
       </div>

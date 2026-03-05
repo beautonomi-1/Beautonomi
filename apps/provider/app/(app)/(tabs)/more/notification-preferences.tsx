@@ -43,7 +43,7 @@ export default function NotificationPreferencesScreen() {
       const res = await patch("/api/provider/notification-preferences", { [sectionId]: channelPrefs });
       if (!res.error && data) setPrefs((prev) => ({ ...prev, [sectionId]: channelPrefs }));
     },
-    [patch]
+    [patch, data]
   );
 
   const toggleChannel = useCallback(

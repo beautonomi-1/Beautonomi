@@ -62,6 +62,7 @@ const settingsCategories = [
     title: "Sales",
     description: "Sales and payment settings",
     items: [
+      { title: "Payout center", description: "Balance, schedule, statements, and payout history", href: "/provider/payouts" },
       { title: "Payout Accounts", description: "Manage bank accounts for receiving payouts", href: "/provider/settings/payout-accounts" },
       { title: "Yoco Integration", description: "Connect and manage Yoco payment devices", href: "/provider/settings/sales/yoco-integration" },
       { title: "Yoco Terminals", description: "Manage Yoco card terminals and devices", href: "/provider/settings/yoco-terminals" },

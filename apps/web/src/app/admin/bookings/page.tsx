@@ -50,10 +50,10 @@ export default function AdminBookings() {
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (dateFilter) params.set("date", dateFilter);
-      const response = await fetcher.get<{ data: Booking[] }>(
+      const response = await fetcher.get<{ data?: Booking[] }>(
         `/api/admin/bookings?${params.toString()}`
       );
-      setBookings(response.data);
+      setBookings(response.data ?? []);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -117,7 +117,7 @@ export default function AdminBookings() {
 
   const filteredBookings = bookings.filter((booking) => {
     const matchesSearch =
-      booking.booking_number?.toLowerCase().includes(searchQuery.toLowerCase());
+      (booking.booking_number ?? "").toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
 
@@ -155,7 +155,7 @@ export default function AdminBookings() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="min-h-screen bg-zinc-50/50">
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
           <motion.div

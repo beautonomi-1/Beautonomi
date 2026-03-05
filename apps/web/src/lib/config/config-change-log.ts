@@ -11,8 +11,8 @@ export async function writeConfigChangeLog(params: {
   changedBy: string;
   area: ConfigChangeArea;
   recordKey: string;
-  before: Record<string, unknown> | null;
-  after: Record<string, unknown> | null;
+  before: Record<string, any> | null;
+  after: Record<string, any> | null;
 }) {
   const supabase = getSupabaseAdmin();
   const { error } = await supabase.from("config_change_log").insert({

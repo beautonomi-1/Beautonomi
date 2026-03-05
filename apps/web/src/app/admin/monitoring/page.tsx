@@ -82,7 +82,7 @@ export default function MonitoringPage() {
 
       const [healthResult, errorsResult] = await Promise.allSettled([
         fetcher.get<{ data: SystemHealth }>("/api/admin/monitoring/health?hours=24"),
-        fetcher.get<{ data: { stats: ErrorStats; logs: unknown[] } }>(
+        fetcher.get<{ data: { stats: ErrorStats; logs: any[] } }>(
           `/api/admin/monitoring/errors?timeframe=${timeframe}`
         ),
       ]);

@@ -56,7 +56,7 @@ export function AddressAutocomplete({
 
   const search = useCallback(
     async (text: string) => {
-      if (text.length < 3) {
+      if (text.length < 2) {
         setResults([]);
         setShowResults(false);
         return;
@@ -64,21 +64,18 @@ export function AddressAutocomplete({
 
       setLoading(true);
       try {
-        const params = new URLSearchParams({
-          q: text,
-          country: countryCode,
-          limit: "5",
-        });
-        const res = await api.get<{ results?: GeocodingResult[]; features?: GeocodingResult[] }>(
-          `/api/mapbox/geocode?${params}`,
+        const res = await api.post<GeocodingResult[]>(
+          "/api/mapbox/geocode",
+          {
+            query: text,
+            country: countryCode.length === 2 ? countryCode : undefined,
+            limit: 5,
+          },
         );
 
-        if (res.data) {
-          const data = res.data;
-          const items = data.results ?? data.features ?? [];
-          setResults(Array.isArray(items) ? items : []);
-          setShowResults(true);
-        }
+        const items = Array.isArray(res.data) ? res.data : [];
+        setResults(items);
+        setShowResults(items.length > 0);
       } catch {
         setResults([]);
       } finally {

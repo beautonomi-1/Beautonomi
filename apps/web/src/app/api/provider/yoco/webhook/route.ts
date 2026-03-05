@@ -82,8 +82,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // Log webhook event
-    await (supabase
+    // Log webhook event and capture id for later update
+    const { data: insertedEvent } = await (supabase
       .from("provider_yoco_webhook_events") as any)
       .insert({
         webhook_id: webhookId,
@@ -92,7 +92,11 @@ export async function POST(request: Request) {
         signature,
         status: "received",
         created_at: new Date().toISOString(),
-      });
+      })
+      .select("id")
+      .single();
+
+    const eventRowId = (insertedEvent as { id?: string } | null)?.id;
 
     // Handle different event types
     try {
@@ -117,27 +121,30 @@ export async function POST(request: Request) {
           console.log(`Unhandled Yoco webhook event type: ${type}`);
       }
 
-      // Mark webhook as processed
-      await (supabase
-        .from("provider_yoco_webhook_events") as any)
-        .update({
-          status: "processed",
-          processed_at: new Date().toISOString(),
-        })
-        .eq("webhook_id", webhookId);
-
+      // Mark webhook event as processed
+      if (eventRowId) {
+        await (supabase
+          .from("provider_yoco_webhook_events") as any)
+          .update({
+            status: "processed",
+            processed_at: new Date().toISOString(),
+          })
+          .eq("id", eventRowId);
+      }
     } catch (error) {
       console.error("Error processing Yoco webhook:", error);
-      
+
       // Mark as failed
-      await (supabase
-        .from("provider_yoco_webhook_events") as any)
-        .update({
-          status: "failed",
-          error_message: error instanceof Error ? error.message : String(error),
-          processed_at: new Date().toISOString(),
-        })
-        .eq("webhook_id", webhookId);
+      if (eventRowId) {
+        await (supabase
+          .from("provider_yoco_webhook_events") as any)
+          .update({
+            status: "failed",
+            error_message: error instanceof Error ? error.message : String(error),
+            processed_at: new Date().toISOString(),
+          })
+          .eq("id", eventRowId);
+      }
 
       // Still return 200 to acknowledge receipt
       return NextResponse.json({
@@ -294,13 +301,26 @@ async function handlePaymentNotification(data: any, supabase: any) {
 
 async function handleRefundSuccess(data: any, supabase: any) {
   const { id, amount, currency, metadata } = data;
+  const yocoPaymentId = metadata?.payment_id;
+
+  // Resolve provider_id from payment for RLS
+  let providerId: string | null = null;
+  if (yocoPaymentId) {
+    const { data: payment } = await supabase
+      .from("provider_yoco_payments")
+      .select("provider_id")
+      .eq("yoco_payment_id", yocoPaymentId)
+      .single();
+    providerId = (payment as { provider_id?: string } | null)?.provider_id ?? null;
+  }
 
   // Create refund record
   await (supabase
     .from("provider_yoco_refunds") as any)
     .insert({
+      provider_id: providerId,
       yoco_refund_id: id,
-      payment_id: metadata?.payment_id,
+      payment_id: yocoPaymentId,
       amount: amount,
       currency: currency || "ZAR",
       status: "successful",
@@ -308,7 +328,7 @@ async function handleRefundSuccess(data: any, supabase: any) {
     });
 
   // Update payment status
-  if (metadata?.payment_id) {
+  if (yocoPaymentId) {
     await (supabase
       .from("provider_yoco_payments") as any)
       .update({
@@ -316,19 +336,30 @@ async function handleRefundSuccess(data: any, supabase: any) {
         refund_amount: amount,
         updated_at: new Date().toISOString(),
       })
-      .eq("yoco_payment_id", metadata.payment_id);
+      .eq("yoco_payment_id", yocoPaymentId);
   }
 }
 
 async function handleRefundFailure(data: any, supabase: any) {
   const { id, error, metadata } = data;
+  const yocoPaymentId = metadata?.payment_id;
 
-  // Create refund failure record
+  let providerId: string | null = null;
+  if (yocoPaymentId) {
+    const { data: payment } = await supabase
+      .from("provider_yoco_payments")
+      .select("provider_id")
+      .eq("yoco_payment_id", yocoPaymentId)
+      .single();
+    providerId = (payment as { provider_id?: string } | null)?.provider_id ?? null;
+  }
+
   await (supabase
     .from("provider_yoco_refunds") as any)
     .insert({
+      provider_id: providerId,
       yoco_refund_id: id,
-      payment_id: metadata?.payment_id,
+      payment_id: yocoPaymentId,
       status: "failed",
       error_message: error?.message || "Refund failed",
       created_at: new Date().toISOString(),

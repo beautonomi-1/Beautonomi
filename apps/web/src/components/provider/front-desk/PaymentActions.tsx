@@ -12,7 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CreditCard, Link2 } from "lucide-react";
-import { sendPaystackLink, recordYocoPayment } from "@/lib/front-desk/actions";
+import { sendPaystackLink, createYocoTerminalPaymentAndMarkPaid } from "@/lib/front-desk/actions";
 
 interface PaymentActionsProps {
   bookingId: string;
@@ -49,7 +49,7 @@ export function PaymentActions({
     if (isNaN(amt) || amt <= 0) return;
     setIsSubmitting(true);
     try {
-      const ok = await recordYocoPayment(bookingId, amt);
+      const ok = await createYocoTerminalPaymentAndMarkPaid(bookingId, amt, currency);
       if (ok) {
         setYocoOpen(false);
         onComplete();

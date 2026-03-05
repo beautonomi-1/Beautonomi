@@ -7,41 +7,43 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 import { usePageContent } from "@/hooks/usePageContent";
+import { DemoBookingModal } from "./demo-booking-modal";
 
 export default function CTASection() {
   const router = useRouter();
   const { user, role, isLoading } = useAuth();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [showDemoModal, setShowDemoModal] = useState(false);
   const { getSectionContent } = usePageContent("become-a-partner");
   const ctaTitle = getSectionContent("cta_title") || "Ready to grow your beauty business?";
   const ctaDescription = getSectionContent("cta_description") || "Join thousands of beauty professionals who trust Beautonomi to manage their business";
+  const demoBookingType = (getSectionContent("demo_booking_type")?.trim().toLowerCase() || "calendly") as "calendly" | "zoho";
+  const demoBookingEmbed = getSectionContent("demo_booking_embed")?.trim() || null;
+  const hasDemoEmbed = Boolean(demoBookingEmbed);
 
   const handleTryItNow = () => {
     if (isLoading) return;
     
     if (!user) {
-      // Not logged in - show login modal
       setIsLoginModalOpen(true);
     } else if (role === "provider_owner" || role === "provider_staff") {
-      // Logged in as provider - go to dashboard
       router.push("/provider/dashboard");
     } else {
-      // Logged in but not a provider - go to onboarding
       router.push("/provider/onboarding");
     }
   };
 
   const handleBookDemo = () => {
     if (isLoading) return;
-    
+    if (hasDemoEmbed) {
+      setShowDemoModal(true);
+      return;
+    }
     if (!user) {
-      // Not logged in - show login modal
       setIsLoginModalOpen(true);
     } else if (role === "provider_owner" || role === "provider_staff") {
-      // Already a provider - redirect to dashboard
       router.push("/provider/dashboard");
     } else {
-      // Logged in but not a provider - go to onboarding
       router.push("/provider/onboarding");
     }
   };
@@ -88,6 +90,12 @@ export default function CTASection() {
         open={isLoginModalOpen} 
         setOpen={setIsLoginModalOpen}
         redirectContext="provider"
+      />
+      <DemoBookingModal
+        open={showDemoModal}
+        onOpenChange={setShowDemoModal}
+        embedType={demoBookingType}
+        embedContent={demoBookingEmbed}
       />
     </>
   );

@@ -37,9 +37,9 @@ export async function GET(
       return notFoundResponse("Provider not found");
     }
 
-    const providerId = (provider as Record<string, unknown> & { id: string }).id;
+    const providerId = (provider as Record<string, any> & { id: string }).id;
 
-    const prov = provider as Record<string, unknown> & { user_id?: string };
+    const prov = provider as Record<string, any> & { user_id?: string };
     let owner: { id: string; full_name: string | null; email: string | null; phone: string | null; avatar_url: string | null } | null = null;
     if (prov.user_id) {
       const { data: ownerRow } = await supabase
@@ -72,7 +72,7 @@ export async function GET(
         : 0;
 
     return successResponse({
-      ...(provider as Record<string, unknown>),
+      ...(provider as Record<string, any>),
       owner: owner ?? null,
       stats: {
         booking_count: bookingCount || 0,
@@ -136,7 +136,7 @@ export async function PATCH(
       return handleApiError(updateError, "Failed to update provider");
     }
 
-    const updated = updatedProvider as Record<string, unknown> & { user_id?: string };
+    const updated = updatedProvider as Record<string, any> & { user_id?: string };
     let owner: { id: string; full_name: string | null; email: string | null; phone: string | null; avatar_url: string | null } | null = null;
     if (updated.user_id) {
       const { data: ownerRow } = await supabase

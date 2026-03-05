@@ -79,14 +79,14 @@ export default function SystemHealthPage() {
     try {
       setIsLoading(true);
       const [healthResponse, errorsResponse] = await Promise.all([
-        fetcher.get<{ data?: Record<string, unknown> }>("/api/admin/monitoring/health?hours=24"),
-        fetcher.get<{ data?: { stats?: { total?: number; recent_errors?: Array<{ id?: string; error_type?: string; error_message?: string; endpoint?: string; severity?: string; created_at?: string }> }; logs?: unknown[] } }>("/api/admin/monitoring/errors?timeframe=24h"),
+        fetcher.get<{ data?: Record<string, any> }>("/api/admin/monitoring/health?hours=24"),
+        fetcher.get<{ data?: { stats?: { total?: number; recent_errors?: Array<{ id?: string; error_type?: string; error_message?: string; endpoint?: string; severity?: string; created_at?: string }> }; logs?: any[] } }>("/api/admin/monitoring/errors?timeframe=24h"),
       ]);
 
       const healthData = healthResponse?.data ?? {};
       const errorsData = errorsResponse?.data ?? {};
       const errorsTotal = (errorsData as { stats?: { total?: number } }).stats?.total ?? 0;
-      const recentErrors = (errorsData as { stats?: { recent_errors?: unknown[] }; logs?: unknown[] }).stats?.recent_errors ?? (errorsData as { logs?: unknown[] }).logs ?? [];
+      const recentErrors = (errorsData as { stats?: { recent_errors?: any[] }; logs?: any[] }).stats?.recent_errors ?? (errorsData as { logs?: any[] }).logs ?? [];
 
       // Transform health data to match existing interface (health = endpoint checks, not request counts)
       setStats({
@@ -139,7 +139,7 @@ export default function SystemHealthPage() {
   };
 
   const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
+    switch ((status ?? "").toLowerCase()) {
       case "healthy":
         return "bg-green-100 text-green-800";
       case "warning":
@@ -159,7 +159,7 @@ export default function SystemHealthPage() {
   };
 
   const getStatusIcon = (status: string) => {
-    switch (status.toLowerCase()) {
+    switch ((status ?? "").toLowerCase()) {
       case "healthy":
         return <CheckCircle2 className="w-4 h-4 text-green-600" />;
       case "warning":

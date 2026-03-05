@@ -68,19 +68,19 @@ export async function GET(request: NextRequest) {
 
     // Branch filter: when location_id provided, only packages available at that location
     if (locationId && filteredPackages.length > 0) {
-      const pkgIds = filteredPackages.map((p: any) => p.id);
+      const pkgIds = filteredPackages.map((p: { id: string }) => p.id);
       const { data: pkgLocs } = await supabaseAdmin
         .from("package_locations")
         .select("package_id")
         .in("package_id", pkgIds)
         .eq("location_id", locationId);
-      const packageIdsAtLocation = new Set((pkgLocs ?? []).map((r: any) => r.package_id));
+      const packageIdsAtLocation = new Set((pkgLocs ?? []).map((r: { package_id: string }) => r.package_id));
       const { data: allPkgLocs } = await supabaseAdmin
         .from("package_locations")
         .select("package_id")
         .in("package_id", pkgIds);
-      const packageIdsWithAnyRestriction = new Set((allPkgLocs ?? []).map((r: any) => r.package_id));
-      filteredPackages = filteredPackages.filter((p: any) =>
+      const packageIdsWithAnyRestriction = new Set((allPkgLocs ?? []).map((r: { package_id: string }) => r.package_id));
+      filteredPackages = filteredPackages.filter((p: { id: string }) =>
         !packageIdsWithAnyRestriction.has(p.id) || packageIdsAtLocation.has(p.id)
       );
     }

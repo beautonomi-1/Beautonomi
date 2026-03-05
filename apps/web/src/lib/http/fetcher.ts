@@ -10,7 +10,7 @@
  */
 
 export interface FetchOptions extends Omit<RequestInit, 'body'> {
-  body?: unknown; // Can be object (JSON) or FormData
+  body?: Record<string, unknown> | FormData;
   timeoutMs?: number;
   headers?: Record<string, string>;
 }
@@ -20,7 +20,7 @@ export class FetchError extends Error {
     message: string,
     public status: number,
     public code?: string,
-    public details?: unknown
+    public details?: any
   ) {
     super(message);
     this.name = 'FetchError';
@@ -229,15 +229,15 @@ export const fetcher = {
   get: <T = unknown>(url: string, options?: Omit<FetchOptions, 'method' | 'body'>) =>
     fetchJson<T>(url, { ...options, method: 'GET' }),
 
-  post: <T = unknown>(url: string, body?: unknown, options?: Omit<FetchOptions, 'method' | 'body'>) =>
+  post: <T = unknown>(url: string, body?: any, options?: Omit<FetchOptions, 'method' | 'body'>) =>
     fetchJson<T>(url, { ...options, method: 'POST', body }),
 
-  patch: <T = unknown>(url: string, body?: unknown, options?: Omit<FetchOptions, 'method' | 'body'>) =>
+  patch: <T = unknown>(url: string, body?: any, options?: Omit<FetchOptions, 'method' | 'body'>) =>
     fetchJson<T>(url, { ...options, method: 'PATCH', body }),
 
-  put: <T = unknown>(url: string, body?: unknown, options?: Omit<FetchOptions, 'method' | 'body'>) =>
+  put: <T = unknown>(url: string, body?: any, options?: Omit<FetchOptions, 'method' | 'body'>) =>
     fetchJson<T>(url, { ...options, method: 'PUT', body }),
 
-  delete: <T = unknown>(url: string, body?: unknown, options?: Omit<FetchOptions, 'method' | 'body'>) =>
+  delete: <T = unknown>(url: string, body?: any, options?: Omit<FetchOptions, 'method' | 'body'>) =>
     fetchJson<T>(url, { ...options, method: 'DELETE', body }),
 };

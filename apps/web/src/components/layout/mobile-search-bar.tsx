@@ -305,7 +305,7 @@ const MobileSearchBar: React.FC = () => {
   };
 
   const filteredCategories = categories.filter((category) =>
-    category.name.toLowerCase().includes(categorySearch.toLowerCase())
+    (category?.name ?? "").toLowerCase().includes((categorySearch ?? "").toLowerCase())
   );
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
@@ -11,11 +11,47 @@ const BG = "#F7F7F7";
 const TEXT_PRIMARY = "#222222";
 const TEXT_SECONDARY = "#6B7280";
 
+const POLL_INTERVAL_MS = 2000;
+const POLL_MAX_ATTEMPTS = 15;
+
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
   const bookingId = searchParams?.get("booking_id");
   const bookingNumber = searchParams?.get("booking_number");
   const isWaitlist = searchParams?.get("waitlist") === "1" || searchParams?.get("source") === "waitlist";
+  const isCustomOffer = searchParams?.get("payment_type") === "custom_offer";
+  const offerId = searchParams?.get("offer_id");
+
+  const [customOfferBookingId, setCustomOfferBookingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isCustomOffer || !offerId) return;
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await fetch(`/api/me/custom-offers/${encodeURIComponent(offerId)}`, {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) return;
+        const json = await res.json();
+        const data = json?.data ?? json;
+        const bid = data?.booking_id;
+        if (bid) {
+          setCustomOfferBookingId(bid);
+          clearInterval(interval);
+        }
+      } catch {
+        // ignore
+      }
+      if (attempts >= POLL_MAX_ATTEMPTS) clearInterval(interval);
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [isCustomOffer, offerId]);
+
+  const resolvedBookingId = bookingId ?? customOfferBookingId;
+  const showBookingLink = !!(resolvedBookingId || bookingNumber);
 
   return (
     <div
@@ -47,6 +83,23 @@ function CheckoutSuccessContent() {
               We'll notify you when a slot becomes available.
             </p>
           </>
+        ) : isCustomOffer ? (
+          <>
+            <div
+              className="mx-auto w-20 h-20 rounded-full flex items-center justify-center mb-6"
+              style={{ backgroundColor: `${ACCENT}15`, color: ACCENT }}
+            >
+              <CheckCircle2 className="w-12 h-12" strokeWidth={2} />
+            </div>
+            <h1 className="text-2xl font-semibold mb-2" style={{ color: TEXT_PRIMARY }}>
+              {showBookingLink ? "You're all set" : "Payment received"}
+            </h1>
+            <p className="text-sm mb-6" style={{ color: TEXT_SECONDARY }}>
+              {showBookingLink
+                ? "Your custom service booking is confirmed. We'll send you a reminder before your visit."
+                : "Your custom service payment is being confirmed. Your booking will appear in My Bookings shortly."}
+            </p>
+          </>
         ) : (
           <>
             <div
@@ -56,7 +109,7 @@ function CheckoutSuccessContent() {
               <CheckCircle2 className="w-12 h-12" strokeWidth={2} />
             </div>
             <h1 className="text-2xl font-semibold mb-2" style={{ color: TEXT_PRIMARY }}>
-              {bookingId || bookingNumber ? "You're all set" : "Payment received"}
+              {showBookingLink ? "You're all set" : "Payment received"}
             </h1>
             {bookingNumber && (
               <p className="text-sm font-medium mb-2" style={{ color: ACCENT }}>
@@ -64,7 +117,7 @@ function CheckoutSuccessContent() {
               </p>
             )}
             <p className="text-sm mb-6" style={{ color: TEXT_SECONDARY }}>
-              {bookingId || bookingNumber
+              {showBookingLink
                 ? "Your appointment is confirmed. We'll send you a reminder before your visit."
                 : "Thanks—your payment is being confirmed. You can check your bookings or payments below."}
             </p>
@@ -72,7 +125,7 @@ function CheckoutSuccessContent() {
         )}
 
         <div className="flex flex-col gap-3">
-          {(bookingId || bookingNumber) && (
+          {showBookingLink && (
             <Link
               href="/account-settings/bookings"
               className="inline-flex items-center justify-center min-h-[44px] px-5 py-3 rounded-2xl font-semibold text-white transition-transform active:scale-[0.98]"
@@ -82,12 +135,21 @@ function CheckoutSuccessContent() {
             </Link>
           )}
           <Link
-            href={bookingId || bookingNumber ? "/account-settings/payments" : "/account-settings/bookings"}
+            href={showBookingLink ? "/account-settings/payments" : "/account-settings/bookings"}
             className="inline-flex items-center justify-center min-h-[44px] px-5 py-3 rounded-2xl font-medium border transition-transform active:scale-[0.98]"
             style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB" }}
           >
-            {bookingId || bookingNumber ? "View payments" : "View bookings"}
+            {showBookingLink ? "View payments" : "View bookings"}
           </Link>
+          {isCustomOffer && (
+            <Link
+              href="/account-settings/custom-requests"
+              className="inline-flex items-center justify-center min-h-[44px] px-5 py-3 rounded-2xl font-medium border transition-transform active:scale-[0.98]"
+              style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB" }}
+            >
+              View custom requests
+            </Link>
+          )}
         </div>
       </div>
     </div>

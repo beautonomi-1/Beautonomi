@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -21,6 +21,8 @@ import { Image } from "expo-image";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
+import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
+import { useLocation } from "@/hooks/useLocation";
 import { api } from "@/lib/api-client";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { APP_URL } from "@/config/public-env";
@@ -35,8 +37,6 @@ import type {
   StaffMember,
   PublicProviderProduct,
 } from "@/types/api";
-
-const PLACEHOLDER_IMG = "https://placehold.co/800x1000/f5f5f5/999?text=Beauty";
 
 /* ─── Review type (from API) ─── */
 interface Review {
@@ -227,9 +227,9 @@ function LocationCard({ loc }: { loc: ProviderLocation }) {
 
   const openDirections = () => {
     if (loc.latitude != null && loc.longitude != null) {
-      Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${loc.latitude},${loc.longitude}`).catch(() => {});
+      Linking.openURL(`https://www.mapbox.com/directions/?destination=${loc.longitude},${loc.latitude}`).catch(() => {});
     } else if (fullAddress) {
-      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`).catch(() => {});
+      Linking.openURL(`https://www.mapbox.com/directions/?query=${encodeURIComponent(fullAddress)}`).catch(() => {});
     }
   };
   const callPhone = () => { if (loc.phone) Linking.openURL(`tel:${loc.phone.replace(/\s/g, "")}`).catch(() => {}); };
@@ -607,14 +607,20 @@ export default function PartnerProfileScreen() {
   const [providerProducts, setProviderProducts] = useState<PublicProviderProduct[]>([]);
   const [providerProductsLoading, setProviderProductsLoading] = useState(false);
 
+  const { selectedAddress } = useSelectedAddress();
+  const { coords } = useLocation();
+
   /* ── Data Loading ── */
   const load = useCallback(async () => {
     if (!slug) return;
     setLoading(true);
     setError(null);
+    const lat = selectedAddress?.latitude ?? coords?.latitude;
+    const lng = selectedAddress?.longitude ?? coords?.longitude;
+    const qs = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : "";
     try {
       const [provRes, svcRes] = await Promise.all([
-        api.get<PublicProviderDetail>(`/api/public/providers/${encodeURIComponent(slug)}`),
+        api.get<PublicProviderDetail>(`/api/public/providers/${encodeURIComponent(slug)}${qs}`),
         api.get<ProviderServicesResponse>(`/api/public/providers/${encodeURIComponent(slug)}/services`),
       ]);
       if (provRes.error) {
@@ -632,7 +638,7 @@ export default function PartnerProfileScreen() {
     } finally {
       setLoading(false);
     }
-  }, [slug]);
+  }, [slug, selectedAddress?.latitude, selectedAddress?.longitude, coords?.latitude, coords?.longitude]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -640,6 +646,7 @@ export default function PartnerProfileScreen() {
     if (provider && user) {
       api.post("/api/me/recently-viewed", { provider_id: provider.id }).catch(() => {});
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- track view by provider id only
   }, [provider?.id, user?.id]);
 
   /* ── Load reviews when tab is active ── */
@@ -654,6 +661,7 @@ export default function PartnerProfileScreen() {
       })
       .catch(() => {})
       .finally(() => setReviewsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when tab/slug; avoid refetch when reviews populated
   }, [activeTab, slug]);
 
   /* ── Load staff when tab is active ── */
@@ -667,6 +675,7 @@ export default function PartnerProfileScreen() {
       })
       .catch(() => {})
       .finally(() => setStaffLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when tab/slug; avoid refetch when staff populated
   }, [activeTab, slug]);
 
   /* ── Load memberships when tab is active ── */
@@ -681,6 +690,7 @@ export default function PartnerProfileScreen() {
       })
       .catch(() => {})
       .finally(() => setMembershipsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when tab/slug; avoid refetch when memberships populated
   }, [activeTab, slug]);
 
   /* ── Load products when Products tab is active (provider slug API returns variants) ── */
@@ -706,6 +716,7 @@ export default function PartnerProfileScreen() {
         setIsSaved(Boolean(d.is_in_wishlist ?? (d.data as Record<string, unknown>)?.is_in_wishlist));
       })
       .catch(() => setIsSaved(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- check wishlist by provider id only
   }, [provider?.id, user?.id]);
 
   const toggleWishlist = useCallback(async () => {

@@ -127,7 +127,7 @@ export async function PATCH(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    const updates: Record<string, unknown> = {};
+    const updates: Record<string, any> = {};
 
     // Snake_case (provider app)
     if (body.business_name !== undefined) updates.business_name = body.business_name;
@@ -272,7 +272,7 @@ export async function PATCH(request: NextRequest) {
       }
 
       if (locId) {
-        const locUpdates: Record<string, unknown> = {};
+        const locUpdates: Record<string, any> = {};
         if (body.address_line1 !== undefined) locUpdates.address_line1 = body.address_line1;
         if (body.city !== undefined) locUpdates.city = body.city;
         if (body.state !== undefined) locUpdates.state = body.state;

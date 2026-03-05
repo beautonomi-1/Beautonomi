@@ -57,11 +57,21 @@ export function useYocoIntegration() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<YocoIntegration>("/api/provider/yoco/integration");
-      if (res.error) {
-        setError(res.error.message);
-      } else if (res.data) {
-        setIntegration(res.data);
+      const res = await api.get<YocoIntegration | { data: YocoIntegration }>(
+        "/api/provider/yoco/integration"
+      );
+      const raw = (res as any)?.data ?? (res as any);
+      if ((res as any)?.error) {
+        setError((res as any).error.message);
+      } else if (raw && typeof raw === "object") {
+        setIntegration({
+          id: (raw as any).id ?? "",
+          provider_id: (raw as any).provider_id ?? "",
+          is_enabled: !!(raw as any).is_enabled,
+          api_key_set: !!((raw as any).api_key_set ?? (raw as any).public_key),
+          webhook_configured: !!(raw as any).webhook_configured,
+          created_at: (raw as any).created_at ?? new Date().toISOString(),
+        });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load Yoco status");

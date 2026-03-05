@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Check, DollarSign, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, DollarSign, Loader2, Download } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
@@ -101,6 +101,44 @@ export default function PayrollDetailPage() {
   const totalNet = payRun?.items?.reduce((s, i) => s + Number(i.net_pay || 0), 0) ?? 0;
   const totalGross = payRun?.items?.reduce((s, i) => s + Number(i.gross_pay || 0), 0) ?? 0;
 
+  const handleExportCSV = () => {
+    if (!payRun) return;
+    const headers = [
+      "Staff",
+      "Gross Pay",
+      "Commission",
+      "Hourly",
+      "Salary",
+      "Tips",
+      "Manual Deductions",
+      "Tax",
+      "UIF",
+      "Net Pay",
+      "Notes",
+    ];
+    const rows = (payRun.items || []).map((i) => [
+      i.staff_name,
+      Number(i.gross_pay || 0).toFixed(2),
+      Number(i.commission_amount || 0).toFixed(2),
+      Number(i.hourly_amount || 0).toFixed(2),
+      Number(i.salary_amount || 0).toFixed(2),
+      Number(i.tips_amount || 0).toFixed(2),
+      Number(i.manual_deductions || 0).toFixed(2),
+      Number(i.tax_deduction || 0).toFixed(2),
+      Number(i.uif_contribution || 0).toFixed(2),
+      Number(i.net_pay || 0).toFixed(2),
+      (i.notes || "").replace(/"/g, '""'),
+    ]);
+    const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${c}"`).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pay-run-${payRun.pay_period_start}-${payRun.pay_period_end}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (isLoading || !payRun) {
     return (
       <div className="space-y-4">
@@ -142,6 +180,10 @@ export default function PayrollDetailPage() {
             Mark as Paid
           </Button>
         )}
+        <Button variant="outline" onClick={handleExportCSV}>
+          <Download className="w-4 h-4 mr-2" />
+          Export CSV
+        </Button>
       </div>
 
       <SectionCard>

@@ -56,7 +56,7 @@ export async function PATCH(
 
     if (!req) return notFoundResponse("Return request not found");
 
-    const update: Record<string, unknown> = {};
+    const update: Record<string, any> = {};
 
     if (body.action === "cancel" && req.status === "pending") {
       update.status = "cancelled";

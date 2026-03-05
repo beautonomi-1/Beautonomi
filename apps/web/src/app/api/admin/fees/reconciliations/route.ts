@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole } from "@/lib/supabase/auth-server";
 
-function isTableMissingError(e: unknown): boolean {
+function isTableMissingError(e: any): boolean {
   const msg = typeof (e as any)?.message === "string" ? (e as any).message : "";
   return msg.includes("schema cache") || (msg.includes("relation ") && msg.includes("does not exist")) || msg.includes("Could not find the table");
 }
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       },
       error: null,
     });
-  } catch (error: unknown) {
+  } catch (error: any) {
     const err = error as { message?: string };
     console.error("Error fetching reconciliations:", err);
     if (isTableMissingError(err)) {

@@ -12,27 +12,43 @@ import { Globe } from "lucide-react";
 import { SUPPORTED_LANGUAGES, type SupportedLanguage } from "@/lib/i18n/config";
 import { fetcher } from "@/lib/http/fetcher";
 
+type LangOption = { code: string; name: string; nativeName: string };
+
 interface LanguageSelectorProps {
-  currentLanguage?: SupportedLanguage;
-  onLanguageChange?: (lang: SupportedLanguage) => void;
+  currentLanguage?: SupportedLanguage | string;
+  onLanguageChange?: (lang: string) => void;
 }
 
-export default function LanguageSelector({ 
+export default function LanguageSelector({
   currentLanguage = "en",
-  onLanguageChange 
+  onLanguageChange,
 }: LanguageSelectorProps) {
-  const [language, setLanguage] = useState<SupportedLanguage>(currentLanguage);
+  const [language, setLanguage] = useState<string>(currentLanguage);
   const [isLoading, setIsLoading] = useState(false);
+  const [languages, setLanguages] = useState<LangOption[]>([]);
 
   useEffect(() => {
-    // Load saved language preference
-    const saved = localStorage.getItem("preferred_language");
-    if (saved && SUPPORTED_LANGUAGES.find((l) => l.code === saved)) {
-      setLanguage(saved as SupportedLanguage);
-    }
+    (async () => {
+      try {
+        const res = await fetcher.get<{ data?: LangOption[] }>("/api/public/languages");
+        const list = Array.isArray(res?.data) ? res.data : [];
+        if (list.length) setLanguages(list);
+      } catch {
+        setLanguages(SUPPORTED_LANGUAGES.map((l) => ({ code: l.code, name: l.name, nativeName: l.nativeName })));
+      }
+    })();
   }, []);
 
-  const handleLanguageChange = async (newLang: SupportedLanguage) => {
+  useEffect(() => {
+    const saved = localStorage.getItem("preferred_language");
+    if (saved && (languages.some((l) => l.code === saved) || SUPPORTED_LANGUAGES.some((l) => l.code === saved))) {
+      setLanguage(saved);
+    }
+  }, [languages]);
+
+  const options = languages.length ? languages : SUPPORTED_LANGUAGES.map((l) => ({ code: l.code, name: l.name, nativeName: l.nativeName }));
+
+  const handleLanguageChange = async (newLang: string) => {
     if (newLang === language) return;
 
     setIsLoading(true);
@@ -52,9 +68,6 @@ export default function LanguageSelector({
 
       setLanguage(newLang);
       onLanguageChange?.(newLang);
-
-      // Reload page to apply translations (or use a context provider for client-side)
-      // window.location.reload();
     } catch (err) {
       console.error("Error changing language:", err);
     } finally {
@@ -62,18 +75,18 @@ export default function LanguageSelector({
     }
   };
 
-  const currentLangData = SUPPORTED_LANGUAGES.find((l) => l.code === language) || SUPPORTED_LANGUAGES[0];
+  const currentLangData = options.find((l) => l.code === language) || options[0];
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" disabled={isLoading}>
           <Globe className="w-4 h-4 mr-2" />
-          {currentLangData.nativeName}
+          {currentLangData?.nativeName ?? language}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {SUPPORTED_LANGUAGES.map((lang) => (
+        {options.map((lang) => (
           <DropdownMenuItem
             key={lang.code}
             onClick={() => handleLanguageChange(lang.code)}

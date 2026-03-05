@@ -3,20 +3,87 @@ import { Redirect } from "expo-router";
 import { View, Text, ActivityIndicator } from "react-native";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
+import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { Colors } from "@/constants/colors";
+import { APP_URL } from "@/config/public-env";
 
-/** Minimal delay so Supabase session/token is available before first API call (mobile). */
+const PORTAL_CACHE_MS = 10 * 60 * 1000; // 10 minutes
 const PROFILE_CHECK_DELAY_MS = 400;
 const AUTH_RETRY_DELAY_MS = 600;
 
+let portalCache: { portal: string; ts: number } | null = null;
+
+function getCachedPortal(): string | null {
+  if (portalCache && Date.now() - portalCache.ts < PORTAL_CACHE_MS) {
+    return portalCache.portal;
+  }
+  portalCache = null;
+  return null;
+}
+
+function setCachedPortal(portal: string) {
+  portalCache = { portal, ts: Date.now() };
+}
+
 export default function Index() {
-  const { session, loading } = useAuth();
+  const { session, loading, signOut } = useAuth();
+  const [portalState, setPortalState] = useState<"idle" | "loading" | "wrong_app" | "ok">("idle");
+  const [wrongPortal, setWrongPortal] = useState<string | null>(null);
   const [checkingProfile, setCheckingProfile] = useState(false);
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const retryCountRef = useRef(0);
 
+  // Phase 1: portal check (is this user a provider?)
   useEffect(() => {
-    if (loading || !session) return;
+    if (loading || !session || !APP_URL?.trim()) {
+      if (!loading && session && !APP_URL?.trim()) {
+        setPortalState("ok");
+      }
+      return;
+    }
+
+    const cached = getCachedPortal();
+    if (cached === "customer" || cached === "admin") {
+      setWrongPortal(cached);
+      setPortalState("wrong_app");
+      return;
+    }
+    if (cached === "provider" || cached === "provider_onboarding") {
+      setPortalState("ok");
+      return;
+    }
+
+    let cancelled = false;
+    setPortalState("loading");
+
+    const t = setTimeout(() => {
+      api
+        .get<{ portal?: string }>("/api/me/portal")
+        .then((res) => {
+          if (cancelled) return;
+          const portal = res.data?.portal ?? "customer";
+          setCachedPortal(portal);
+          if (portal === "customer" || portal === "admin") {
+            setWrongPortal(portal);
+            setPortalState("wrong_app");
+          } else {
+            setPortalState("ok");
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setPortalState("ok");
+        });
+    }, PROFILE_CHECK_DELAY_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [session, loading]);
+
+  // Phase 2: profile check (only when portal is ok)
+  useEffect(() => {
+    if (portalState !== "ok" || !session) return;
 
     let cancelled = false;
     setCheckingProfile(true);
@@ -69,25 +136,9 @@ export default function Index() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [session, loading]);
+  }, [portalState, session]);
 
-  // #region agent log
-  if (!loading && session !== undefined) {
-    fetch("http://127.0.0.1:7243/ingest/89f3cdbd-444d-401b-9bce-c59a37625210", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        location: "index.tsx:gate",
-        message: "index gate",
-        data: { hasSession: !!session, hasProfile, checkingProfile },
-        timestamp: Date.now(),
-        hypothesisId: "C",
-      }),
-    }).catch(() => {});
-  }
-  // #endregion
-
-  if (loading || checkingProfile || (session && hasProfile === null)) {
+  if (loading || portalState === "idle" || portalState === "loading") {
     return (
       <View className="flex-1 items-center justify-center bg-white">
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -97,15 +148,33 @@ export default function Index() {
   }
 
   if (!session) {
-    console.log("[AUTH] index redirect → login (no session)");
     return <Redirect href="/(auth)/login" />;
   }
 
+  if (portalState === "wrong_app" && wrongPortal) {
+    return (
+      <WrongAppScreen
+        portal={wrongPortal}
+        onSignOut={() => {
+          portalCache = null;
+          signOut();
+        }}
+      />
+    );
+  }
+
+  if (portalState === "ok" && (checkingProfile || hasProfile === null)) {
+    return (
+      <View className="flex-1 items-center justify-center bg-white">
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text className="mt-4 text-base text-gray-600">Loading…</Text>
+      </View>
+    );
+  }
+
   if (hasProfile === false) {
-    console.log("[AUTH] index redirect → onboarding (no profile)");
     return <Redirect href={"/(app)/onboarding" as never} />;
   }
 
-  console.log("[AUTH] index redirect → dashboard (session + profile)");
   return <Redirect href="/(app)/(tabs)/dashboard" />;
 }

@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
       const { data: savingsData } = await supabase
         .rpc('calculate_route_savings', { p_route_id: route.id });
       if (savingsData?.[0]) {
-        const row = savingsData[0] as Record<string, unknown>;
+        const row = savingsData[0] as Record<string, any>;
         savings = {
           standard_total: Number(row.standard_total ?? 0),
           chained_total: Number(row.chained_total ?? 0),

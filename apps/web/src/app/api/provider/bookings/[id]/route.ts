@@ -592,7 +592,7 @@ export async function PATCH(
     // Update booking_services if staff_id is changed (for reschedule to different staff)
     // Allow null to unassign staff, so check for undefined instead of truthy
     if (staff_id !== undefined) {
-      const bsUpdate: Record<string, unknown> = { staff_id };
+      const bsUpdate: Record<string, any> = { staff_id };
       if (scheduled_at) {
         bsUpdate.scheduled_start_at = scheduled_at;
         // Preserve duration: fetch first service's duration and set scheduled_end_at

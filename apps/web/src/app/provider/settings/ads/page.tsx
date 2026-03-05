@@ -12,7 +12,6 @@ import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvide
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import {
-  Megaphone,
   Plus,
   Loader2,
   Pause,

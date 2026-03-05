@@ -88,7 +88,7 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
   });
 
   const packCampaignIds = (campaigns as any[]).filter((c) => c.pack_impressions != null).map((c) => c.id);
-  let impressionCountByCampaign: Record<string, number> = {};
+  const impressionCountByCampaign: Record<string, number> = {};
   if (packCampaignIds.length > 0) {
     const { data: impressionCounts } = await supabase
       .from("ads_events")

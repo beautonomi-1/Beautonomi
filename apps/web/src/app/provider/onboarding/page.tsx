@@ -486,13 +486,43 @@ export default function ProviderOnboarding() {
       console.log("Submitting onboarding data:", JSON.stringify(onboardingData, null, 2));
 
       const response = await fetcher.post<{
-        data: { provider: any; message: string; auto_configured?: any };
+        data: {
+          provider: any;
+          message: string;
+          auto_configured?: any;
+          subscription_endpoint?: string | null;
+          selected_plan_id?: string | null;
+        };
         error: null;
       }>("/api/provider/onboarding", onboardingData);
 
       const successMessage = response.data?.message || "Onboarding submitted! We'll review your application.";
       const autoConfig = response.data?.auto_configured;
-      
+      const subscriptionEndpoint = response.data?.subscription_endpoint;
+      const selectedPlanId = response.data?.selected_plan_id;
+
+      // If a plan was selected, start subscription payment flow (redirect to Paystack)
+      if (subscriptionEndpoint && selectedPlanId) {
+        toast.success("Redirecting to complete your subscription…", { duration: 3000 });
+        try {
+          const subRes = await fetcher.post<{
+            data?: { authorization_url?: string; access_code?: string; reference?: string; message?: string };
+            error?: { message?: string; code?: string };
+          }>(subscriptionEndpoint, {
+            plan_id: selectedPlanId,
+            billing_period: "monthly",
+          });
+          const authUrl = (subRes as any).data?.authorization_url;
+          if (authUrl) {
+            window.location.href = authUrl;
+            return;
+          }
+        } catch (subErr) {
+          console.error("Subscription create failed:", subErr);
+          toast.error("Subscription setup failed. You can complete it from Settings → Subscription.");
+        }
+      }
+
       // Show detailed success message
       if (autoConfig && (autoConfig.zones > 0 || autoConfig.services > 0 || autoConfig.mobile_ready)) {
         toast.success(successMessage, {
@@ -503,7 +533,7 @@ export default function ProviderOnboarding() {
           duration: 4000,
         });
       }
-      
+
       // Small delay to let user see the success message
       setTimeout(() => {
         router.push("/provider/dashboard");

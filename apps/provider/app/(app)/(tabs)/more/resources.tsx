@@ -19,6 +19,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 
 interface ResourceGroup {
@@ -88,10 +89,13 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
   const [editingGroup, setEditingGroup] = useState<ResourceGroup | null>(null);
   const [groupForm, setGroupForm] = useState({ name: "", color: "#6366f1" });
 
-  const { data: resources, loading, refresh } = useApi<Resource[]>("/api/provider/resources");
-  const { data: groups, loading: loadingGroups, refresh: refreshGroups } = useApi<ResourceGroup[]>(
+  const { data: resources, loading, error: resourcesError, refresh } = useApi<Resource[]>("/api/provider/resources");
+  const { data: groups, loading: loadingGroups, error: groupsError, refresh: refreshGroups } = useApi<ResourceGroup[]>(
     "/api/provider/resource-groups"
   );
+
+  const hasError = (resourcesError && !resources) || (groupsError && !groups);
+  const errorMessage = resourcesError || groupsError || "Failed to load";
   const { execute: createResource, loading: creating } = useApiPost<any, any>("/api/provider/resources");
   const { execute: updateResource, loading: updating } = useApiMutation("patch");
   const { execute: deleteResource } = useApiMutation("delete");
@@ -531,7 +535,17 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
       </BottomSheet>
     </>
   );
-  if (embedded) return <View className="flex-1 min-h-0">{inner}</View>;
+  if (embedded) {
+    return (
+      <View className="flex-1 min-h-0">
+        {hasError ? (
+          <ErrorState message={errorMessage} onRetry={handleRefresh} />
+        ) : (
+          inner
+        )}
+      </View>
+    );
+  }
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader
@@ -547,7 +561,11 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
           </TouchableOpacity>
         }
       />
-      {inner}
+      {hasError ? (
+        <ErrorState message={errorMessage} onRetry={handleRefresh} />
+      ) : (
+        inner
+      )}
     </ScreenContainer>
   );
 }

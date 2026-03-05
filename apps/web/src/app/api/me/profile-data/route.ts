@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       throw checkError;
     }
 
-    const profileData: Record<string, unknown> = {
+    const profileData: Record<string, any> = {
       user_id: user.id,
       // updated_at is handled by database trigger
     };

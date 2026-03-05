@@ -253,7 +253,7 @@ export async function GET(
         const slotEndMin = startMin + slotDuration;
         if (slotOverlapsBreak(startMin, slotEndMin)) continue;
         const slotStartIso = isoAtLocalDateMinutes(date, startMin);
-        const slotEndIso = isoAtLocalDateMinutes(date, slotEndMin);
+        const _slotEndIso = isoAtLocalDateMinutes(date, slotEndMin);
         const blockEndIso = isoAtLocalDateMinutes(date, startMin + totalSpan);
         if (startMin + totalSpan > closeMin) continue;
         let available = true;

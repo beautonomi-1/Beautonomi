@@ -227,7 +227,7 @@ export async function POST(request: NextRequest) {
         .limit(1)
         .maybeSingle();
 
-      const payouts = (settingsRow?.settings as Record<string, unknown>)?.payouts as Record<string, unknown> | undefined;
+      const payouts = (settingsRow?.settings as Record<string, any>)?.payouts as Record<string, any> | undefined;
       if (payouts) {
         const feeType = (payouts.platform_service_fee_type as string) || "percentage";
         if (feeType === "fixed") {

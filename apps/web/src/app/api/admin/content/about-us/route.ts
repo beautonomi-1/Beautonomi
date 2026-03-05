@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
-    const { section_key, title, content, display_order, is_active } = body;
+    const { section_key, title, content, display_order, is_active, image_url } = body;
 
     if (!section_key || !title || !content) {
       return NextResponse.json(
@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
         content,
         display_order: display_order || 0,
         is_active: is_active !== undefined ? is_active : true,
+        ...(image_url !== undefined && { image_url: image_url || null }),
       })
       .select()
       .single();

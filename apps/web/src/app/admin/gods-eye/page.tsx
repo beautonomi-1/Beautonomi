@@ -30,6 +30,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import LiveMapTab from "./components/LiveMapTab";
 
 interface GodsEyeData {
   overview: {
@@ -96,9 +98,17 @@ export default function GodsEyePage() {
   const [filterType, setFilterType] = useState<string>("all");
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(30); // seconds
+  const [liveMapEnabled, setLiveMapEnabled] = useState(true); // default true until flag is fetched
 
   useEffect(() => {
     loadData();
+  }, []);
+
+  useEffect(() => {
+    fetcher
+      .get<{ enabled?: boolean }>("/api/feature-flags/check?key=gods_eye_live_map")
+      .then((r) => setLiveMapEnabled(r.enabled === true))
+      .catch(() => setLiveMapEnabled(false));
   }, []);
 
   useEffect(() => {
@@ -247,10 +257,10 @@ export default function GodsEyePage() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <div className="flex items-center gap-3 mb-2">
               <Eye className="w-8 h-8 text-pink-600" />
@@ -315,6 +325,12 @@ export default function GodsEyePage() {
           </div>
         </div>
 
+        <Tabs defaultValue="overview" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            {liveMapEnabled && <TabsTrigger value="live-map">Live Map</TabsTrigger>}
+          </TabsList>
+          <TabsContent value="overview" className="space-y-6">
         {/* Overview Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <OverviewCard
@@ -572,6 +588,13 @@ export default function GodsEyePage() {
             )}
           </div>
         </div>
+          </TabsContent>
+          {liveMapEnabled && (
+            <TabsContent value="live-map">
+              <LiveMapTab />
+            </TabsContent>
+          )}
+        </Tabs>
       </div>
     </RoleGuard>
   );

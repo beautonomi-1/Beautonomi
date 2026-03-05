@@ -10,6 +10,7 @@ const updateIntegrationSchema = z.object({
   is_enabled: z.boolean().optional(),
   secret_key: z.string().optional(),
   public_key: z.string().optional(),
+  api_key: z.string().optional(), // alias for public_key (provider app sends this)
   webhook_secret: z.string().optional().nullable(),
 });
 
@@ -71,6 +72,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         data: {
           is_enabled: false,
+          api_key_set: false,
+          webhook_configured: false,
           secret_key: null,
           public_key: null,
           webhook_secret: null,
@@ -84,6 +87,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data: {
         is_enabled: (integration as any).is_enabled || false,
+        api_key_set: !!(integration as any).public_key,
+        webhook_configured: !!(integration as any).webhook_secret,
         secret_key: (integration as any).secret_key ? "***" : null, // Don't expose full key
         public_key: (integration as any).public_key || null,
         webhook_secret: (integration as any).webhook_secret ? "***" : null,
@@ -109,8 +114,17 @@ export async function GET(request: NextRequest) {
 }
 
 /**
+ * POST /api/provider/yoco/integration
+ *
+ * Connect Yoco (upsert integration). Provider app sends api_key + secret_key.
+ */
+export async function POST(request: Request) {
+  return PUT(request);
+}
+
+/**
  * PUT /api/provider/yoco/integration
- * 
+ *
  * Update provider's Yoco integration settings
  */
 export async function PUT(request: Request) {
@@ -172,11 +186,15 @@ export async function PUT(request: Request) {
       );
     }
 
+    // Resolve public key (backend uses public_key, app may send api_key)
+    const publicKey =
+      validationResult.data.public_key ?? validationResult.data.api_key ?? undefined;
+
     // If keys are being updated, verify configuration
-    if (validationResult.data.secret_key || validationResult.data.public_key) {
+    if (validationResult.data.secret_key || publicKey) {
       const configCheck = verifyYocoConfig(
         validationResult.data.secret_key,
-        validationResult.data.public_key
+        publicKey
       );
       if (!configCheck.configured) {
         return NextResponse.json(
@@ -194,22 +212,27 @@ export async function PUT(request: Request) {
 
     // Prepare update data
     const updateData: any = {};
-    if (validationResult.data.is_enabled !== undefined) {
-      updateData.is_enabled = validationResult.data.is_enabled;
-    }
     if (validationResult.data.secret_key !== undefined) {
       updateData.secret_key = validationResult.data.secret_key;
       updateData.last_sync = new Date().toISOString();
     }
-    if (validationResult.data.public_key !== undefined) {
-      updateData.public_key = validationResult.data.public_key;
+    if (publicKey !== undefined) {
+      updateData.public_key = publicKey;
     }
     if (validationResult.data.webhook_secret !== undefined) {
       updateData.webhook_secret = validationResult.data.webhook_secret;
     }
 
-    // If enabling for the first time, set connected_date
-    if (validationResult.data.is_enabled) {
+    // When connecting with keys, default to enabled if not explicitly set
+    const willEnable =
+      validationResult.data.is_enabled ??
+      (validationResult.data.secret_key != null && publicKey != null);
+    if (validationResult.data.is_enabled !== undefined) {
+      updateData.is_enabled = validationResult.data.is_enabled;
+    } else if (willEnable) {
+      updateData.is_enabled = true;
+    }
+    if (updateData.is_enabled) {
       const { data: existing } = await supabase
         .from("provider_yoco_integrations")
         .select("connected_date")
@@ -269,6 +292,78 @@ export async function PUT(request: Request) {
         data: null,
         error: {
           message: "Failed to update integration",
+          code: "INTERNAL_ERROR",
+        },
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/provider/yoco/integration
+ *
+ * Disconnect Yoco: disable integration and clear stored keys.
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const auth = await requireRole(["provider_owner"]);
+    if (!auth) {
+      return unauthorizedResponse("Authentication required");
+    }
+
+    const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(auth.user.id, supabase);
+    if (!providerId) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "Provider not found",
+            code: "PROVIDER_NOT_FOUND",
+          },
+        },
+        { status: 404 }
+      );
+    }
+
+    const { error } = await (supabase.from("provider_yoco_integrations") as any)
+      .update({
+        is_enabled: false,
+        secret_key: null,
+        public_key: null,
+        webhook_secret: null,
+        connected_date: null,
+        last_sync: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("provider_id", providerId);
+
+    if (error) {
+      console.error("Error disconnecting Yoco:", error);
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "Failed to disconnect",
+            code: "UPDATE_ERROR",
+          },
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      data: { disconnected: true },
+      error: null,
+    });
+  } catch (error) {
+    console.error("Unexpected error in DELETE /api/provider/yoco/integration:", error);
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          message: "Failed to disconnect",
           code: "INTERNAL_ERROR",
         },
       },

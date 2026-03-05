@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
         .eq("provider_id", providerId)
         .or(`location_id.eq.${locationId},location_id.is.null`);
       
-      _locationCustomerIds = new Set((locationBookings || []).map((b: any) => b.customer_id));
+      _locationCustomerIds = new Set((locationBookings || []).map((b: { customer_id: string }) => b.customer_id));
     }
 
     const { data: clients, error } = await clientsQuery
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
     
     // Log missing customers for debugging
     if (customers && customers.length < customerIds.length) {
-      const foundIds = new Set(customers.map((c: any) => c.id));
+      const foundIds = new Set(customers.map((c: { id: string }) => c.id));
       const missingIds = customerIds.filter(id => !foundIds.has(id));
       if (missingIds.length > 0) {
         console.warn(`⚠️ ${missingIds.length} customer IDs in provider_clients but not found in users table:`, missingIds);
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Combine data - include all clients even if customer data is missing
-    const _foundCustomerIds = new Set(customers?.map((c: any) => c.id) || []);
+    const _foundCustomerIds = new Set(customers?.map((c: { id: string }) => c.id) || []);
     let clientsWithCustomers = clients.map((client) => {
       const customer = customers?.find((c) => c.id === client.customer_id);
       

@@ -68,7 +68,7 @@ export default function ProviderServices() {
   };
 
   const filteredServices = services.filter((service) =>
-    service.title.toLowerCase().includes(searchQuery.toLowerCase())
+    (service?.title ?? "").toLowerCase().includes((searchQuery ?? "").toLowerCase())
   );
 
   if (isLoading) {

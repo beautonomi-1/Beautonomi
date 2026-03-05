@@ -8,6 +8,8 @@ import { Search, DollarSign } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AdminFilterBar } from "@/components/admin/AdminFilterBar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -68,10 +70,10 @@ export default function AdminRefunds() {
       if (statusFilter !== "all") params.set("status", statusFilter);
 
       const response = await fetcher.get<{
-        data: { refunds: Refund[]; statistics: any; pagination: any };
+        data?: { refunds?: Refund[]; statistics?: any; pagination?: any };
       }>(`/api/admin/refunds?${params.toString()}`);
 
-      setRefunds(response.data.refunds);
+      setRefunds(response.data?.refunds ?? []);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -110,10 +112,10 @@ export default function AdminRefunds() {
 
   const filteredRefunds = refunds.filter((refund) => {
     const matchesSearch =
-      refund.booking?.booking_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      refund.booking?.customer?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      refund.booking?.customer?.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      refund.refund_reference?.toLowerCase().includes(searchQuery.toLowerCase());
+      (refund.booking?.booking_number ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (refund.booking?.customer?.full_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (refund.booking?.customer?.email ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (refund.refund_reference ?? "").toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
 
@@ -152,15 +154,12 @@ export default function AdminRefunds() {
   return (
     <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Refunds Management</h1>
-            <p className="text-gray-600 mt-1">Process and manage all refunds</p>
-          </div>
-        </div>
+        <AdminPageHeader
+          title="Refunds Management"
+          description="Process and manage all refunds"
+        />
 
-        {/* Filters */}
-        <div className="bg-white p-4 rounded-lg border border-gray-200">
+        <AdminFilterBar>
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
@@ -187,7 +186,7 @@ export default function AdminRefunds() {
               <option value="partially_refunded">Partially Refunded</option>
             </select>
           </div>
-        </div>
+        </AdminFilterBar>
 
         {/* Refunds List */}
         <Tabs defaultValue="all" className="space-y-4">

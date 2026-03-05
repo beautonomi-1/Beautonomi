@@ -92,7 +92,7 @@ export interface ProviderMilestone {
   provider_id: string;
   milestone_type: string;
   achieved_at: string;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 // Public Provider Types
@@ -368,6 +368,10 @@ export interface Booking {
   // At-home booking specific fields
   events?: BookingEvent[];
   current_stage?: 'confirmed' | 'provider_on_way' | 'provider_arrived' | 'service_started' | 'service_completed';
+  provider_en_route_at?: string | null;
+  provider_arrived_at?: string | null;
+  estimated_arrival?: string | null;
+  provider_location?: { latitude: number; longitude: number } | null;
   additional_charges?: AdditionalCharge[];
   arrival_otp?: string | null;
   arrival_otp_expires_at?: string | null;
@@ -427,7 +431,7 @@ export interface BookingEvent {
     location?: { lat: number; lng: number };
     additional_amount?: number;
     description?: string;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   created_at: string;
   created_by: string; // User ID who triggered the event

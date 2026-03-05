@@ -46,7 +46,7 @@ export async function GET(_request: NextRequest) {
       }
 
       if (settings && (settings as any).settings && (settings as any).settings.branding) {
-        const raw = (settings as any).settings.branding as Record<string, unknown>;
+        const raw = (settings as any).settings.branding as Record<string, any>;
         const safe: PlatformBranding = {
           site_name: typeof raw.site_name === "string" ? raw.site_name : defaultBranding.site_name,
           logo_url: typeof raw.logo_url === "string" ? raw.logo_url : defaultBranding.logo_url,

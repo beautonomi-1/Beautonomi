@@ -1,22 +1,30 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+
+const _SORT_OPTIONS = ["published_at_desc", "published_at_asc", "like_count_desc", "comment_count_desc", "created_at_desc"] as const;
 
 /**
  * GET /api/admin/explore/posts
  * List all posts with filters. Superadmin only.
+ * Query: status, provider_id, hidden, search, date_from, date_to, sort, limit, offset
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
-    const supabaseAdmin = await getSupabaseAdmin();
+    const { user: _user } = await requireRoleInApi(["superadmin"], request);
+    const supabaseAdmin = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const providerId = searchParams.get("provider_id");
     const hidden = searchParams.get("hidden");
+    const search = searchParams.get("search")?.trim();
+    const dateFrom = searchParams.get("date_from");
+    const dateTo = searchParams.get("date_to");
+    const sort = (searchParams.get("sort") || "published_at_desc") as (typeof _SORT_OPTIONS)[number];
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100);
+    const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10));
 
     let query = supabaseAdmin
       .from("explore_posts")
@@ -29,24 +37,108 @@ export async function GET(request: NextRequest) {
         status,
         published_at,
         like_count,
+        comment_count,
         is_hidden,
+        moderation_notes,
+        moderated_at,
+        moderated_by,
         created_at,
         providers:provider_id(business_name, slug)
-      `
+      `,
+        { count: "exact" }
       )
-      .order("published_at", { ascending: false })
-      .limit(limit);
+      .range(offset, offset + limit - 1);
 
     if (status) query = query.eq("status", status);
     if (providerId) query = query.eq("provider_id", providerId);
     if (hidden === "true") query = query.eq("is_hidden", true);
     if (hidden === "false") query = query.eq("is_hidden", false);
+    if (dateFrom) query = query.gte("published_at", dateFrom);
+    if (dateTo) query = query.lte("published_at", dateTo + "T23:59:59.999Z");
 
-    const { data, error } = await query;
+    if (search) {
+      const safeSearch = search.replace(/[%*]/g, "").trim();
+      if (safeSearch) {
+        const { data: providerRows } = await supabaseAdmin
+          .from("providers")
+          .select("id")
+          .ilike("business_name", `%${safeSearch}%`);
+        const providerIds = (providerRows || []).map((p: { id: string }) => p.id);
+        if (providerIds.length > 0) {
+          query = query.or(
+            `caption.ilike.*${safeSearch}*,provider_id.in.(${providerIds.join(",")})`
+          );
+        } else {
+          query = query.ilike("caption", `%${safeSearch}%`);
+        }
+      }
+    }
+
+    switch (sort) {
+      case "published_at_asc":
+        query = query.order("published_at", { ascending: true }).order("id", { ascending: true });
+        break;
+      case "like_count_desc":
+        query = query.order("like_count", { ascending: false }).order("published_at", { ascending: false });
+        break;
+      case "comment_count_desc":
+        query = query.order("comment_count", { ascending: false }).order("published_at", { ascending: false });
+        break;
+      case "created_at_desc":
+        query = query.order("created_at", { ascending: false }).order("id", { ascending: false });
+        break;
+      default:
+        query = query.order("published_at", { ascending: false }).order("id", { ascending: false });
+    }
+
+    const { data, error, count } = await query;
 
     if (error) return handleApiError(error, "Failed to fetch posts");
-    return successResponse(data || []);
+
+    return successResponse({
+      posts: data || [],
+      total: count ?? (data?.length ?? 0),
+      limit,
+      offset,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to fetch posts");
+  }
+}
+
+/**
+ * POST /api/admin/explore/posts
+ * Bulk hide/unhide. Body: { action: "hide" | "unhide", post_ids: string[], moderation_notes?: string }
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const { user } = await requireRoleInApi(["superadmin"], request);
+    const supabaseAdmin = getSupabaseAdmin();
+
+    const body = await request.json();
+    const { action, post_ids, moderation_notes } = body || {};
+
+    if (!action || !["hide", "unhide"].includes(action) || !Array.isArray(post_ids) || post_ids.length === 0) {
+      return errorResponse("action (hide|unhide) and post_ids (non-empty array) required", "VALIDATION_ERROR", 400);
+    }
+
+    const isHidden = action === "hide";
+    const ids = post_ids.slice(0, 50).filter((id: any) => typeof id === "string");
+
+    const { data, error } = await supabaseAdmin
+      .from("explore_posts")
+      .update({
+        is_hidden: isHidden,
+        moderation_notes: isHidden ? (moderation_notes || null) : null,
+        moderated_at: new Date().toISOString(),
+        moderated_by: user.id,
+      })
+      .in("id", ids)
+      .select("id");
+
+    if (error) return handleApiError(error, "Failed to update posts");
+    return successResponse({ updated: data?.length ?? 0, post_ids: ids });
+  } catch (error) {
+    return handleApiError(error, "Failed to update posts");
   }
 }

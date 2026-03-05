@@ -13,7 +13,7 @@ interface PageContent {
   section_key: string;
   content_type: 'text' | 'html' | 'json' | 'image' | 'video';
   content: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, any>;
   order: number;
 }
 

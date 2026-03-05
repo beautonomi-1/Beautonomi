@@ -93,7 +93,7 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const updates: any = {};
+    const updates: Record<string, unknown> = {};
 
     if (body.defaultAppointmentStatus !== undefined) {
       updates.default_appointment_status = body.defaultAppointmentStatus;

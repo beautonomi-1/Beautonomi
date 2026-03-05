@@ -6,8 +6,8 @@ import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useTranslation } from "@beautonomi/i18n";
-import { i18n, supportedLanguages } from "@beautonomi/i18n";
+import { useTranslation , i18n, supportedLanguages } from "@beautonomi/i18n";
+
 import { changeLanguage } from "@/lib/i18n";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";

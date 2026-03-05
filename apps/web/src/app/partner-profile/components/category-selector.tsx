@@ -365,7 +365,7 @@ const ServiceCategorySelector = () => {
             {categories.map((category, index) => (
               <button
                 key={index}
-                //@ts-ignore 
+                // @ts-expect-error - third-party types 
                 ref={el => categoryRefs.current[index] = el}
                 className={`py-2 px-4 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                   index === activeCategory

@@ -1,5 +1,5 @@
-declare module 'react-quill';
-declare module 'react-leaflet';
+declare module "react-quill";
+declare module "react-leaflet";
 
 // Asset imports (so TypeScript accepts image/media paths without resolving file on disk)
 declare module '*.svg' {

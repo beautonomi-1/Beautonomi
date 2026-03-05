@@ -22,7 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import AddressForm from "@/components/mapbox/AddressForm";
+import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { OperatingHoursEditor, type OperatingHours } from "@/components/provider/OperatingHoursEditor";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
 
@@ -382,31 +382,66 @@ function LocationDialog({
 
           <div>
             <Label htmlFor="address">Address *</Label>
-            <AddressForm
-              initialAddress={location ? {
-                address_line1: location.address_line1,
-                address_line2: location.address_line2 || undefined,
-                city: location.city,
-                state: location.state || undefined,
-                postal_code: location.postal_code || undefined,
-                country: location.country,
-                latitude: location.latitude || undefined,
-                longitude: location.longitude || undefined,
-              } : undefined}
-              onSave={(address) => {
-                handleAddressSelect(address);
-                // Auto-submit if editing existing location
-                if (location) {
-                  onSave({
-                    name: formData.label,
-                    ...address,
-                    phone: formData.phone,
-                  });
-                }
-              }}
-              showLabel={false}
-              asForm={false}
+            <p className="text-sm text-muted-foreground mb-2">
+              Start typing an address and select a suggestion to fill city, state, postal code and coordinates automatically.
+            </p>
+            <AddressAutocomplete
+              value={formData.address_line1}
+              onChange={handleAddressSelect}
+              placeholder="Start typing an address..."
+              country={formData.country || "ZA"}
+              required
             />
+          </div>
+
+          <div>
+            <Label htmlFor="address_line2">Address line 2 (optional)</Label>
+            <Input
+              id="address_line2"
+              value={formData.address_line2}
+              onChange={(e) => setFormData({ ...formData, address_line2: e.target.value })}
+              placeholder="Suite, unit, floor"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="city">City *</Label>
+              <Input
+                id="city"
+                value={formData.city}
+                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="state">State / Province</Label>
+              <Input
+                id="state"
+                value={formData.state}
+                onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="postal_code">Postal code</Label>
+              <Input
+                id="postal_code"
+                value={formData.postal_code}
+                onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="country">Country *</Label>
+              <Input
+                id="country"
+                value={formData.country}
+                onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                required
+              />
+            </div>
           </div>
 
           <div>

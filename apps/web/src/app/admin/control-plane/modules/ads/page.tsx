@@ -34,7 +34,7 @@ export default function AdsModulePage() {
       setLoading(true);
       try {
         const [configRes, packsRes] = await Promise.all([
-          fetcher.get<{ data: Record<string, unknown> | null }>(`/api/admin/control-plane/modules/ads?environment=${env}`),
+          fetcher.get<{ data: Record<string, any> | null }>(`/api/admin/control-plane/modules/ads?environment=${env}`),
           fetcher.get<{ data: Pack[] }>("/api/admin/control-plane/modules/ads/packs"),
         ]);
         const d = configRes.data;

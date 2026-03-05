@@ -9,9 +9,9 @@ import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 export function OnDemandWaitingScreen() {
   const config = useModuleConfig("on_demand");
   const timeoutSec = config.waiting_screen_timeout_seconds ?? 45;
-  const uiCopy = config.ui_copy as Record<string, string> | undefined;
-  const title = uiCopy?.title ?? "Please wait";
-  const message = uiCopy?.message ?? "We're connecting you...";
+  const uiCopy = (config?.ui_copy ?? {}) as Record<string, string>;
+  const title = uiCopy.waiting_title ?? uiCopy.title ?? "Request sent";
+  const message = uiCopy.waiting_headline ?? uiCopy.message ?? "Connecting you with beauty.";
 
   return (
     <View className="flex-1 items-center justify-center gap-4 p-6">

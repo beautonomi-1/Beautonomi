@@ -199,7 +199,7 @@ async function updateConversationMeta(
   preview: string,
   isCustomer: boolean
 ) {
-  const updatePayload: Record<string, unknown> = {
+  const updatePayload: Record<string, any> = {
     last_message_at: new Date().toISOString(),
     last_message_preview: preview,
     last_message_sender_id: senderId,

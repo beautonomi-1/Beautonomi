@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import Image from "next/image";
 import { Sparkles, X, Upload } from "lucide-react";
 
 interface CustomOfferModalProps {
@@ -183,7 +184,7 @@ export default function CustomOfferModal({
 
       const expirationAt = calculateExpirationDate(Number(expirationDays));
 
-      const payload: Record<string, unknown> = {
+      const payload: Record<string, any> = {
         customer_id: customerId,
         service_category_id: serviceCategoryId || null,
         location_type: locationType,
@@ -554,8 +555,8 @@ export default function CustomOfferModal({
             {imageUrls.length > 0 && (
               <div className="grid grid-cols-3 gap-2 mt-2">
                 {imageUrls.map((url, index) => (
-                  <div key={index} className="relative">
-                    <img src={url} alt={`Preview ${index + 1}`} className="w-full h-24 object-cover rounded" />
+                  <div key={index} className="relative aspect-video">
+                    <Image src={url} alt={`Preview ${index + 1}`} fill className="object-cover rounded" unoptimized />
                     <button
                       type="button"
                       onClick={() => removeImage(index)}

@@ -84,13 +84,13 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect }: VirtualWai
   };
 
   const filteredEntries = entries.filter((entry) => {
-    const matchesSearch = 
-      entry.client_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      entry.service_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      entry.client_phone?.includes(searchQuery);
-    
+    const matchesSearch =
+      (entry?.client_name ?? "").toLowerCase().includes((searchQuery ?? "").toLowerCase()) ||
+      (entry?.service_name ?? "").toLowerCase().includes((searchQuery ?? "").toLowerCase()) ||
+      (entry?.client_phone ?? "").includes(searchQuery ?? "");
+
     const matchesStatus = statusFilter === "all" || entry.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
 

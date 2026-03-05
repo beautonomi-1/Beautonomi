@@ -131,7 +131,7 @@ export async function PATCH(
     }
 
     // Build update data
-    const updateData: Record<string, unknown> = {};
+    const updateData: Record<string, any> = {};
     const data = validationResult.data;
     if (data.staff_id !== undefined) updateData.staff_id = data.staff_id;
     if (data.blocked_time_type_id !== undefined) updateData.blocked_time_type_id = data.blocked_time_type_id;

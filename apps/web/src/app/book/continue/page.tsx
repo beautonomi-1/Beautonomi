@@ -62,10 +62,10 @@ interface HoldData {
   end_at: string;
   location_type: string;
   location_id: string | null;
-  address_snapshot: Record<string, unknown> | null;
+  address_snapshot: Record<string, any> | null;
   hold_status: string;
   expires_at: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, any>;
   travel_fee?: number;
   travel_distance_km?: number;
 }
@@ -309,7 +309,7 @@ function BookContinueContent() {
     setValidationError(null);
     setStatus("consuming");
     try {
-      const payload: Record<string, unknown> = {
+      const payload: Record<string, any> = {
         payment_method: paymentMethod,
         payment_option: paymentOption,
         custom_field_values: Object.keys(bookingCustomValues).length > 0 ? bookingCustomValues : undefined,

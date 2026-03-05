@@ -78,9 +78,9 @@ export default function ProviderSubscriptionsPage() {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       return (
-        sub.providers?.business_name?.toLowerCase().includes(query) ||
-        sub.paystack_subscription_code?.toLowerCase().includes(query) ||
-        sub.subscription_plans?.name?.toLowerCase().includes(query)
+        (sub.providers?.business_name ?? "").toLowerCase().includes(query) ||
+        (sub.paystack_subscription_code ?? "").toLowerCase().includes(query) ||
+        (sub.subscription_plans?.name ?? "").toLowerCase().includes(query)
       );
     }
     return true;
@@ -108,14 +108,14 @@ export default function ProviderSubscriptionsPage() {
 
   if (loading) {
     return (
-      <RoleGuard allowedRoles={["superadmin"]}>
+      <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
         <LoadingTimeout loadingMessage="Loading provider subscriptions..." />
       </RoleGuard>
     );
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="container mx-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>

@@ -24,6 +24,8 @@ import { CiMail } from "react-icons/ci";
 import { X, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { signIn as signInAuth, signUp as signUpAuth, signInWithOAuth, resendVerificationEmail } from "@/lib/supabase/auth";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { normalizePhoneToE164 } from "@/lib/phone";
 import { toast } from "sonner";
 
 
@@ -64,6 +66,9 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
   const [showResendVerification, setShowResendVerification] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [sentPhoneE164, setSentPhoneE164] = useState("");
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -81,6 +86,9 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
       setPhone("");
       setShowResendVerification(false);
       setShowPassword(false);
+      setOtpSent(false);
+      setOtpCode("");
+      setSentPhoneE164("");
     }
   }, [open, initialMode]);
 
@@ -377,24 +385,58 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
     setError(null);
   };
 
-  const handlePhoneAuth = async () => {
-    if (!phone) {
-      setError("Phone number is required");
+  const fullPhoneE164 = normalizePhoneToE164(phone, countryCode.replace(/^\+/, ""));
+
+  const handlePhoneSendOtp = async () => {
+    if (!fullPhoneE164) {
+      setError("Please enter a valid phone number");
       return;
     }
-
     setIsLoading(true);
     setError(null);
-
     try {
-      const _fullPhone = `${countryCode}${phone}`;
-      // For phone auth, we'll use email/password flow with phone as identifier
-      // In production, you'd implement proper phone OTP flow
-      toast.info("Phone authentication coming soon. Please use email for now.");
-      setShowEmailForm(true);
-    } catch (error: any) {
-      setError(error.message || "Phone authentication failed");
-      toast.error(error.message || "Phone authentication failed");
+      const supabase = getSupabaseClient();
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        phone: fullPhoneE164,
+        options: { channel: "sms" },
+      });
+      if (otpError) throw otpError;
+      setSentPhoneE164(fullPhoneE164);
+      setOtpSent(true);
+      setOtpCode("");
+      toast.success("Check your phone for the verification code");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send code";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    if (!otpCode.trim() || !sentPhoneE164) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const supabase = getSupabaseClient();
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        phone: sentPhoneE164,
+        token: otpCode.trim(),
+        type: "sms",
+      });
+      if (verifyError) throw verifyError;
+      await refreshUser();
+      setOpen(false);
+      onAuthSuccess?.();
+      if (redirectContext === "provider") {
+        router.replace("/provider/dashboard");
+      }
+      toast.success("You're signed in");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Invalid code";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setIsLoading(false);
     }
@@ -423,43 +465,44 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
   };
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="w-full max-w-[95vw] sm:max-w-[575px] m-0 sm:m-4 p-0 z-[9999] overflow-auto max-h-[90vh] sm:max-h-[80vh] rounded-none sm:rounded-lg bg-white">
-        <DialogHeader className="border-b border-gray-300 px-4 sm:px-6 py-3 sm:py-4 relative">
+      <DialogContent className="w-full max-w-[95vw] sm:max-w-[440px] m-0 sm:m-4 p-0 z-[9999] overflow-auto max-h-[90vh] sm:max-h-[85vh] rounded-[28px] sm:rounded-[32px] bg-white shadow-2xl border-0">
+        <DialogHeader className="px-5 sm:px-6 pt-5 sm:pt-6 pb-2 relative">
           <button
             onClick={() => setOpen(false)}
-            className="absolute left-3 sm:left-4 top-3 sm:top-4 text-gray-500 hover:text-gray-700 p-1 touch-manipulation"
+            className="absolute left-4 top-4 sm:left-5 sm:top-5 text-gray-500 hover:text-gray-700 p-2 -m-2 rounded-full hover:bg-gray-100 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
           </button>
-          <DialogTitle className="text-center text-base sm:text-lg font-semibold">
+          <DialogTitle className="text-center text-base sm:text-lg font-semibold sr-only">
             Log in or sign up
           </DialogTitle>
           <DialogDescription className="sr-only">
             Log in or create a new Beautonomi account to access all features
           </DialogDescription>
         </DialogHeader>
-        <div className="mt-4 sm:mt-6 px-4 sm:px-6 pb-4 sm:pb-6">
-          <h2 className="text-xl sm:text-2xl font-bold mb-6 sm:mb-8">Welcome to Beautonomi</h2>
+        <div className="px-5 sm:px-6 pb-6 sm:pb-8 pt-0">
+          <h2 className="text-2xl sm:text-[28px] font-bold text-gray-900 tracking-tight mb-1">Welcome to Beautonomi</h2>
+          <p className="text-[15px] text-gray-500 mb-7 sm:mb-8">Log in or sign up to continue</p>
           
           {/* Error Message */}
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="mb-5 p-4 bg-red-50/90 border border-red-100 rounded-2xl">
               <div className="flex items-start gap-2">
                 <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <p className="text-sm text-red-600">{error}</p>
                   {showResendVerification && (
-                    <div className="mt-2">
-                      <p className="text-xs text-gray-600 mb-1">
-                        If you haven't verified your email yet:
+                    <div className="mt-3">
+                      <p className="text-[13px] text-gray-600 mb-2">
+                        If you haven&apos;t verified your email yet:
                       </p>
                       <button
                         onClick={handleResendVerification}
                         disabled={isResendingVerification}
-                        className="text-sm text-blue-600 underline hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="text-sm font-medium text-[#FF0077] hover:underline disabled:opacity-50 disabled:cursor-not-allowed py-1 rounded-lg touch-manipulation"
                       >
-                        {isResendingVerification ? "Sending..." : "Resend verification email"}
+                        {isResendingVerification ? "Sending…" : "Resend verification email"}
                       </button>
                     </div>
                   )}
@@ -468,19 +511,19 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
             </div>
           )}
 
-          {/* Phone Input (Default) */}
-          {!showEmailForm && (
+          {/* Phone Input or OTP step (Default) */}
+          {!showEmailForm && !otpSent && (
             <>
               {/* Country Code and Phone Number - Integrated Design */}
-              <div className="mb-4">
-                <div className="border border-gray-300 rounded-lg overflow-hidden">
-                  <div className="border-b border-gray-300 px-4 py-2 bg-gray-50">
-                    <Label className="text-xs font-medium text-gray-700">Country code</Label>
+              <div className="mb-5">
+                <div className="border border-gray-200 rounded-2xl overflow-hidden bg-gray-50/50">
+                  <div className="border-b border-gray-200/80 px-4 py-3 bg-gray-50/80">
+                    <Label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Country code</Label>
                     <Select value={countryCode} onValueChange={setCountryCode}>
-                      <SelectTrigger className="w-full border-none px-0 pt-1 text-base font-semibold bg-transparent h-auto">
+                      <SelectTrigger className="w-full border-none px-0 pt-1.5 text-base font-semibold bg-transparent h-auto rounded-none focus:ring-0">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="rounded-2xl">
                         <SelectItem value="+27">South Africa (+27)</SelectItem>
                         <SelectItem value="+254">Kenya (+254)</SelectItem>
                         <SelectItem value="+233">Ghana (+233)</SelectItem>
@@ -491,11 +534,11 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="px-4 py-3">
+                  <div className="px-4 py-3.5">
                     <Input
                       type="tel"
-                      className="text-base border-0 px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
-                      placeholder="Phone number"
+                      className="text-base border-0 px-0 h-auto min-h-[44px] focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent placeholder:text-gray-400"
+                      placeholder="e.g. 82 123 4567"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       autoComplete="tel"
@@ -505,24 +548,85 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                 </div>
               </div>
               
-              <p className="text-xs text-gray-600 mb-6">
-                {"We'll"} call or text you to confirm your number. Standard message and data rates apply.{" "}
-                <span className="font-semibold underline cursor-pointer hover:text-gray-900">Privacy Policy</span>
+              <p className="text-[13px] text-gray-500 mb-6 leading-relaxed">
+                We&apos;ll send you a verification code. Standard rates apply.{" "}
+                <Link href="/privacy-policy" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900" onClick={() => setOpen(false)}>
+                  Privacy Policy
+                </Link>
               </p>
               
               <Button 
-                className="w-full bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white h-12 text-base font-medium mb-6"
-                onClick={handlePhoneAuth}
-                disabled={isLoading}
+                className="w-full rounded-2xl bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40"
+                onClick={handlePhoneSendOtp}
+                disabled={isLoading || !fullPhoneE164}
               >
-                {isLoading ? "Processing..." : "Continue"}
+                {isLoading ? "Sending code…" : "Continue"}
               </Button>
+            </>
+          )}
+
+          {/* OTP verification step (after phone OTP sent) */}
+          {!showEmailForm && otpSent && (
+            <>
+              <p className="text-base font-semibold text-gray-900 mb-1">Enter code</p>
+              <p className="text-[13px] text-gray-500 mb-5">
+                We sent a 6-digit code to <span className="font-medium text-gray-700">{sentPhoneE164}</span>
+              </p>
+              <Input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="000000"
+                value={otpCode}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+                  setOtpCode(v);
+                  if (error) setError(null);
+                }}
+                className="text-center text-xl sm:text-2xl tracking-[0.4em] font-mono rounded-2xl min-h-[56px] mb-5 border-gray-200 focus-visible:ring-2 focus-visible:ring-[#FF0077]/30"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && otpCode.trim().length >= 4) handleVerifyOtp();
+                }}
+              />
+              <Button
+                className="w-full rounded-2xl bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white min-h-[52px] h-12 text-base font-semibold mb-4 touch-manipulation shadow-lg shadow-pink-200/40"
+                onClick={handleVerifyOtp}
+                disabled={isLoading || otpCode.trim().length < 4}
+              >
+                {isLoading ? "Verifying…" : "Verify"}
+              </Button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOtpSent(false);
+                  setOtpCode("");
+                  setSentPhoneE164("");
+                  setError(null);
+                }}
+                className="w-full py-3 text-[15px] text-gray-500 hover:text-gray-900 font-medium touch-manipulation rounded-xl active:bg-gray-100"
+              >
+                Use different number
+              </button>
             </>
           )}
 
           {/* Email Form (shown when "Continue with email" is clicked) */}
           {showEmailForm && (
             <>
+              {/* Back to phone/social - clear escape hatch */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEmailForm(false);
+                  setShowPasswordField(false);
+                  setError(null);
+                }}
+                className="flex items-center gap-2 text-[15px] text-gray-500 hover:text-gray-900 font-medium mb-5 -mx-1 px-1 py-2 rounded-xl active:bg-gray-100 touch-manipulation"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                Back to phone or social
+              </button>
               {/* Step 1: Email Input (or both email and password for login mode) */}
               {!showPasswordField && (
                 <>
@@ -531,7 +635,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       <Label className="text-sm font-medium text-gray-700 mb-2 block">Full name</Label>
                       <Input
                         type="text"
-                        className="text-base h-12 border-gray-300"
+                        className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 focus-visible:ring-2 focus-visible:ring-[#FF0077]/20"
                         placeholder="Full name"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
@@ -549,14 +653,13 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                     <Label className="text-sm font-medium text-gray-700 mb-2 block">Email</Label>
                     <Input
                       type="email"
-                      className="text-base h-12 border-gray-300"
-                      placeholder="Email"
+                      className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 focus-visible:ring-2 focus-visible:ring-[#FF0077]/20"
+                      placeholder="you@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && email && !isLoading) {
                           if (initialMode === "login") {
-                            // In login mode, focus password field if it exists, otherwise continue
                             const passwordInput = document.querySelector('input[type="password"], input[type="text"][placeholder="Password"]') as HTMLInputElement;
                             if (passwordInput) {
                               passwordInput.focus();
@@ -575,12 +678,12 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                   </div>
                   {/* Show password field immediately in login mode (when not signup) */}
                   {!isSignup && (
-                    <div className="mb-6">
+                    <div className="mb-5">
                       <Label className="text-sm font-medium text-gray-700 mb-2 block">Password</Label>
                       <div className="relative">
                         <Input
                           type={showPassword ? "text" : "password"}
-                          className="text-base h-12 border-gray-300 pr-10"
+                          className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 pr-12 focus-visible:ring-2 focus-visible:ring-[#FF0077]/20"
                           placeholder="Password"
                           value={password}
                           onChange={(e) => {
@@ -600,7 +703,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FF0077] rounded p-1"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 p-2 rounded-xl hover:bg-gray-100 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
                           aria-label={showPassword ? "Hide password" : "Show password"}
                           tabIndex={0}
                         >
@@ -614,62 +717,62 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                     </div>
                   )}
                   {!isSignup && (
-                    <div className="mb-4 text-center">
+                    <div className="mb-5 text-center">
                       <Link
                         href="/forgot-password"
                         onClick={() => setOpen(false)}
-                        className="text-sm text-gray-600 hover:text-[#FF0077]"
+                        className="text-[15px] text-gray-500 hover:text-[#FF0077] font-medium py-2 inline-block touch-manipulation"
                       >
-                        Forgot your password? <span className="font-semibold text-[#FF0077]">Reset it</span>
+                        Forgot your password? <span className="text-[#FF0077] font-semibold">Reset it</span>
                       </Link>
                     </div>
                   )}
                   <Button 
-                    className="w-full bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white h-12 text-base font-medium mb-6"
+                    className="w-full rounded-2xl bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40"
                     onClick={!isSignup ? handleEmailAuth : handleEmailContinue}
                     disabled={isLoading || !email || (!isSignup && !password)}
                   >
-                    {!isSignup ? (isLoading ? "Logging in..." : "Log in") : "Continue"}
+                    {!isSignup ? (isLoading ? "Logging in…" : "Log in") : "Continue"}
                   </Button>
                   
                   {/* Separator */}
                   <div className="flex items-center my-6">
-                    <div className="flex-grow border-t border-gray-300"></div>
-                    <span className="flex-shrink mx-4 text-sm text-gray-600">or</span>
-                    <div className="flex-grow border-t border-gray-300"></div>
+                    <div className="flex-grow border-t border-gray-200 rounded-full"></div>
+                    <span className="flex-shrink mx-4 text-[13px] text-gray-400 font-medium">or</span>
+                    <div className="flex-grow border-t border-gray-200 rounded-full"></div>
                   </div>
 
                   {/* Social Login Options */}
                   <Button
                     variant="outline"
-                    className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+                    className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
                     onClick={() => handleSocialLogin("google")}
                     disabled={isLoading}
                   >
-                    <FaGoogle className="text-lg" />
+                    <FaGoogle className="text-lg shrink-0" />
                     <span>Continue with Google</span>
                   </Button>
                   
                   <Button
                     variant="outline"
-                    className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+                    className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
                     onClick={() => handleSocialLogin("apple")}
                     disabled={isLoading}
                   >
-                    <FaApple className="text-lg" />
+                    <FaApple className="text-lg shrink-0" />
                     <span>Continue with Apple</span>
                   </Button>
                   
                   <Button
                     variant="outline"
-                    className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+                    className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
                     onClick={() => {
                       setShowEmailForm(false);
                       setError(null);
                     }}
                     disabled={isLoading}
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                     </svg>
                     <span>Continue with Phone</span>
@@ -677,11 +780,11 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                   
                   <Button
                     variant="outline"
-                    className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+                    className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
                     onClick={() => handleSocialLogin("facebook")}
                     disabled={isLoading}
                   >
-                    <FaFacebook className="text-lg text-blue-600" />
+                    <FaFacebook className="text-lg text-blue-600 shrink-0" />
                     <span>Continue with Facebook</span>
                   </Button>
 
@@ -691,7 +794,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       onClick={() => {
                         window.open("/help", "_blank");
                       }}
-                      className="text-sm text-gray-600 hover:text-gray-900 underline"
+                      className="text-[15px] text-gray-500 hover:text-gray-900 font-medium py-2 touch-manipulation"
                     >
                       Need help?
                     </button>
@@ -702,17 +805,16 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
               {/* Step 2: Password Input (after email is entered) */}
               {showPasswordField && (
                 <>
-                  <div className="mb-4">
+                  <div className="mb-5">
                     <Label className="text-sm font-medium text-gray-700 mb-2 block">Password</Label>
                     <div className="relative">
                       <Input
                         type={showPassword ? "text" : "password"}
-                        className="text-base h-12 border-gray-300 pr-10"
+                        className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 pr-12 focus-visible:ring-2 focus-visible:ring-[#FF0077]/20"
                         placeholder="Password"
                         value={password}
                         onChange={(e) => {
                           setPassword(e.target.value);
-                          // Clear error when user starts typing
                           if (error) {
                             setError(null);
                             setShowResendVerification(false);
@@ -729,7 +831,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#FF0077] rounded p-1"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 p-2 rounded-xl hover:bg-gray-100 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
                         aria-label={showPassword ? "Hide password" : "Show password"}
                         tabIndex={0}
                       >
@@ -742,21 +844,21 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                     </div>
                   </div>
                   <Button 
-                    className="w-full bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white h-12 text-base font-medium mb-4"
+                    className="w-full rounded-2xl bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white min-h-[52px] h-12 text-base font-semibold mb-5 touch-manipulation shadow-lg shadow-pink-200/40"
                     onClick={handleEmailAuth}
                     disabled={isLoading || !password}
                   >
                     {isLoading 
-                      ? (isSignup ? "Creating account..." : "Logging in...") 
+                      ? (isSignup ? "Creating account…" : "Logging in…") 
                       : (isSignup ? "Sign up" : "Log in")
                     }
                   </Button>
-                  <div className="text-center space-y-2">
+                  <div className="text-center space-y-1">
                     {!isSignup && (
                       <Link
                         href="/forgot-password"
                         onClick={() => setOpen(false)}
-                        className="block w-full text-sm text-[#FF0077] hover:underline font-medium"
+                        className="block w-full py-3 text-[15px] text-[#FF0077] hover:underline font-medium touch-manipulation"
                       >
                         Forgot your password?
                       </Link>
@@ -766,7 +868,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                         setShowPasswordField(false);
                         setError(null);
                       }}
-                      className="block w-full text-sm text-gray-600 hover:text-gray-900 underline"
+                      className="block w-full py-3 text-[15px] text-gray-500 hover:text-gray-900 font-medium touch-manipulation rounded-xl active:bg-gray-100"
                     >
                       Back
                     </button>
@@ -775,7 +877,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                         setIsSignup(!isSignup);
                         setError(null);
                       }}
-                      className="block w-full text-sm text-gray-600 hover:text-gray-900 hover:underline"
+                      className="block w-full py-3 text-[15px] text-gray-600 hover:text-gray-900 font-medium touch-manipulation rounded-xl active:bg-gray-100"
                     >
                       {isSignup ? "Already have an account? Log in" : "Don't have an account? Sign up"}
                     </button>
@@ -785,55 +887,55 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
             </>
           )}
 
-          {/* Separator */}
-          {!showEmailForm && (
+          {/* Separator - same as mobile: between phone block and social/email */}
+          {!showEmailForm && !otpSent && (
             <div className="flex items-center my-6">
-              <div className="flex-grow border-t border-gray-300"></div>
-              <span className="flex-shrink mx-4 text-sm text-gray-600">or</span>
-              <div className="flex-grow border-t border-gray-300"></div>
+              <div className="flex-grow border-t border-gray-200 rounded-full"></div>
+              <span className="flex-shrink mx-4 text-[13px] text-gray-400 font-medium">or</span>
+              <div className="flex-grow border-t border-gray-200 rounded-full"></div>
             </div>
           )}
 
-          {/* Social Login Options */}
-          {!showEmailForm && (
+          {/* Social Login Options - order: Google, Apple, Continue with email, Facebook */}
+          {!showEmailForm && !otpSent && (
             <>
               <Button
                 variant="outline"
-                className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+                className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
                 onClick={() => handleSocialLogin("google")}
                 disabled={isLoading}
               >
-                <FaGoogle className="text-lg" />
+                <FaGoogle className="text-lg shrink-0" />
                 <span>Continue with Google</span>
               </Button>
               
               <Button
                 variant="outline"
-                className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+                className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
                 onClick={() => handleSocialLogin("apple")}
                 disabled={isLoading}
               >
-                <FaApple className="text-lg" />
+                <FaApple className="text-lg shrink-0" />
                 <span>Continue with Apple</span>
               </Button>
               
               <Button
                 variant="outline"
-                className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+                className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
                 onClick={handleEmailButtonClick}
                 disabled={isLoading}
               >
-                <CiMail className="text-lg" />
+                <CiMail className="text-lg shrink-0" />
                 <span>Continue with email</span>
               </Button>
               
               <Button
                 variant="outline"
-                className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
+                className="w-full mb-3 rounded-2xl flex items-center justify-start gap-3 px-4 min-h-[52px] h-12 hover:bg-gray-50 border-gray-200 text-[15px] font-medium touch-manipulation"
                 onClick={() => handleSocialLogin("facebook")}
                 disabled={isLoading}
               >
-                <FaFacebook className="text-lg text-blue-600" />
+                <FaFacebook className="text-lg text-blue-600 shrink-0" />
                 <span>Continue with Facebook</span>
               </Button>
             </>

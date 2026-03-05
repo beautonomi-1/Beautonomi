@@ -99,7 +99,7 @@ export async function geocodeProviderLocation(
     }
 
     return { ok: true, latitude, longitude };
-  } catch (err: any) {
-    return { ok: false, error: err?.message ?? "Geocoding failed" };
+  } catch (err: unknown) {
+    return { ok: false, error: err instanceof Error ? err.message : "Geocoding failed" };
   }
 }

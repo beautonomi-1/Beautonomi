@@ -18,14 +18,12 @@ import {
 import { Image } from "expo-image";
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
-import { Colors, Shadows } from "@/constants/colors";
+import { Colors } from "@/constants/colors";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { haptic } from "@/lib/haptics";
 import { APP_URL } from "@/config/public-env";
-import { Skeleton } from "@/components/Skeleton";
 import type { ExplorePost, ExploreComment } from "@/types/api";
 
 function formatTime(iso: string) {

@@ -7,9 +7,9 @@ const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "node_modules/**"]),
-  // Scripts: Node run scripts often use require(); allow so lint passes.
+  // Scripts and config: allow require() where common (Node/CommonJS).
   {
-    files: ["scripts/**/*.js", "scripts/**/*.mjs", "scripts/**/*.cjs"],
+    files: ["scripts/**/*.js", "scripts/**/*.mjs", "scripts/**/*.cjs", "tailwind.config.ts"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
       "@typescript-eslint/no-unused-vars": "warn",
@@ -52,6 +52,13 @@ const eslintConfig = defineConfig([
       "react-hooks/purity": "warn",
       "react-hooks/use-memo": "warn",
       "react-hooks/preserve-manual-memoization": "warn",
+    },
+  },
+  // Tailwind config uses require() for preset/plugins; allow it.
+  {
+    files: ["tailwind.config.ts"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
     },
   },
 ]);

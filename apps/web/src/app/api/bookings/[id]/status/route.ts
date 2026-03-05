@@ -17,7 +17,7 @@ export async function GET(
     const { id: bookingId } = await params;
     const supabase = await getSupabaseServer();
 
-    // Fetch booking status
+    // Fetch booking status (current_stage used when provider_en_route_at/provider_arrived_at null)
     const { data: booking, error } = await supabase
       .from('bookings')
       .select(`
@@ -25,6 +25,7 @@ export async function GET(
         status,
         customer_id,
         provider_id,
+        current_stage,
         confirmed_at,
         provider_en_route_at,
         provider_arrived_at,
@@ -68,19 +69,19 @@ export async function GET(
       }
     }
 
-    // Map booking status
+    // Map booking status (use current_stage for at-home en-route/arrived when timestamps missing)
     let mappedStatus: string = booking.status;
-    if (booking.provider_en_route_at) {
+    if (booking.provider_en_route_at || booking.current_stage === 'provider_on_way') {
       mappedStatus = 'provider_en_route';
-    } else if (booking.provider_arrived_at) {
+    } else if (booking.provider_arrived_at || booking.current_stage === 'provider_arrived') {
       mappedStatus = 'provider_arrived';
-    } else if (booking.started_at) {
+    } else if (booking.started_at || booking.current_stage === 'service_started') {
       mappedStatus = 'in_progress';
-    } else if (booking.completed_at) {
+    } else if (booking.completed_at || booking.current_stage === 'service_completed') {
       mappedStatus = 'completed';
     } else if (booking.cancelled_at) {
       mappedStatus = 'cancelled';
-    } else if (booking.confirmed_at) {
+    } else if (booking.confirmed_at || booking.current_stage === 'confirmed') {
       mappedStatus = 'confirmed';
     } else {
       mappedStatus = 'pending';

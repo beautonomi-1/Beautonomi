@@ -15,6 +15,7 @@ import {
   DollarSign,
   CheckCircle2,
   XCircle,
+  Navigation,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -25,6 +26,7 @@ import Link from "next/link";
 import { BookingAuditLog } from "@/components/provider/BookingAuditLog";
 import { BookingConflictAlert } from "@/components/provider/BookingConflictAlert";
 import { SafetyPanicButton } from "@/components/safety/SafetyPanicButton";
+import ProviderLocationTracker from "@/components/provider/ProviderLocationTracker";
 
 export default function ProviderBookingDetail() {
   const params = useParams();
@@ -64,6 +66,10 @@ export default function ProviderBookingDetail() {
 
   // Provider forms (for labelling form responses)
   const [providerForms, setProviderForms] = useState<Array<{ id: string; title: string; fields: Array<{ id: string; name: string }> }>>([]);
+
+  // At-home journey / arrival
+  const [isStartingJourney, setIsStartingJourney] = useState(false);
+  const [isMarkingArrived, setIsMarkingArrived] = useState(false);
 
   useEffect(() => {
     loadBooking();
@@ -259,8 +265,62 @@ export default function ProviderBookingDetail() {
     }
   };
 
+  const handleStartJourney = async (etaMinutes?: number) => {
+    try {
+      setIsStartingJourney(true);
+      const estimated_arrival = etaMinutes
+        ? new Date(Date.now() + etaMinutes * 60 * 1000).toISOString()
+        : undefined;
+      await fetcher.post(`/api/provider/bookings/${bookingId}/start-journey`, {
+        ...(estimated_arrival && { estimated_arrival }),
+      });
+      toast.success(estimated_arrival ? `Journey started. ETA ${etaMinutes} min.` : "Journey started.");
+      loadBooking();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to start journey");
+    } finally {
+      setIsStartingJourney(false);
+    }
+  };
+
+  const handleMarkArrived = async () => {
+    try {
+      setIsMarkingArrived(true);
+      let latitude: number | undefined;
+      let longitude: number | undefined;
+      if (typeof navigator !== "undefined" && navigator.geolocation) {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 5000,
+          });
+        });
+        latitude = pos.coords.latitude;
+        longitude = pos.coords.longitude;
+      }
+      await fetcher.post(`/api/provider/bookings/${bookingId}/arrive`, {
+        ...(latitude != null && { latitude }),
+        ...(longitude != null && { longitude }),
+      });
+      toast.success("Marked as arrived.");
+      loadBooking();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to mark arrived");
+    } finally {
+      setIsMarkingArrived(false);
+    }
+  };
+
   const isActive = ["pending", "booked", "confirmed"].includes(booking?.status ?? "");
   const isStarted = ["started", "in_progress"].includes(booking?.status ?? "");
+  const isAtHome = booking?.location_type === "at_home";
+  const canStartJourney =
+    isAtHome &&
+    (booking?.status === "confirmed" || booking?.status === "pending") &&
+    (booking?.current_stage == null || booking?.current_stage === "confirmed");
+  const canMarkArrived = isAtHome && booking?.current_stage === "provider_on_way";
+  const isEnRoute = isAtHome && booking?.current_stage === "provider_on_way";
   const totalPaid = (booking as any)?.total_paid ?? 0;
   const totalRefunded = (booking as any)?.total_refunded ?? 0;
   const totalAmount = (booking as any)?.total_amount ?? 0;
@@ -465,12 +525,12 @@ export default function ProviderBookingDetail() {
                       )}
                       {booking.address.latitude && booking.address.longitude && (
                         <a
-                          href={`https://www.google.com/maps?q=${booking.address.latitude},${booking.address.longitude}`}
+                          href={`https://www.mapbox.com/directions/?destination=${booking.address.longitude},${booking.address.latitude}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-blue-600 hover:underline mt-1 inline-block"
                         >
-                          View on Google Maps →
+                          View on map →
                         </a>
                       )}
                     </div>
@@ -491,6 +551,68 @@ export default function ProviderBookingDetail() {
             </div>
           </div>
         </div>
+
+        {/* At-home visit: Start journey, Mark arrived, location tracker */}
+        {isAtHome && (
+          <div className="bg-white border rounded-lg p-6 mb-6">
+            <h2 className="text-xl font-semibold mb-4">At-home visit</h2>
+            <div className="space-y-4">
+              {canStartJourney && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Notify the customer you&apos;re on the way (optional ETA):</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={() => handleStartJourney()}
+                      disabled={isStartingJourney}
+                      variant="outline"
+                      className="min-h-[44px]"
+                    >
+                      <Navigation className="w-4 h-4 mr-2" />
+                      Start journey (no ETA)
+                    </Button>
+                    {[15, 30, 45].map((mins) => (
+                      <Button
+                        key={mins}
+                        onClick={() => handleStartJourney(mins)}
+                        disabled={isStartingJourney}
+                        className="min-h-[44px] bg-[#FF0077] hover:bg-[#D60565]"
+                      >
+                        <Navigation className="w-4 h-4 mr-2" />
+                        ETA {mins} min
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {canMarkArrived && (
+                <div>
+                  <Button
+                    onClick={handleMarkArrived}
+                    disabled={isMarkingArrived}
+                    className="min-h-[44px] bg-green-600 hover:bg-green-700"
+                  >
+                    <MapPin className="w-4 h-4 mr-2" />
+                    {isMarkingArrived ? "Marking arrived…" : "Mark arrived"}
+                  </Button>
+                </div>
+              )}
+              {isEnRoute && (
+                <ProviderLocationTracker
+                  bookingId={bookingId}
+                  destination={
+                    booking?.address?.latitude != null && booking?.address?.longitude != null
+                      ? {
+                          latitude: booking.address.latitude,
+                          longitude: booking.address.longitude,
+                        }
+                      : undefined
+                  }
+                  autoStart={true}
+                />
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Services */}
         <div className="bg-white border rounded-lg p-6 mb-6">

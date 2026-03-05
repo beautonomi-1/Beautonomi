@@ -74,7 +74,7 @@ export function useApi<T>(options: UseApiOptions<T> = {}) {
  */
 export function useApiData<T>(
   apiCall: () => Promise<T>,
-  options: UseApiOptions<T> & { deps?: unknown[] } = {}
+  options: UseApiOptions<T> & { deps?: any[] } = {}
 ) {
   const { deps: _deps = [], ...apiOptions } = options;
   const api = useApi<T>(apiOptions);

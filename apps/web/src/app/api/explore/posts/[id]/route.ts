@@ -157,7 +157,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const updates: Record<string, unknown> = {};
+    const updates: Record<string, any> = {};
     if (body.caption !== undefined) updates.caption = body.caption;
     if (body.media_urls !== undefined) {
       updates.media_urls = (body.media_urls as string[]).map((u: string) => toStoragePath(String(u)));

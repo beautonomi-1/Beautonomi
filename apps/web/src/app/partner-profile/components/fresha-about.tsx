@@ -69,7 +69,7 @@ const PartnerAbout: React.FC = () => {
             369 Main Road, Shop 4, Sea Point, Cape Town, Western Cape
           </p>
           <Link
-            href="https://maps.google.com/?q=369+Main+Road+Sea+Point+Cape+Town"
+            href="https://www.mapbox.com/directions/?query=369+Main+Road+Sea+Point+Cape+Town"
             target="_blank"
             rel="noopener noreferrer"
             className="text-blue-600 hover:text-blue-800 underline text-sm"

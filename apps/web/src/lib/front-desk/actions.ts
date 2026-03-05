@@ -116,7 +116,7 @@ export async function sendPaystackLink(
   }
 }
 
-/** Record Yoco terminal payment. Uses POST mark-paid with card. */
+/** Record Yoco terminal payment (mark-paid only, no terminal). */
 export async function recordYocoPayment(
   bookingId: string,
   amount: number,
@@ -132,6 +132,54 @@ export async function recordYocoPayment(
     return true;
   } catch (err) {
     const msg = err instanceof FetchError ? err.message : "Failed to record payment";
+    toast.error(msg);
+    return false;
+  }
+}
+
+/**
+ * Create a real Yoco terminal payment, then mark booking paid with the Yoco reference.
+ * If no devices or terminal API fails, falls back to recordYocoPayment (mark-paid only).
+ */
+export async function createYocoTerminalPaymentAndMarkPaid(
+  bookingId: string,
+  amount: number,
+  _currency: string = "ZAR"
+): Promise<boolean> {
+  try {
+    const devicesRes = await fetcher.get<{ data?: { id: string; name: string; is_active?: boolean }[] }>(
+      "/api/provider/yoco/devices"
+    );
+    const devices = Array.isArray(devicesRes?.data) ? devicesRes.data : (devicesRes as any)?.data ?? [];
+    const activeDevices = devices.filter((d) => d.is_active !== false);
+    const device = activeDevices[0];
+
+    if (!device?.id) {
+      toast.info("No Yoco device found. Recording as manual card payment.");
+      return recordYocoPayment(bookingId, amount);
+    }
+
+    const paymentRes = await fetcher.post<{ data?: { yoco_payment_id?: string } }>(
+      "/api/provider/yoco/payments",
+      {
+        device_id: device.id,
+        amount,
+        currency: _currency,
+        appointment_id: bookingId,
+      }
+    );
+
+    const yocoPaymentId = (paymentRes as any)?.data?.yoco_payment_id;
+    if (yocoPaymentId) {
+      const ok = await recordYocoPayment(bookingId, amount, yocoPaymentId);
+      if (ok) toast.success("Terminal payment recorded");
+      return ok;
+    }
+
+    toast.info("Recording as manual card payment.");
+    return recordYocoPayment(bookingId, amount);
+  } catch (err) {
+    const msg = err instanceof FetchError ? err.message : "Terminal payment failed";
     toast.error(msg);
     return false;
   }

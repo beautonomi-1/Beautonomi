@@ -342,7 +342,7 @@ export default function Component() {
       // Only log non-timeout errors to console (timeouts are expected in some cases)
       if (!(err instanceof FetchTimeoutError)) {
         // Build error details safely
-        const errorDetails: Record<string, unknown> = {};
+        const errorDetails: Record<string, any> = {};
         
         if (err instanceof Error) {
           if (err.message) errorDetails.message = err.message;

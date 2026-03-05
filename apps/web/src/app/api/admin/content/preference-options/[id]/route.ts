@@ -148,7 +148,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    const updates: Record<string, unknown> = {
+    const updates: Record<string, any> = {
       name: name.trim(),
     };
 

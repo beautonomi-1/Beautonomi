@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowRight, Sparkles, Heart, Star } from "lucide-react";
 
 interface PageContent {
@@ -43,11 +44,9 @@ const WhyBeautonomiHero = ({ content }: WhyBeautonomiHeroProps) => {
           </div>
           <div className="relative mx-auto">
             {heroImage ? (
-              <img 
-                src={heroImage} 
-                alt="Why Beautonomi"  
-                className="z-10 w-full max-w-[900px] h-[500px] md:h-[650px] mx-auto object-cover rounded-2xl shadow-2xl" 
-              />
+              <div className="relative z-10 w-full max-w-[900px] h-[500px] md:h-[650px] mx-auto rounded-2xl shadow-2xl overflow-hidden">
+                <Image src={heroImage} alt="Why Beautonomi" fill className="object-cover" unoptimized />
+              </div>
             ) : (
               <div className="w-full max-w-[900px] h-[500px] md:h-[650px] mx-auto rounded-2xl bg-gradient-to-br from-[#FF0077] via-[#D60565] to-[#FF0077] flex items-center justify-center shadow-2xl relative overflow-hidden">
                 <div className="absolute inset-0 opacity-20">

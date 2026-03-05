@@ -63,7 +63,7 @@ export default function VerificationPage() {
       script.src = "https://static.sumsub.com/idensic/static/sns-websdk-builder.js";
       script.async = true;
       script.onload = () => {
-        const w = window as unknown as { snsWebSdk?: { init: (token: string, refresh: () => Promise<string>) => void } };
+        const w = window as any as { snsWebSdk?: { init: (token: string, refresh: () => Promise<string>) => void } };
         if (w.snsWebSdk?.init && containerRef.current) {
           try {
             w.snsWebSdk.init(token, getNewToken);

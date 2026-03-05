@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import Image from "next/image";
 import { Camera, X, Upload, Plus } from "lucide-react";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
@@ -1205,11 +1206,13 @@ export function ProductCreateEditDialog({
                   
                   {/* Main Photo */}
                   {formData.mainImageUrl ? (
-                    <div className="relative mb-4">
-                      <img 
-                        src={formData.mainImageUrl} 
-                        alt="Main product" 
-                        className="w-full h-64 object-cover rounded-lg"
+                    <div className="relative mb-4 w-full h-64 rounded-lg overflow-hidden">
+                      <Image
+                        src={formData.mainImageUrl}
+                        alt="Main product"
+                        fill
+                        className="object-cover rounded-lg"
+                        unoptimized
                       />
                       <Button
                         type="button"
@@ -1262,7 +1265,7 @@ export function ProductCreateEditDialog({
                       .slice(0, 2)
                       .map((url, index) => (
                         <div key={index} className="relative aspect-square bg-pink-100 rounded-lg overflow-hidden group">
-                          <img src={url} alt={`Product ${index + 2}`} className="w-full h-full object-cover" />
+                          <Image src={url} alt={`Product ${index + 2}`} fill className="object-cover" unoptimized />
                           <Button
                             type="button"
                             variant="ghost"

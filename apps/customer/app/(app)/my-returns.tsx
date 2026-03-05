@@ -55,6 +55,7 @@ export default function MyReturnsScreen() {
       await fetchReturns();
       setLoading(false);
     })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
   return (

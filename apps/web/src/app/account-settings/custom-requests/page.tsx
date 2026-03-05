@@ -119,6 +119,7 @@ export default function CustomRequestsPage() {
     staff_id: "",
     location_id: "",
     scheduled_at: "",
+    travel_fee: "",
   });
 
   const load = async () => {
@@ -251,6 +252,7 @@ export default function CustomRequestsPage() {
       staff_id: "",
       location_id: "",
       scheduled_at: "",
+      travel_fee: "",
     });
     setShowOfferModal(true);
   };
@@ -266,7 +268,7 @@ export default function CustomRequestsPage() {
       const expirationDate = new Date();
       expirationDate.setDate(expirationDate.getDate() + parseInt(offerFormData.expiration_days));
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         price: parseFloat(offerFormData.price),
         currency: offerFormData.currency,
         duration_minutes: parseInt(offerFormData.duration_minutes),
@@ -276,6 +278,11 @@ export default function CustomRequestsPage() {
         location_id: offerFormData.location_id || null,
         scheduled_at: offerFormData.scheduled_at ? new Date(offerFormData.scheduled_at).toISOString() : null,
       };
+      const selectedReq = items.find((r) => r.id === selectedRequestId);
+      if (selectedReq?.location_type === "at_home" && offerFormData.travel_fee.trim() !== "") {
+        const fee = parseFloat(offerFormData.travel_fee);
+        if (!Number.isNaN(fee) && fee >= 0) payload.travel_fee = fee;
+      }
 
       await fetcher.post(`/api/provider/custom-requests/${selectedRequestId}/offers`, payload);
       toast.success("Offer created successfully!");
@@ -679,6 +686,21 @@ export default function CustomRequestsPage() {
                 />
                 <p className="text-xs text-gray-500 mt-1">When the customer pays, the booking will show on the calendar at this time.</p>
               </div>
+
+              {selectedRequestId && items.find((r) => r.id === selectedRequestId)?.location_type === "at_home" && (
+                <div>
+                  <Label htmlFor="offer_travel_fee">Travel fee (optional)</Label>
+                  <Input
+                    id="offer_travel_fee"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={offerFormData.travel_fee}
+                    onChange={(e) => setOfferFormData({ ...offerFormData, travel_fee: e.target.value })}
+                    placeholder="0"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>

@@ -40,7 +40,6 @@ import {
   UserCheck,
   MessageSquare,
   TrendingUp,
-  Crown,
   Zap,
   Coins,
   Medal,
@@ -48,9 +47,9 @@ import {
   Undo2,
   Store,
   Layers,
+  GraduationCap,
   Smartphone,
   Link2,
-  Percent,
 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -63,6 +62,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -130,6 +130,7 @@ const navGroups: NavGroup[] = [
     label: "Content & catalog",
     items: [
       { title: "Content", href: "/admin/content", icon: FileText },
+      { title: "Learning Center", href: "/admin/content/learning", icon: GraduationCap },
       { title: "Catalog", href: "/admin/catalog", icon: Tag },
       { title: "Explore", href: "/admin/explore", icon: ImageIcon },
     ],
@@ -163,6 +164,7 @@ const navGroups: NavGroup[] = [
       { title: "API Keys", href: "/admin/api-keys", icon: Shield },
       { title: "Amplitude", href: "/admin/integrations/amplitude", icon: BarChart3 },
       { title: "Mapbox", href: "/admin/mapbox", icon: Map },
+      { title: "Service Zones", href: "/admin/service-zones", icon: Map },
       { title: "ISO Codes", href: "/admin/iso-codes", icon: Globe },
     ],
   },
@@ -181,7 +183,6 @@ const navGroups: NavGroup[] = [
       { title: "Control Plane", href: "/admin/control-plane/overview", icon: Layers },
       { title: "Feature Flags", href: "/admin/settings/feature-flags", icon: ToggleLeft },
       { title: "Custom Fields", href: "/admin/custom-fields", icon: FileText },
-      { title: "Memberships", href: "/admin/memberships", icon: Crown },
       { title: "App Version", href: "/admin/settings/app-version", icon: Smartphone },
       { title: "Referral Settings", href: "/admin/settings/referrals", icon: Link2 },
     ],
@@ -295,9 +296,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <div className="flex items-center gap-3">
               <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
                 <SheetTrigger asChild>
-                  <button className="p-2 hover:bg-gray-100 rounded-lg">
+                  <Button variant="ghost" size="icon" className="rounded-lg">
                     <Menu className="w-5 h-5" />
-                  </button>
+                  </Button>
                 </SheetTrigger>
                 <SheetContent side="left" className="w-64 p-0 bg-white">
                   <SidebarContent
@@ -696,7 +697,7 @@ function UserMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-2 p-1.5 hover:bg-gray-100 rounded-lg">
+        <Button variant="ghost" className="flex items-center gap-2 p-1.5 rounded-lg h-auto">
           <Avatar className="w-8 h-8">
             <AvatarImage src={user?.avatar_url || undefined} />
             <AvatarFallback className="bg-pink-100 text-pink-600">
@@ -704,7 +705,7 @@ function UserMenu({
             </AvatarFallback>
           </Avatar>
           <ChevronDown className="w-4 h-4 text-gray-600 hidden lg:block" />
-        </button>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>

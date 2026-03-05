@@ -136,7 +136,7 @@ const PaymentPage = () => {
 
   const handleSetDefault = async (id: string) => {
     try {
-      const res = await fetcher.patch<{ data?: unknown; error?: { message?: string } }>(`/api/me/payment-methods/${id}`, { is_default: true });
+      const res = await fetcher.patch<{ data?: any; error?: { message?: string } }>(`/api/me/payment-methods/${id}`, { is_default: true });
       if (res?.error) {
         toast.error(res.error.message || "Failed to set default");
         return;

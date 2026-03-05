@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,6 +71,14 @@ export default function SearchBox() {
               <CardTitle>Top articles</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex items-center gap-4 pb-2 border-b border-gray-100">
+                <Link href="/learn" className="flex items-center gap-4 w-full text-[#FF0077] hover:underline font-medium text-sm">
+                  <div className="p-2 bg-gray-200 rounded-xl">
+                    <FileTextIcon className="w-6 h-6" />
+                  </div>
+                  Browse Learning Center
+                </Link>
+              </div>
               {searchSuggestions.map((suggestion, index) => (
                 <div key={index} className="flex items-center gap-4">
                   <div className="p-2 bg-gray-200 rounded-xl">

@@ -46,7 +46,7 @@ function parseUserIds(input: string): string[] {
     .filter(Boolean);
 }
 
-function formatFetchError(e: unknown, fallback: string): string {
+function formatFetchError(e: any, fallback: string): string {
   if (!(e instanceof FetchError)) return e instanceof Error ? e.message : fallback;
   return e.details ? `${e.message}: ${Array.isArray(e.details) ? (e.details as Array<{ message?: string }>).map((d) => d.message).join("; ") : String(e.details)}` : e.message;
 }

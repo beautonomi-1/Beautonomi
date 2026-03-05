@@ -8,7 +8,7 @@ These are the internal links that appear in the site footer. Status:
 
 | Footer link / route | Fully CMS-managed? | Notes |
 |---------------------|--------------------|--------|
-| **About** (`/about`) | Yes | Loads `page_slug=about`; renders hero_title, hero_content, sections. |
+| **About** (`/about`) | Yes | Driven by **Content → About Us** (`about_us_content`). Renders hero (first section), story blocks, trust, and contact grid. Not from Content → Pages. |
 | **Careers** (`/career`) | No | Page is static; does not load or display CMS content. |
 | **Customer Support / Help** (`/help`) | No | Fetches help content but does not render it; UI is hardcoded. |
 | **Blog** (`/news`) | No | Static; no CMS. |
@@ -41,7 +41,7 @@ You can create and edit content for any **page slug**. The dropdown in the admin
 |---------------|------------------------|--------|
 | **help**      | Partially              | Help page fetches `page_slug=help` but the main UI (top articles, guides, explore more) is **hardcoded** in components. CMS entries for `help` are stored and can be used later if the help page is wired to render by `section_key`. |
 | **career**    | Not yet                | Careers page is **fully static**. You can add content in the CMS with `page_slug=career` for future use; the career frontend does not yet load or display it. |
-| **about**     | Yes                    | About page loads content from CMS. |
+| **about**     | Yes                    | About page loads from **Content → About Us** (`about_us_content`) via `GET /api/public/about-us`. Section keys: mission, what_we_do, for_professionals, safety_trust, contact_intro, contact_email, contact_phone, contact_help_center. Optional `image_url` per section. |
 | **gift-card** | Yes                    | Gift card page uses CMS. |
 | **why-beautonomi** | Yes                | Uses CMS. |
 | **pricing**   | Partial                | Only hero_title, hero_description from page_content; plans/FAQs from other DB tables. |
@@ -51,7 +51,8 @@ You can create and edit content for any **page slug**. The dropdown in the admin
 
 ## APIs used by the frontend
 
-- **`GET /api/public/page-content?page_slug=<slug>`** – Map by section_key. Used by: about, gift-card, help, why-beautonomi, resources.
+- **`GET /api/public/about-us`** – About page only. Returns active `about_us_content` rows (section_key, title, content, image_url) ordered by display_order. Edit in **Content → About Us**.
+- **`GET /api/public/page-content?page_slug=<slug>`** – Map by section_key. Used by: gift-card, help, why-beautonomi, resources. (About uses `/api/public/about-us`, not this.)
 - **`GET /api/public/content/pages/[slug]`** – Array of sections. Used by: privacy-policy, terms-and-condition.
 - **`GET /api/public/pages/[slug]`** – Grouped by section_key. Used by: become-a-partner (usePageContent hook).
 - **`GET /api/public/signup-content`** – Signup content. Used by: signup page.

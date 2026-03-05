@@ -104,7 +104,7 @@ export async function PATCH(request: NextRequest) {
     const currentSettings = existingProfile?.privacy_settings || defaultSettings;
 
     // Merge with new settings (only update provided fields)
-    const updatedSettings: Record<string, unknown> = {
+    const updatedSettings: Record<string, any> = {
       ...defaultSettings,
       ...currentSettings,
       ...body, // Override with any provided fields
@@ -112,7 +112,7 @@ export async function PATCH(request: NextRequest) {
 
     // Map frontend field names to database column names
     const usersTableUpdates: Record<string, boolean> = {};
-    const privacySettingsJsonb: Record<string, unknown> = {};
+    const privacySettingsJsonb: Record<string, any> = {};
 
     // Fields that go to users table columns
     if (body.accountVisibility !== undefined) {

@@ -10,8 +10,9 @@ import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { FetchError } from "@/lib/http/fetcher";
 import { Plus, Edit, Trash2 } from "lucide-react";
+import Link from "next/link";
 
-function formatFetchError(e: unknown, fallback: string): string {
+function formatFetchError(e: any, fallback: string): string {
   if (!(e instanceof FetchError)) return e instanceof Error ? e.message : fallback;
   const msg = e.message;
   if (!e.details) return msg;
@@ -121,6 +122,9 @@ export default function ServiceZonesTab() {
           <p className="text-xs text-gray-500 mt-1">
             Platform zones define where the platform is available. Providers can then select these zones and set their own pricing.
           </p>
+          <Link href="/admin/service-zones" className="text-xs text-[#FF0077] hover:underline mt-1 inline-block">
+            Open Service Zones Control Plane (hierarchy, map, publish) →
+          </Link>
         </div>
         <Button onClick={handleCreate} className="bg-[#FF0077] hover:bg-[#D60565]">
           <Plus className="w-4 h-4 mr-2" />
@@ -337,13 +341,15 @@ function ServiceZoneDialog({
                   {formData.postal_codes.map((code, index) => (
                     <Badge key={index} variant="secondary" className="flex items-center gap-1">
                       {code}
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="icon"
                         onClick={() => handleRemovePostalCode(index)}
-                        className="ml-1 hover:text-red-500"
+                        className="ml-1 h-5 w-5 p-0 min-w-0 hover:text-red-500 text-base leading-none"
                       >
                         ×
-                      </button>
+                      </Button>
                     </Badge>
                   ))}
                 </div>
@@ -375,13 +381,15 @@ function ServiceZoneDialog({
                   {formData.cities.map((city, index) => (
                     <Badge key={index} variant="secondary" className="flex items-center gap-1">
                       {city}
-                      <button
+                      <Button
                         type="button"
+                        variant="ghost"
+                        size="icon"
                         onClick={() => handleRemoveCity(index)}
-                        className="ml-1 hover:text-red-500"
+                        className="ml-1 h-5 w-5 p-0 min-w-0 hover:text-red-500 text-base leading-none"
                       >
                         ×
-                      </button>
+                      </Button>
                     </Badge>
                   ))}
                 </div>

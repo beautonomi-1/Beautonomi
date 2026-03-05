@@ -9,7 +9,7 @@ export interface PageContentItem {
   section_key: string;
   content_type: "text" | "html" | "json" | "image" | "video";
   content: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   order: number;
   is_active: boolean;
 }

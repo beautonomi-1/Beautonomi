@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, handleApiError } from "@/lib/supabase/api-helpers";
 
-function csvEscape(value: unknown): string {
+function csvEscape(value: any): string {
   const s = String(value ?? "");
   if (/[",\n\r]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
   return s;

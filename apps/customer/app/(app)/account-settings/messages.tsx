@@ -3,7 +3,6 @@ import { View, Text, TouchableOpacity, Image } from "react-native";
 import { router } from "expo-router";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
-import { Colors } from "@/constants/colors";
 
 export default function MessagesScreen() {
   const [data, setData] = useState<any>(null);

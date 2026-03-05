@@ -59,7 +59,7 @@ export async function GET(
 
     return NextResponse.json({
       data: {
-        ...(city as Record<string, unknown>),
+        ...(city as Record<string, any>),
         provider_count: count || 0,
       },
       error: null,

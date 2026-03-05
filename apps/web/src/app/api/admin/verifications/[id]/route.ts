@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 
 // Schema for verification review
@@ -106,7 +107,14 @@ export async function PATCH(
       throw updateError;
     }
 
-    // The trigger will automatically update the users table
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: (user as any).role || "superadmin",
+      action: "admin.verification.review",
+      entity_type: "user_verification",
+      entity_id: id,
+      metadata: { status, user_id: (verification as any)?.user_id, rejection_reason: status === "rejected" ? rejection_reason : null },
+    });
 
     return successResponse(verification);
   } catch (error) {

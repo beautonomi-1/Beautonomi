@@ -127,7 +127,7 @@ export async function PATCH(
 
     // Build update data
     // Map API role format to database format
-    const updateData: Record<string, unknown> = {};
+    const updateData: Record<string, any> = {};
     if (validationResult.data.name !== undefined) {
       updateData.name = validationResult.data.name;
     }

@@ -62,10 +62,10 @@ export default function AdminProviders() {
 
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.set("status", statusFilter);
-      const response = await fetcher.get<{ data: Provider[] }>(
+      const response = await fetcher.get<{ data?: Provider[] }>(
         `/api/admin/providers?${params.toString()}`
       );
-      setProviders(response.data);
+      setProviders(response.data ?? []);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -153,9 +153,9 @@ export default function AdminProviders() {
 
   const filteredProviders = providers.filter((provider) => {
     const matchesSearch =
-      provider.business_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      provider.owner_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      provider.owner_email?.toLowerCase().includes(searchQuery.toLowerCase());
+      (provider.business_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (provider.owner_name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (provider.owner_email ?? "").toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch;
   });
 
@@ -177,7 +177,7 @@ export default function AdminProviders() {
   }
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]}>
+    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="min-h-screen bg-zinc-50/50">
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
           <motion.div

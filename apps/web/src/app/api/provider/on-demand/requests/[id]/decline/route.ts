@@ -32,7 +32,7 @@ export async function POST(
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
 
-    let providerResponsePayload: Record<string, unknown> = {};
+    let providerResponsePayload: Record<string, any> = {};
     try {
       const body = await request.json();
       const parsed = declineBodySchema.safeParse(body);

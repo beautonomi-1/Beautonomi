@@ -69,7 +69,7 @@ export async function GET(
     }
 
     return successResponse({
-      ...(userData as Record<string, unknown>),
+      ...(userData as Record<string, any>),
       stats,
     });
   } catch (error) {

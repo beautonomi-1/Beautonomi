@@ -23,7 +23,6 @@ import { APP_URL } from "@/config/public-env";
 import { haptic } from "@/lib/haptics";
 
 const PRIMARY = Colors.primary;
-const PRIMARY_LIGHT = Colors.primaryLight;
 
 const COUNTRY_CODES = [
   { code: "+27", flag: "🇿🇦", label: "South Africa (+27)", phoneLen: 9 },

@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
     }
 
     // For payouts without recipient_code (e.g. pending), use provider's active payout account for display
-    let bankAccountByProviderId = new Map();
+    const bankAccountByProviderId = new Map();
     if (providerIds.length > 0) {
       const { data: providerAccounts } = await supabase
         .from("provider_payout_accounts")

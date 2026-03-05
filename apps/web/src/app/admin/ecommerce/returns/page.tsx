@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import RoleGuard from "@/components/auth/RoleGuard";
+import { Button } from "@/components/ui/button";
 
 interface ReturnRequest {
   id: string;
@@ -223,27 +224,30 @@ export default function AdminProductReturnsPage() {
                     </p>
                     {r.status === "escalated" && (
                       <div className="flex gap-1 mt-2">
-                        <button
+                        <Button
+                          size="sm"
                           onClick={() => openResolveDialog(r.id, r.refund_amount, "full_refund")}
                           disabled={resolving === r.id}
-                          className="px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                          className="bg-green-600 hover:bg-green-700 text-white text-xs"
                         >
                           Full Refund
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          size="sm"
                           onClick={() => openResolveDialog(r.id, r.refund_amount, "partial_refund")}
                           disabled={resolving === r.id}
-                          className="px-3 py-1.5 text-xs font-medium bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50"
+                          className="bg-amber-600 hover:bg-amber-700 text-white text-xs"
                         >
                           Partial
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          size="sm"
                           onClick={() => openResolveDialog(r.id, r.refund_amount, "denied")}
                           disabled={resolving === r.id}
-                          className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                          className="bg-red-600 hover:bg-red-700 text-white text-xs"
                         >
                           Deny
-                        </button>
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -256,13 +260,23 @@ export default function AdminProductReturnsPage() {
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">
-          <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page <= 1}
+          >
             <ChevronLeft className="w-4 h-4" />
-          </button>
+          </Button>
           <span className="text-sm text-gray-600">Page {page} of {totalPages}</span>
-          <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages}
+          >
             <ChevronRight className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
       )}
 
@@ -276,9 +290,9 @@ export default function AdminProductReturnsPage() {
                 {dialog.resolution === "partial_refund" && "Partial Refund"}
                 {dialog.resolution === "denied" && "Deny Return"}
               </h3>
-              <button onClick={() => setDialog(null)} className="p-1 hover:bg-gray-100 rounded-lg">
+              <Button variant="ghost" size="icon" onClick={() => setDialog(null)} className="rounded-lg">
                 <X className="w-4 h-4 text-gray-500" />
-              </button>
+              </Button>
             </div>
 
             {dialog.resolution === "full_refund" && (
@@ -309,19 +323,16 @@ export default function AdminProductReturnsPage() {
             </div>
 
             <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setDialog(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 border rounded-lg hover:bg-gray-50"
-              >
+              <Button variant="outline" onClick={() => setDialog(null)}>
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={submitResolve}
                 disabled={!!resolving}
-                className="px-4 py-2 text-sm font-medium text-white bg-pink-600 rounded-lg hover:bg-pink-700 disabled:opacity-50"
+                className="bg-pink-600 hover:bg-pink-700 text-white"
               >
                 {resolving ? "Processing..." : "Confirm"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

@@ -60,7 +60,7 @@ export interface ReferenceDataItem {
   description?: string;
   display_order: number;
   is_active: boolean;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 export interface ProviderApi {
@@ -145,7 +145,7 @@ export interface ProviderApi {
   createCampaign(data: Partial<Campaign>): Promise<Campaign>;
   updateCampaign(id: string, data: Partial<Campaign>): Promise<Campaign>;
   deleteCampaign(id: string): Promise<void>;
-  sendCampaign(id: string): Promise<unknown>;
+  sendCampaign(id: string): Promise<any>;
   listAutomations(): Promise<Automation[]>;
   createAutomation(data: Partial<Automation>): Promise<Automation>;
   updateAutomation(id: string, data: Partial<Automation>): Promise<Automation>;
@@ -168,7 +168,7 @@ export interface ProviderApi {
     currency?: string;
     appointment_id?: string;
     sale_id?: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }): Promise<YocoPayment>;
   getYocoPayment(id: string): Promise<YocoPayment>;
 
@@ -631,12 +631,12 @@ export class MockProviderApi implements ProviderApi {
       // Apply additional filters that weren't handled by API
       let filtered = appointments;
       if (filters?.search) {
-        const search = filters.search.toLowerCase();
+        const search = (filters.search ?? "").toLowerCase();
         filtered = filtered.filter(
           (a) =>
-            a.client_name.toLowerCase().includes(search) ||
-            a.service_name.toLowerCase().includes(search) ||
-            a.ref_number.toLowerCase().includes(search)
+            (a?.client_name ?? "").toLowerCase().includes(search) ||
+            (a?.service_name ?? "").toLowerCase().includes(search) ||
+            (a?.ref_number ?? "").toLowerCase().includes(search)
         );
       }
 
@@ -2685,7 +2685,7 @@ export class MockProviderApi implements ProviderApi {
     currency?: string;
     appointment_id?: string;
     sale_id?: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }): Promise<YocoPayment> {
     try {
       const { yocoApi } = await import("./yoco-api");
@@ -3037,11 +3037,11 @@ export class MockProviderApi implements ProviderApi {
     let filtered = [...this.recurringAppointments];
 
     if (filters?.search) {
-      const search = filters.search.toLowerCase();
+      const search = (filters.search ?? "").toLowerCase();
       filtered = filtered.filter(
         (a) =>
-          a.client_name.toLowerCase().includes(search) ||
-          a.service_name.toLowerCase().includes(search)
+          (a?.client_name ?? "").toLowerCase().includes(search) ||
+          (a?.service_name ?? "").toLowerCase().includes(search)
       );
     }
 
@@ -3156,8 +3156,8 @@ export class MockProviderApi implements ProviderApi {
       let filtered = [...this.resources];
 
       if (filters?.search) {
-        const search = filters.search.toLowerCase();
-        filtered = filtered.filter((r) => r.name.toLowerCase().includes(search));
+        const search = (filters.search ?? "").toLowerCase();
+        filtered = filtered.filter((r) => (r.name ?? "").toLowerCase().includes(search));
       }
 
       return new Promise((resolve) => setTimeout(() => resolve(filtered), 200));
@@ -3338,47 +3338,87 @@ export class MockProviderApi implements ProviderApi {
     }
   }
 
-  // Express Booking Links Methods
-  private expressBookingLinks: ExpressBookingLink[] = [];
+  // Express Booking Links Methods — call real API and map to UI type
+  private mapExpressLinkFromApi(row: {
+    id: string;
+    name: string;
+    slug: string;
+    service_ids?: string[] | null;
+    staff_ids?: string[] | null;
+    is_active?: boolean;
+    expires_at?: string | null;
+    use_count?: number | null;
+    created_at?: string;
+  }): ExpressBookingLink {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    return {
+      id: row.id,
+      name: row.name,
+      short_code: row.slug,
+      full_url: `${origin}/book/l/${encodeURIComponent(row.slug)}`,
+      service_id: row.service_ids?.[0],
+      team_member_id: row.staff_ids?.[0],
+      is_active: row.is_active ?? true,
+      expires_at: row.expires_at ?? undefined,
+      usage_count: row.use_count ?? 0,
+      created_date: row.created_at ?? new Date().toISOString(),
+    };
+  }
 
   async listExpressBookingLinks(): Promise<ExpressBookingLink[]> {
-    return new Promise((resolve) => setTimeout(() => resolve(this.expressBookingLinks), 200));
+    try {
+      const { fetcher } = await import("@/lib/http/fetcher");
+      const res = await fetcher.get<{ data: any[] }>("/api/provider/express-booking");
+      const rows = res.data ?? [];
+      return Array.isArray(rows) ? rows.map((r) => this.mapExpressLinkFromApi(r)) : [];
+    } catch (error) {
+      console.warn("Failed to load express booking links:", error);
+      return [];
+    }
   }
 
   async createExpressBookingLink(
     data: Partial<ExpressBookingLink>
   ): Promise<ExpressBookingLink> {
-    const shortCode = data.short_code || Math.random().toString(36).substring(2, 8).toUpperCase();
-    const newLink: ExpressBookingLink = {
-      id: `link-${Date.now()}`,
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const slug = (data.short_code ?? Math.random().toString(36).substring(2, 8))
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "") || "link";
+    const body = {
       name: data.name || "New Booking Link",
-      short_code: shortCode,
-      full_url: `${window.location.origin}/book/${shortCode}`,
-      is_active: true,
-      usage_count: 0,
-      created_date: new Date().toISOString(),
-      ...data,
+      slug,
+      service_ids: data.service_id ? [data.service_id] : [],
+      staff_ids: data.team_member_id ? [data.team_member_id] : [],
+      is_active: data.is_active ?? true,
+      expires_at: data.expires_at ?? null,
     };
-
-    this.expressBookingLinks.push(newLink);
-    return new Promise((resolve) => setTimeout(() => resolve(newLink), 300));
+    const res = await fetcher.post<{ data: any }>("/api/provider/express-booking", body);
+    if (!res.data) throw new Error("Failed to create link");
+    return this.mapExpressLinkFromApi(res.data);
   }
 
   async updateExpressBookingLink(
     id: string,
     data: Partial<ExpressBookingLink>
   ): Promise<ExpressBookingLink> {
-    const index = this.expressBookingLinks.findIndex((l) => l.id === id);
-    if (index === -1) throw new Error("Express booking link not found");
-    this.expressBookingLinks[index] = { ...this.expressBookingLinks[index], ...data };
-    return new Promise((resolve) =>
-      setTimeout(() => resolve(this.expressBookingLinks[index]), 300)
-    );
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const body: Record<string, unknown> = {};
+    if (data.name !== undefined) body.name = data.name;
+    if (data.short_code !== undefined) {
+      body.slug = data.short_code.toLowerCase().replace(/[^a-z0-9-]/g, "") || "link";
+    }
+    if (data.service_id !== undefined) body.service_ids = data.service_id ? [data.service_id] : [];
+    if (data.team_member_id !== undefined) body.staff_ids = data.team_member_id ? [data.team_member_id] : [];
+    if (data.is_active !== undefined) body.is_active = data.is_active;
+    if (data.expires_at !== undefined) body.expires_at = data.expires_at || null;
+    const res = await fetcher.patch<{ data: any }>(`/api/provider/express-booking/${id}`, body);
+    if (!res.data) throw new Error("Failed to update link");
+    return this.mapExpressLinkFromApi(res.data);
   }
 
   async deleteExpressBookingLink(id: string): Promise<void> {
-    this.expressBookingLinks = this.expressBookingLinks.filter((l) => l.id !== id);
-    return new Promise((resolve) => setTimeout(() => resolve(), 200));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/express-booking/${id}`);
   }
 
   // Cancellation Policies Methods
@@ -4800,7 +4840,7 @@ export class MockProviderApi implements ProviderApi {
       if (filters?.status) params.append("status", filters.status);
       if (filters?.type) params.append("type", filters.type);
       
-      const response = await fetcher.get<{ data: { data: any[] } | any[] }>(
+      const response = await fetcher.get<{ data: { data: any[] } | unknown[] }>(
         `/api/provider/campaigns${params.toString() ? `?${params.toString()}` : ""}`
       );
       return Array.isArray(response.data) ? response.data : (response.data as any)?.data || [];

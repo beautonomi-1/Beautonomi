@@ -10,7 +10,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import { toast } from "sonner";
 import { Save, Eye, EyeOff } from "lucide-react";
 
-function formatFetchError(e: unknown, fallback: string): string {
+function formatFetchError(e: any, fallback: string): string {
   if (!(e instanceof FetchError)) return e instanceof Error ? e.message : fallback;
   const msg = e.message;
   if (!e.details) return msg;
@@ -71,7 +71,7 @@ export default function MapboxConfigTab() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload: Record<string, unknown> = {
+    const payload: Record<string, any> = {
       is_enabled: formData.is_enabled,
       style_url: formData.style_url || null,
     };
@@ -125,13 +125,15 @@ export default function MapboxConfigTab() {
               required={!config}
               className="pr-10"
             />
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => setShowAccessToken(!showAccessToken)}
               className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
             >
               {showAccessToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
+            </Button>
           </div>
           <p className="text-xs text-gray-500 mt-1">
             Server-side token for geocoding, routing, and distance calculations. Keep this secret. {config && "Leave blank to keep current."}
@@ -152,13 +154,15 @@ export default function MapboxConfigTab() {
               required={!config}
               className="pr-10"
             />
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => setShowPublicToken(!showPublicToken)}
               className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
             >
               {showPublicToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
+            </Button>
           </div>
           <p className="text-xs text-gray-500 mt-1">
             Public token for client-side map rendering (web, customer & provider apps). {config && "Leave blank to keep current token."}

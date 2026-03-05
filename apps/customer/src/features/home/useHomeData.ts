@@ -27,6 +27,8 @@ function normalizeProvider(p: Record<string, unknown>): PublicProviderCard {
     distance_km: o.distance_km != null ? Number(o.distance_km) : (o.distanceKm != null ? Number(o.distanceKm) : null),
     supports_house_calls: Boolean(o.supports_house_calls ?? o.supportsHouseCalls ?? false),
     supports_salon: Boolean(o.supports_salon ?? o.supportsSalon ?? true),
+    current_badge: (o.current_badge as PublicProviderCard["current_badge"]) ?? null,
+    is_sponsored: Boolean(o.is_sponsored ?? o.isSponsored ?? false),
   };
 }
 
@@ -40,17 +42,6 @@ function normalize(r: unknown): HomeApiResponse {
     nearest: arr(raw?.nearest),
     hottest: arr(raw?.hottest),
     upcoming: arr(raw?.upcoming),
-    browseByCity: Array.isArray(raw?.browseByCity)
-      ? (raw.browseByCity as Array<{ city: string; providers: unknown[] }>).map((g) => ({
-          city: g.city,
-          providers: arr(g.providers),
-        }))
-      : Array.isArray(raw?.browse_by_city)
-        ? (raw.browse_by_city as Array<{ city: string; providers: unknown[] }>).map((g) => ({
-            city: g.city,
-            providers: arr(g.providers),
-          }))
-        : [],
   };
 }
 

@@ -23,7 +23,7 @@ export interface GeocodeSuggestion {
   place_name: string;
   center: [number, number];
   text: string;
-  context?: Array<{ id: string; text: string }>;
+  context?: { id: string; text: string }[];
 }
 
 export function useAddresses(enabled: boolean) {

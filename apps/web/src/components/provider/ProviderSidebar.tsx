@@ -102,7 +102,7 @@ const navigationSections = [
       { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" as keyof StaffPermissions },
       { icon: BarChart3, label: "Analytics", href: "/provider/analytics", permission: "view_reports" as keyof StaffPermissions },
       { icon: BarChart3, label: "Reports", href: "/provider/reports", permission: "view_reports" as keyof StaffPermissions },
-      { icon: Trophy, label: "Rewards", href: "/provider/gamification", permission: undefined },
+      { icon: Trophy, label: "Rewards & Badges", href: "/provider/gamification", permission: undefined },
       { icon: Grid3x3, label: "Catalogue", href: "/provider/catalogue", permission: "view_products" as keyof StaffPermissions },
       { icon: Sparkles, label: "Packages", href: "/provider/packages", permission: "view_services" as keyof StaffPermissions },
     ],

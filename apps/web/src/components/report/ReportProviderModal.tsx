@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { Loader2, Flag } from "lucide-react";
 
 interface ReportProviderModalProps {
@@ -50,8 +50,9 @@ export function ReportProviderModal({
       setDescription("");
       onOpenChange(false);
       onSuccess?.();
-    } catch {
-      toast.error("Failed to submit report");
+    } catch (e) {
+      const message = e instanceof FetchError ? e.message : "Failed to submit report";
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }

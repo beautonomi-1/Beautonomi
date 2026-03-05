@@ -21,6 +21,7 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { QuickStartBanner } from "@/components/provider/QuickStartBanner";
 import { RewardsCard } from "@/components/provider/RewardsCard";
 import { BadgeCongratsModal } from "@/components/provider/BadgeCongratsModal";
+import { ProviderIdentityStrip } from "@/components/provider/ProviderIdentityStrip";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
@@ -120,6 +121,13 @@ interface ProviderDashboardStats {
       progress_percentage: number;
     } | null;
   } | null;
+
+  // Provider profile summary (for identity strip)
+  provider_profile?: {
+    supports_house_calls: boolean;
+    supports_salon: boolean;
+    max_service_distance_km: number | null;
+  };
 }
 
 export default function ProviderDashboard() {
@@ -437,6 +445,15 @@ export default function ProviderDashboard() {
         subtitle="Overview of your business performance"
       />
 
+      {/* Identity strip: rating (Uber-style), badge, service type, at-home radius */}
+      <ProviderIdentityStrip
+        averageRating={stats.average_rating}
+        totalReviews={stats.total_reviews}
+        badgeName={stats.gamification?.current_badge?.name ?? null}
+        badgeColor={stats.gamification?.current_badge?.color ?? null}
+        profile={stats.provider_profile ?? { supports_house_calls: false, supports_salon: false, max_service_distance_km: null }}
+      />
+
       {/* Business Type Info */}
       {provider?.business_type && (
         <div className="mb-4 sm:mb-6 p-4 bg-white border rounded-lg">
@@ -468,12 +485,21 @@ export default function ProviderDashboard() {
       {/* Quick Start Banner */}
       <QuickStartBanner />
 
-      {/* Rewards & Achievements Card */}
-      {stats.gamification && (
+      {/* Rewards & Achievements Card - always show to encourage progress */}
+      {stats.gamification ? (
         <>
           <RewardsCard gamification={stats.gamification} />
           <BadgeCongratsModal gamification={stats.gamification} />
         </>
+      ) : (
+        <RewardsCard
+          gamification={{
+            total_points: 0,
+            current_badge: null,
+            badge_earned_at: null,
+            progress_to_next_badge: null,
+          }}
+        />
       )}
 
       {/* Key Metrics - Primary KPIs */}
