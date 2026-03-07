@@ -52,6 +52,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.beautonomi.partner",
+      "versionCode": 3,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "intentFilters": [

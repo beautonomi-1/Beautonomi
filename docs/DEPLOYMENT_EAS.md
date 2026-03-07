@@ -57,10 +57,13 @@ If EAS Build fails with:
 - **"Distribution Certificate is not validated for non-interactive builds"**
 - **"Credentials are not set up. Run this command again in interactive mode."**
 
-you must set up or validate iOS credentials **once** from your machine (interactive mode):
+you must set up or validate iOS credentials **once** from your machine (interactive mode), **for each app** that fails:
+
+- **Customer app** (Beautonomi, `com.beautonomi`): run from `apps/customer`.
+- **Provider app** (Beautonomi Provider, `com.beautonomi.partner`): run from `apps/provider`.
 
 ```bash
-cd apps/customer   # or apps/provider
+cd apps/customer   # for customer iOS; use apps/provider for provider iOS
 eas credentials --platform ios
 ```
 
@@ -93,6 +96,27 @@ In each app's `eas.json`, update the `submit.production.ios` section:
    - These are already in `.gitignore`
 
 3. The `serviceAccountKeyPath` in `eas.json` points to `./google-services-key.json`
+
+### Fixing "Generating a new Keystore is not supported in --non-interactive mode" (Android)
+
+If EAS Build fails with:
+
+- **"Generating a new Keystore is not supported in --non-interactive mode"**
+
+then Android credentials are not set up yet. EAS cannot create a keystore when running from CI/GitHub. You must set up the Android keystore **once** from your machine (interactive mode):
+
+```bash
+cd apps/customer   # or apps/provider
+eas credentials --platform android
+```
+
+1. Choose the **production** (or the profile you build with) build profile when prompted.
+2. When asked about the keystore, either:
+   - **Generate a new keystore** — EAS will create one and store it on Expo’s servers (use this for new apps), or
+   - **Use an existing keystore** — if you already have an upload keystore (e.g. from Play or from `generate-upload-keystore.ps1`), provide the path and passwords.
+3. Complete the flow. After that, EAS will use the stored credentials for all future builds (including non-interactive/CI).
+
+Do the same for the other app (`apps/provider`) if you build both. Then re-run the build from GitHub or `eas build --profile production --platform android --non-interactive`.
 
 ## Amplitude Guides & Surveys (optional)
 
@@ -128,6 +152,31 @@ From the app directory (`apps/customer` or `apps/provider`):
 # Submit to App Store and Google Play
 eas submit --profile production --platform all
 ```
+
+## Android: Aligning with existing Play Store apps (Flutter → Expo)
+
+The customer and provider apps already exist on Google Play (Beautonomi, Beautonomi Partner). To ship Expo builds as **updates** to those same listings:
+
+- **Package names** match: `com.beautonomi`, `com.beautonomi.partner` (in each app’s `app.json` → `expo.android.package`).
+- **Version codes** are set so the next upload is accepted:
+  - **Customer (Beautonomi):** `expo.android.versionCode: 4` (Play Production is at 3).
+  - **Provider (Beautonomi Partner):** `expo.android.versionCode: 3` (Open testing is at 2).
+- **Signing:** To update the existing apps, the Expo AAB must be signed with the **same** Android keystore used for the current Flutter builds. Configure EAS to use that keystore (e.g. `eas credentials --platform android` and supply the existing keystore path and passwords). Without the same key, Play will reject the upload as a different app.
+
+**If you lost the Flutter upload keystore:** Google Play App Signing allows an "upload key reset". For **Beautonomi (customer)** you can generate a new upload keystore and PEM, then request the reset in Play Console:
+
+1. Install Java JDK if needed (e.g. [Adoptium](https://adoptium.net)); ensure `keytool` is in PATH or set `JAVA_HOME`.
+2. From repo root or `apps/customer`, run:
+   ```powershell
+   .\apps\customer\scripts\generate-upload-keystore.ps1
+   ```
+   This creates `apps/customer/upload-keystore.jks`, `upload_certificate.pem`, and `upload-keystore-credentials.txt` (password; gitignored).
+3. In Play Console → Beautonomi → **Release** → **Setup** → **App signing** → **Request upload key reset** → choose "I lost my upload key" → upload the generated **upload_certificate.pem**.
+4. After Google approves, run `eas credentials --platform android` in `apps/customer`, choose "Use existing keystore", and point to `upload-keystore.jks` using the password from `upload-keystore-credentials.txt`.
+
+Repeat the same process for **Beautonomi Partner (provider)** in its own App signing page; use a separate keystore (run a similar script from `apps/provider` or generate a second keystore with a different output path).
+
+Bump `versionCode` in each app’s `app.json` whenever you need a higher code than what’s currently on the store.
 
 ## Environment Variables
 
