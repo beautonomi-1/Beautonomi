@@ -34,15 +34,19 @@ function resolvePlugins(plugins) {
   });
 }
 
+// Base config from app.json (used when EAS/CI invokes config function without app.json merged)
+const appJson = require("./app.json");
+
 /** Merge env and plugins into base config. Function form so Expo passes app.json as base (satisfies expo-doctor). */
 module.exports = ({ config }) => {
+  const base = config?.expo ? config : { expo: appJson.expo };
   return {
-    ...config,
+    ...base,
     expo: {
-      ...config.expo,
-      plugins: resolvePlugins(config.expo?.plugins),
+      ...base.expo,
+      plugins: resolvePlugins(base.expo?.plugins),
       extra: {
-        ...(config?.expo?.extra || {}),
+        ...(base.expo?.extra || {}),
         EXPO_PUBLIC_SUPABASE_URL: envFromFile.EXPO_PUBLIC_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL,
         EXPO_PUBLIC_SUPABASE_ANON_KEY: envFromFile.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
         EXPO_PUBLIC_APP_URL: envFromFile.EXPO_PUBLIC_APP_URL ?? process.env.EXPO_PUBLIC_APP_URL,
