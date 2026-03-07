@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { APP_URL } from "@/config/public-env";
 import { haptic } from "@/lib/haptics";
@@ -178,19 +179,31 @@ export default function SignupScreen() {
     }
   }
 
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const formNarrow = isTablet || Platform.OS === "web";
+  const formStyle = {
+    width: "100%" as const,
+    ...(formNarrow ? { maxWidth: Math.min(420, contentMaxWidth), alignSelf: "center" as const } : {}),
+  };
+  const scrollContentStyle = {
+    padding: contentPadding,
+    paddingBottom: 48,
+    ...(formNarrow ? { alignItems: "center" as const } : {}),
+  };
+
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-white"
+      style={{ flex: 1, backgroundColor: "#fff" }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
     >
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={Platform.OS === "web" ? { padding: 24, paddingBottom: 48, alignItems: "center" } : { padding: 24, paddingBottom: 48 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={scrollContentStyle}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={Platform.OS === "web" ? { width: "100%", maxWidth: 420, alignSelf: "center" } as any : { width: "100%" }}>
+        <View style={formStyle}>
         {/* Back button */}
         <TouchableOpacity
           onPress={() => router.back()}
@@ -225,7 +238,6 @@ export default function SignupScreen() {
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "center",
-            gap: 10,
             borderWidth: 1.5,
             borderColor: "#E5E7EB",
             borderRadius: 12,
@@ -236,7 +248,7 @@ export default function SignupScreen() {
           accessibilityRole="button"
           accessibilityLabel="Continue with Google"
         >
-          <Ionicons name="logo-google" size={20} color="#4285F4" />
+          <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
           <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
         </TouchableOpacity>
 
@@ -248,7 +260,6 @@ export default function SignupScreen() {
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
-              gap: 10,
               borderRadius: 12,
               paddingVertical: 14,
               marginBottom: 12,
@@ -265,7 +276,7 @@ export default function SignupScreen() {
         {/* Divider */}
         <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 20 }}>
           <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
-          <Text style={{ marginHorizontal: 16, fontSize: 13, color: "#9CA3AF" }}>or sign up with email</Text>
+          <Text style={{ marginHorizontal: contentPadding, fontSize: 13, color: "#9CA3AF" }}>or sign up with email</Text>
           <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
         </View>
 
@@ -376,7 +387,7 @@ export default function SignupScreen() {
         {/* Password strength */}
         {password.length > 0 && (
           <View style={{ marginBottom: 12, marginTop: 4 }}>
-            <View style={{ flexDirection: "row", gap: 4, marginBottom: 4 }}>
+            <View style={{ flexDirection: "row", marginBottom: 4 }}>
               {[1, 2, 3, 4].map((i) => (
                 <View
                   key={i}
@@ -385,6 +396,7 @@ export default function SignupScreen() {
                     height: 4,
                     borderRadius: 2,
                     backgroundColor: strength.score >= i ? strength.color : "#E5E7EB",
+                    marginRight: i < 4 ? 4 : 0,
                   }}
                 />
               ))}
@@ -463,11 +475,10 @@ export default function SignupScreen() {
               paddingHorizontal: 12,
               borderRightWidth: 1,
               borderRightColor: "#E5E7EB",
-              gap: 4,
             }}
           >
-            <Text style={{ fontSize: 18 }}>{selectedCountry?.flag ?? "🌍"}</Text>
-            <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827" }}>{countryCode}</Text>
+            <Text style={{ fontSize: 18, marginRight: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
+            <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginRight: 4 }}>{countryCode}</Text>
             <Ionicons name="chevron-down" size={14} color="#6B7280" />
           </TouchableOpacity>
           <TextInput
@@ -589,7 +600,7 @@ export default function SignupScreen() {
             <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 4 }}>
               <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB" }} />
             </View>
-            <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderColor: "#F3F4F6" }}>
+            <View style={{ paddingHorizontal: contentPadding, paddingVertical: 12, borderBottomWidth: 1, borderColor: "#F3F4F6" }}>
               <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12 }}>
                 Select Country
               </Text>
@@ -629,7 +640,7 @@ export default function SignupScreen() {
                     flexDirection: "row",
                     alignItems: "center",
                     paddingVertical: 14,
-                    paddingHorizontal: 16,
+                    paddingHorizontal: contentPadding,
                     borderBottomWidth: 1,
                     borderColor: "#F9FAFB",
                   }}

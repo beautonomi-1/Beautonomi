@@ -171,7 +171,7 @@ export default function BookingActionBar({
         <Button
           onClick={onNext}
           disabled={!canProceed}
-          className="w-full h-14 text-base font-semibold bg-[#FF0077] hover:bg-[#D60565] disabled:opacity-50 disabled:cursor-not-allowed touch-target"
+          className="w-full h-14 text-base font-semibold bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed touch-target"
           aria-label="Continue to next step"
         >
           Continue

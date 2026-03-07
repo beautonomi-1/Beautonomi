@@ -7,10 +7,12 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 interface InventoryProduct {
   id: string;
@@ -36,6 +38,7 @@ interface InventoryResponse {
 
 /** Content-only for use in Products hub (Inventory tab). */
 export function InventoryContent() {
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
 
   const { data, loading, error, refresh } = useApi<InventoryResponse>(
@@ -50,14 +53,14 @@ export function InventoryContent() {
 
   if (loading && !data) {
     return (
-      <View className="flex-1 items-center justify-center py-12">
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
         <LoadingState />
       </View>
     );
   }
   if (error && !data) {
     return (
-      <View className="flex-1 justify-center px-4">
+      <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
         <ErrorState message={error} onRetry={refresh} />
       </View>
     );
@@ -71,84 +74,107 @@ export function InventoryContent() {
 
   return (
     <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
       >
-        <View className="mb-6 flex-row gap-3">
-          <View className="flex-1 rounded-2xl border border-gray-200 bg-white p-4">
-            <View className="mb-1 h-8 w-8 items-center justify-center rounded-lg bg-emerald-100">
+        <View style={{ marginBottom: 24, flexDirection: "row" }}>
+          <View style={{ flex: 1, marginRight: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
+            <View style={{ marginBottom: 4, height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#d1fae5" }}>
               <Ionicons name="cube-outline" size={18} color="#059669" />
             </View>
-            <Text className="text-2xl font-bold text-gray-900">{totalProducts}</Text>
-            <Text className="text-sm text-gray-500">Total products</Text>
+            <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{totalProducts}</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Total products</Text>
           </View>
-          <View className="flex-1 rounded-2xl border border-gray-200 bg-white p-4">
-            <View className="mb-1 h-8 w-8 items-center justify-center rounded-lg bg-blue-100">
+          <View style={{ flex: 1, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
+            <View style={{ marginBottom: 4, height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#dbeafe" }}>
               <Ionicons name="cash-outline" size={18} color="#2563eb" />
             </View>
-            <Text className="text-lg font-bold text-gray-900">
-              R {Number(totalStockValue).toFixed(0)}
-            </Text>
-            <Text className="text-sm text-gray-500">Stock value</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>R {Number(totalStockValue).toFixed(0)}</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Stock value</Text>
           </View>
         </View>
 
         {outOfStock.length > 0 && (
-          <View className="mb-4">
-            <Text className="mb-2 text-sm font-semibold text-red-700">Out of stock</Text>
-            <View className="rounded-xl border border-red-100 bg-red-50/50 p-3">
-              {outOfStock.slice(0, 10).map((p) => (
-                <View key={p.id} className="flex-row items-center justify-between py-2 border-b border-red-100/50 last:border-b-0">
-                  <Text className="flex-1 text-sm font-medium text-gray-900" numberOfLines={1}>
-                    {p.name}
-                  </Text>
-                  <Text className="text-xs text-red-600">0 left</Text>
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: "#b91c1c" }}>Out of stock</Text>
+            <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#fecaca", backgroundColor: "rgba(254,242,242,0.5)", padding: 12 }}>
+              {outOfStock.slice(0, 10).map((p, idx) => (
+                <View
+                  key={p.id}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingVertical: 8,
+                    borderBottomWidth: idx < Math.min(10, outOfStock.length) - 1 ? 1 : 0,
+                    borderBottomColor: "rgba(254,202,202,0.5)",
+                  }}
+                >
+                  <Text style={{ flex: 1, fontSize: 14, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>{p.name}</Text>
+                  <Text style={{ fontSize: 12, color: "#dc2626" }}>0 left</Text>
                 </View>
               ))}
               {outOfStock.length > 10 && (
-                <Text className="pt-1 text-xs text-gray-500">+{outOfStock.length - 10} more</Text>
+                <Text style={{ paddingTop: 4, fontSize: 12, color: Colors.gray[500] }}>+{outOfStock.length - 10} more</Text>
               )}
             </View>
           </View>
         )}
 
         {lowStock.length > 0 && (
-          <View className="mb-4">
-            <Text className="mb-2 text-sm font-semibold text-amber-700">Low stock</Text>
-            <View className="rounded-xl border border-amber-100 bg-amber-50/50 p-3">
-              {lowStock.slice(0, 10).map((p) => (
-                <View key={p.id} className="flex-row items-center justify-between py-2 border-b border-amber-100/50 last:border-b-0">
-                  <Text className="flex-1 text-sm font-medium text-gray-900" numberOfLines={1}>
-                    {p.name}
-                  </Text>
-                  <Text className="text-xs text-amber-700">
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: "#b45309" }}>Low stock</Text>
+            <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#fef3c7", backgroundColor: "rgba(255,251,235,0.5)", padding: 12 }}>
+              {lowStock.slice(0, 10).map((p, idx) => (
+                <View
+                  key={p.id}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingVertical: 8,
+                    borderBottomWidth: idx < Math.min(10, lowStock.length) - 1 ? 1 : 0,
+                    borderBottomColor: "rgba(254,243,199,0.5)",
+                  }}
+                >
+                  <Text style={{ flex: 1, fontSize: 14, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>{p.name}</Text>
+                  <Text style={{ fontSize: 12, color: "#b45309" }}>
                     {Number(p.quantity ?? 0)} (alert ≤{Number(p.low_stock_level ?? 5)})
                   </Text>
                 </View>
               ))}
               {lowStock.length > 10 && (
-                <Text className="pt-1 text-xs text-gray-500">+{lowStock.length - 10} more</Text>
+                <Text style={{ paddingTop: 4, fontSize: 12, color: Colors.gray[500] }}>+{lowStock.length - 10} more</Text>
               )}
             </View>
           </View>
         )}
 
         {categories.length > 0 && (
-          <View className="mb-4">
-            <Text className="mb-2 text-sm font-semibold text-gray-700">By category</Text>
-            <View className="rounded-xl border border-gray-200 bg-white">
-              {categories.slice(0, 15).map((c) => (
-                <View key={c.category} className="flex-row items-center justify-between border-b border-gray-100 px-4 py-3 last:border-b-0">
-                  <Text className="text-sm font-medium text-gray-900">{c.category}</Text>
-                  <View className="flex-row items-center gap-3">
-                    <Text className="text-xs text-gray-500">{c.count} items</Text>
-                    <Text className="text-sm font-medium text-gray-700">
-                      R {Number(c.stockValue).toFixed(0)}
-                    </Text>
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>By category</Text>
+            <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white }}>
+              {categories.slice(0, 15).map((c, idx) => (
+                <View
+                  key={c.category}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    borderBottomWidth: idx < Math.min(15, categories.length) - 1 ? 1 : 0,
+                    borderBottomColor: Colors.gray[100],
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                  }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{c.category}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500], marginRight: 12 }}>{c.count} items</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>R {Number(c.stockValue).toFixed(0)}</Text>
                   </View>
                 </View>
               ))}
@@ -157,12 +183,12 @@ export function InventoryContent() {
         )}
 
         {totalProducts === 0 && (
-          <View className="items-center rounded-2xl border border-gray-100 bg-gray-50/50 p-8">
-            <View className="mb-3 h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
+          <View style={{ alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: "rgba(249,250,251,0.5)", padding: 32 }}>
+            <View style={{ marginBottom: 12, height: 56, width: 56, alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#d1fae5" }}>
               <Ionicons name="archive-outline" size={28} color="#059669" />
             </View>
-            <Text className="text-center font-medium text-gray-900">No inventory data</Text>
-            <Text className="mt-1 text-center text-sm text-gray-500">
+            <Text style={{ textAlign: "center", fontWeight: "500", color: Colors.gray[900] }}>No inventory data</Text>
+            <Text style={{ marginTop: 4, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
               Add products in Products & Inventory to track stock here.
             </Text>
           </View>

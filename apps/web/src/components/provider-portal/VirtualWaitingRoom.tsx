@@ -171,8 +171,8 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect }: VirtualWai
         </SectionCard>
         <SectionCard className="p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#FF0077]/10 flex items-center justify-center flex-shrink-0">
-              <Eye className="w-5 h-5 sm:w-6 sm:h-6 text-[#FF0077]" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+              <Eye className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-xs sm:text-sm text-gray-600">Total</div>
@@ -229,8 +229,8 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect }: VirtualWai
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
-                          <div className="w-10 h-10 rounded-full bg-[#FF0077]/10 flex items-center justify-center flex-shrink-0">
-                            <User className="w-5 h-5 text-[#FF0077]" />
+                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            <User className="w-5 h-5 text-primary" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="font-semibold text-base truncate">
@@ -249,7 +249,7 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect }: VirtualWai
                             <Clock className="w-3 h-3" />
                             <span>Waiting: {formatWaitTime(entry.checked_in_time)}</span>
                             {entry.position && (
-                              <span className="text-[#FF0077] font-medium">
+                              <span className="text-primary font-medium">
                                 • Position #{entry.position}
                               </span>
                             )}
@@ -266,7 +266,7 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect }: VirtualWai
                         <Button
                           size="sm"
                           onClick={() => handleStatusChange(entry.id, "in_service")}
-                          className="bg-[#FF0077] hover:bg-[#D60565] text-white min-h-[36px] touch-manipulation"
+                          className="bg-primary hover:bg-primary-hover text-white min-h-[36px] touch-manipulation"
                         >
                           Start Service
                         </Button>

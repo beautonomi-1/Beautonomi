@@ -1,7 +1,6 @@
 /**
  * Centralized color constants for the provider app.
- * Use these in `style` objects. For NativeWind className, use the
- * Tailwind theme colors defined in tailwind.config.js (e.g. bg-primary).
+ * Use these in `style` objects. For Tailwind-like classes use twStyle (e.g. twStyle("bg-primary")).
  */
 
 import { Platform, type ViewStyle } from "react-native";

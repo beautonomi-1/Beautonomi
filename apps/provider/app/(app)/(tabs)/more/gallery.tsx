@@ -20,6 +20,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { twStyle } from "@/lib/twStyle";
 
 type GalleryItem = { id: string; url: string; position: number };
 type GalleryResponse = { items?: GalleryItem[]; thumbnailUrl?: string | null; avatarUrl?: string | null };
@@ -164,7 +165,7 @@ export default function GalleryScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Gallery" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -175,7 +176,7 @@ export default function GalleryScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Gallery" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -190,13 +191,13 @@ export default function GalleryScreen() {
         onBack={() => router.back()}
         rightAction={
           uploading ? (
-            <View className="rounded-full bg-gray-100 p-2">
+            <View style={twStyle("rounded-full bg-gray-100 p-2")}>
               <ActivityIndicator size="small" color="#374151" />
             </View>
           ) : (
             <TouchableOpacity
               onPress={openAddModal}
-              className="rounded-full bg-gray-100 p-2"
+              style={twStyle("rounded-full bg-gray-100 p-2")}
               accessibilityLabel="Add photo"
               accessibilityRole="button"
             >
@@ -206,75 +207,75 @@ export default function GalleryScreen() {
         }
       />
       <ScrollView
-        className="flex-1"
+        style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
         {/* Listing image & Profile circle */}
-        <View className="px-4 pt-2 pb-4 flex-row gap-4">
-          <View className="flex-1 items-center">
-            <Text className="text-xs font-medium text-gray-500 mb-1">Listing image</Text>
-            <View className="w-14 h-14 rounded-lg overflow-hidden border-2 border-[#FF0077] bg-gray-100">
+        <View style={twStyle("px-4 pt-2 pb-4 flex-row")}>
+          <View style={[twStyle("flex-1 items-center"), { marginRight: 16 }]}>
+            <Text style={twStyle("text-xs font-medium text-gray-500 mb-1")}>Listing image</Text>
+            <View style={{ width: 56, height: 56, borderRadius: 8, overflow: "hidden", borderWidth: 2, borderColor: "#FF0077", backgroundColor: "#F3F4F6" }}>
               {thumbnailUrl ? (
-                <Image source={{ uri: thumbnailUrl }} className="w-full h-full" resizeMode="cover" />
+                <Image source={{ uri: thumbnailUrl }} style={{ width: 56, height: 56 }} resizeMode="cover" />
               ) : (
-                <View className="w-full h-full items-center justify-center">
+                <View style={{ width: 56, height: 56, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="image-outline" size={24} color="#9ca3af" />
                 </View>
               )}
             </View>
           </View>
-          <View className="flex-1 items-center">
-            <Text className="text-xs font-medium text-gray-500 mb-1">Profile circle</Text>
-            <View className="w-14 h-14 rounded-full overflow-hidden border-2 border-indigo-500 bg-gray-100">
+          <View style={twStyle("flex-1 items-center")}>
+            <Text style={twStyle("text-xs font-medium text-gray-500 mb-1")}>Profile circle</Text>
+            <View style={{ width: 56, height: 56, borderRadius: 28, overflow: "hidden", borderWidth: 2, borderColor: "#4f46e5", backgroundColor: "#F3F4F6" }}>
               {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} className="w-full h-full" resizeMode="cover" />
+                <Image source={{ uri: avatarUrl }} style={{ width: 56, height: 56 }} resizeMode="cover" />
               ) : (
-                <View className="w-full h-full items-center justify-center">
+                <View style={{ width: 56, height: 56, alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="person-circle-outline" size={24} color="#9ca3af" />
                 </View>
               )}
             </View>
           </View>
         </View>
-        <Text className="px-4 text-sm text-gray-600 pb-3">
+        <Text style={twStyle("px-4 text-sm text-gray-600 pb-3")}>
           Tap the icons on a photo to set it as listing image (card hero) or profile circle (face of your business).
         </Text>
         {items.length === 0 ? (
-          <View className="py-12 px-4 items-center">
+          <View style={twStyle("py-12 px-4 items-center")}>
             <Ionicons name="images-outline" size={48} color="#9ca3af" />
-            <Text className="mt-4 text-center text-gray-600">No photos yet</Text>
-            <Text className="mt-2 text-center text-sm text-gray-500 px-2">
+            <Text style={twStyle("mt-4 text-center text-gray-600")}>No photos yet</Text>
+            <Text style={twStyle("mt-2 text-center text-sm text-gray-500 px-2")}>
               Upload from your device or add a photo by URL
             </Text>
             <TouchableOpacity
               onPress={openAddModal}
-              className="mt-6 rounded-xl bg-gray-900 px-6 py-4 flex-row items-center gap-2"
+              style={[twStyle("mt-6 rounded-xl bg-gray-900 px-6 py-4 flex-row items-center"), { marginRight: 8 }]}
               accessibilityLabel="Add photo"
               accessibilityRole="button"
             >
-              <Ionicons name="add-circle-outline" size={22} color="#fff" />
-              <Text className="text-sm font-medium text-white">Add photo</Text>
+              <Ionicons name="add-circle-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={twStyle("text-sm font-medium text-white")}>Add photo</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <View className="flex-row flex-wrap gap-3 pb-4">
+          <View style={twStyle("flex-row flex-wrap pb-4")}>
             {items.map((item) => (
-              <View key={item.id} className="w-[47%] aspect-square rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-                <Image source={{ uri: item.url }} className="flex-1 w-full h-full" resizeMode="cover" />
+              <View key={item.id} style={{ width: "47%", aspectRatio: 1, marginRight: 12, marginBottom: 12, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#F9FAFB" }}>
+                <Image source={{ uri: item.url }} style={{ width: "100%", aspectRatio: 1 }} resizeMode="cover" />
                 <TouchableOpacity
                   onPress={() => handleDelete(item)}
-                  className="absolute top-2 right-2 h-8 w-8 items-center justify-center rounded-full bg-black/60"
+                  style={twStyle("absolute top-2 right-2 h-8 w-8 items-center justify-center rounded-full bg-black/60")}
                   accessibilityLabel="Remove photo from gallery"
                   accessibilityRole="button"
                 >
                   <Ionicons name="trash-outline" size={18} color="#fff" />
                 </TouchableOpacity>
-                <View className="absolute bottom-2 left-2 right-2 flex-row gap-2">
+                <View style={twStyle("absolute bottom-2 left-2 right-2 flex-row")}>
                   <TouchableOpacity
                     onPress={() => handleSetThumbnail(item.url)}
-                    className={`h-8 w-8 items-center justify-center rounded-full ${thumbnailUrl === item.url ? "bg-[#FF0077]" : "bg-black/60"}`}
+                    style={[twStyle(`h-8 w-8 items-center justify-center rounded-full ${thumbnailUrl === item.url ? "bg-primary" : "bg-black/60"}`), { marginRight: 8 }]}
                     accessibilityLabel={thumbnailUrl === item.url ? "Listing image" : "Set as listing image"}
                     accessibilityRole="button"
                   >
@@ -282,7 +283,7 @@ export default function GalleryScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleSetAvatar(item.url)}
-                    className={`h-8 w-8 items-center justify-center rounded-full ${avatarUrl === item.url ? "bg-indigo-600" : "bg-black/60"}`}
+                    style={twStyle(`h-8 w-8 items-center justify-center rounded-full ${avatarUrl === item.url ? "bg-indigo-600" : "bg-black/60"}`)}
                     accessibilityLabel={avatarUrl === item.url ? "Profile circle" : "Set as profile circle"}
                     accessibilityRole="button"
                   >
@@ -298,59 +299,59 @@ export default function GalleryScreen() {
       <Modal visible={addModalVisible} transparent animationType="fade">
         <TouchableOpacity
           activeOpacity={1}
-          className="flex-1 bg-black/50 justify-end"
+          style={twStyle("flex-1 bg-black/50 justify-end")}
           onPress={() => {
             setAddModalVisible(false);
             setAddMode("choice");
           }}
         >
-          <View className="bg-white rounded-t-2xl p-5 pb-10">
+          <View style={twStyle("bg-white rounded-t-2xl p-5 pb-10")}>
             {addMode === "choice" ? (
               <>
-                <Text className="text-lg font-semibold text-gray-900 mb-1">Add photo</Text>
-                <Text className="text-sm text-gray-500 mb-4">Choose how to add a photo</Text>
+                <Text style={twStyle("text-lg font-semibold text-gray-900 mb-1")}>Add photo</Text>
+                <Text style={twStyle("text-sm text-gray-500 mb-4")}>Choose how to add a photo</Text>
                 <TouchableOpacity
                   onPress={() => pickAndUpload(true)}
-                  className="rounded-xl border border-gray-200 bg-gray-50 py-4 px-4 flex-row items-center gap-3 mb-3"
+                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 py-4 px-4 flex-row items-center mb-3")}
                   accessibilityLabel="Take a photo"
                   accessibilityRole="button"
                 >
-                  <View className="w-10 h-10 rounded-full bg-gray-200 items-center justify-center">
+                  <View style={[twStyle("w-10 h-10 rounded-full bg-gray-200 items-center justify-center"), { marginRight: 12 }]}>
                     <Ionicons name="camera-outline" size={22} color="#374151" />
                   </View>
-                  <View className="flex-1">
-                    <Text className="font-medium text-gray-900">Take photo</Text>
-                    <Text className="text-sm text-gray-500">Use your camera</Text>
+                  <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+                    <Text style={twStyle("font-medium text-gray-900")}>Take photo</Text>
+                    <Text style={twStyle("text-sm text-gray-500")}>Use your camera</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => pickAndUpload(false)}
-                  className="rounded-xl border border-gray-200 bg-gray-50 py-4 px-4 flex-row items-center gap-3 mb-3"
+                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 py-4 px-4 flex-row items-center mb-3")}
                   accessibilityLabel="Choose from photo library"
                   accessibilityRole="button"
                 >
-                  <View className="w-10 h-10 rounded-full bg-gray-200 items-center justify-center">
+                  <View style={[twStyle("w-10 h-10 rounded-full bg-gray-200 items-center justify-center"), { marginRight: 12 }]}>
                     <Ionicons name="images-outline" size={22} color="#374151" />
                   </View>
-                  <View className="flex-1">
-                    <Text className="font-medium text-gray-900">Choose from library</Text>
-                    <Text className="text-sm text-gray-500">Pick an existing photo</Text>
+                  <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+                    <Text style={twStyle("font-medium text-gray-900")}>Choose from library</Text>
+                    <Text style={twStyle("text-sm text-gray-500")}>Pick an existing photo</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setAddMode("url")}
-                  className="rounded-xl border border-gray-200 bg-gray-50 py-4 px-4 flex-row items-center gap-3 mb-4"
+                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 py-4 px-4 flex-row items-center mb-4")}
                   accessibilityLabel="Add photo by URL"
                   accessibilityRole="button"
                 >
-                  <View className="w-10 h-10 rounded-full bg-gray-200 items-center justify-center">
+                  <View style={[twStyle("w-10 h-10 rounded-full bg-gray-200 items-center justify-center"), { marginRight: 12 }]}>
                     <Ionicons name="link-outline" size={22} color="#374151" />
                   </View>
-                  <View className="flex-1">
-                    <Text className="font-medium text-gray-900">Add by URL</Text>
-                    <Text className="text-sm text-gray-500">Paste a link to an image</Text>
+                  <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+                    <Text style={twStyle("font-medium text-gray-900")}>Add by URL</Text>
+                    <Text style={twStyle("text-sm text-gray-500")}>Paste a link to an image</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
                 </TouchableOpacity>
@@ -359,46 +360,46 @@ export default function GalleryScreen() {
                     setAddModalVisible(false);
                     setAddMode("choice");
                   }}
-                  className="rounded-xl border border-gray-200 py-3 items-center"
+                  style={twStyle("rounded-xl border border-gray-200 py-3 items-center")}
                 >
-                  <Text className="font-medium text-gray-700">Cancel</Text>
+                  <Text style={twStyle("font-medium text-gray-700")}>Cancel</Text>
                 </TouchableOpacity>
               </>
             ) : (
               <>
                 <TouchableOpacity
                   onPress={() => setAddMode("choice")}
-                  className="flex-row items-center gap-2 mb-3"
+                  style={twStyle("flex-row items-center mb-3")}
                 >
-                  <Ionicons name="arrow-back" size={20} color="#374151" />
-                  <Text className="text-base text-gray-700">Back</Text>
+                  <Ionicons name="arrow-back" size={20} color="#374151" style={{ marginRight: 8 }} />
+                  <Text style={twStyle("text-base text-gray-700")}>Back</Text>
                 </TouchableOpacity>
-                <Text className="text-lg font-semibold text-gray-900 mb-2">Add photo by URL</Text>
+                <Text style={twStyle("text-lg font-semibold text-gray-900 mb-2")}>Add photo by URL</Text>
                 <TextInput
                   value={newUrl}
                   onChangeText={setNewUrl}
                   placeholder="https://..."
                   placeholderTextColor="#9ca3af"
-                  className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 mb-4"
+                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 mb-4")}
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
-                <View className="flex-row gap-3">
+                <View style={twStyle("flex-row")}>
                   <TouchableOpacity
                     onPress={() => {
                       setAddModalVisible(false);
                       setAddMode("choice");
                     }}
-                    className="flex-1 rounded-xl border border-gray-200 py-3 items-center"
+                    style={[twStyle("flex-1 rounded-xl border border-gray-200 py-3 items-center"), { marginRight: 12 }]}
                   >
-                    <Text className="font-medium text-gray-700">Cancel</Text>
+                    <Text style={twStyle("font-medium text-gray-700")}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={handleAddByUrl}
                     disabled={adding || !newUrl.trim()}
-                    className="flex-1 rounded-xl bg-gray-900 py-3 items-center"
+                    style={twStyle("flex-1 rounded-xl bg-gray-900 py-3 items-center")}
                   >
-                    <Text className="font-medium text-white">{adding ? "Adding…" : "Add"}</Text>
+                    <Text style={twStyle("font-medium text-white")}>{adding ? "Adding…" : "Add"}</Text>
                   </TouchableOpacity>
                 </View>
               </>

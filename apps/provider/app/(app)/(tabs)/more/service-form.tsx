@@ -20,6 +20,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { twStyle } from "@/lib/twStyle";
 
 interface ServiceCategory {
   id: string;
@@ -74,10 +75,10 @@ function FormField({
   multiline?: boolean;
 }) {
   return (
-    <View className="mb-3">
-      <Text className="mb-1 text-sm font-medium text-gray-700">{label}</Text>
+    <View style={twStyle("mb-3")}>
+      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{label}</Text>
       <TextInput
-        className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+        style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
         placeholder={placeholder}
         placeholderTextColor="#9ca3af"
         value={value}
@@ -280,15 +281,15 @@ export default function ServiceFormScreen() {
     return (
       <ScreenContainer>
         <ScreenHeader title="Edit Service" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center p-6">
-          <Text className="text-center text-gray-600">Service not found.</Text>
+        <View style={twStyle("flex-1 items-center justify-center p-6")}>
+          <Text style={twStyle("text-center text-gray-600")}>Service not found.</Text>
           <TouchableOpacity
             onPress={() => router.back()}
-            className="mt-4"
+            style={twStyle("mt-4")}
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >
-            <Text className="text-indigo-600">Go back</Text>
+            <Text style={twStyle("text-indigo-600")}>Go back</Text>
           </TouchableOpacity>
         </View>
       </ScreenContainer>
@@ -304,14 +305,14 @@ export default function ServiceFormScreen() {
           <TouchableOpacity
             onPress={handleSave}
             disabled={isSaving}
-            className="min-h-[40px] flex-row items-center justify-center rounded-full bg-indigo-600 px-4"
+            style={twStyle("min-h-[40px] flex-row items-center justify-center rounded-full bg-indigo-600 px-4")}
             accessibilityLabel="Save service"
             accessibilityRole="button"
           >
             {isSaving ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text className="font-medium text-white">Save</Text>
+              <Text style={twStyle("font-medium text-white")}>Save</Text>
             )}
           </TouchableOpacity>
         }
@@ -319,15 +320,15 @@ export default function ServiceFormScreen() {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        className="flex-1"
+        style={twStyle("flex-1")}
       >
         <ScrollView
-          className="flex-1"
+          style={twStyle("flex-1")}
           contentContainerStyle={{ paddingBottom: 120 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="px-1 pt-2">
+          <View style={twStyle("px-1 pt-2")}>
             <FormField
               label="Service name *"
               value={form.name}
@@ -335,36 +336,36 @@ export default function ServiceFormScreen() {
               placeholder="e.g. Signature Haircut, Full Body Massage"
             />
 
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Category *</Text>
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Category *</Text>
               <TouchableOpacity
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setCategorySheetOpen(true)}
                 accessibilityLabel={`Category, ${form.categoryId ? categories.find((c: ServiceCategory) => c.id === form.categoryId)?.name ?? "Selected" : "Select category"}`}
                 accessibilityRole="button"
               >
-                <Text className={form.categoryId ? "text-base text-gray-900" : "text-base text-gray-400"}>
+                <Text style={twStyle(form.categoryId ? "text-base text-gray-900" : "text-base text-gray-400")}>
                   {form.categoryId ? categories.find((c: ServiceCategory) => c.id === form.categoryId)?.name ?? "Selected" : "Select category"}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Service type</Text>
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Service type</Text>
               <TouchableOpacity
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setServiceTypeSheetOpen(true)}
                 accessibilityLabel={`Service type, ${serviceTypeOptions.find((o) => o.value === form.serviceType)?.label ?? form.serviceType}`}
                 accessibilityRole="button"
               >
-                <Text className="text-base text-gray-900">
+                <Text style={twStyle("text-base text-gray-900")}>
                   {serviceTypeOptions.find((o) => o.value === form.serviceType)?.label ?? form.serviceType}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <View className="mb-3 flex-row gap-3">
-              <View className="flex-1">
+            <View style={twStyle("mb-3 flex-row")}>
+              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
                 <FormField
                   label="Duration (min) *"
                   value={form.durationMinutes}
@@ -373,7 +374,7 @@ export default function ServiceFormScreen() {
                   keyboardType="numeric"
                 />
               </View>
-              <View className="flex-1">
+              <View style={twStyle("flex-1")}>
                 <FormField
                   label="Price *"
                   value={form.price}
@@ -406,43 +407,43 @@ export default function ServiceFormScreen() {
               multiline
             />
 
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Available for</Text>
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Available for</Text>
               <TouchableOpacity
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setAvailabilitySheetOpen(true)}
                 accessibilityLabel={`Available for, ${availabilityOptions.find((o) => o.value === form.availableFor)?.label ?? form.availableFor}`}
                 accessibilityRole="button"
               >
-                <Text className="text-base text-gray-900">
+                <Text style={twStyle("text-base text-gray-900")}>
                   {availabilityOptions.find((o) => o.value === form.availableFor)?.label ?? form.availableFor}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Tax rate</Text>
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Tax rate</Text>
               <TouchableOpacity
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setTaxSheetOpen(true)}
                 accessibilityLabel={`Tax rate, ${taxRateOptions.find((o) => o.value === form.taxRate)?.label ?? `${form.taxRate}%`}`}
                 accessibilityRole="button"
               >
-                <Text className="text-base text-gray-900">
+                <Text style={twStyle("text-base text-gray-900")}>
                   {taxRateOptions.find((o) => o.value === form.taxRate)?.label ?? `${form.taxRate}%`}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Team members</Text>
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Team members</Text>
               <TouchableOpacity
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setTeamSheetOpen(true)}
                 accessibilityLabel={`Team members, ${form.teamMemberIds.length ? `${form.teamMemberIds.length} selected` : "Any team member"}`}
                 accessibilityRole="button"
               >
-                <Text className="text-base text-gray-900">
+                <Text style={twStyle("text-base text-gray-900")}>
                   {form.teamMemberIds.length === 0
                     ? "Any team member"
                     : `${form.teamMemberIds.length} selected`}
@@ -450,23 +451,23 @@ export default function ServiceFormScreen() {
               </TouchableOpacity>
             </View>
 
-            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <Text className="text-sm font-medium text-gray-700">Online bookable</Text>
+            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Online bookable</Text>
               <Switch
                 value={form.onlineBookable}
                 onValueChange={(v) => setForm((p) => ({ ...p, onlineBookable: v }))}
               />
             </View>
 
-            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <Text className="text-sm font-medium text-gray-700">Available at salon</Text>
+            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Available at salon</Text>
               <Switch
                 value={form.supportsAtSalon}
                 onValueChange={(v) => setForm((p) => ({ ...p, supportsAtSalon: v }))}
               />
             </View>
-            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <Text className="text-sm font-medium text-gray-700">Available at home</Text>
+            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Available at home</Text>
               <Switch
                 value={form.supportsAtHome}
                 onValueChange={(v) => setForm((p) => ({ ...p, supportsAtHome: v }))}
@@ -491,15 +492,15 @@ export default function ServiceFormScreen() {
               </>
             )}
 
-            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <Text className="text-sm font-medium text-gray-700">Team commission</Text>
+            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Team commission</Text>
               <Switch
                 value={form.teamMemberCommissionEnabled}
                 onValueChange={(v) => setForm((p) => ({ ...p, teamMemberCommissionEnabled: v }))}
               />
             </View>
-            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <Text className="text-sm font-medium text-gray-700">Active</Text>
+            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
               <Switch
                 value={form.isActive}
                 onValueChange={(v) => setForm((p) => ({ ...p, isActive: v }))}
@@ -516,11 +517,11 @@ export default function ServiceFormScreen() {
         title="Category"
         subtitle="Select or create a category"
       >
-        <ScrollView className="max-h-80" keyboardShouldPersistTaps="handled">
+        <ScrollView style={twStyle("max-h-80")} keyboardShouldPersistTaps="handled">
           {categories.map((c: ServiceCategory) => (
             <TouchableOpacity
               key={c.id}
-              className="border-b border-gray-100 py-3.5"
+              style={twStyle("border-b border-gray-100 py-3.5")}
               onPress={() => {
                 setForm((p) => ({ ...p, categoryId: c.id }));
                 setCategorySheetOpen(false);
@@ -528,13 +529,13 @@ export default function ServiceFormScreen() {
               accessibilityLabel={c.name}
               accessibilityRole="button"
             >
-              <Text className="text-base text-gray-900">{c.name}</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{c.name}</Text>
             </TouchableOpacity>
           ))}
-          <View className="mt-4 border-t border-gray-200 pt-4">
-            <Text className="mb-2 text-sm font-medium text-gray-700">Add new category</Text>
+          <View style={twStyle("mt-4 border-t border-gray-200 pt-4")}>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Add new category</Text>
             <TextInput
-              className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               placeholder="Category name"
               placeholderTextColor="#9ca3af"
               value={newCategoryName}
@@ -550,11 +551,11 @@ export default function ServiceFormScreen() {
         onClose={() => setServiceTypeSheetOpen(false)}
         title="Service type"
       >
-        <ScrollView className="max-h-80">
+        <ScrollView style={twStyle("max-h-80")}>
           {serviceTypeOptions.map((o) => (
             <TouchableOpacity
               key={o.value}
-              className="border-b border-gray-100 py-3.5"
+              style={twStyle("border-b border-gray-100 py-3.5")}
               onPress={() => {
                 setForm((p) => ({ ...p, serviceType: o.value }));
                 setServiceTypeSheetOpen(false);
@@ -562,7 +563,7 @@ export default function ServiceFormScreen() {
               accessibilityLabel={o.label}
               accessibilityRole="button"
             >
-              <Text className="text-base text-gray-900">{o.label}</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{o.label}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -573,11 +574,11 @@ export default function ServiceFormScreen() {
         onClose={() => setAvailabilitySheetOpen(false)}
         title="Available for"
       >
-        <ScrollView className="max-h-80">
+        <ScrollView style={twStyle("max-h-80")}>
           {availabilityOptions.map((o) => (
             <TouchableOpacity
               key={o.value}
-              className="border-b border-gray-100 py-3.5"
+              style={twStyle("border-b border-gray-100 py-3.5")}
               onPress={() => {
                 setForm((p) => ({ ...p, availableFor: o.value }));
                 setAvailabilitySheetOpen(false);
@@ -585,7 +586,7 @@ export default function ServiceFormScreen() {
               accessibilityLabel={o.label}
               accessibilityRole="button"
             >
-              <Text className="text-base text-gray-900">{o.label}</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{o.label}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -596,11 +597,11 @@ export default function ServiceFormScreen() {
         onClose={() => setTaxSheetOpen(false)}
         title="Tax rate"
       >
-        <ScrollView className="max-h-80">
+        <ScrollView style={twStyle("max-h-80")}>
           {taxRateOptions.map((o) => (
             <TouchableOpacity
               key={o.value}
-              className="border-b border-gray-100 py-3.5"
+              style={twStyle("border-b border-gray-100 py-3.5")}
               onPress={() => {
                 setForm((p) => ({ ...p, taxRate: o.value }));
                 setTaxSheetOpen(false);
@@ -608,7 +609,7 @@ export default function ServiceFormScreen() {
               accessibilityLabel={o.label}
               accessibilityRole="button"
             >
-              <Text className="text-base text-gray-900">{o.label}</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{o.label}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -620,9 +621,9 @@ export default function ServiceFormScreen() {
         title="Team members"
         subtitle="Who can perform this service"
       >
-        <ScrollView className="max-h-80">
+        <ScrollView style={twStyle("max-h-80")}>
           <TouchableOpacity
-            className="border-b border-gray-100 py-3.5"
+            style={twStyle("border-b border-gray-100 py-3.5")}
             onPress={() => {
               setForm((p) => ({ ...p, teamMemberIds: [] }));
               setTeamSheetOpen(false);
@@ -630,14 +631,14 @@ export default function ServiceFormScreen() {
             accessibilityLabel="Any team member"
             accessibilityRole="button"
           >
-            <Text className="text-base text-gray-500">Any team member</Text>
+            <Text style={twStyle("text-base text-gray-500")}>Any team member</Text>
           </TouchableOpacity>
           {staff.map((m: StaffMember) => {
             const selected = form.teamMemberIds.includes(m.id);
             return (
               <TouchableOpacity
                 key={m.id}
-                className="border-b border-gray-100 py-3.5 flex-row items-center justify-between"
+                style={twStyle("border-b border-gray-100 py-3.5 flex-row items-center justify-between")}
                 onPress={() => {
                   setForm((p) => ({
                     ...p,
@@ -649,7 +650,7 @@ export default function ServiceFormScreen() {
                 accessibilityLabel={`${m.name}, ${selected ? "selected" : "not selected"}`}
                 accessibilityRole="button"
               >
-                <Text className="text-base text-gray-900">{m.name}</Text>
+                <Text style={twStyle("text-base text-gray-900")}>{m.name}</Text>
                 {selected && <Ionicons name="checkmark-circle" size={22} color="#6366f1" />}
               </TouchableOpacity>
             );

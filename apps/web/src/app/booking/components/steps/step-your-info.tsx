@@ -239,7 +239,7 @@ export default function StepYourInfo({
             onClick={() => {
               window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
             }}
-            className="text-[#FF0077] underline font-medium"
+            className="text-primary underline font-medium"
           >
             Continue as guest
           </button>

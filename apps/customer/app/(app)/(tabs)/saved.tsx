@@ -2,7 +2,8 @@ import { Redirect } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { View, Text, StyleSheet } from "react-native";
 import { ScreenFrame } from "@/components/ScreenFrame";
-import { SCREEN_PADDING, TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { useResponsive } from "@/hooks/useResponsive";
+import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 
 /**
  * Saved / Wishlists – parity with web /explore/saved and /account-settings/wishlists.
@@ -10,11 +11,12 @@ import { SCREEN_PADDING, TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
  */
 export default function SavedScreen() {
   const { user, loading } = useAuth();
+  const { contentPadding } = useResponsive();
 
   if (loading) {
     return (
       <ScreenFrame paddingBottom={TAB_CONTENT_PADDING_BOTTOM}>
-        <View style={styles.center}>
+        <View style={[styles.center, { paddingHorizontal: contentPadding }]}>
           <Text style={styles.loading}>Loading...</Text>
         </View>
       </ScreenFrame>
@@ -24,7 +26,7 @@ export default function SavedScreen() {
   if (!user) {
     return (
       <ScreenFrame paddingBottom={TAB_CONTENT_PADDING_BOTTOM}>
-        <View style={styles.center}>
+        <View style={[styles.center, { paddingHorizontal: contentPadding }]}>
           <Text style={styles.emptyTitle}>Saved</Text>
           <Text style={styles.emptySubtitle}>
             Sign in to see your saved providers and posts
@@ -42,7 +44,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: SCREEN_PADDING,
   },
   loading: {
     fontSize: 16,

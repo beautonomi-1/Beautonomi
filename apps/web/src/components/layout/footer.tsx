@@ -110,7 +110,7 @@ export default function Footer() {
           {/* Left Side - Logo and App Downloads */}
           <div className="space-y-4">
             <Link href="/">
-              <h1 className="text-xl md:text-2xl font-bold text-[#FF0077] mb-4">
+              <h1 className="text-xl md:text-2xl font-bold text-primary mb-4">
                 BEAUTONOMI
               </h1>
             </Link>
@@ -223,7 +223,7 @@ export default function Footer() {
                         href={link.href}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-gray-600 hover:text-[#FF0077] transition-colors"
+                        className="flex items-center gap-1 text-gray-600 hover:text-primary transition-colors"
                         title={link.title}
                       >
                         {icon}
@@ -238,7 +238,7 @@ export default function Footer() {
                       href="https://facebook.com"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-gray-600 hover:text-[#FF0077] transition-colors"
+                      className="flex items-center gap-1 text-gray-600 hover:text-primary transition-colors"
                     >
                       <Facebook className="w-4 h-4" />
                       <ArrowRight className="w-3 h-3" />
@@ -247,7 +247,7 @@ export default function Footer() {
                       href="https://twitter.com"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-gray-600 hover:text-[#FF0077] transition-colors"
+                      className="flex items-center gap-1 text-gray-600 hover:text-primary transition-colors"
                     >
                       <Twitter className="w-4 h-4" />
                       <ArrowRight className="w-3 h-3" />
@@ -256,7 +256,7 @@ export default function Footer() {
                       href="https://linkedin.com"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-gray-600 hover:text-[#FF0077] transition-colors"
+                      className="flex items-center gap-1 text-gray-600 hover:text-primary transition-colors"
                     >
                       <Linkedin className="w-4 h-4" />
                       <ArrowRight className="w-3 h-3" />
@@ -265,7 +265,7 @@ export default function Footer() {
                       href="https://instagram.com"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-gray-600 hover:text-[#FF0077] transition-colors"
+                      className="flex items-center gap-1 text-gray-600 hover:text-primary transition-colors"
                     >
                       <Instagram className="w-4 h-4" />
                       <ArrowRight className="w-3 h-3" />

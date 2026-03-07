@@ -199,7 +199,7 @@ export default function StepGroupParticipants({
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3 flex-1">
                   <div className="p-2 bg-pink-50 rounded-lg">
-                    <User className="w-5 h-5 text-[#FF0077]" />
+                    <User className="w-5 h-5 text-primary" />
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-gray-900">{participant.name}</h3>
@@ -236,7 +236,7 @@ export default function StepGroupParticipants({
                       onClick={() => toggleServiceForParticipant(participant.id, service.id)}
                       className={`p-3 border-2 rounded-lg text-left transition-all touch-target ${
                         participant.serviceIds.includes(service.id)
-                          ? "border-[#FF0077] bg-pink-50"
+                          ? "border-primary bg-pink-50"
                           : "border-gray-200 hover:border-gray-300"
                       }`}
                     >
@@ -248,7 +248,7 @@ export default function StepGroupParticipants({
                           </p>
                         </div>
                         {participant.serviceIds.includes(service.id) && (
-                          <div className="w-5 h-5 rounded-full bg-[#FF0077] flex items-center justify-center flex-shrink-0">
+                          <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
                             <span className="text-white text-xs">✓</span>
                           </div>
                         )}
@@ -296,7 +296,7 @@ export default function StepGroupParticipants({
             <span className="font-medium text-gray-900">Total</span>
           </div>
           <div className="text-right">
-            <p className="text-2xl font-bold text-[#FF0077]">
+            <p className="text-2xl font-bold text-primary">
               {formatCurrency(calculateTotal(), currency)}
             </p>
             <p className="text-sm text-gray-600">

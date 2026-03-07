@@ -10,12 +10,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { Colors } from "@/constants/colors";
 
 interface RecurringAppointment {
   id: string;
@@ -42,6 +44,7 @@ interface RecurringListResponse {
 }
 
 export default function RecurringAppointmentsScreen() {
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [viewItem, setViewItem] = useState<RecurringAppointment | null>(null);
 
@@ -98,7 +101,7 @@ export default function RecurringAppointmentsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Recurring Appointments" showBack />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -110,7 +113,7 @@ export default function RecurringAppointmentsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Recurring Appointments" showBack />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState
             message={is403 ? "This feature requires a Starter plan or higher." : error}
             onRetry={is403 ? undefined : refresh}
@@ -128,8 +131,8 @@ export default function RecurringAppointmentsScreen() {
         subtitle={total > 0 ? `${total} recurring` : undefined}
       />
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -147,19 +150,19 @@ export default function RecurringAppointmentsScreen() {
               key={item.id}
               onPress={() => openView(item)}
               activeOpacity={0.7}
-              className="mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4"
+              style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
             >
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-violet-100">
+              <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#ede9fe" }}>
                 <Ionicons name="repeat-outline" size={20} color="#8b5cf6" />
               </View>
-              <View className="ml-3 flex-1">
-                <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
+              <View style={{ marginLeft: 12, flex: 1 }}>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
                   {item.customer?.full_name ?? "Client"}
                 </Text>
-                <Text className="mt-0.5 text-sm text-gray-600" numberOfLines={1}>
+                <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }} numberOfLines={1}>
                   {item.recurrence_rule}
                 </Text>
-                <Text className="mt-0.5 text-xs text-gray-500">
+                <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
                   {item.start_date} · {item.start_time.slice(0, 5)}
                   {item.service?.title ? ` · ${item.service.title}` : ""}
                 </Text>
@@ -177,34 +180,34 @@ export default function RecurringAppointmentsScreen() {
           title="Recurring appointment"
           subtitle={viewItem.customer?.full_name ?? "Client"}
         >
-          <View className="mb-3 rounded-xl bg-gray-50 p-3">
-            <Text className="text-xs font-medium text-gray-500">Rule</Text>
-            <Text className="text-sm text-gray-900">{viewItem.recurrence_rule}</Text>
+          <View style={{ marginBottom: 12, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
+            <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Rule</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{viewItem.recurrence_rule}</Text>
           </View>
-          <View className="mb-3 rounded-xl bg-gray-50 p-3">
-            <Text className="text-xs font-medium text-gray-500">Start</Text>
-            <Text className="text-sm text-gray-900">
+          <View style={{ marginBottom: 12, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
+            <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Start</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[900] }}>
               {viewItem.start_date} at {viewItem.start_time.slice(0, 5)}
             </Text>
           </View>
           {viewItem.end_date ? (
-            <View className="mb-3 rounded-xl bg-gray-50 p-3">
-              <Text className="text-xs font-medium text-gray-500">End date</Text>
-              <Text className="text-sm text-gray-900">{viewItem.end_date}</Text>
+            <View style={{ marginBottom: 12, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
+              <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>End date</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{viewItem.end_date}</Text>
             </View>
           ) : null}
           {viewItem.notes ? (
-            <View className="mb-4 rounded-xl bg-gray-50 p-3">
-              <Text className="text-xs font-medium text-gray-500">Notes</Text>
-              <Text className="text-sm text-gray-900">{viewItem.notes}</Text>
+            <View style={{ marginBottom: 16, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
+              <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Notes</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{viewItem.notes}</Text>
             </View>
           ) : null}
           <TouchableOpacity
             onPress={() => viewItem && handleDelete(viewItem)}
-            className="flex-row items-center justify-center rounded-xl border border-red-200 bg-red-50 py-3"
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 12 }}
           >
             <Ionicons name="trash-outline" size={18} color="#dc2626" />
-            <Text className="ml-2 text-sm font-medium text-red-600">Delete recurring</Text>
+            <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "500", color: "#dc2626" }}>Delete recurring</Text>
           </TouchableOpacity>
         </BottomSheet>
       )}

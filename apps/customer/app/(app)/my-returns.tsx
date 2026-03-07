@@ -12,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Colors } from "@/constants/colors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 
 const PRIMARY = Colors.primary;
@@ -40,9 +41,11 @@ const STATUS_CFG: Record<string, { label: string; color: string; icon: string }>
 
 export default function MyReturnsScreen() {
   const router = useRouter();
+  const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
   const [returns, setReturns] = useState<ReturnRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
 
   const fetchReturns = useCallback(async () => {
     const res = await api.get<{ returns: ReturnRequest[] }>("/api/me/returns");
@@ -64,7 +67,7 @@ export default function MyReturnsScreen() {
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 16,
+          paddingHorizontal: contentPadding,
           paddingVertical: 14,
           backgroundColor: "#fff",
           borderBottomWidth: 1,
@@ -84,7 +87,7 @@ export default function MyReturnsScreen() {
           <ActivityIndicator size="large" color={PRIMARY} />
         </View>
       ) : returns.length === 0 ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: contentPadding }}>
           <Ionicons name="arrow-undo-outline" size={48} color="#D1D5DB" />
           <Text style={{ fontSize: 16, color: "#6B7280", marginTop: 12 }}>No return requests yet</Text>
           <Text style={{ fontSize: 13, color: "#9CA3AF", marginTop: 4, textAlign: "center" }}>
@@ -98,7 +101,8 @@ export default function MyReturnsScreen() {
           contentContainerStyle={{
             paddingTop: 12,
             paddingBottom: 24,
-            ...(Platform.OS === "web" ? ({ maxWidth: 600, alignSelf: "center", width: "100%" } as any) : {}),
+            paddingHorizontal: contentPadding,
+            ...constraint,
           }}
           refreshControl={
             <RefreshControl
@@ -115,10 +119,9 @@ export default function MyReturnsScreen() {
               <View
                 style={{
                   backgroundColor: "#fff",
-                  marginHorizontal: 16,
                   marginBottom: 12,
                   borderRadius: 16,
-                  padding: 16,
+                  padding: contentPadding,
                   ...(Platform.select({
                     web: { boxShadow: "0 2px 8px rgba(0,0,0,0.06)" },
                     default: { shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
@@ -129,8 +132,8 @@ export default function MyReturnsScreen() {
                   <Text style={{ fontSize: 14, fontWeight: "700", color: "#111827" }}>
                     {r.order?.order_number}
                   </Text>
-                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: `${cfg.color}15`, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16, gap: 4 }}>
-                    <Ionicons name={cfg.icon as any} size={14} color={cfg.color} />
+                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: `${cfg.color}15`, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16 }}>
+                    <Ionicons name={cfg.icon as any} size={14} color={cfg.color} style={{ marginRight: 4 }} />
                     <Text style={{ fontSize: 12, fontWeight: "600", color: cfg.color }}>{cfg.label}</Text>
                   </View>
                 </View>

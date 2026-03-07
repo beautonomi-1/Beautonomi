@@ -69,7 +69,7 @@ export default function Banner({ content }: BannerProps) {
                 unoptimized
               />
             ) : (
-              <div className="w-full max-w-md h-[300px] rounded-lg bg-gradient-to-br from-[#FF0077] via-[#D60565] to-[#FF0077] flex items-center justify-center shadow-xl">
+              <div className="w-full max-w-md h-[300px] rounded-lg bg-gradient-to-br from-primary via-primary-hover to-primary flex items-center justify-center shadow-xl">
                 <div className="text-center text-white">
                   <div className="text-5xl mb-3">💼</div>
                   <div className="text-2xl font-bold">{placeholderBusinessText}</div>

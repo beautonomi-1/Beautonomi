@@ -486,7 +486,7 @@ function ExpressBookingLinkDialog({
             <Button
               type="submit"
               disabled={isLoading}
-              className="bg-[#FF0077] hover:bg-[#D60565]"
+              className="bg-primary hover:bg-primary-hover"
             >
               {isLoading ? "Saving..." : link ? "Update" : "Create"}
             </Button>

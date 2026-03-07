@@ -13,8 +13,9 @@ import {
 } from "react-native";
 import { api } from "@/lib/api-client";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
-import { SCREEN_PADDING, STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -87,14 +88,10 @@ function isBusinessEmail(email: string): boolean {
 
 function BenefitCard({ benefit }: { benefit: BusinessBenefit }) {
   return (
-    <View className="bg-white rounded-xl p-5 border border-gray-100">
-      <Text className="text-2xl mb-2">{benefit.icon}</Text>
-      <Text className="text-base font-bold text-gray-900 mb-1">
-        {benefit.title}
-      </Text>
-      <Text className="text-sm text-gray-600 leading-5">
-        {benefit.description}
-      </Text>
+    <View style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 20, borderWidth: 1, borderColor: Colors.gray[100] }}>
+      <Text style={{ fontSize: 24, marginBottom: 8 }}>{benefit.icon}</Text>
+      <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>{benefit.title}</Text>
+      <Text style={{ fontSize: 14, color: Colors.gray[600], lineHeight: 20 }}>{benefit.description}</Text>
     </View>
   );
 }
@@ -105,6 +102,8 @@ function BenefitCard({ benefit }: { benefit: BusinessBenefit }) {
 
 export default function BusinessScreen() {
   useScreenTracking("Business Services");
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
 
   const [email, setEmail] = useState("");
   const [isEnabled, setIsEnabled] = useState(false);
@@ -222,26 +221,21 @@ export default function BusinessScreen() {
     }
   }, [email, isEnabled, validEmail, save]);
 
-  // Loading state
   if (loading) {
     return (
-      <View className="flex-1 bg-white items-center justify-center">
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text className="text-gray-600 mt-4">Loading…</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>Loading…</Text>
       </View>
     );
   }
 
-  // Error state
   if (error) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-6">
-        <Text className="text-center text-gray-700 mb-4">{error}</Text>
-        <TouchableOpacity
-          onPress={load}
-          className="bg-primary px-6 py-3 rounded-xl"
-        >
-          <Text className="text-white font-semibold">Retry</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Text style={{ textAlign: "center", color: Colors.gray[700], marginBottom: 16 }}>{error}</Text>
+        <TouchableOpacity onPress={load} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
         </TouchableOpacity>
       </View>
     );
@@ -250,42 +244,24 @@ export default function BusinessScreen() {
   const showEmailError = emailTouched && email.length > 0 && !validEmail;
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      className="flex-1 bg-gray-50"
-    >
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{
-          padding: SCREEN_PADDING,
-          paddingBottom: STACK_CONTENT_PADDING_BOTTOM,
-        }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: contentPadding, paddingBottom: STACK_CONTENT_PADDING_BOTTOM, ...constraint }}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Active badge */}
         {isEnabled && (
-          <View className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 flex-row items-center justify-center">
-            <View className="w-2 h-2 rounded-full bg-green-500 mr-2" />
-            <Text className="text-green-800 font-semibold text-sm">
-              Business features active
-            </Text>
+          <View style={{ backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#BBF7D0", borderRadius: 12, padding: 12, marginBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#22C55E", marginRight: 8 }} />
+            <Text style={{ color: "#166534", fontWeight: "600", fontSize: 14 }}>Business features active</Text>
           </View>
         )}
-
-        {/* Main card */}
-        <View className="bg-white rounded-xl p-6 border border-gray-100 mb-6">
-          <Text className="text-2xl font-bold text-gray-900 mb-2">
-            Beautonomi for Business
+        <View style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 24, borderWidth: 1, borderColor: Colors.gray[100], marginBottom: 24 }}>
+          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Beautonomi for Business</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 24, lineHeight: 20 }}>
+            Add your business email to access corporate packages, event booking tools, and professional development opportunities.
           </Text>
-          <Text className="text-sm text-gray-600 mb-6 leading-5">
-            Add your business email to access corporate packages, event booking
-            tools, and professional development opportunities.
-          </Text>
-
-          {/* Email input */}
-          <Text className="text-sm font-semibold text-gray-700 mb-2">
-            Business email address
-          </Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[700], marginBottom: 8 }}>Business email address</Text>
           <TextInput
             placeholder="business@company.com"
             placeholderTextColor={Colors.gray[400]}
@@ -298,31 +274,27 @@ export default function BusinessScreen() {
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
-            className={`border rounded-lg px-4 py-3 text-base text-gray-900 mb-1 ${
-              showEmailError ? "border-red-400" : "border-gray-200"
-            }`}
+            style={{
+              borderWidth: 1,
+              borderRadius: 8,
+              paddingHorizontal: 16,
+              paddingVertical: 12,
+              fontSize: 16,
+              color: Colors.gray[900],
+              marginBottom: 4,
+              borderColor: showEmailError ? "#F87171" : Colors.gray[200],
+            }}
           />
           {showEmailError && (
-            <Text className="text-xs text-red-500 mb-3">
-              Please enter a valid business email (free email domains are not
-              accepted)
+            <Text style={{ fontSize: 12, color: Colors.error, marginBottom: 12 }}>
+              Please enter a valid business email (free email domains are not accepted)
             </Text>
           )}
-          {!showEmailError && <View className="mb-3" />}
-
-          {/* Toggle */}
-          <View className="flex-row items-center justify-between">
-            <Text className="text-base font-semibold text-gray-900 flex-1 mr-3">
-              Enable Business Features
-            </Text>
-            <View className="flex-row items-center">
-              {saving && (
-                <ActivityIndicator
-                  size="small"
-                  color={Colors.primary}
-                  style={{ marginRight: 8 }}
-                />
-              )}
+          {!showEmailError && <View style={{ marginBottom: 12 }} />}
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], flex: 1, marginRight: 12 }}>Enable Business Features</Text>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              {saving && <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 8 }} />}
               <Switch
                 value={isEnabled}
                 onValueChange={handleToggle}
@@ -333,14 +305,12 @@ export default function BusinessScreen() {
             </View>
           </View>
         </View>
-
-        {/* Benefits section */}
-        <Text className="text-lg font-semibold text-gray-900 mb-3">
-          Business Benefits
-        </Text>
-        <View className="gap-3">
+        <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>Business Benefits</Text>
+        <View>
           {BUSINESS_BENEFITS.map((b, i) => (
-            <BenefitCard key={i} benefit={b} />
+            <View key={i} style={{ marginTop: i === 0 ? 0 : 12 }}>
+              <BenefitCard benefit={b} />
+            </View>
           ))}
         </View>
       </ScrollView>

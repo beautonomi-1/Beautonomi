@@ -19,6 +19,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface Plan {
   id: string;
@@ -139,50 +140,50 @@ export default function SubscriptionScreen() {
       {/* Current plan */}
       <SectionHeader title="Current plan" />
       {!subscription ? (
-        <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-          <Text className="text-sm text-gray-600">No active subscription</Text>
-          <Text className="mt-1 text-xs text-gray-400">
+        <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+          <Text style={twStyle("text-sm text-gray-600")}>No active subscription</Text>
+          <Text style={twStyle("mt-1 text-xs text-gray-400")}>
             You are on the free tier. Upgrade below to unlock more features.
           </Text>
         </View>
       ) : (
-        <View className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
-          <View className="flex-row items-center justify-between">
+        <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4")}>
+          <View style={twStyle("flex-row items-center justify-between")}>
             <View>
-              <Text className="text-lg font-semibold text-gray-900">
+              <Text style={twStyle("text-lg font-semibold text-gray-900")}>
                 {(subscription.plan as Subscription["plan"])?.name ?? "Plan"}
               </Text>
-              <Text className="mt-0.5 text-sm text-gray-600">
+              <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
                 Status: {subscription.status}
               </Text>
               {subscription.expires_at && (
-                <Text className="mt-0.5 text-xs text-gray-500">
+                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                   Renews: {formatDate(subscription.expires_at)}
                 </Text>
               )}
             </View>
-            <View className="rounded-full bg-indigo-100 px-3 py-1">
-              <Text className="text-sm font-medium text-indigo-700">
+            <View style={twStyle("rounded-full bg-indigo-100 px-3 py-1")}>
+              <Text style={twStyle("text-sm font-medium text-indigo-700")}>
                 {subscription.status}
               </Text>
             </View>
           </View>
           {subscription.status === "active" && (
             <TouchableOpacity
-              className="mt-3 rounded-xl border border-red-200 bg-white py-2"
+              style={twStyle("mt-3 rounded-xl border border-red-200 bg-white py-2")}
               onPress={handleCancel}
             >
-              <Text className="text-center text-sm font-medium text-red-600">
+              <Text style={twStyle("text-center text-sm font-medium text-red-600")}>
                 Cancel subscription
               </Text>
             </TouchableOpacity>
           )}
           {subscription.status === "active" && subscription.expires_at && (
             <TouchableOpacity
-              className="mt-2 rounded-xl bg-indigo-600 py-2"
+              style={twStyle("mt-2 rounded-xl bg-indigo-600 py-2")}
               onPress={handleRenew}
             >
-              <Text className="text-center text-sm font-medium text-white">
+              <Text style={twStyle("text-center text-sm font-medium text-white")}>
                 Renew / update payment
               </Text>
             </TouchableOpacity>
@@ -193,29 +194,29 @@ export default function SubscriptionScreen() {
       {/* Plans (upgrade) */}
       <SectionHeader title="Plans" />
       {plans && plans.length > 0 ? (
-        <View className="gap-3">
-          {plans.map((plan) => (
+        <View>
+          {plans.map((plan, idx) => (
             <View
               key={plan.id}
-              className={`rounded-2xl border bg-white p-4 ${
+              style={[twStyle(`rounded-2xl border bg-white p-4 ${
                 plan.is_popular ? "border-indigo-200" : "border-gray-100"
-              }`}
+              }`), idx > 0 ? { marginTop: 12 } : undefined]}
             >
-              <View className="flex-row items-center justify-between">
+              <View style={twStyle("flex-row items-center justify-between")}>
                 <View>
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-base font-semibold text-gray-900">
+                  <View style={twStyle("flex-row items-center")}>
+                    <Text style={[twStyle("text-base font-semibold text-gray-900"), { marginRight: 8 }]}>
                       {plan.name}
                     </Text>
                     {plan.is_popular && (
-                      <View className="rounded-full bg-indigo-100 px-2 py-0.5">
-                        <Text className="text-[10px] font-medium text-indigo-700">
+                      <View style={twStyle("rounded-full bg-indigo-100 px-2 py-0.5")}>
+                        <Text style={twStyle("text-[10px] font-medium text-indigo-700")}>
                           Popular
                         </Text>
                       </View>
                     )}
                   </View>
-                  <Text className="mt-0.5 text-sm text-gray-500">
+                  <Text style={twStyle("mt-0.5 text-sm text-gray-500")}>
                     {formatCurrency(plan.amount, plan.currency)}/{plan.interval}
                   </Text>
                 </View>
@@ -229,9 +230,9 @@ export default function SubscriptionScreen() {
                 )}
               </View>
               {Array.isArray(plan.features) && plan.features.length > 0 && (
-                <View className="mt-2 border-t border-gray-50 pt-2">
+                <View style={twStyle("mt-2 border-t border-gray-50 pt-2")}>
                   {plan.features.slice(0, 3).map((f, i) => (
-                    <Text key={i} className="text-xs text-gray-600">
+                    <Text key={i} style={twStyle("text-xs text-gray-600")}>
                       • {String(f)}
                     </Text>
                   ))}
@@ -248,7 +249,7 @@ export default function SubscriptionScreen() {
         />
       )}
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

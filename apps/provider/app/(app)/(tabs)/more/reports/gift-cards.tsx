@@ -16,6 +16,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface GiftCardReport {
   id: string;
@@ -85,7 +86,7 @@ export default function GiftCardReportScreen() {
         subtitle="Sales & redemption analytics"
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-100"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
             onPress={handleExport}
           >
             <Ionicons name="download-outline" size={18} color="#374151" />
@@ -93,8 +94,8 @@ export default function GiftCardReportScreen() {
         }
       />
 
-      <View className="mb-3 flex-row gap-2">
-        <View className="flex-1">
+      <View style={twStyle("mb-3 flex-row")}>
+        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
           <StatCard
             title="Total Sold"
             value={String(stats?.total_sold ?? 0)}
@@ -104,7 +105,7 @@ export default function GiftCardReportScreen() {
             compact
           />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard
             title="Revenue"
             value={formatCurrency(stats?.total_revenue ?? 0)}
@@ -114,7 +115,7 @@ export default function GiftCardReportScreen() {
             compact
           />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard
             title="Outstanding"
             value={formatCurrency(stats?.total_outstanding ?? 0)}
@@ -126,8 +127,8 @@ export default function GiftCardReportScreen() {
         </View>
       </View>
 
-      <View className="mb-3 flex-row gap-2">
-        <View className="flex-1">
+      <View style={twStyle("mb-3 flex-row")}>
+        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
           <StatCard
             title="Redeemed"
             value={formatCurrency(stats?.total_redeemed ?? 0)}
@@ -137,7 +138,7 @@ export default function GiftCardReportScreen() {
             compact
           />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard
             title="Avg Value"
             value={formatCurrency(stats?.avg_value ?? 0)}
@@ -147,7 +148,7 @@ export default function GiftCardReportScreen() {
             compact
           />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard
             title="Active"
             value={String(stats?.active_count ?? 0)}
@@ -159,7 +160,7 @@ export default function GiftCardReportScreen() {
         </View>
       </View>
 
-      <View className="mb-3">
+      <View style={twStyle("mb-3")}>
         <FilterChipGroup options={PERIOD_FILTERS} selected={period} onSelect={setPeriod} />
       </View>
 
@@ -174,29 +175,30 @@ export default function GiftCardReportScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: card }: { item: GiftCardReport }) => (
-            <View className="rounded-xl border border-gray-100 bg-white p-4">
-              <View className="flex-row items-start justify-between">
-                <View className="flex-1">
-                  <Text className="text-sm font-mono font-semibold text-gray-900">{card.code}</Text>
-                  <Text className="mt-0.5 text-xs text-gray-500">
+            <View style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}>
+              <View style={twStyle("flex-row items-start justify-between")}>
+                <View style={twStyle("flex-1")}>
+                  <Text style={twStyle("text-sm font-mono font-semibold text-gray-900")}>{card.code}</Text>
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                     {card.purchaser_name ? `By ${card.purchaser_name}` : ""}
                     {card.recipient_name ? ` → ${card.recipient_name}` : ""}
                   </Text>
-                  <Text className="mt-0.5 text-xs text-gray-400">{formatDate(card.purchased_at)}</Text>
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>{formatDate(card.purchased_at)}</Text>
                 </View>
-                <View className="items-end">
-                  <Text className="text-sm font-bold text-gray-900">{formatCurrency(card.initial_value)}</Text>
-                  <Text className="text-xs text-gray-500">
+                <View style={twStyle("items-end")}>
+                  <Text style={twStyle("text-sm font-bold text-gray-900")}>{formatCurrency(card.initial_value)}</Text>
+                  <Text style={twStyle("text-xs text-gray-500")}>
                     {formatCurrency(card.remaining_value)} left
                   </Text>
-                  <View className={`mt-1 rounded-full px-2 py-0.5 ${
+                  <View style={twStyle(`mt-1 rounded-full px-2 py-0.5 ${
                     card.status === "active" ? "bg-green-50" : card.status === "redeemed" ? "bg-blue-50" : "bg-gray-100"
-                  }`}>
-                    <Text className={`text-[10px] font-medium capitalize ${
+                  }`)}>
+                    <Text style={twStyle(`text-[10px] font-medium capitalize ${
                       card.status === "active" ? "text-green-700" : card.status === "redeemed" ? "text-blue-700" : "text-gray-500"
-                    }`}>
+                    }`)}>
                       {card.status}
                     </Text>
                   </View>

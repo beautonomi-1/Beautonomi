@@ -198,7 +198,7 @@ export function AboutUsModal({
           <Button
             onClick={handleSave}
             disabled={isSaving || !title.trim() || !sectionKey.trim() || !contentText.trim()}
-            className="bg-[#FF0077] hover:bg-[#D60565] text-white"
+            className="bg-primary hover:bg-primary-hover text-white"
           >
             {isSaving ? "Saving..." : content ? "Save Changes" : "Create"}
           </Button>

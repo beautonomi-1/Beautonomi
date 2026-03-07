@@ -19,6 +19,7 @@ import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { Colors } from "@/constants/colors";
 
 export default function SettingsDeactivateAccountScreen() {
   const router = useRouter();
@@ -75,23 +76,23 @@ export default function SettingsDeactivateAccountScreen() {
     <ScreenContainer>
       <ScreenHeader title="Deactivate account" subtitle="Temporarily disable your account" onBack={() => router.back()} />
 
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} className="flex-1">
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView
-          className="flex-1"
+          style={{ flex: 1 }}
           contentContainerStyle={{ paddingBottom: 100 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="px-2 pt-2">
-            <View className="mb-3 rounded-xl border border-amber-200 bg-amber-50/80 p-3">
-              <Text className="text-sm text-amber-800">
+          <View style={{ paddingHorizontal: 8, paddingTop: 8 }}>
+            <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: "#fcd34d", backgroundColor: "rgba(254,243,199,0.8)", padding: 12 }}>
+              <Text style={{ fontSize: 14, color: "#92400e" }}>
                 Deactivating disables your account. Your data is kept. You can log in again anytime to reactivate.
               </Text>
             </View>
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Password</Text>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Password</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 placeholder="Enter your password"
                 placeholderTextColor="#9ca3af"
                 value={password}
@@ -101,17 +102,17 @@ export default function SettingsDeactivateAccountScreen() {
                 autoCorrect={false}
               />
             </View>
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Reason (optional)</Text>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Reason (optional)</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 placeholder="e.g. Taking a break"
                 placeholderTextColor="#9ca3af"
                 value={reason}
                 onChangeText={setReason}
               />
             </View>
-            <View className="mt-4">
+            <View style={{ marginTop: 16 }}>
               <ActionButton
                 label={loading ? "Deactivating…" : "Deactivate account"}
                 onPress={handleDeactivate}

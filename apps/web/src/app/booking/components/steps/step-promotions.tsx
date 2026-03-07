@@ -290,7 +290,7 @@ export default function StepPromotions({
             <Button
               onClick={handleCouponApply}
               disabled={!couponCode.trim() || isValidating}
-              className="bg-[#FF0077] hover:bg-[#D60565] touch-target"
+              className="bg-primary hover:bg-primary-hover touch-target"
             >
               {isValidating ? "..." : "Apply"}
             </Button>
@@ -335,7 +335,7 @@ export default function StepPromotions({
             <Button
               onClick={handleGiftCardApply}
               disabled={!giftCardCode.trim() || isValidating || giftCardCode.length !== 12}
-              className="bg-[#FF0077] hover:bg-[#D60565] touch-target"
+              className="bg-primary hover:bg-primary-hover touch-target"
             >
               {isValidating ? "..." : "Apply"}
             </Button>
@@ -383,7 +383,7 @@ export default function StepPromotions({
                 <Button
                   onClick={() => handleLoyaltyUse(loyaltyPoints)}
                   disabled={loyaltyPoints <= 0 || loyaltyPoints > loyaltyBalance}
-                  className="bg-[#FF0077] hover:bg-[#D60565] touch-target"
+                  className="bg-primary hover:bg-primary-hover touch-target"
                 >
                   Use
                 </Button>

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { View, Animated, Platform, type ViewStyle } from "react-native";
+import { Colors } from "@/constants/colors";
 
 const useNativeDriver = Platform.OS !== "web";
 
@@ -63,16 +64,16 @@ export function Skeleton({
 export function ProviderCardSkeleton() {
   return (
     <View
-      className="rounded-2xl overflow-hidden bg-white border border-gray-100"
+      style={{ borderRadius: 16, overflow: "hidden", backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[100] }}
       accessibilityLabel="Loading provider"
     >
       <Skeleton width="100%" height={160} borderRadius={0} />
-      <View className="p-3 gap-2">
+      <View style={{ padding: 12 }}>
         <Skeleton width="70%" height={14} />
-        <Skeleton width="40%" height={12} />
-        <View className="flex-row gap-2 mt-1">
+        <Skeleton width="40%" height={12} style={{ marginTop: 8 }} />
+        <View style={{ flexDirection: "row", marginTop: 12 }}>
           <Skeleton width={60} height={12} />
-          <Skeleton width={80} height={12} />
+          <Skeleton width={80} height={12} style={{ marginLeft: 8 }} />
         </View>
       </View>
     </View>
@@ -83,16 +84,16 @@ export function ProviderCardSkeleton() {
 export function BookingCardSkeleton() {
   return (
     <View
-      className="bg-white rounded-xl p-4 mb-3 border border-gray-100"
+      style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.gray[100] }}
       accessibilityLabel="Loading booking"
     >
-      <View className="flex-row justify-between mb-3">
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12 }}>
         <Skeleton width="50%" height={16} />
         <Skeleton width={70} height={22} borderRadius={12} />
       </View>
       <Skeleton width="80%" height={12} />
       <Skeleton width="60%" height={12} style={{ marginTop: 6 }} />
-      <View className="flex-row justify-between mt-4">
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 16 }}>
         <Skeleton width="30%" height={12} />
         <Skeleton width={100} height={36} borderRadius={8} />
       </View>
@@ -108,15 +109,15 @@ export function ExplorePostSkeleton({ width, heightRatio = 1.1 }: { width: numbe
       accessibilityLabel="Loading post"
     >
       <Skeleton width={width} height={width * heightRatio} borderRadius={0} />
-      <View style={{ padding: 10, gap: 6 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+      <View style={{ padding: 10 }}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Skeleton width={20} height={20} borderRadius={10} />
-          <Skeleton width="50%" height={11} />
+          <Skeleton width="50%" height={11} style={{ marginLeft: 6 }} />
         </View>
-        <Skeleton width="80%" height={11} />
-        <View style={{ flexDirection: "row", gap: 10, marginTop: 2 }}>
+        <Skeleton width="80%" height={11} style={{ marginTop: 6 }} />
+        <View style={{ flexDirection: "row", marginTop: 8 }}>
           <Skeleton width={32} height={10} />
-          <Skeleton width={28} height={10} />
+          <Skeleton width={28} height={10} style={{ marginLeft: 10 }} />
         </View>
       </View>
     </View>
@@ -127,13 +128,13 @@ export function ExplorePostSkeleton({ width, heightRatio = 1.1 }: { width: numbe
 export function ConversationSkeleton() {
   return (
     <View
-      className="flex-row items-center p-4 border-b border-gray-100"
+      style={{ flexDirection: "row", alignItems: "center", padding: 16, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
       accessibilityLabel="Loading conversation"
     >
       <Skeleton width={48} height={48} borderRadius={24} />
-      <View className="flex-1 ml-3 gap-2">
+      <View style={{ flex: 1, marginLeft: 12 }}>
         <Skeleton width="50%" height={14} />
-        <Skeleton width="80%" height={12} />
+        <Skeleton width="80%" height={12} style={{ marginTop: 8 }} />
       </View>
       <Skeleton width={40} height={10} />
     </View>
@@ -143,19 +144,19 @@ export function ConversationSkeleton() {
 /** Pre-built skeleton for the home screen */
 export function HomeSkeleton() {
   return (
-    <View className="p-4 gap-6" accessibilityLabel="Loading home screen">
+    <View style={{ padding: 16 }} accessibilityLabel="Loading home screen">
       <Skeleton width="40%" height={20} />
-      <View className="flex-row gap-4">
+      <View style={{ flexDirection: "row", marginTop: 24 }}>
         {[1, 2, 3].map((i) => (
-          <View key={i} style={{ width: 200 }}>
+          <View key={i} style={{ width: 200, marginRight: 16 }}>
             <ProviderCardSkeleton />
           </View>
         ))}
       </View>
-      <Skeleton width="50%" height={20} />
-      <View className="flex-row gap-4">
+      <Skeleton width="50%" height={20} style={{ marginTop: 24 }} />
+      <View style={{ flexDirection: "row", marginTop: 16 }}>
         {[4, 5, 6].map((i) => (
-          <View key={i} style={{ width: 200 }}>
+          <View key={i} style={{ width: 200, marginRight: 16 }}>
             <ProviderCardSkeleton />
           </View>
         ))}

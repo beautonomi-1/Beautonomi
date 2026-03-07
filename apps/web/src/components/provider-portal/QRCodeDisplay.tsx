@@ -75,8 +75,8 @@ export function QRCodeDisplay({
       <div className="flex items-center justify-center p-8 sm:p-12 bg-gradient-to-br from-gray-50 to-gray-100/50 rounded-xl border-2 border-dashed border-gray-300">
         <div className="text-center">
           <div className="relative w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4">
-            <RefreshCw className="w-full h-full animate-spin text-[#FF0077]" />
-            <div className="absolute inset-0 rounded-full border-2 border-[#FF0077]/20"></div>
+            <RefreshCw className="w-full h-full animate-spin text-primary" />
+            <div className="absolute inset-0 rounded-full border-2 border-primary/20"></div>
           </div>
           <p className="text-sm sm:text-base font-medium text-gray-700">Generating QR code...</p>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">Please wait</p>
@@ -113,8 +113,8 @@ export function QRCodeDisplay({
   return (
     <div className="p-3 sm:p-4 bg-white border rounded-xl shadow-sm">
       <div className="flex items-start gap-2 sm:gap-3 mb-3 sm:mb-4">
-        <div className="p-1.5 sm:p-2 bg-[#FF0077]/10 rounded-lg flex-shrink-0">
-          <QrCode className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF0077]" />
+        <div className="p-1.5 sm:p-2 bg-primary/10 rounded-lg flex-shrink-0">
+          <QrCode className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm sm:text-base font-semibold text-gray-900 mb-1 leading-tight">{title}</p>

@@ -7,6 +7,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { twStyle } from "@/lib/twStyle";
 
 interface TipSettings { tips_enabled: boolean }
 interface TaxSettings { tax_rate_percent: number; is_vat_registered: boolean; vat_number: string | null }
@@ -85,34 +86,34 @@ export default function SalesSettingsScreen() {
 
       {/* Tips */}
       <SectionHeader title="Tips" />
-      <View className="rounded-2xl border border-gray-100 bg-white p-4">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900">Enable Tips</Text>
-            <Text className="text-xs text-gray-500">Allow clients to add tips</Text>
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>Enable Tips</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>Allow clients to add tips</Text>
           </View>
           <Switch value={tipsEnabled} onValueChange={setTipsEnabled} trackColor={{ false: "#d1d5db", true: "#818cf8" }} thumbColor={tipsEnabled ? "#6366f1" : "#f4f4f5"} />
         </View>
-        <View className="mt-3">
+        <View style={twStyle("mt-3")}>
           <ActionButton label="Save" onPress={handleSaveTips} loading={savingTips} variant="outline" fullWidth />
         </View>
       </View>
 
       {/* Taxes */}
       <SectionHeader title="Tax Settings" />
-      <View className="rounded-2xl border border-gray-100 bg-white p-4">
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900">VAT Registered</Text>
-            <Text className="text-xs text-gray-500">South African VAT at 15%</Text>
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row items-center justify-between mb-3")}>
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>VAT Registered</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>South African VAT at 15%</Text>
           </View>
           <Switch value={vatRegistered} onValueChange={setVatRegistered} trackColor={{ false: "#d1d5db", true: "#818cf8" }} thumbColor={vatRegistered ? "#6366f1" : "#f4f4f5"} />
         </View>
         {vatRegistered ? (
           <View>
-            <Text className="mb-1 text-sm font-medium text-gray-700">VAT Number</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>VAT Number</Text>
             <TextInput
-              className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={vatNumber}
               onChangeText={setVatNumber}
               placeholder="4XXXXXXXXX"
@@ -122,9 +123,9 @@ export default function SalesSettingsScreen() {
           </View>
         ) : (
           <View>
-            <Text className="mb-1 text-sm font-medium text-gray-700">Tax Rate (%)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Tax Rate (%)</Text>
             <TextInput
-              className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={taxRate}
               onChangeText={setTaxRate}
               placeholder="0"
@@ -138,25 +139,25 @@ export default function SalesSettingsScreen() {
 
       {/* Receipt */}
       <SectionHeader title="Receipt Template" />
-      <View className="rounded-2xl border border-gray-100 bg-white p-4">
-        <View className="mb-3 flex-row gap-3">
-          <View className="flex-1">
-            <Text className="mb-1 text-sm font-medium text-gray-700">Prefix</Text>
-            <TextInput className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900" value={receiptPrefix} onChangeText={setReceiptPrefix} placeholder="REC" placeholderTextColor="#9ca3af" />
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("mb-3 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Prefix</Text>
+            <TextInput style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")} value={receiptPrefix} onChangeText={setReceiptPrefix} placeholder="REC" placeholderTextColor="#9ca3af" />
           </View>
-          <View className="flex-1">
-            <Text className="mb-1 text-sm font-medium text-gray-700">Next Number</Text>
-            <TextInput className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900" value={receiptNextNumber} onChangeText={setReceiptNextNumber} placeholder="1" placeholderTextColor="#9ca3af" keyboardType="number-pad" />
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Next Number</Text>
+            <TextInput style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")} value={receiptNextNumber} onChangeText={setReceiptNextNumber} placeholder="1" placeholderTextColor="#9ca3af" keyboardType="number-pad" />
           </View>
         </View>
-        <Text className="mb-1 text-sm font-medium text-gray-700">Receipt Header</Text>
-        <TextInput className="mb-3 min-h-[60px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900" value={receiptHeader} onChangeText={setReceiptHeader} placeholder="Business name, address..." placeholderTextColor="#9ca3af" multiline textAlignVertical="top" />
-        <Text className="mb-1 text-sm font-medium text-gray-700">Receipt Footer</Text>
-        <TextInput className="mb-3 min-h-[60px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900" value={receiptFooter} onChangeText={setReceiptFooter} placeholder="Thank you for visiting..." placeholderTextColor="#9ca3af" multiline textAlignVertical="top" />
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Receipt Header</Text>
+        <TextInput style={twStyle("mb-3 min-h-[60px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")} value={receiptHeader} onChangeText={setReceiptHeader} placeholder="Business name, address..." placeholderTextColor="#9ca3af" multiline textAlignVertical="top" />
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Receipt Footer</Text>
+        <TextInput style={twStyle("mb-3 min-h-[60px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")} value={receiptFooter} onChangeText={setReceiptFooter} placeholder="Thank you for visiting..." placeholderTextColor="#9ca3af" multiline textAlignVertical="top" />
         <ActionButton label="Save Receipt Settings" onPress={handleSaveReceipt} loading={savingReceipt} variant="outline" fullWidth />
       </View>
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

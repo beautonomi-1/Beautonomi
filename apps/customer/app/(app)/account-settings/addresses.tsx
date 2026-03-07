@@ -163,66 +163,59 @@ export default function AddressesScreen() {
       onRetry={load}
     >
       {addresses.length === 0 && (
-        <View className="mb-6 items-center py-8">
-          <Text className="text-center text-gray-500">No saved addresses</Text>
+        <View style={{ marginBottom: 24, alignItems: "center", paddingVertical: 32 }}>
+          <Text style={{ textAlign: "center", color: Colors.gray[500] }}>No saved addresses</Text>
           <TouchableOpacity
             onPress={() => setAddModalVisible(true)}
-            className="mt-4 flex-row items-center gap-2 rounded-xl bg-primary px-5 py-3"
+            style={{ marginTop: 16, flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: Colors.primary, paddingHorizontal: 20, paddingVertical: 12 }}
             accessibilityLabel="Add address"
             accessibilityRole="button"
           >
-            <Ionicons name="add-circle-outline" size={22} color="#fff" />
-            <Text className="font-medium text-white">Add address</Text>
+            <Ionicons name="add-circle-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
+            <Text style={{ fontWeight: "500", color: Colors.white }}>Add address</Text>
           </TouchableOpacity>
         </View>
       )}
       {addresses.length > 0 && (
-        <View className="gap-3 pb-6">
-          {addresses.map((a) => (
-            <View
-              key={a.id}
-              className="rounded-xl border border-gray-100 bg-white p-4"
-            >
-              <View className="flex-row items-start justify-between">
-                <View className="flex-1">
-                  <Text className="font-medium text-gray-900">
-                    {a.label || "Address"}
-                  </Text>
-                  <Text className="mt-1 text-gray-600">{a.address_line1}</Text>
+        <View style={{ paddingBottom: 24 }}>
+          {addresses.map((a, index) => (
+            <View key={a.id} style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, marginTop: index === 0 ? 0 : 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{a.label || "Address"}</Text>
+                  <Text style={{ marginTop: 4, color: Colors.gray[600] }}>{a.address_line1}</Text>
                   {a.address_line2 && (
-                    <Text className="text-gray-600">{a.address_line2}</Text>
+                    <Text style={{ color: Colors.gray[600] }}>{a.address_line2}</Text>
                   )}
-                  <Text className="text-gray-600">
-                    {a.city}, {a.country}
-                  </Text>
+                  <Text style={{ color: Colors.gray[600] }}>{a.city}, {a.country}</Text>
                   {a.is_default && (
-                    <View className="mt-2 self-start rounded bg-primary/20 px-2 py-0.5">
-                      <Text className="text-xs font-medium text-primary">
-                        Default
-                      </Text>
+                    <View style={{ marginTop: 8, alignSelf: "flex-start", borderRadius: 4, backgroundColor: Colors.primaryLight, paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.primary }}>Default</Text>
                     </View>
                   )}
                 </View>
-                <View className="flex-row items-center gap-2">
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
                   {!a.is_default && (
+                    <View style={{ marginRight: 8 }}>
                     <TouchableOpacity
                       onPress={() => handleSetDefault(a.id)}
                       disabled={!!settingDefaultId}
-                      className="rounded-lg bg-gray-100 px-3 py-2"
+                      style={{ borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
                       accessibilityLabel="Set as default"
                       accessibilityRole="button"
                     >
                       {settingDefaultId === a.id ? (
                         <ActivityIndicator size="small" color={Colors.primary} />
                       ) : (
-                        <Ionicons name="star-outline" size={18} color="#6b7280" />
+                        <Ionicons name="star-outline" size={18} color={Colors.gray[600]} />
                       )}
                     </TouchableOpacity>
+                    </View>
                   )}
                   <TouchableOpacity
                     onPress={() => handleDelete(a)}
                     disabled={!!deletingId}
-                    className="rounded-lg bg-red-50 px-3 py-2"
+                    style={{ borderRadius: 8, backgroundColor: "#FEF2F2", paddingHorizontal: 12, paddingVertical: 8 }}
                     accessibilityLabel="Delete address"
                     accessibilityRole="button"
                   >
@@ -238,12 +231,12 @@ export default function AddressesScreen() {
           ))}
           <TouchableOpacity
             onPress={() => setAddModalVisible(true)}
-            className="flex-row items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-gray-50 py-4"
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], paddingVertical: 16 }}
             accessibilityLabel="Add new address"
             accessibilityRole="button"
           >
-            <Ionicons name="add-circle-outline" size={22} color={Colors.primary} />
-            <Text className="font-medium text-primary">Add address</Text>
+            <Ionicons name="add-circle-outline" size={22} color={Colors.primary} style={{ marginRight: 8 }} />
+            <Text style={{ fontWeight: "500", color: Colors.primary }}>Add address</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -255,8 +248,8 @@ export default function AddressesScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setAddModalVisible(false)}
       >
-        <View className="flex-1 bg-white">
-          <View className="flex-row items-center justify-between border-b border-gray-200 px-4 py-3">
+        <View style={{ flex: 1, backgroundColor: Colors.white }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], paddingHorizontal: 16, paddingVertical: 12 }}>
             <TouchableOpacity
               onPress={() => {
                 setAddModalVisible(false);
@@ -265,9 +258,9 @@ export default function AddressesScreen() {
               accessibilityLabel="Cancel"
               accessibilityRole="button"
             >
-              <Text className="text-primary font-medium">Cancel</Text>
+              <Text style={{ color: Colors.primary, fontWeight: "500" }}>Cancel</Text>
             </TouchableOpacity>
-            <Text className="text-lg font-semibold text-gray-900">Add address</Text>
+            <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>Add address</Text>
             <TouchableOpacity
               onPress={handleSaveNewAddress}
               disabled={!pendingAddress?.structured || saving}
@@ -277,36 +270,28 @@ export default function AddressesScreen() {
               {saving ? (
                 <ActivityIndicator size="small" color={Colors.primary} />
               ) : (
-                <Text
-                  className={`font-medium ${pendingAddress?.structured && !saving ? "text-primary" : "text-gray-400"}`}
-                >
-                  Save
-                </Text>
+                <Text style={{ fontWeight: "500", color: pendingAddress?.structured && !saving ? Colors.primary : Colors.gray[400] }}>Save</Text>
               )}
             </TouchableOpacity>
           </View>
-          <ScrollView className="flex-1 px-4 py-4" keyboardShouldPersistTaps="handled">
-            <Text className="mb-2 text-sm font-medium text-gray-700">
-              Label (e.g. Home, Work)
-            </Text>
+          <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 16 }} keyboardShouldPersistTaps="handled">
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Label (e.g. Home, Work)</Text>
             <TextInput
-              className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900"
+              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
               value={addLabel}
               onChangeText={setAddLabel}
               placeholder="Home"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={Colors.gray[400]}
             />
-            <Text className="mb-2 text-sm font-medium text-gray-700">
-              Address
-            </Text>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address</Text>
             <TouchableOpacity
               onPress={() => setPickerVisible(true)}
-              className="flex-row items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+              style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12 }}
               accessibilityLabel="Search address"
               accessibilityRole="button"
             >
-              <Ionicons name="search-outline" size={20} color="#9ca3af" />
-              <Text className={pendingAddress ? "text-gray-900" : "text-gray-500"}>
+              <Ionicons name="search-outline" size={20} color={Colors.gray[400]} />
+              <Text style={{ color: pendingAddress ? Colors.gray[900] : Colors.gray[500] }}>
                 {pendingAddress?.structured
                   ? `${pendingAddress.structured.address_line1}, ${pendingAddress.structured.city}`
                   : "Search for an address"}
@@ -319,9 +304,9 @@ export default function AddressesScreen() {
               onUseCurrentLocation={() => setPickerVisible(false)}
             />
             {pendingAddress?.structured && (
-              <View className="mt-4 rounded-xl bg-green-50 p-3">
-                <Text className="text-sm font-medium text-green-800">Selected</Text>
-                <Text className="mt-1 text-sm text-green-700">
+              <View style={{ marginTop: 16, borderRadius: 12, backgroundColor: "#F0FDF4", padding: 12 }}>
+                <Text style={{ fontSize: 14, fontWeight: "500", color: "#166534" }}>Selected</Text>
+                <Text style={{ marginTop: 4, fontSize: 14, color: "#15803d" }}>
                   {pendingAddress.structured.address_line1}, {pendingAddress.structured.city},{" "}
                   {pendingAddress.structured.country}
                 </Text>

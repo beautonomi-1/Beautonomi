@@ -7,10 +7,12 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { useApi } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { twStyle } from "@/lib/twStyle";
 
 interface FinanceEarnings {
   total_earnings: number;
@@ -77,6 +79,7 @@ const RANGE_OPTIONS: { value: "week" | "month" | "year"; label: string }[] = [
 export function FinanceOverviewContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<"week" | "month" | "year">("month");
+  const { screenPadding } = useResponsive();
   const url = `/api/provider/finance?range=${range}`;
   const { data, loading, error, refresh } = useApi<FinanceData>(url);
 
@@ -88,14 +91,14 @@ export function FinanceOverviewContent() {
 
   if (loading && !data) {
     return (
-      <View className="flex-1 items-center justify-center py-12">
+      <View style={twStyle("flex-1 items-center justify-center py-12")}>
         <LoadingState />
       </View>
     );
   }
   if (error && !data) {
     return (
-      <View className="flex-1 justify-center px-4">
+      <View style={twStyle("flex-1 justify-center px-4")}>
         <ErrorState message={error} onRetry={refresh} />
       </View>
     );
@@ -106,15 +109,15 @@ export function FinanceOverviewContent() {
 
   return (
     <>
-      <View className="mb-3 flex-row flex-wrap gap-2 px-4">
+      <View style={twStyle("mb-3 flex-row flex-wrap px-4")}>
         {RANGE_OPTIONS.map((opt) => (
           <TouchableOpacity
             key={opt.value}
             onPress={() => setRange(opt.value)}
-            className={`rounded-full px-3.5 py-2 ${range === opt.value ? "bg-emerald-600" : "bg-gray-100"}`}
+            style={[twStyle(`rounded-full px-3.5 py-2 ${range === opt.value ? "bg-emerald-600" : "bg-gray-100"}`), { marginRight: 8, marginBottom: 8 }]}
           >
             <Text
-              className={`text-sm font-medium ${range === opt.value ? "text-white" : "text-gray-700"}`}
+              style={twStyle(`text-sm font-medium ${range === opt.value ? "text-white" : "text-gray-700"}`)}
             >
               {opt.label}
             </Text>
@@ -122,72 +125,72 @@ export function FinanceOverviewContent() {
         ))}
       </View>
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={twStyle("flex-1")}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
       >
-        <View className="mb-4 rounded-2xl border border-gray-100 bg-emerald-50/50 p-4">
-          <Text className="text-sm font-medium text-gray-600">Available balance</Text>
-          <Text className="mt-1 text-2xl font-bold text-gray-900">
+        <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-emerald-50/50 p-4")}>
+          <Text style={twStyle("text-sm font-medium text-gray-600")}>Available balance</Text>
+          <Text style={twStyle("mt-1 text-2xl font-bold text-gray-900")}>
             {formatCurrency(earnings.available_balance ?? 0)}
           </Text>
           {(earnings.pending_payouts ?? 0) > 0 && (
-            <Text className="mt-0.5 text-xs text-gray-500">
+            <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
               Pending payouts: {formatCurrency(earnings.pending_payouts)}
             </Text>
           )}
         </View>
 
-        <View className="mb-4 flex-row gap-3">
-          <View className="flex-1 rounded-2xl border border-gray-100 bg-white p-4">
-            <Text className="text-xs font-medium text-gray-500">This month</Text>
-            <Text className="mt-1 text-lg font-bold text-gray-900">
+        <View style={twStyle("mb-4 flex-row")}>
+          <View style={[twStyle("flex-1 rounded-2xl border border-gray-100 bg-white p-4"), { marginRight: 12 }]}>
+            <Text style={twStyle("text-xs font-medium text-gray-500")}>This month</Text>
+            <Text style={twStyle("mt-1 text-lg font-bold text-gray-900")}>
               {formatCurrency(earnings.this_month ?? 0)}
             </Text>
             {(earnings.growth_percentage ?? 0) !== 0 && (
               <Text
-                className={`mt-0.5 text-xs font-medium ${(earnings.growth_percentage ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}
+                style={twStyle(`mt-0.5 text-xs font-medium ${(earnings.growth_percentage ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`)}
               >
                 {(earnings.growth_percentage ?? 0) >= 0 ? "+" : ""}
                 {earnings.growth_percentage}% vs last month
               </Text>
             )}
           </View>
-          <View className="flex-1 rounded-2xl border border-gray-100 bg-white p-4">
-            <Text className="text-xs font-medium text-gray-500">Total earnings</Text>
-            <Text className="mt-1 text-lg font-bold text-gray-900">
+          <View style={twStyle("flex-1 rounded-2xl border border-gray-100 bg-white p-4")}>
+            <Text style={twStyle("text-xs font-medium text-gray-500")}>Total earnings</Text>
+            <Text style={twStyle("mt-1 text-lg font-bold text-gray-900")}>
               {formatCurrency(earnings.total_earnings ?? 0)}
             </Text>
           </View>
         </View>
 
-        <View className="mb-2 flex-row items-center justify-between">
-          <Text className="text-sm font-semibold text-gray-700">Transactions</Text>
+        <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+          <Text style={twStyle("text-sm font-semibold text-gray-700")}>Transactions</Text>
           {transactions.length > 0 && (
-            <Text className="text-xs text-gray-500">{transactions.length} in this {range}</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>{transactions.length} in this {range}</Text>
           )}
         </View>
         {transactions.length === 0 ? (
-          <View className="rounded-2xl border border-gray-100 bg-gray-50/50 p-6">
-            <Text className="text-center text-sm text-gray-500">
+          <View style={twStyle("rounded-2xl border border-gray-100 bg-gray-50/50 p-6")}>
+            <Text style={twStyle("text-center text-sm text-gray-500")}>
               No transactions in this period.
             </Text>
           </View>
         ) : (
-          <View className="rounded-2xl border border-gray-100 bg-white">
+          <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
             {transactions.map((tx) => (
               <View
                 key={tx.id}
-                className="flex-row items-center justify-between border-b border-gray-50 px-4 py-3 last:border-b-0"
+                style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3 last:border-b-0")}
               >
-                <View className="flex-1">
-                  <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
+                <View style={twStyle("flex-1")}>
+                  <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={1}>
                     {formatType(tx.transaction_type)}
                   </Text>
-                  <Text className="text-xs text-gray-500">
+                  <Text style={twStyle("text-xs text-gray-500")}>
                     {new Date(tx.date).toLocaleDateString(undefined, {
                       month: "short",
                       day: "numeric",
@@ -197,7 +200,7 @@ export function FinanceOverviewContent() {
                   </Text>
                 </View>
                 <Text
-                  className={`text-sm font-semibold ${tx.net >= 0 ? "text-green-600" : "text-red-600"}`}
+                  style={twStyle(`text-sm font-semibold ${tx.net >= 0 ? "text-green-600" : "text-red-600"}`)}
                 >
                   {tx.net >= 0 ? "" : "−"}
                   {formatCurrency(Math.abs(tx.net))}

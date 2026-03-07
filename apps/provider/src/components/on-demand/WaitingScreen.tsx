@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, ActivityIndicator } from "react-native";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
+import { twStyle } from "@/lib/twStyle";
 
 /**
  * Simple waiting screen that reads on_demand module config.
@@ -14,11 +15,11 @@ export function OnDemandWaitingScreen() {
   const message = uiCopy.waiting_headline ?? uiCopy.message ?? "Connecting you with beauty.";
 
   return (
-    <View className="flex-1 items-center justify-center gap-4 p-6">
+    <View style={twStyle("flex-1 items-center justify-center p-6")}>
       <ActivityIndicator size="large" />
-      <Text className="text-lg font-medium">{title}</Text>
-      <Text className="text-sm text-gray-500">{message}</Text>
-      <Text className="text-xs text-gray-400">Timeout: {timeoutSec}s</Text>
+      <Text style={[twStyle("text-lg font-medium"), { marginTop: 16 }]}>{title}</Text>
+      <Text style={[twStyle("text-sm text-gray-500"), { marginTop: 16 }]}>{message}</Text>
+      <Text style={[twStyle("text-xs text-gray-400"), { marginTop: 16 }]}>Timeout: {timeoutSec}s</Text>
     </View>
   );
 }

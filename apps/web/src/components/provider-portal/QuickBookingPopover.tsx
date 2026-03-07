@@ -210,7 +210,7 @@ export function QuickBookingPopover({
               <div className="mt-1.5 flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border">
                 <div className="flex items-center gap-2">
                   <Avatar className="w-8 h-8">
-                    <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077] text-xs font-medium">
+                    <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
                       {selectedClient.first_name.charAt(0)}{selectedClient.last_name.charAt(0)}
                     </AvatarFallback>
                   </Avatar>
@@ -252,7 +252,7 @@ export function QuickBookingPopover({
                         onClick={() => handleSelectClient(client)}
                       >
                         <Avatar className="w-7 h-7">
-                          <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077] text-[10px] font-medium">
+                          <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-medium">
                             {client.first_name.charAt(0)}{client.last_name.charAt(0)}
                           </AvatarFallback>
                         </Avatar>
@@ -330,14 +330,14 @@ export function QuickBookingPopover({
 
           {/* Summary */}
           {selectedService && (
-            <div className="p-3 bg-[#FF0077]/5 border border-[#FF0077]/10 rounded-lg">
+            <div className="p-3 bg-primary/5 border border-primary/10 rounded-lg">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">Duration</span>
                 <span className="font-medium">{selectedService.duration_minutes} min</span>
               </div>
               <div className="flex items-center justify-between text-sm mt-1">
                 <span className="text-gray-600">Price</span>
-                <span className="font-bold text-[#FF0077]">R{selectedService.price.toFixed(2)}</span>
+                <span className="font-bold text-primary">R{selectedService.price.toFixed(2)}</span>
               </div>
             </div>
           )}
@@ -359,7 +359,7 @@ export function QuickBookingPopover({
           </Button>
           <Button
             size="sm"
-            className="flex-1 bg-[#FF0077] hover:bg-[#D60565]"
+            className="flex-1 bg-primary hover:bg-primary-hover"
             onClick={handleQuickBook}
             disabled={isLoading || !formData.service_id}
           >

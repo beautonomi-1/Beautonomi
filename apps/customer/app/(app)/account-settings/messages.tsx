@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Image } from "react-native";
 import { router } from "expo-router";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
+import { Colors } from "@/constants/colors";
 
 export default function MessagesScreen() {
   const [data, setData] = useState<any>(null);
@@ -35,32 +36,32 @@ export default function MessagesScreen() {
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load} empty={{ title: "No messages" }} isEmpty={convos.length === 0}>
       {convos.length > 0 && (
-        <View className="gap-3">
-          {convos.map((c: any) => (
+        <View>
+          {convos.map((c: any, index: number) => (
             <TouchableOpacity
               key={c.id}
               onPress={() => router.push({ pathname: "/(app)/chat", params: { id: c.id } })}
-              className="bg-gray-50 rounded-xl p-4 flex-row items-center border border-gray-100"
+              style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: Colors.gray[100], marginTop: index === 0 ? 0 : 12 }}
             >
               {c.avatar || c.provider?.thumbnail_url ? (
                 <Image
                   source={{ uri: c.avatar || c.provider?.thumbnail_url }}
-                  className="w-12 h-12 rounded-full mr-3"
+                  style={{ width: 48, height: 48, borderRadius: 24, marginRight: 12 }}
                 />
               ) : (
-                <View className="w-12 h-12 rounded-full bg-gray-300 mr-3 items-center justify-center">
-                  <Text className="text-gray-600 font-medium">
+                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[300], marginRight: 12, alignItems: "center", justifyContent: "center" }}>
+                  <Text style={{ color: Colors.gray[600], fontWeight: "500" }}>
                     {(c.provider_name || c.provider?.business_name || "?")[0]}
                   </Text>
                 </View>
               )}
-              <View className="flex-1">
-                <Text className="font-medium text-gray-900">{c.provider_name || c.provider?.business_name || "Conversation"}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{c.provider_name || c.provider?.business_name || "Conversation"}</Text>
                 {c.last_message_preview && (
-                  <Text className="text-sm text-gray-500 mt-0.5" numberOfLines={1}>{c.last_message_preview}</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }} numberOfLines={1}>{c.last_message_preview}</Text>
                 )}
               </View>
-              <Text className="text-primary font-semibold">›</Text>
+              <Text style={{ color: Colors.primary, fontWeight: "600" }}>›</Text>
             </TouchableOpacity>
           ))}
         </View>

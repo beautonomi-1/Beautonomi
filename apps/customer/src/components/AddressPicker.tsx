@@ -24,6 +24,7 @@ import {
   type GeocodeSuggestion,
 } from "@/hooks/useAddresses";
 import { haptic } from "@/lib/haptics";
+import { useResponsive } from "@/hooks/useResponsive";
 
 export interface AddressPickerSelection {
   label: string;
@@ -54,6 +55,7 @@ export function AddressPicker({
   onSelect,
   onUseCurrentLocation,
 }: AddressPickerProps) {
+  const { contentPadding } = useResponsive();
   const { user } = useAuth();
   const { addresses, loading: addressesLoading } = useAddresses(visible && !!user);
   const [query, setQuery] = useState("");
@@ -159,7 +161,7 @@ export function AddressPicker({
             <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB" }} />
           </View>
 
-          <View style={{ paddingHorizontal: 20 }}>
+          <View style={{ paddingHorizontal: contentPadding }}>
             <Text style={{ fontSize: 20, fontWeight: "700", color: "#111827", marginBottom: 16 }}>
               Select address
             </Text>
@@ -191,7 +193,6 @@ export function AddressPicker({
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 10,
                 paddingVertical: 14,
                 borderBottomWidth: 1,
                 borderColor: "#F3F4F6",
@@ -209,7 +210,7 @@ export function AddressPicker({
               >
                 <Ionicons name="locate-outline" size={18} color={Colors.primary} />
               </View>
-              <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.primary }}>
+              <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.primary, marginLeft: 10 }}>
                 Use current location
               </Text>
             </TouchableOpacity>
@@ -219,7 +220,7 @@ export function AddressPicker({
             <FlatList
               data={suggestions}
               keyExtractor={(_, i) => String(i)}
-              style={{ maxHeight: 240, paddingHorizontal: 20 }}
+              style={{ maxHeight: 240, paddingHorizontal: contentPadding }}
               keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => (
                 <TouchableOpacity
@@ -227,13 +228,12 @@ export function AddressPicker({
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 10,
                     paddingVertical: 14,
                     borderBottomWidth: 1,
                     borderColor: "#F3F4F6",
                   }}
                 >
-                  <Ionicons name="location-outline" size={18} color="#6B7280" />
+                  <Ionicons name="location-outline" size={18} color="#6B7280" style={{ marginRight: 10 }} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }} numberOfLines={1}>
                       {item.text}
@@ -246,7 +246,7 @@ export function AddressPicker({
               )}
             />
           ) : user && addresses.length > 0 ? (
-            <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
+            <View style={{ paddingHorizontal: contentPadding, paddingTop: 8 }}>
               <Text style={{ fontSize: 13, fontWeight: "600", color: "#6B7280", marginBottom: 8 }}>
                 Saved addresses
               </Text>
@@ -261,7 +261,6 @@ export function AddressPicker({
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: 10,
                       paddingVertical: 14,
                       borderBottomWidth: 1,
                       borderColor: "#F3F4F6",
@@ -275,6 +274,7 @@ export function AddressPicker({
                         backgroundColor: "#F3F4F6",
                         alignItems: "center",
                         justifyContent: "center",
+                        marginRight: 10,
                       }}
                     >
                       <Ionicons

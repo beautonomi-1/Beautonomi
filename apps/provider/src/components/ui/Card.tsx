@@ -4,36 +4,28 @@ interface CardProps {
   children: React.ReactNode;
   variant?: "default" | "elevated" | "outlined" | "filled";
   padding?: "none" | "sm" | "md" | "lg";
-  className?: string;
   style?: ViewStyle;
 }
-
-const variantClasses = {
-  default: "rounded-2xl bg-white border border-gray-100",
-  elevated: "rounded-2xl bg-white shadow-md shadow-black/5",
-  outlined: "rounded-2xl bg-white border border-gray-200",
-  filled: "rounded-2xl bg-gray-50",
-};
-
-const paddingClasses = {
-  none: "",
-  sm: "p-3",
-  md: "p-4",
-  lg: "p-5",
-};
 
 export function Card({
   children,
   variant = "default",
   padding = "md",
-  className = "",
   style,
 }: CardProps) {
+  const base = { borderRadius: 16 };
+  const paddingMap = { none: 0, sm: 12, md: 16, lg: 20 };
+  const pad = paddingMap[padding];
+  const variantStyle =
+    variant === "default"
+      ? { ...base, backgroundColor: "#fff", borderWidth: 1, borderColor: "#F3F4F6" }
+      : variant === "elevated"
+        ? { ...base, backgroundColor: "#fff", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 4 }
+        : variant === "outlined"
+          ? { ...base, backgroundColor: "#fff", borderWidth: 1, borderColor: "#E5E7EB" }
+          : { ...base, backgroundColor: "#F9FAFB" };
   return (
-    <View
-      className={`${variantClasses[variant]} ${paddingClasses[padding]} ${className}`}
-      style={style}
-    >
+    <View style={[variantStyle, pad > 0 && { padding: pad }, style]}>
       {children}
     </View>
   );

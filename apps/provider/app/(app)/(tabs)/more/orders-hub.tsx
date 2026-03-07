@@ -17,10 +17,10 @@ export default function OrdersHubScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Orders & returns" showBack subtitle="Product orders & refunds" />
-      <View className="mb-4">
+      <View style={{ marginBottom: 16 }}>
         <SegmentTabs tabs={TABS} activeKey={activeKey} onSelect={setActiveKey} />
       </View>
-      <View className="flex-1 min-h-0">
+      <View style={{ flex: 1, minHeight: 0 }}>
         {activeKey === "orders" && <ProductOrdersContent />}
         {activeKey === "returns" && <ProductReturnsContent />}
       </View>

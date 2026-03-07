@@ -39,7 +39,7 @@ export function ProviderRewardsTeaser() {
 
   if (badge?.name) {
     return (
-      <span className="text-xs font-medium text-[#FF0077] truncate" title={`Current badge: ${badge.name}`}>
+      <span className="text-xs font-medium text-primary truncate" title={`Current badge: ${badge.name}`}>
         {badge.name}
       </span>
     );
@@ -53,7 +53,7 @@ export function ProviderRewardsTeaser() {
   }
   if (next?.badge?.name) {
     return (
-      <span className="text-xs font-medium text-[#FF0077] truncate">
+      <span className="text-xs font-medium text-primary truncate">
         Next: {next.badge.name}
       </span>
     );

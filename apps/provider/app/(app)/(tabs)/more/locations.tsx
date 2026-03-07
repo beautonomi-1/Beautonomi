@@ -11,6 +11,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 type LocationItem = {
   id: string;
@@ -45,7 +46,7 @@ export default function LocationsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Locations" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -56,7 +57,7 @@ export default function LocationsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Locations" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -75,7 +76,7 @@ export default function LocationsScreen() {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.push("/(app)/(tabs)/more/locations/add" as never);
             }}
-            className="rounded-full bg-gray-100 p-2"
+            style={{ borderRadius: 9999, backgroundColor: Colors.gray[100], padding: 8 }}
             accessibilityLabel="Add location"
             accessibilityRole="button"
           >
@@ -84,55 +85,55 @@ export default function LocationsScreen() {
         }
       />
       <ScrollView
-        className="flex-1"
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366f1" />}
         showsVerticalScrollIndicator={false}
       >
-        <View className="px-4">
+        <View style={{ paddingHorizontal: 16 }}>
           {locations.length === 0 ? (
-            <View className="py-12 items-center">
-              <View className="h-16 w-16 items-center justify-center rounded-full bg-teal-50 mb-4">
+            <View style={{ paddingVertical: 48, alignItems: "center" }}>
+              <View style={{ width: 64, height: 64, alignItems: "center", justifyContent: "center", borderRadius: 32, backgroundColor: "#ccfbf1", marginBottom: 16 }}>
                 <Ionicons name="location-outline" size={32} color="#0d9488" />
               </View>
-              <Text className="text-center text-gray-600">No locations yet</Text>
-              <Text className="mt-2 text-center text-sm text-gray-500 mb-6">
+              <Text style={{ textAlign: "center", color: Colors.gray[600] }}>No locations yet</Text>
+              <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500], marginBottom: 24 }}>
                 Add your first business address so clients can find you.
               </Text>
               <TouchableOpacity
                 onPress={() => router.push("/(app)/(tabs)/more/locations/add" as never)}
-                className="rounded-xl bg-teal-600 px-6 py-3"
+                style={{ borderRadius: 12, backgroundColor: "#0d9488", paddingHorizontal: 24, paddingVertical: 12 }}
                 activeOpacity={0.8}
               >
-                <Text className="font-semibold text-white">Add location</Text>
+                <Text style={{ fontWeight: "600", color: Colors.white }}>Add location</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <View className="gap-3">
-              {locations.map((loc) => (
+            <View>
+              {locations.map((loc, idx) => (
                 <TouchableOpacity
                   key={loc.id}
+                  style={[ { borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }, idx > 0 && { marginTop: 12 } ]}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     router.push(`/(app)/(tabs)/more/locations/${loc.id}` as never);
                   }}
                   activeOpacity={0.7}
-                  className="rounded-2xl border border-gray-200 bg-white p-4"
                   accessibilityRole="button"
                   accessibilityLabel={`${loc.name}, ${loc.city ?? ""} ${loc.country ?? ""}`}
                 >
-                  <View className="flex-row items-start justify-between">
-                    <View className="flex-1">
-                      <View className="flex-row items-center gap-2">
-                        <Text className="text-base font-semibold text-gray-900">{loc.name}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginRight: 8 }}>{loc.name}</Text>
                         {loc.is_primary && (
-                          <View className="rounded bg-teal-100 px-2 py-0.5">
-                            <Text className="text-xs font-medium text-teal-800">Primary</Text>
+                          <View style={{ borderRadius: 4, backgroundColor: "#ccfbf1", paddingHorizontal: 8, paddingVertical: 2 }}>
+                            <Text style={{ fontSize: 12, fontWeight: "500", color: "#115e59" }}>Primary</Text>
                           </View>
                         )}
                       </View>
                       {(loc.address_line1 || loc.city || loc.country) && (
-                        <Text className="mt-1 text-sm text-gray-500" numberOfLines={2}>
+                        <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[500] }} numberOfLines={2}>
                           {[loc.address_line1, loc.city, loc.country].filter(Boolean).join(", ")}
                         </Text>
                       )}
@@ -143,11 +144,11 @@ export default function LocationsScreen() {
               ))}
               <TouchableOpacity
                 onPress={() => router.push("/(app)/(tabs)/more/locations/add" as never)}
-                className="flex-row items-center justify-center rounded-2xl border border-dashed border-gray-300 py-4"
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 16, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[300], paddingVertical: 16 }}
                 activeOpacity={0.7}
               >
                 <Ionicons name="add-circle-outline" size={22} color="#0d9488" />
-                <Text className="ml-2 font-medium text-teal-700">Add another location</Text>
+                <Text style={{ marginLeft: 8, fontWeight: "500", color: "#0f766e" }}>Add another location</Text>
               </TouchableOpacity>
             </View>
           )}

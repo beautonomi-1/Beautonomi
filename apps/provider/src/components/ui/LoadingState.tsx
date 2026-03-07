@@ -7,9 +7,9 @@ interface LoadingStateProps {
 
 export function LoadingState({ message = "Loading...", fullScreen = true }: LoadingStateProps) {
   return (
-    <View className={`items-center justify-center ${fullScreen ? "flex-1" : "py-12"}`}>
+    <View style={[{ alignItems: "center", justifyContent: "center" }, fullScreen ? { flex: 1 } : { paddingVertical: 48 }]}>
       <ActivityIndicator size="large" color="#111" />
-      <Text className="mt-3 text-sm text-gray-500">{message}</Text>
+      <Text style={{ marginTop: 12, fontSize: 14, color: "#6b7280" }}>{message}</Text>
     </View>
   );
 }

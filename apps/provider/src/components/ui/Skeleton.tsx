@@ -13,7 +13,6 @@ interface SkeletonProps {
   width?: number | `${number}%` | "auto";
   height?: number;
   borderRadius?: number;
-  className?: string;
   style?: ViewStyle;
 }
 
@@ -21,7 +20,6 @@ export function Skeleton({
   width,
   height = 16,
   borderRadius = 8,
-  className = "",
   style,
 }: SkeletonProps) {
   const opacity = useSharedValue(0.3);
@@ -32,7 +30,7 @@ export function Skeleton({
         withTiming(0.7, { duration: 800, easing: Easing.inOut(Easing.ease) }),
         withTiming(0.3, { duration: 800, easing: Easing.inOut(Easing.ease) }),
       ),
-      -1, // infinite
+      -1,
     );
   }, [opacity]);
 
@@ -42,13 +40,8 @@ export function Skeleton({
 
   return (
     <Animated.View
-      className={`bg-gray-200 ${className}`}
       style={[
-        {
-          width: width ?? "100%",
-          height,
-          borderRadius,
-        },
+        { width: width ?? "100%", height, borderRadius, backgroundColor: "#e5e7eb" },
         animatedStyle,
         style,
       ]}
@@ -60,10 +53,10 @@ export function Skeleton({
 
 export function SkeletonCard() {
   return (
-    <View className="rounded-2xl border border-gray-100 bg-white p-4">
-      <View className="flex-row items-center">
+    <View style={{ borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6", backgroundColor: "#fff", padding: 16 }}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
         <Skeleton width={44} height={44} borderRadius={12} />
-        <View className="ml-3 flex-1">
+        <View style={{ marginLeft: 12, flex: 1 }}>
           <Skeleton height={14} style={{ width: "60%" }} />
           <Skeleton height={10} style={{ width: "40%", marginTop: 6 }} />
         </View>
@@ -74,12 +67,9 @@ export function SkeletonCard() {
 
 export function SkeletonStatRow() {
   return (
-    <View className="flex-row gap-3">
+    <View style={{ flexDirection: "row" }}>
       {[0, 1].map((i) => (
-        <View
-          key={i}
-          className="flex-1 rounded-2xl border border-gray-100 bg-white p-4"
-        >
+        <View key={i} style={{ flex: 1, marginRight: i === 0 ? 12 : 0, borderRadius: 16, borderWidth: 1, borderColor: "#f3f4f6", backgroundColor: "#fff", padding: 16 }}>
           <Skeleton height={10} style={{ width: "50%" }} />
           <Skeleton height={24} style={{ width: "70%", marginTop: 8 }} />
           <Skeleton height={10} style={{ width: "30%", marginTop: 6 }} />
@@ -91,9 +81,11 @@ export function SkeletonStatRow() {
 
 export function SkeletonList({ rows = 5 }: { rows?: number }) {
   return (
-    <View className="gap-3">
+    <View>
       {Array.from({ length: rows }).map((_, i) => (
-        <SkeletonCard key={i} />
+        <View key={i} style={{ marginTop: i === 0 ? 0 : 12 }}>
+          <SkeletonCard />
+        </View>
       ))}
     </View>
   );
@@ -101,16 +93,16 @@ export function SkeletonList({ rows = 5 }: { rows?: number }) {
 
 export function SkeletonDashboard() {
   return (
-    <View className="px-4 pt-4" accessibilityLabel="Loading dashboard">
+    <View style={{ paddingHorizontal: 16, paddingTop: 16 }} accessibilityLabel="Loading dashboard">
       <SkeletonStatRow />
-      <View className="mt-4">
+      <View style={{ marginTop: 16 }}>
         <SkeletonStatRow />
       </View>
-      <View className="mt-6">
+      <View style={{ marginTop: 24 }}>
         <Skeleton height={14} style={{ width: "30%", marginBottom: 12 }} />
         <Skeleton height={160} borderRadius={16} />
       </View>
-      <View className="mt-6">
+      <View style={{ marginTop: 24 }}>
         <Skeleton height={14} style={{ width: "30%", marginBottom: 12 }} />
         <SkeletonList rows={3} />
       </View>

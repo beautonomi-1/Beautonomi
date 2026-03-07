@@ -8,6 +8,7 @@ import { View, Text, ActivityIndicator, TouchableOpacity } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { WebView } from "react-native-webview";
 import * as Haptics from "expo-haptics";
+import { Colors } from "@/constants/colors";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
 import { supabase } from "@/lib/supabase/client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -56,10 +57,10 @@ export default function PortalScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title={displayTitle} onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center p-6">
-          <Text className="text-center text-gray-600">{loadError}</Text>
-          <TouchableOpacity onPress={() => router.back()} className="mt-4 rounded-xl bg-gray-900 px-6 py-3">
-            <Text className="font-medium text-white">Go back</Text>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <Text style={{ textAlign: "center", color: Colors.gray[600] }}>{loadError}</Text>
+          <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, borderRadius: 12, backgroundColor: Colors.gray[900], paddingHorizontal: 24, paddingVertical: 12 }}>
+            <Text style={{ fontWeight: "500", color: Colors.white }}>Go back</Text>
           </TouchableOpacity>
         </View>
       </ScreenContainer>
@@ -70,9 +71,9 @@ export default function PortalScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title={displayTitle} onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#FF0077" />
-          <Text className="mt-3 text-gray-500">Loading…</Text>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={{ marginTop: 12, color: Colors.gray[500] }}>Loading…</Text>
         </View>
       </ScreenContainer>
     );
@@ -87,7 +88,7 @@ export default function PortalScreen() {
           router.back();
         }}
       />
-      <View className="flex-1">
+      <View style={{ flex: 1 }}>
         <WebView
           source={{ uri }}
           style={{ flex: 1 }}
@@ -95,9 +96,9 @@ export default function PortalScreen() {
           onHttpError={(e) => setLoadError(`HTTP ${e.nativeEvent.statusCode}`)}
           startInLoadingState
           renderLoading={() => (
-            <View className="absolute inset-0 items-center justify-center bg-white">
-              <ActivityIndicator size="large" color="#FF0077" />
-              <Text className="mt-3 text-gray-500">Loading…</Text>
+            <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
+              <ActivityIndicator size="large" color={Colors.primary} />
+              <Text style={{ marginTop: 12, color: Colors.gray[500] }}>Loading…</Text>
             </View>
           )}
         />

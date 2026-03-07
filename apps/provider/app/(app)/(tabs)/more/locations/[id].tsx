@@ -25,6 +25,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
+import { twStyle } from "@/lib/twStyle";
 
 type LocationData = {
   id: string;
@@ -170,8 +171,8 @@ export default function EditLocationScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Edit location" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center px-4">
-          <Text className="text-gray-500">Invalid location.</Text>
+        <View style={twStyle("flex-1 items-center justify-center px-4")}>
+          <Text style={twStyle("text-gray-500")}>Invalid location.</Text>
         </View>
       </ScreenContainer>
     );
@@ -181,7 +182,7 @@ export default function EditLocationScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Edit location" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -192,7 +193,7 @@ export default function EditLocationScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Edit location" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -204,19 +205,19 @@ export default function EditLocationScreen() {
       <ScreenHeader title="Edit location" onBack={() => router.back()} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        className="flex-1"
+        style={twStyle("flex-1")}
       >
         <ScrollView
-          className="flex-1"
+          style={twStyle("flex-1")}
           contentContainerStyle={{ paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View className="px-4">
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Location name *</Text>
+          <View style={twStyle("px-4")}>
+            <View style={twStyle("mb-4")}>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Location name *</Text>
               <TextInput
-                className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.name ? "border-red-500" : "border-gray-200"}`}
+                style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.name ? "border-red-500" : "border-gray-200"}`)}
                 value={name}
                 onChangeText={(t) => {
                   setName(t);
@@ -226,16 +227,16 @@ export default function EditLocationScreen() {
                 placeholderTextColor="#9ca3af"
               />
               {errors.name ? (
-                <Text className="mt-1 text-sm text-red-500">
+                <Text style={twStyle("mt-1 text-sm text-red-500")}>
                   {errors.name === "validation.required"
                     ? t(errors.name, { field: FIELD_LABELS.name })
                     : t(errors.name)}
                 </Text>
               ) : null}
             </View>
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Address *</Text>
-              <Text className="mb-2 text-xs text-gray-500">
+            <View style={twStyle("mb-4")}>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Address *</Text>
+              <Text style={twStyle("mb-2 text-xs text-gray-500")}>
                 Search to fill address and coordinates automatically.
               </Text>
               <AddressAutocomplete
@@ -257,10 +258,10 @@ export default function EditLocationScreen() {
                 countryCode={country ? (country.length === 2 ? country : "ZA") : "ZA"}
               />
             </View>
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Address line 1 *</Text>
+            <View style={twStyle("mb-4")}>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Address line 1 *</Text>
               <TextInput
-                className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.address_line1 ? "border-red-500" : "border-gray-200"}`}
+                style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.address_line1 ? "border-red-500" : "border-gray-200"}`)}
                 value={address_line1}
                 onChangeText={(t) => {
                   setAddressLine1(t);
@@ -270,28 +271,28 @@ export default function EditLocationScreen() {
                 placeholderTextColor="#9ca3af"
               />
               {errors.address_line1 ? (
-                <Text className="mt-1 text-sm text-red-500">
+                <Text style={twStyle("mt-1 text-sm text-red-500")}>
                   {errors.address_line1 === "validation.required"
                     ? t(errors.address_line1, { field: FIELD_LABELS.address_line1 })
                     : t(errors.address_line1)}
                 </Text>
               ) : null}
             </View>
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Address line 2</Text>
+            <View style={twStyle("mb-4")}>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Address line 2</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 value={address_line2}
                 onChangeText={setAddressLine2}
                 placeholder="Optional"
                 placeholderTextColor="#9ca3af"
               />
             </View>
-            <View className="mb-4 flex-row gap-3">
-              <View className="flex-1">
-                <Text className="mb-1.5 text-sm font-medium text-gray-700">City *</Text>
+            <View style={twStyle("mb-4 flex-row")}>
+              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>City *</Text>
                 <TextInput
-                  className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.city ? "border-red-500" : "border-gray-200"}`}
+                  style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.city ? "border-red-500" : "border-gray-200"}`)}
                   value={city}
                   onChangeText={(t) => {
                     setCity(t);
@@ -301,17 +302,17 @@ export default function EditLocationScreen() {
                   placeholderTextColor="#9ca3af"
                 />
                 {errors.city ? (
-                  <Text className="mt-1 text-sm text-red-500">
+                  <Text style={twStyle("mt-1 text-sm text-red-500")}>
                     {errors.city === "validation.required"
                       ? t(errors.city, { field: FIELD_LABELS.city })
                       : t(errors.city)}
                   </Text>
                 ) : null}
               </View>
-              <View className="flex-1">
-                <Text className="mb-1.5 text-sm font-medium text-gray-700">Country *</Text>
+              <View style={twStyle("flex-1")}>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Country *</Text>
                 <TextInput
-                  className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.country ? "border-red-500" : "border-gray-200"}`}
+                  style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.country ? "border-red-500" : "border-gray-200"}`)}
                   value={country}
                   onChangeText={(t) => {
                     setCountry(t);
@@ -321,7 +322,7 @@ export default function EditLocationScreen() {
                   placeholderTextColor="#9ca3af"
                 />
                 {errors.country ? (
-                  <Text className="mt-1 text-sm text-red-500">
+                  <Text style={twStyle("mt-1 text-sm text-red-500")}>
                     {errors.country === "validation.required"
                       ? t(errors.country, { field: FIELD_LABELS.country })
                       : t(errors.country)}
@@ -329,21 +330,21 @@ export default function EditLocationScreen() {
                 ) : null}
               </View>
             </View>
-            <View className="mb-4 flex-row gap-3">
-              <View className="flex-1">
-                <Text className="mb-1.5 text-sm font-medium text-gray-700">State / Province</Text>
+            <View style={twStyle("mb-4 flex-row")}>
+              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>State / Province</Text>
                 <TextInput
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   value={state}
                   onChangeText={setState}
                   placeholder="Optional"
                   placeholderTextColor="#9ca3af"
                 />
               </View>
-              <View className="flex-1">
-                <Text className="mb-1.5 text-sm font-medium text-gray-700">Postal code</Text>
+              <View style={twStyle("flex-1")}>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Postal code</Text>
                 <TextInput
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   value={postal_code}
                   onChangeText={setPostalCode}
                   placeholder="Optional"
@@ -351,10 +352,10 @@ export default function EditLocationScreen() {
                 />
               </View>
             </View>
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Phone</Text>
+            <View style={twStyle("mb-4")}>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Phone</Text>
               <TextInput
-                className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.phone ? "border-red-500" : "border-gray-200"}`}
+                style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.phone ? "border-red-500" : "border-gray-200"}`)}
                 value={phone}
                 onChangeText={(t) => {
                   setPhone(t);
@@ -365,11 +366,11 @@ export default function EditLocationScreen() {
                 keyboardType="phone-pad"
               />
               {errors.phone ? (
-                <Text className="mt-1 text-sm text-red-500">{t(errors.phone)}</Text>
+                <Text style={twStyle("mt-1 text-sm text-red-500")}>{t(errors.phone)}</Text>
               ) : null}
             </View>
-            <View className="mb-6 flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3">
-              <Text className="text-base text-gray-900">Primary location</Text>
+            <View style={twStyle("mb-6 flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3")}>
+              <Text style={twStyle("text-base text-gray-900")}>Primary location</Text>
               <Switch
                 value={is_primary}
                 onValueChange={setIsPrimary}
@@ -388,11 +389,11 @@ export default function EditLocationScreen() {
 
             <TouchableOpacity
               onPress={handleDelete}
-              className="mt-6 py-4 items-center"
+              style={twStyle("mt-6 py-4 items-center")}
               accessibilityRole="button"
               accessibilityLabel="Delete location"
             >
-              <Text className="text-sm font-medium text-red-600">Delete location</Text>
+              <Text style={twStyle("text-sm font-medium text-red-600")}>Delete location</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>

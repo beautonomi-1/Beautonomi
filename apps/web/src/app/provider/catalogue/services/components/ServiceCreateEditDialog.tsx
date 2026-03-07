@@ -665,7 +665,7 @@ export function ServiceCreateEditDialog({
                     <Button 
                       type="button"
                       variant="link" 
-                      className="text-[#FF0077] p-0 h-auto text-xs sm:text-sm whitespace-nowrap"
+                      className="text-primary p-0 h-auto text-xs sm:text-sm whitespace-nowrap"
                       onClick={() => setShowIncludedServicesDialog(true)}
                       disabled={allServices.length === 0}
                     >
@@ -724,7 +724,7 @@ export function ServiceCreateEditDialog({
                       <Button 
                         type="button"
                         variant="link" 
-                        className="text-[#FF0077] p-0 h-auto text-xs sm:text-sm whitespace-nowrap"
+                        className="text-primary p-0 h-auto text-xs sm:text-sm whitespace-nowrap"
                         onClick={() => setShowIncludedServicesDialog(true)}
                         disabled={allServices.length === 0}
                       >
@@ -844,7 +844,7 @@ export function ServiceCreateEditDialog({
                   <Button
                     type="button"
                     variant="link"
-                    className="text-[#FF0077] p-0 h-auto text-xs sm:text-sm"
+                    className="text-primary p-0 h-auto text-xs sm:text-sm"
                     onClick={() => setShowCategoryDialog(true)}
                   >
                     <Plus className="w-3 h-3 mr-1" />
@@ -1111,7 +1111,7 @@ export function ServiceCreateEditDialog({
                 <Button
                   type="button"
                   variant="link"
-                  className="text-[#FF0077] p-0 h-auto text-xs sm:text-sm whitespace-nowrap flex-shrink-0 mt-1"
+                  className="text-primary p-0 h-auto text-xs sm:text-sm whitespace-nowrap flex-shrink-0 mt-1"
                   onClick={() => setShowTeamMemberDialog(true)}
                 >
                   <Plus className="w-3 h-3 mr-1" />
@@ -1205,7 +1205,7 @@ export function ServiceCreateEditDialog({
               {pricingOptions.map((option, index) => (
                 <div key={option.id} className="border rounded-lg p-3 sm:p-4 space-y-3 sm:space-y-4 bg-gray-50/50">
                   <div className="flex justify-between items-center">
-                    <h4 className="text-sm sm:text-base font-medium text-[#FF0077]">
+                    <h4 className="text-sm sm:text-base font-medium text-primary">
                       {pricingOptions.length === 1 ? "Default Pricing" : `Pricing Option ${index + 1}`}
                     </h4>
                     {pricingOptions.length > 1 && (
@@ -1293,14 +1293,14 @@ export function ServiceCreateEditDialog({
                     <Button 
                       type="button"
                       variant="link" 
-                      className="text-[#FF0077] p-0 h-auto"
+                      className="text-primary p-0 h-auto"
                       onClick={() => {
                         setShowAdvancedPricingModal(true);
                       }}
                     >
                       Advanced pricing options
                       {advancedPricingRules.length > 0 && (
-                        <span className="ml-2 text-xs bg-[#FF0077]/10 text-[#FF0077] px-1.5 py-0.5 rounded">
+                        <span className="ml-2 text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
                           {advancedPricingRules.filter(r => r.enabled).length} active
                         </span>
                       )}
@@ -1500,7 +1500,7 @@ export function ServiceCreateEditDialog({
               </Button>
               <Button 
                 type="submit" 
-                className="bg-[#FF0077] hover:bg-[#D60565] min-w-[100px] w-full sm:w-auto"
+                className="bg-primary hover:bg-primary-hover min-w-[100px] w-full sm:w-auto"
                 disabled={!formData.name.trim() || !formData.categoryId}
               >
                 {service ? "Update" : "Create"}
@@ -1595,7 +1595,7 @@ export function ServiceCreateEditDialog({
                     type="button"
                     className={`w-8 h-8 sm:w-10 sm:h-10 rounded-md border-2 transition-colors ${
                       categoryFormData.color === color 
-                        ? "border-[#FF0077] ring-2 ring-[#FF0077] ring-offset-1 sm:ring-offset-2" 
+                        ? "border-primary ring-2 ring-primary ring-offset-1 sm:ring-offset-2" 
                         : "border-gray-300 hover:border-gray-400"
                     }`}
                     style={{ backgroundColor: color }}
@@ -1634,7 +1634,7 @@ export function ServiceCreateEditDialog({
             </Button>
             <Button 
               onClick={handleCreateCategory} 
-              className="bg-[#FF0077] hover:bg-[#D60565] w-full sm:w-auto"
+              className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
               disabled={!categoryFormData.name.trim()}
             >
               Add Category
@@ -1723,7 +1723,7 @@ export function ServiceCreateEditDialog({
             </Button>
             <Button 
               onClick={handleCreateTeamMember} 
-              className="bg-[#FF0077] hover:bg-[#D60565] w-full sm:w-auto"
+              className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
               disabled={!teamMemberFormData.name.trim() || !teamMemberFormData.email.trim() || !teamMemberFormData.mobile.trim()}
             >
               Add Member

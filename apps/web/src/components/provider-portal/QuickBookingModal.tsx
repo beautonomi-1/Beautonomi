@@ -151,7 +151,7 @@ export default function QuickBookingModal({
             </Button>
             <Button
               onClick={handleSubmit}
-              className="flex-1 bg-[#FF0077] hover:bg-[#D60565]"
+              className="flex-1 bg-primary hover:bg-primary-hover"
               disabled={isSubmitting || !selectedSlot || slotOptions.length === 0}
             >
               {isSubmitting ? (

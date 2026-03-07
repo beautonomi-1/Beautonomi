@@ -402,7 +402,7 @@ export default function ProviderDashboard() {
               <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
                 <Button
                   onClick={() => router.push("/provider/onboarding")}
-                  className="bg-[#FF0077] hover:bg-[#D60565] text-white w-full sm:w-auto"
+                  className="bg-primary hover:bg-primary-hover text-white w-full sm:w-auto"
                 >
                   Complete Onboarding
                 </Button>

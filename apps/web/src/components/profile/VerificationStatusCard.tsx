@@ -104,7 +104,7 @@ export default function VerificationStatusCard({
                 size="sm"
                 className={cn(
                   config.buttonVariant === "default" &&
-                    "bg-[#FF0077] hover:bg-[#E6006A] text-white"
+                    "bg-primary hover:bg-primary-hover text-white"
                 )}
               >
                 {config.buttonText}

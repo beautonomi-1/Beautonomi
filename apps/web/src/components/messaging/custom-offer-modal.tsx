@@ -253,7 +253,7 @@ export default function CustomOfferModal({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl font-semibold flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-[#FF0077]" />
+            <Sparkles className="w-6 h-6 text-primary" />
             {isEditMode ? "Edit & resend offer" : `Send Custom Offer to ${customerName || "Customer"}`}
           </DialogTitle>
           <DialogDescription>
@@ -579,7 +579,7 @@ export default function CustomOfferModal({
           <Button
             onClick={handleSubmit}
             disabled={!isValid() || isSubmitting}
-            className="bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white"
+            className="bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white"
           >
             {isSubmitting ? "Sending..." : "Send Offer"}
           </Button>

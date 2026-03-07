@@ -59,11 +59,11 @@ const CircularProgress = React.forwardRef<HTMLDivElement, CircularProgressProps>
             strokeDasharray={circumference}
             strokeDashoffset={offset}
             strokeLinecap="round"
-            className="text-[#FF0077] transition-all duration-300 ease-in-out"
+            className="text-primary transition-all duration-300 ease-in-out"
           />
         </svg>
         {showPercentage && (
-          <span className="absolute text-xs font-semibold text-[#FF0077]">
+          <span className="absolute text-xs font-semibold text-primary">
             {Math.round(percentage)}%
           </span>
         )}

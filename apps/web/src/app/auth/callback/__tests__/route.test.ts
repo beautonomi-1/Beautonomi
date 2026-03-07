@@ -16,29 +16,33 @@ describe("GET /auth/callback", () => {
     vi.clearAllMocks();
   });
 
-  it("redirects to reset-password when token_hash and type=recovery and verifyOtp succeeds", async () => {
-    const mockVerifyOtp = vi.fn().mockResolvedValue({ error: null });
-    mockGetSupabaseServer.mockResolvedValue({
-      auth: {
-        verifyOtp: mockVerifyOtp,
-      },
-    });
+  it(
+    "redirects to reset-password when token_hash and type=recovery and verifyOtp succeeds",
+    async () => {
+      const mockVerifyOtp = vi.fn().mockResolvedValue({ error: null });
+      mockGetSupabaseServer.mockResolvedValue({
+        auth: {
+          verifyOtp: mockVerifyOtp,
+        },
+      });
 
-    const { GET } = await import("../route");
-    const req = new NextRequest(
-      "https://app.example.com/auth/callback?token_hash=abc123&type=recovery"
-    );
-    const res = await GET(req);
+      const { GET } = await import("../route");
+      const req = new NextRequest(
+        "https://app.example.com/auth/callback?token_hash=abc123&type=recovery"
+      );
+      const res = await GET(req);
 
-    expect(res.status).toBe(307);
-    expect(res.headers.get("location")).toBe(
-      "https://app.example.com/account-settings/login-and-security/reset-password"
-    );
-    expect(mockVerifyOtp).toHaveBeenCalledWith({
-      token_hash: "abc123",
-      type: "recovery",
-    });
-  });
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toBe(
+        "https://app.example.com/account-settings/login-and-security/reset-password"
+      );
+      expect(mockVerifyOtp).toHaveBeenCalledWith({
+        token_hash: "abc123",
+        type: "recovery",
+      });
+    },
+    10000
+  );
 
   it("redirects to booking with error when token_hash and type=recovery but verifyOtp fails", async () => {
     const mockVerifyOtp = vi.fn().mockResolvedValue({

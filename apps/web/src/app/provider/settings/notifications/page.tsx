@@ -246,7 +246,7 @@ export default function ProviderNotificationPreferences() {
               checked={preferences.unsubscribe_marketing || false}
               onCheckedChange={toggleMarketing}
               disabled={isSaving}
-              className="data-[state=checked]:bg-[#FF0077]"
+              className="data-[state=checked]:bg-primary"
             />
           </div>
         </div>
@@ -260,8 +260,8 @@ export default function ProviderNotificationPreferences() {
             return (
               <div key={section.id} className="bg-white border rounded-lg p-6">
                 <div className="flex items-start gap-4 mb-4">
-                  <div className="p-2 bg-[#FF0077]/10 rounded-lg">
-                    <Icon className="w-5 h-5 text-[#FF0077]" />
+                  <div className="p-2 bg-primary/10 rounded-lg">
+                    <Icon className="w-5 h-5 text-primary" />
                   </div>
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold mb-1">{section.title}</h3>
@@ -279,7 +279,7 @@ export default function ProviderNotificationPreferences() {
                       checked={sectionPrefs.email}
                       onCheckedChange={() => togglePreference(section.id, 'email')}
                       disabled={isSaving}
-                      className="data-[state=checked]:bg-[#FF0077]"
+                      className="data-[state=checked]:bg-primary"
                     />
                   </div>
                   <div className="flex items-center justify-between">
@@ -291,7 +291,7 @@ export default function ProviderNotificationPreferences() {
                       checked={sectionPrefs.sms}
                       onCheckedChange={() => togglePreference(section.id, 'sms')}
                       disabled={isSaving}
-                      className="data-[state=checked]:bg-[#FF0077]"
+                      className="data-[state=checked]:bg-primary"
                     />
                   </div>
                   <div className="flex items-center justify-between">
@@ -303,7 +303,7 @@ export default function ProviderNotificationPreferences() {
                       checked={sectionPrefs.push}
                       onCheckedChange={() => togglePreference(section.id, 'push')}
                       disabled={isSaving}
-                      className="data-[state=checked]:bg-[#FF0077]"
+                      className="data-[state=checked]:bg-primary"
                     />
                   </div>
                 </div>

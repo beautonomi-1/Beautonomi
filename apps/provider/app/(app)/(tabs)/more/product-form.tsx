@@ -23,6 +23,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { twStyle } from "@/lib/twStyle";
 
 interface Product {
   id: string;
@@ -67,10 +68,10 @@ function FormField({
   multiline?: boolean;
 }) {
   return (
-    <View className="mb-3">
-      <Text className="mb-1 text-sm font-medium text-gray-700">{label}</Text>
+    <View style={twStyle("mb-3")}>
+      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{label}</Text>
       <TextInput
-        className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+        style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
         placeholder={placeholder}
         placeholderTextColor="#9ca3af"
         value={value}
@@ -391,15 +392,15 @@ export default function ProductFormScreen() {
     return (
       <ScreenContainer>
         <ScreenHeader title="Edit Product" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center p-6">
-          <Text className="text-center text-gray-600">Product not found.</Text>
+        <View style={twStyle("flex-1 items-center justify-center p-6")}>
+          <Text style={twStyle("text-center text-gray-600")}>Product not found.</Text>
           <TouchableOpacity
             onPress={() => router.back()}
-            className="mt-4"
+            style={twStyle("mt-4")}
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >
-            <Text className="text-indigo-600">Go back</Text>
+            <Text style={twStyle("text-indigo-600")}>Go back</Text>
           </TouchableOpacity>
         </View>
       </ScreenContainer>
@@ -416,35 +417,35 @@ export default function ProductFormScreen() {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        className="flex-1"
+        style={twStyle("flex-1")}
       >
         <ScrollView
-          className="flex-1"
+          style={twStyle("flex-1")}
           contentContainerStyle={{ paddingBottom: 120 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="px-1 pt-2">
+          <View style={twStyle("px-1 pt-2")}>
             <FormField
               label="Product name *"
               value={form.name}
               onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
               placeholder="e.g. Shampoo 500ml"
             />
-            <View className="mb-3">
-              <View className="mb-1 flex-row items-center justify-between">
-                <Text className="text-sm font-medium text-gray-700">SKU</Text>
+            <View style={twStyle("mb-3")}>
+              <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>SKU</Text>
                 <TouchableOpacity
                   onPress={generateSku}
-                  className="py-1"
+                  style={twStyle("py-1")}
                   accessibilityLabel="Generate SKU"
                   accessibilityRole="button"
                 >
-                  <Text className="text-sm font-medium text-indigo-600">Generate</Text>
+                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>Generate</Text>
                 </TouchableOpacity>
               </View>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 placeholder="Leave empty to auto-generate"
                 placeholderTextColor="#9ca3af"
                 value={form.sku}
@@ -459,85 +460,85 @@ export default function ProductFormScreen() {
               placeholder="Optional"
             />
 
-            <View className="mb-3">
-              <View className="mb-1 flex-row items-center justify-between">
-                <Text className="text-sm font-medium text-gray-700">Category</Text>
+            <View style={twStyle("mb-3")}>
+              <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>Category</Text>
                 <TouchableOpacity
                   onPress={() => setCategorySheetOpen(true)}
-                  className="py-1"
+                  style={twStyle("py-1")}
                   accessibilityLabel="Select or add product category"
                   accessibilityRole="button"
                 >
-                  <Text className="text-sm font-medium text-indigo-600">Select or add</Text>
+                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>Select or add</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setCategorySheetOpen(true)}
                 accessibilityLabel={`Product category, ${form.category || "Select product category"}`}
                 accessibilityRole="button"
               >
-                <Text className={form.category ? "text-base text-gray-900" : "text-base text-gray-400"}>
+                <Text style={twStyle(form.category ? "text-base text-gray-900" : "text-base text-gray-400")}>
                   {form.category || "Select product category"}
                 </Text>
               </TouchableOpacity>
             </View>
-            <View className="mb-3">
-              <View className="mb-1 flex-row items-center justify-between">
-                <Text className="text-sm font-medium text-gray-700">Brand</Text>
+            <View style={twStyle("mb-3")}>
+              <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>Brand</Text>
                 <TouchableOpacity
                   onPress={() => setBrandSheetOpen(true)}
-                  className="py-1"
+                  style={twStyle("py-1")}
                   accessibilityLabel="Select or add brand"
                   accessibilityRole="button"
                 >
-                  <Text className="text-sm font-medium text-indigo-600">Select or add</Text>
+                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>Select or add</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setBrandSheetOpen(true)}
                 accessibilityLabel={`Brand, ${form.brand || "Select brand"}`}
                 accessibilityRole="button"
               >
-                <Text className={form.brand ? "text-base text-gray-900" : "text-base text-gray-400"}>
+                <Text style={twStyle(form.brand ? "text-base text-gray-900" : "text-base text-gray-400")}>
                   {form.brand || "Select brand"}
                 </Text>
               </TouchableOpacity>
             </View>
-            <View className="mb-3">
-              <View className="mb-1 flex-row items-center justify-between">
-                <Text className="text-sm font-medium text-gray-700">Supplier</Text>
+            <View style={twStyle("mb-3")}>
+              <View style={twStyle("mb-1 flex-row items-center justify-between")}>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>Supplier</Text>
                 <TouchableOpacity
                   onPress={() => setSupplierSheetOpen(true)}
-                  className="py-1"
+                  style={twStyle("py-1")}
                   accessibilityLabel="Select or add supplier"
                   accessibilityRole="button"
                 >
-                  <Text className="text-sm font-medium text-indigo-600">Select or add</Text>
+                  <Text style={twStyle("text-sm font-medium text-indigo-600")}>Select or add</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setSupplierSheetOpen(true)}
                 accessibilityLabel={`Supplier, ${form.supplier || "Select supplier"}`}
                 accessibilityRole="button"
               >
-                <Text className={form.supplier ? "text-base text-gray-900" : "text-base text-gray-400"}>
+                <Text style={twStyle(form.supplier ? "text-base text-gray-900" : "text-base text-gray-400")}>
                   {form.supplier || "Select supplier"}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Measure / unit</Text>
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Measure / unit</Text>
               <TouchableOpacity
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setMeasureSheetOpen(true)}
                 accessibilityLabel={`Measure, ${measureOptions.find((o) => o.value === form.measure)?.label ?? form.measure ?? "Select measure"}`}
                 accessibilityRole="button"
               >
-                <Text className="text-base text-gray-900">
+                <Text style={twStyle("text-base text-gray-900")}>
                   {measureOptions.find((o) => o.value === form.measure)?.label ?? form.measure ?? "Select measure"}
                 </Text>
               </TouchableOpacity>
@@ -549,41 +550,41 @@ export default function ProductFormScreen() {
               placeholder="e.g. 500"
               keyboardType="decimal-pad"
             />
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Product image</Text>
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Product image</Text>
               {form.image_url ? (
-                <View className="flex-row items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
-                  <Image source={{ uri: form.image_url }} className="h-16 w-16 rounded-lg bg-gray-200" contentFit="cover" />
-                  <View className="flex-1">
+                <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-gray-50 p-3")}>
+                  <Image source={{ uri: form.image_url }} style={{ width: 64, height: 64, borderRadius: 8, backgroundColor: "#E5E7EB", marginRight: 12 }} contentFit="cover" />
+                  <View style={twStyle("flex-1")}>
                     <TouchableOpacity
                       onPress={pickImageFromLibrary}
                       disabled={uploadingImage}
-                      className="mb-2 rounded-lg bg-indigo-600 px-3 py-2"
+                      style={twStyle("mb-2 rounded-lg bg-indigo-600 px-3 py-2")}
                       accessibilityLabel="Change product photo"
                       accessibilityRole="button"
                     >
                       {uploadingImage ? (
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
-                        <Text className="text-sm font-medium text-white">Change photo</Text>
+                        <Text style={twStyle("text-sm font-medium text-white")}>Change photo</Text>
                       )}
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => setForm((p) => ({ ...p, image_url: "" }))}
-                      className="rounded-lg border border-gray-300 bg-white px-3 py-2"
+                      style={twStyle("rounded-lg border border-gray-300 bg-white px-3 py-2")}
                       accessibilityLabel="Remove product photo"
                       accessibilityRole="button"
                     >
-                      <Text className="text-sm font-medium text-gray-700">Remove</Text>
+                      <Text style={twStyle("text-sm font-medium text-gray-700")}>Remove</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               ) : (
-                <View className="flex-row gap-2">
+                <View style={twStyle("flex-row")}>
                   <TouchableOpacity
                     onPress={pickImageFromLibrary}
                     disabled={uploadingImage}
-                    className="flex-1 flex-row items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 py-3"
+                    style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3"), { marginRight: 8 }]}
                     accessibilityLabel="Add product photo from library"
                     accessibilityRole="button"
                   >
@@ -592,25 +593,25 @@ export default function ProductFormScreen() {
                     ) : (
                       <Ionicons name="image-outline" size={20} color="#6366f1" />
                     )}
-                    <Text className="text-base font-medium text-indigo-600">Add photo</Text>
+                    <Text style={twStyle("text-base font-medium text-indigo-600")}>Add photo</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={takePhoto}
                     disabled={uploadingImage}
-                    className="flex-1 flex-row items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 py-3"
+                    style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3")}
                     accessibilityLabel="Take product photo with camera"
                     accessibilityRole="button"
                   >
                     <Ionicons name="camera-outline" size={20} color="#6366f1" />
-                    <Text className="text-base font-medium text-indigo-600">Take photo</Text>
+                    <Text style={twStyle("text-base font-medium text-indigo-600")}>Take photo</Text>
                   </TouchableOpacity>
                 </View>
               )}
             </View>
 
-            <Text className="mb-1 mt-2 text-sm font-medium text-gray-700">Pricing</Text>
-            <View className="mb-2 flex-row gap-3">
-              <View className="flex-1">
+            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Pricing</Text>
+            <View style={twStyle("mb-2 flex-row")}>
+              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
                 <FormField
                   label="Supply / cost price"
                   value={form.supply_price}
@@ -619,7 +620,7 @@ export default function ProductFormScreen() {
                   keyboardType="decimal-pad"
                 />
               </View>
-              <View className="flex-1">
+              <View style={twStyle("flex-1")}>
                 <FormField
                   label="Retail price *"
                   value={form.retail_price}
@@ -636,21 +637,21 @@ export default function ProductFormScreen() {
               placeholder="Optional"
               keyboardType="decimal-pad"
             />
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Tax rate (%)</Text>
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Tax rate (%)</Text>
               <TouchableOpacity
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setTaxSheetOpen(true)}
               >
-                <Text className="text-base text-gray-900">
+                <Text style={twStyle("text-base text-gray-900")}>
                   {taxOptions.find((o) => o.value === form.tax_rate)?.label ?? `${form.tax_rate}%`}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <Text className="mb-1 mt-2 text-sm font-medium text-gray-700">Stock</Text>
-            <View className="mb-2 flex-row gap-3">
-              <View className="flex-1">
+            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Stock</Text>
+            <View style={twStyle("mb-2 flex-row")}>
+              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
                 <FormField
                   label="Quantity"
                   value={form.quantity}
@@ -659,7 +660,7 @@ export default function ProductFormScreen() {
                   keyboardType="numeric"
                 />
               </View>
-              <View className="flex-1">
+              <View style={twStyle("flex-1")}>
                 <FormField
                   label="Low stock level"
                   value={form.low_stock_level}
@@ -668,7 +669,7 @@ export default function ProductFormScreen() {
                   keyboardType="numeric"
                 />
               </View>
-              <View className="flex-1">
+              <View style={twStyle("flex-1")}>
                 <FormField
                   label="Reorder qty"
                   value={form.reorder_quantity}
@@ -679,8 +680,8 @@ export default function ProductFormScreen() {
               </View>
             </View>
 
-            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <Text className="text-sm font-medium text-gray-700">Track stock</Text>
+            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Track stock</Text>
               <Switch
                 value={form.track_stock_quantity}
                 onValueChange={(v) => setForm((p) => ({ ...p, track_stock_quantity: v }))}
@@ -688,8 +689,8 @@ export default function ProductFormScreen() {
                 thumbColor="#fff"
               />
             </View>
-            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <Text className="text-sm font-medium text-gray-700">Retail sales enabled</Text>
+            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Retail sales enabled</Text>
               <Switch
                 value={form.retail_sales_enabled}
                 onValueChange={(v) => setForm((p) => ({ ...p, retail_sales_enabled: v }))}
@@ -697,8 +698,8 @@ export default function ProductFormScreen() {
                 thumbColor="#fff"
               />
             </View>
-            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <Text className="text-sm font-medium text-gray-700">Team commission</Text>
+            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Team commission</Text>
               <Switch
                 value={form.team_member_commission_enabled}
                 onValueChange={(v) => setForm((p) => ({ ...p, team_member_commission_enabled: v }))}
@@ -706,8 +707,8 @@ export default function ProductFormScreen() {
                 thumbColor="#fff"
               />
             </View>
-            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <Text className="text-sm font-medium text-gray-700">Low stock alerts</Text>
+            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Low stock alerts</Text>
               <Switch
                 value={form.receive_low_stock_notifications}
                 onValueChange={(v) => setForm((p) => ({ ...p, receive_low_stock_notifications: v }))}
@@ -715,8 +716,8 @@ export default function ProductFormScreen() {
                 thumbColor="#fff"
               />
             </View>
-            <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <Text className="text-sm font-medium text-gray-700">Active</Text>
+            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
               <Switch
                 value={form.is_active}
                 onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}
@@ -742,7 +743,7 @@ export default function ProductFormScreen() {
           </View>
         </ScrollView>
 
-        <View className="border-t border-gray-100 bg-white px-4 py-3">
+        <View style={twStyle("border-t border-gray-100 bg-white px-4 py-3")}>
           <ActionButton
             label={isSaving ? "Saving…" : isEdit ? "Save changes" : "Create product"}
             onPress={handleSave}
@@ -759,9 +760,9 @@ export default function ProductFormScreen() {
         title="Brand"
         subtitle="Select or create a brand"
       >
-        <ScrollView className="max-h-80" keyboardShouldPersistTaps="handled">
+        <ScrollView style={twStyle("max-h-80")} keyboardShouldPersistTaps="handled">
           <TouchableOpacity
-            className="border-b border-gray-100 py-3.5"
+            style={twStyle("border-b border-gray-100 py-3.5")}
             onPress={() => {
               setForm((p) => ({ ...p, brand: "" }));
               setBrandSheetOpen(false);
@@ -769,12 +770,12 @@ export default function ProductFormScreen() {
             accessibilityLabel="None"
             accessibilityRole="button"
           >
-            <Text className="text-base text-gray-500">None</Text>
+            <Text style={twStyle("text-base text-gray-500")}>None</Text>
           </TouchableOpacity>
           {brands.map((b) => (
             <TouchableOpacity
               key={b.name}
-              className="border-b border-gray-100 py-3.5"
+              style={twStyle("border-b border-gray-100 py-3.5")}
               onPress={() => {
                 setForm((p) => ({ ...p, brand: b.name }));
                 setBrandSheetOpen(false);
@@ -782,13 +783,13 @@ export default function ProductFormScreen() {
               accessibilityLabel={b.name}
               accessibilityRole="button"
             >
-              <Text className="text-base text-gray-900">{b.name}</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{b.name}</Text>
             </TouchableOpacity>
           ))}
-          <View className="mt-4 border-t border-gray-200 pt-4">
-            <Text className="mb-2 text-sm font-medium text-gray-700">Add new brand</Text>
+          <View style={twStyle("mt-4 border-t border-gray-200 pt-4")}>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Add new brand</Text>
             <TextInput
-              className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               placeholder="Brand name"
               placeholderTextColor="#9ca3af"
               value={newBrandName}
@@ -806,9 +807,9 @@ export default function ProductFormScreen() {
         title="Product category"
         subtitle="Select or create a category"
       >
-        <ScrollView className="max-h-80" keyboardShouldPersistTaps="handled">
+        <ScrollView style={twStyle("max-h-80")} keyboardShouldPersistTaps="handled">
           <TouchableOpacity
-            className="border-b border-gray-100 py-3.5"
+            style={twStyle("border-b border-gray-100 py-3.5")}
             onPress={() => {
               setForm((p) => ({ ...p, category: "" }));
               setCategorySheetOpen(false);
@@ -816,12 +817,12 @@ export default function ProductFormScreen() {
             accessibilityLabel="None"
             accessibilityRole="button"
           >
-            <Text className="text-base text-gray-500">None</Text>
+            <Text style={twStyle("text-base text-gray-500")}>None</Text>
           </TouchableOpacity>
           {categories.map((c) => (
             <TouchableOpacity
               key={c.id}
-              className="border-b border-gray-100 py-3.5"
+              style={twStyle("border-b border-gray-100 py-3.5")}
               onPress={() => {
                 setForm((p) => ({ ...p, category: c.name }));
                 setCategorySheetOpen(false);
@@ -829,13 +830,13 @@ export default function ProductFormScreen() {
               accessibilityLabel={c.name}
               accessibilityRole="button"
             >
-              <Text className="text-base text-gray-900">{c.name}</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{c.name}</Text>
             </TouchableOpacity>
           ))}
-          <View className="mt-4 border-t border-gray-200 pt-4">
-            <Text className="mb-2 text-sm font-medium text-gray-700">Add new category</Text>
+          <View style={twStyle("mt-4 border-t border-gray-200 pt-4")}>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Add new category</Text>
             <TextInput
-              className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               placeholder="Category name"
               placeholderTextColor="#9ca3af"
               value={newCategoryName}
@@ -853,9 +854,9 @@ export default function ProductFormScreen() {
         title="Supplier"
         subtitle="Select or create a supplier"
       >
-        <ScrollView className="max-h-80" keyboardShouldPersistTaps="handled">
+        <ScrollView style={twStyle("max-h-80")} keyboardShouldPersistTaps="handled">
           <TouchableOpacity
-            className="border-b border-gray-100 py-3.5"
+            style={twStyle("border-b border-gray-100 py-3.5")}
             onPress={() => {
               setForm((p) => ({ ...p, supplier: "" }));
               setSupplierSheetOpen(false);
@@ -863,12 +864,12 @@ export default function ProductFormScreen() {
             accessibilityLabel="None"
             accessibilityRole="button"
           >
-            <Text className="text-base text-gray-500">None</Text>
+            <Text style={twStyle("text-base text-gray-500")}>None</Text>
           </TouchableOpacity>
           {suppliers.map((s) => (
             <TouchableOpacity
               key={s.name}
-              className="border-b border-gray-100 py-3.5"
+              style={twStyle("border-b border-gray-100 py-3.5")}
               onPress={() => {
                 setForm((p) => ({ ...p, supplier: s.name }));
                 setSupplierSheetOpen(false);
@@ -876,13 +877,13 @@ export default function ProductFormScreen() {
               accessibilityLabel={s.name}
               accessibilityRole="button"
             >
-              <Text className="text-base text-gray-900">{s.name}</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{s.name}</Text>
             </TouchableOpacity>
           ))}
-          <View className="mt-4 border-t border-gray-200 pt-4">
-            <Text className="mb-2 text-sm font-medium text-gray-700">Add new supplier</Text>
+          <View style={twStyle("mt-4 border-t border-gray-200 pt-4")}>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Add new supplier</Text>
             <TextInput
-              className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               placeholder="Supplier name"
               placeholderTextColor="#9ca3af"
               value={newSupplierName}
@@ -899,11 +900,11 @@ export default function ProductFormScreen() {
         title="Measure / unit"
         subtitle="Select unit of measure"
       >
-        <ScrollView className="max-h-80">
+        <ScrollView style={twStyle("max-h-80")}>
           {measureOptions.map((o) => (
             <TouchableOpacity
               key={o.value}
-              className="border-b border-gray-100 py-3.5"
+              style={twStyle("border-b border-gray-100 py-3.5")}
               onPress={() => {
                 setForm((p) => ({ ...p, measure: o.value }));
                 setMeasureSheetOpen(false);
@@ -911,7 +912,7 @@ export default function ProductFormScreen() {
               accessibilityLabel={o.label}
               accessibilityRole="button"
             >
-              <Text className="text-base text-gray-900">{o.label}</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{o.label}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -923,11 +924,11 @@ export default function ProductFormScreen() {
         title="Tax rate"
         subtitle="Select tax rate"
       >
-        <ScrollView className="max-h-80">
+        <ScrollView style={twStyle("max-h-80")}>
           {taxOptions.map((o) => (
             <TouchableOpacity
               key={o.value}
-              className="border-b border-gray-100 py-3.5"
+              style={twStyle("border-b border-gray-100 py-3.5")}
               onPress={() => {
                 setForm((p) => ({ ...p, tax_rate: o.value }));
                 setTaxSheetOpen(false);
@@ -935,7 +936,7 @@ export default function ProductFormScreen() {
               accessibilityLabel={o.label}
               accessibilityRole="button"
             >
-              <Text className="text-base text-gray-900">{o.label}</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{o.label}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>

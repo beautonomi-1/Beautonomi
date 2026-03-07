@@ -214,7 +214,7 @@ export function PhoneInput({
     <div className={cn("space-y-2", className)}>
       {label && (
         <Label htmlFor="phone-input" className="text-sm sm:text-base font-semibold text-gray-900">
-          {label} {required && <span className="text-[#FF0077]">*</span>}
+          {label} {required && <span className="text-primary">*</span>}
         </Label>
       )}
       
@@ -225,7 +225,7 @@ export function PhoneInput({
           onValueChange={handleCountryCodeChange}
           disabled={disabled || loading}
         >
-          <SelectTrigger className="w-[140px] sm:w-[160px] min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg">
+          <SelectTrigger className="w-[140px] sm:w-[160px] min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg">
             <SelectValue placeholder={loading ? "Loading..." : "Select country"} />
           </SelectTrigger>
           <SelectContent className="max-h-[300px] z-[10000]" sideOffset={4}>
@@ -261,7 +261,7 @@ export function PhoneInput({
           required={required}
           disabled={disabled}
           className={cn(
-            "flex-1 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg",
+            "flex-1 min-h-[48px] sm:min-h-[44px] touch-manipulation text-base sm:text-sm border-gray-300 focus:border-primary focus:ring-primary rounded-lg",
             validationError && "border-red-500 focus:border-red-500 focus:ring-red-500"
           )}
         />

@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
+import { Colors } from "@/constants/colors";
 
 export default function OnDemandResultScreen() {
   const router = useRouter();
@@ -28,36 +29,38 @@ export default function OnDemandResultScreen() {
         : (uiCopy.expired_subtitle ?? "The request timed out. You can try again or book a scheduled appointment.");
 
   return (
-    <SafeAreaView className="flex-1 bg-white" edges={["top", "bottom"]}>
-      <View className="flex-1 px-6 pt-12">
-        <View className="items-center mb-8">
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={["top", "bottom"]}>
+      <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 48 }}>
+        <View style={{ alignItems: "center", marginBottom: 32 }}>
           <View
-            className={`w-20 h-20 rounded-full items-center justify-center mb-4 ${
-              isAccepted ? "bg-green-100" : "bg-gray-100"
-            }`}
+            style={{
+              width: 80,
+              height: 80,
+              borderRadius: 40,
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 16,
+              backgroundColor: isAccepted ? "#DCFCE7" : Colors.gray[100],
+            }}
           >
-            <Ionicons
-              name={isAccepted ? "checkmark-circle" : "time-outline"}
-              size={48}
-              color={isAccepted ? "#16a34a" : "#6b7280"}
-            />
+            <Ionicons name={isAccepted ? "checkmark-circle" : "time-outline"} size={48} color={isAccepted ? "#16a34a" : Colors.gray[600]} />
           </View>
-          <Text className="text-xl font-semibold text-gray-900 text-center">{title}</Text>
-          <Text className="text-gray-600 text-center mt-2">{subtitle}</Text>
+          <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], textAlign: "center" }}>{title}</Text>
+          <Text style={{ color: Colors.gray[600], textAlign: "center", marginTop: 8 }}>{subtitle}</Text>
         </View>
 
-        <View className="gap-3">
+        <View>
           <TouchableOpacity
             onPress={() => router.replace("/(app)/(tabs)/bookings" as never)}
-            className="bg-primary rounded-2xl py-4 items-center"
+            style={{ backgroundColor: Colors.primary, borderRadius: 16, paddingVertical: 16, alignItems: "center" }}
           >
-            <Text className="text-white font-semibold">View my bookings</Text>
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>View my bookings</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.replace("/(app)/(tabs)" as never)}
-            className="border border-gray-300 rounded-2xl py-4 items-center"
+            style={{ borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 16, paddingVertical: 16, alignItems: "center", marginTop: 12 }}
           >
-            <Text className="text-gray-700 font-medium">Back to home</Text>
+            <Text style={{ color: Colors.gray[700], fontWeight: "500" }}>Back to home</Text>
           </TouchableOpacity>
         </View>
       </View>

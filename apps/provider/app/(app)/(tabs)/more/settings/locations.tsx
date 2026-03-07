@@ -20,6 +20,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
+import { twStyle } from "@/lib/twStyle";
 
 /* ─── types ─── */
 interface Location {
@@ -84,13 +85,13 @@ function FormField({
   error?: string;
 }) {
   return (
-    <View className="mb-4">
-      <Text className="mb-1 text-sm font-medium text-gray-700">
+    <View style={twStyle("mb-4")}>
+      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
         {label}
-        {required && <Text className="text-red-500"> *</Text>}
+        {required && <Text style={twStyle("text-red-500")}> *</Text>}
       </Text>
       <TextInput
-        className={`rounded-xl border bg-gray-50 px-4 py-3 text-sm text-gray-900 ${error ? "border-red-400" : "border-gray-200"}`}
+        style={twStyle(`rounded-xl border bg-gray-50 px-4 py-3 text-sm text-gray-900 ${error ? "border-red-400" : "border-gray-200"}`)}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder ?? label}
@@ -99,7 +100,7 @@ function FormField({
         accessibilityLabel={label}
       />
       {error && (
-        <Text className="mt-1 text-xs text-red-500">{error}</Text>
+        <Text style={twStyle("mt-1 text-xs text-red-500")}>{error}</Text>
       )}
     </View>
   );
@@ -256,7 +257,7 @@ export default function LocationsSettingsScreen() {
         subtitle={`${locations?.length ?? 0} location${(locations?.length ?? 0) !== 1 ? "s" : ""}`}
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-indigo-600"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-indigo-600")}
             onPress={openAddSheet}
             accessibilityLabel="Add new location"
             accessibilityRole="button"
@@ -283,82 +284,83 @@ export default function LocationsSettingsScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: isTablet ? 12 : 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={!isTablet ? () => <View style={{ height: 8 }} /> : undefined}
           numColumns={isTablet ? 2 : 1}
-          columnWrapperStyle={isTablet ? { gap: 12 } : undefined}
-          renderItem={({ item: loc }: { item: Location }) => (
+          columnWrapperStyle={isTablet ? { marginBottom: 12 } : undefined}
+          renderItem={({ item: loc, index }: { item: Location; index: number }) => (
             <View
-              className={`rounded-xl border border-gray-100 bg-white p-4 ${isTablet ? "flex-1" : ""}`}
+              style={[twStyle(`rounded-xl border border-gray-100 bg-white p-4 ${isTablet ? "flex-1" : ""}`), isTablet && index % 2 === 0 && { marginRight: 12 }]}
               accessibilityLabel={`Location ${loc.name}`}
             >
               {/* Header */}
-              <View className="flex-row items-start justify-between">
-                <View className="flex-1">
-                  <View className="flex-row items-center">
-                    <Text className="text-base font-semibold text-gray-900">
+              <View style={twStyle("flex-row items-start justify-between")}>
+                <View style={twStyle("flex-1")}>
+                  <View style={twStyle("flex-row items-center")}>
+                    <Text style={twStyle("text-base font-semibold text-gray-900")}>
                       {loc.name}
                     </Text>
                     {loc.is_primary && (
-                      <View className="ml-2 rounded-full bg-indigo-50 px-2 py-0.5">
-                        <Text className="text-[10px] font-medium text-indigo-600">
+                      <View style={twStyle("ml-2 rounded-full bg-indigo-50 px-2 py-0.5")}>
+                        <Text style={twStyle("text-[10px] font-medium text-indigo-600")}>
                           Primary
                         </Text>
                       </View>
                     )}
                   </View>
-                  <Text className="mt-1 text-sm text-gray-500">
+                  <Text style={twStyle("mt-1 text-sm text-gray-500")}>
                     {loc.address_line1}
                   </Text>
-                  <Text className="text-sm text-gray-500">
+                  <Text style={twStyle("text-sm text-gray-500")}>
                     {loc.city}
                     {loc.state ? `, ${loc.state}` : ""}
                     {loc.postal_code ? ` ${loc.postal_code}` : ""}
                   </Text>
                   {loc.phone && (
-                    <Text className="mt-1 text-xs text-gray-400">
+                    <Text style={twStyle("mt-1 text-xs text-gray-400")}>
                       {loc.phone}
                     </Text>
                   )}
                   {loc.email && (
-                    <Text className="text-xs text-gray-400">{loc.email}</Text>
+                    <Text style={twStyle("text-xs text-gray-400")}>{loc.email}</Text>
                   )}
                 </View>
                 <View
-                  className={`h-2.5 w-2.5 rounded-full ${loc.is_active ? "bg-green-500" : "bg-gray-300"}`}
+                  style={twStyle(`h-2.5 w-2.5 rounded-full ${loc.is_active ? "bg-green-500" : "bg-gray-300"}`)}
                   accessibilityLabel={loc.is_active ? "Active" : "Inactive"}
                 />
               </View>
 
               {/* Actions */}
-              <View className="mt-3 flex-row items-center gap-2 border-t border-gray-50 pt-3">
+              <View style={twStyle("mt-3 flex-row items-center border-t border-gray-50 pt-3")}>
                 <TouchableOpacity
-                  className="flex-1 flex-row items-center justify-center rounded-lg bg-gray-100 py-2"
+                  style={[twStyle("flex-1 flex-row items-center justify-center rounded-lg bg-gray-100 py-2"), { marginRight: 8 }]}
                   onPress={() => openEditSheet(loc)}
                   accessibilityLabel={`Edit ${loc.name}`}
                   accessibilityRole="button"
                 >
                   <Ionicons name="create-outline" size={14} color="#6b7280" />
-                  <Text className="ml-1 text-xs font-medium text-gray-600">
+                  <Text style={twStyle("ml-1 text-xs font-medium text-gray-600")}>
                     Edit
                   </Text>
                 </TouchableOpacity>
 
                 {!loc.is_primary && (
                   <TouchableOpacity
-                    className="flex-1 flex-row items-center justify-center rounded-lg bg-indigo-50 py-2"
+                    style={[twStyle("flex-1 flex-row items-center justify-center rounded-lg bg-indigo-50 py-2"), { marginRight: 8 }]}
                     onPress={() => handleSetPrimary(loc)}
                     accessibilityLabel={`Set ${loc.name} as primary`}
                     accessibilityRole="button"
                   >
                     <Ionicons name="star-outline" size={14} color="#6366f1" />
-                    <Text className="ml-1 text-xs font-medium text-indigo-600">
+                    <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
                       Set Primary
                     </Text>
                   </TouchableOpacity>
                 )}
 
                 <TouchableOpacity
-                  className="flex-row items-center justify-center rounded-lg bg-red-50 px-3 py-2"
+                  style={twStyle("flex-row items-center justify-center rounded-lg bg-red-50 px-3 py-2")}
                   onPress={() => handleDelete(loc)}
                   accessibilityLabel={`Delete ${loc.name}`}
                   accessibilityRole="button"
@@ -385,7 +387,7 @@ export default function LocationsSettingsScreen() {
           required
           error={errors.name}
         />
-        <View className="mb-4">
+        <View style={twStyle("mb-4")}>
           <AddressAutocomplete
             label="Search Address"
             value={form.address_line1}
@@ -403,7 +405,7 @@ export default function LocationsSettingsScreen() {
         </View>
 
         {form.latitude != null && form.longitude != null && (
-          <View className="mb-4 overflow-hidden rounded-2xl">
+          <View style={twStyle("mb-4 overflow-hidden rounded-2xl")}>
             <StaticMapImage
               latitude={form.latitude}
               longitude={form.longitude}
@@ -428,8 +430,8 @@ export default function LocationsSettingsScreen() {
           placeholder="Suite, unit, floor (optional)"
         />
 
-        <View className="flex-row gap-3">
-          <View className="flex-1">
+        <View style={twStyle("flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <FormField
               label="City"
               value={form.city}
@@ -438,7 +440,7 @@ export default function LocationsSettingsScreen() {
               error={errors.city}
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <FormField
               label="State / Province"
               value={form.state}
@@ -447,15 +449,15 @@ export default function LocationsSettingsScreen() {
           </View>
         </View>
 
-        <View className="flex-row gap-3">
-          <View className="flex-1">
+        <View style={twStyle("flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <FormField
               label="Postal Code"
               value={form.postal_code}
               onChangeText={(v) => updateField("postal_code", v)}
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <FormField
               label="Country"
               value={form.country}
@@ -478,7 +480,7 @@ export default function LocationsSettingsScreen() {
           error={errors.email}
         />
 
-        <View className="mt-2">
+        <View style={twStyle("mt-2")}>
           <ActionButton
             label={
               isSaving
@@ -497,7 +499,7 @@ export default function LocationsSettingsScreen() {
       {/* Floating add button */}
       {locations && locations.length > 0 && (
         <TouchableOpacity
-          className="absolute bottom-8 right-6 h-14 w-14 items-center justify-center rounded-full bg-indigo-600 shadow-lg"
+          style={twStyle("absolute bottom-8 right-6 h-14 w-14 items-center justify-center rounded-full bg-indigo-600 shadow-lg")}
           onPress={openAddSheet}
           accessibilityLabel="Add location"
           accessibilityRole="button"

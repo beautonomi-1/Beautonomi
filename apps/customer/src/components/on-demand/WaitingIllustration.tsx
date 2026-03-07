@@ -4,6 +4,7 @@
  */
 import React, { useEffect } from "react";
 import { View } from "react-native";
+import { Colors } from "@/constants/colors";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -47,29 +48,56 @@ export function WaitingIllustration() {
   }));
 
   return (
-    <View className="items-center justify-center py-6">
-      <View className="relative items-center justify-center">
-        {/* Phone outline */}
+    <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: 24 }}>
+      <View style={{ position: "relative", alignItems: "center", justifyContent: "center" }}>
         <AnimatedView
-          style={phoneStyle}
-          className="w-32 h-56 rounded-[2rem] border-4 border-gray-300 bg-white items-center justify-end pb-4 shadow-lg"
+          style={[
+            phoneStyle,
+            {
+              width: 128,
+              height: 224,
+              borderRadius: 32,
+              borderWidth: 4,
+              borderColor: Colors.gray[300],
+              backgroundColor: Colors.white,
+              alignItems: "center",
+              justifyContent: "flex-end",
+              paddingBottom: 16,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.15,
+              shadowRadius: 8,
+              elevation: 6,
+            },
+          ]}
         >
-          <View className="w-full flex-1 rounded-t-3xl bg-gray-100 overflow-hidden" />
-          <View className="w-20 h-1 rounded-full bg-gray-300" />
+          <View style={{ width: "100%", flex: 1, borderTopLeftRadius: 24, borderTopRightRadius: 24, backgroundColor: Colors.gray[100], overflow: "hidden" }} />
+          <View style={{ width: 80, height: 4, borderRadius: 2, backgroundColor: Colors.gray[300] }} />
         </AnimatedView>
-        {/* Finger tap indicator - suggests "waiting / checking" */}
         <AnimatedView
-          style={fingerStyle}
-          className="absolute -bottom-2 right-2 w-8 h-10 rounded-full bg-primary/80 items-center justify-end pb-1"
+          style={[
+            fingerStyle,
+            {
+              position: "absolute",
+              bottom: -8,
+              right: 8,
+              width: 32,
+              height: 40,
+              borderRadius: 16,
+              backgroundColor: "rgba(255,0,119,0.8)",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              paddingBottom: 4,
+            },
+          ]}
         >
-          <View className="w-2 h-2 rounded-full bg-white/90" />
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.9)" }} />
         </AnimatedView>
       </View>
-      {/* Decorative dots (floating shapes feel) */}
-      <View className="flex-row gap-3 mt-6 opacity-60">
-        <View className="w-2 h-2 rounded-full bg-primary/50" />
-        <View className="w-3 h-3 rounded-full bg-primary/30" />
-        <View className="w-2 h-2 rounded-full bg-primary/50" />
+      <View style={{ flexDirection: "row", marginTop: 24, opacity: 0.6 }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "rgba(255,0,119,0.5)", marginRight: 12 }} />
+        <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: "rgba(255,0,119,0.3)", marginRight: 12 }} />
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "rgba(255,0,119,0.5)" }} />
       </View>
     </View>
   );

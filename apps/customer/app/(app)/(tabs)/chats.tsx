@@ -7,12 +7,15 @@ import {
   RefreshControl,
   Pressable,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
+import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 import { ConversationSkeleton } from "@/components/Skeleton";
 
 interface Conversation {
@@ -34,7 +37,11 @@ function formatTime(iso: string | null | undefined) {
 
 export default function ChatsScreen() {
   useScreenTracking("Chats");
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const { user, loading: authLoading, refreshSession } = useAuth();
+  const contentContainerStyle = isTablet
+    ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
+    : {};
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const didRefreshSession = useRef(false);
   const [loading, setLoading] = useState(true);
@@ -80,13 +87,13 @@ export default function ChatsScreen() {
     ({ item }: { item: Conversation }) => (
       <Pressable
         onPress={() => router.push({ pathname: "/(app)/chat", params: { id: item.id } })}
-        className="flex-row items-center py-4 border-b border-gray-100"
+        style={{ flexDirection: "row", alignItems: "center", paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
         accessibilityRole="button"
         accessibilityLabel={`Chat with ${item.provider?.business_name || "Provider"}${item.last_message_preview ? `, last message: ${item.last_message_preview}` : ""}`}
         accessibilityHint="Open conversation"
       >
-        <View className="w-12 h-12 rounded-full bg-gray-200 overflow-hidden mr-4">{
-          item.provider?.thumbnail_url ? (
+        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[200], overflow: "hidden", marginRight: 16 }}>
+          {item.provider?.thumbnail_url ? (
             <Image
               source={{ uri: item.provider.thumbnail_url }}
               style={{ width: 48, height: 48 }}
@@ -94,23 +101,22 @@ export default function ChatsScreen() {
               transition={200}
             />
           ) : (
-            <View className="flex-1 items-center justify-center">
-              <Text className="text-gray-500 font-medium">{(item.provider?.business_name || "?").charAt(0)}</Text>
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", width: 48, height: 48 }}>
+              <Text style={{ color: Colors.gray[500], fontWeight: "500" }}>{(item.provider?.business_name || "?").charAt(0)}</Text>
             </View>
-          )
-        }</View>
-        <View className="flex-1">
-          <Text className="font-semibold text-gray-900">{item.provider?.business_name || "Provider"}</Text>
-          <Text className="text-sm text-gray-500 mt-0.5" numberOfLines={1}>{item.last_message_preview || "No messages"}</Text>
+          )}
         </View>
-        <View className="items-end">
-          <Text className="text-xs text-gray-400">{formatTime(item.last_message_at)}</Text>{
-            (item.unread_count_customer || 0) > 0 ? (
-              <View className="mt-1 bg-primary min-w-[20px] h-5 rounded-full items-center justify-center px-2">
-                <Text className="text-white text-xs font-medium">{item.unread_count_customer}</Text>
-              </View>
-            ) : null
-          }
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.provider?.business_name || "Provider"}</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }} numberOfLines={1}>{item.last_message_preview || "No messages"}</Text>
+        </View>
+        <View style={{ alignItems: "flex-end" }}>
+          <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{formatTime(item.last_message_at)}</Text>
+          {(item.unread_count_customer || 0) > 0 ? (
+            <View style={{ marginTop: 4, backgroundColor: Colors.primary, minWidth: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 }}>
+              <Text style={{ color: Colors.white, fontSize: 12, fontWeight: "500" }}>{item.unread_count_customer}</Text>
+            </View>
+          ) : null}
         </View>
       </Pressable>
     ),
@@ -119,25 +125,25 @@ export default function ChatsScreen() {
 
   if (authLoading) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-8">
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 32 }}>
         <ConversationSkeleton />
-        <Text className="text-gray-600 mt-4">Loading…</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>Loading…</Text>
       </View>
     );
   }
   if (!user) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-8">
-        <Text className="text-xl font-semibold text-gray-900 mb-2 text-center">Messages</Text>
-        <Text className="text-gray-600 text-center mb-6">Log in to view your conversations</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 32 }}>
+        <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginBottom: 8, textAlign: "center" }}>Messages</Text>
+        <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>Log in to view your conversations</Text>
         <TouchableOpacity
           onPress={() => router.replace("/(auth)/login")}
-          className="bg-primary px-8 py-4 rounded-xl"
+          style={{ backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 }}
           accessibilityRole="button"
           accessibilityLabel="Log in"
           accessibilityHint="Navigate to the login screen to view your messages"
         >
-          <Text className="text-white font-semibold">Log in</Text>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>Log in</Text>
         </TouchableOpacity>
       </View>
     );
@@ -145,55 +151,67 @@ export default function ChatsScreen() {
 
   if (loading && conversations.length === 0) {
     return (
-      <View className="flex-1 bg-white">
-        <View className="px-4 pt-4 pb-2 border-b border-gray-100">
-          <Text className="text-2xl font-bold text-gray-900">Messages</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.white }}>
+        <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.white }} />
+        <View style={[contentContainerStyle, { paddingHorizontal: contentPadding, paddingTop: contentPadding, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }]}>
+          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>Messages</Text>
         </View>
-        <ConversationSkeleton />
-        <ConversationSkeleton />
-        <ConversationSkeleton />
-        <ConversationSkeleton />
-        <ConversationSkeleton />
+        <View style={{ flex: 1, ...contentContainerStyle }}>
+          <ConversationSkeleton />
+          <ConversationSkeleton />
+          <ConversationSkeleton />
+          <ConversationSkeleton />
+          <ConversationSkeleton />
+        </View>
       </View>
     );
   }
 
   if (error && conversations.length === 0) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-6">
-        <Text className="text-center text-gray-700 mb-4">{error}</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.white }}>
+        <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.white }} />
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Text style={{ textAlign: "center", color: Colors.gray[700], marginBottom: 16 }}>{error}</Text>
         <TouchableOpacity
           onPress={() => load(true)}
-          className="bg-primary px-6 py-3 rounded-xl"
+          style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
           accessibilityRole="button"
           accessibilityLabel="Retry loading conversations"
           accessibilityHint="Attempts to reload your conversations"
         >
-          <Text className="text-white font-semibold">Retry</Text>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
         </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-white">
-      <View className="px-4 pt-4 pb-2 border-b border-gray-100">
-        <Text className="text-2xl font-bold text-gray-900">Messages</Text>
+    <View style={{ flex: 1, backgroundColor: Colors.white }}>
+      <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.white }} />
+      <View style={[contentContainerStyle, { paddingHorizontal: contentPadding, paddingTop: contentPadding, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }]}>
+        <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>Messages</Text>
       </View>
       <FlatList
         data={conversations}
         keyExtractor={(c) => c.id}
         renderItem={renderItem}
-        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        style={{ flex: 1, ...contentContainerStyle }}
+        contentContainerStyle={{
+          paddingHorizontal: contentPadding,
+          paddingTop: contentPadding,
+          paddingBottom: TAB_CONTENT_PADDING_BOTTOM,
+        }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />
         }
         accessibilityRole="list"
         accessibilityLabel="Conversations list"
         ListEmptyComponent={
-          <View className="py-16 items-center">
-            <Text className="text-gray-500 text-center">No conversations yet</Text>
-            <Text className="text-gray-400 text-sm text-center mt-2">
+          <View style={{ paddingVertical: 64, alignItems: "center" }}>
+            <Text style={{ color: Colors.gray[500], textAlign: "center" }}>No conversations yet</Text>
+            <Text style={{ color: Colors.gray[400], fontSize: 14, textAlign: "center", marginTop: 8 }}>
               Start a chat from a provider profile or booking
             </Text>
           </View>

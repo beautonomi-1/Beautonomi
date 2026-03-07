@@ -138,9 +138,9 @@ export default function LocationsSettings() {
 
       {/* Return to Get Started banner */}
       {returnTo && (
-        <div className="mb-6 bg-gradient-to-r from-[#FF0077]/10 to-[#D60565]/10 border border-[#FF0077]/30 rounded-lg p-4 flex items-center justify-between">
+        <div className="mb-6 bg-gradient-to-r from-primary/10 to-primary-hover/10 border border-primary/30 rounded-lg p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <MapPin className="w-5 h-5 text-[#FF0077]" />
+            <MapPin className="w-5 h-5 text-primary" />
             <div>
               <p className="text-sm font-medium text-gray-900">
                 Complete this step to continue your setup
@@ -151,7 +151,7 @@ export default function LocationsSettings() {
             </div>
           </div>
           <Link href={returnTo}>
-            <Button variant="outline" size="sm" className="border-[#FF0077]/30 text-[#FF0077] hover:bg-[#FF0077]/10">
+            <Button variant="outline" size="sm" className="border-primary/30 text-primary hover:bg-primary/10">
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Get Started
             </Button>
@@ -186,7 +186,7 @@ export default function LocationsSettings() {
                       <h3 className="font-semibold text-lg">{location.name}</h3>
                       <div className="flex flex-wrap gap-2 mt-1">
                         {location.is_active && (
-                          <span className="text-xs text-[#FF0077] font-medium">Active</span>
+                          <span className="text-xs text-primary font-medium">Active</span>
                         )}
                         {(location.location_type || "salon") === "salon" ? (
                           <span className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded font-medium">
@@ -341,7 +341,7 @@ function LocationDialog({
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-6">
               <label
                 className={`flex items-center gap-2 cursor-pointer rounded-lg border p-3 hover:bg-muted/50 ${
-                  formData.location_type === "salon" ? "border-[#FF0077] bg-[#FF0077]/5" : ""
+                  formData.location_type === "salon" ? "border-primary bg-primary/5" : ""
                 }`}
               >
                 <input
@@ -349,13 +349,13 @@ function LocationDialog({
                   name="location_type"
                   checked={formData.location_type === "salon"}
                   onChange={() => setFormData({ ...formData, location_type: "salon" })}
-                  className="rounded-full border-gray-300 text-[#FF0077]"
+                  className="rounded-full border-gray-300 text-primary"
                 />
                 <span className="text-sm font-medium">Salon / studio — clients can visit</span>
               </label>
               <label
                 className={`flex items-center gap-2 cursor-pointer rounded-lg border p-3 hover:bg-muted/50 ${
-                  formData.location_type === "base" ? "border-[#FF0077] bg-[#FF0077]/5" : ""
+                  formData.location_type === "base" ? "border-primary bg-primary/5" : ""
                 }`}
               >
                 <input
@@ -363,7 +363,7 @@ function LocationDialog({
                   name="location_type"
                   checked={formData.location_type === "base"}
                   onChange={() => setFormData({ ...formData, location_type: "base" })}
-                  className="rounded-full border-gray-300 text-[#FF0077]"
+                  className="rounded-full border-gray-300 text-primary"
                 />
                 <span className="text-sm font-medium">Base address only (travel distance)</span>
               </label>

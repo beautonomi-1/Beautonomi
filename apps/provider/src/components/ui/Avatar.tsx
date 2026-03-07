@@ -9,37 +9,38 @@ interface AvatarProps {
   color?: string;
 }
 
-const sizes = {
-  sm: { container: "h-8 w-8", px: 32, text: "text-xs" },
-  md: { container: "h-10 w-10", px: 40, text: "text-sm" },
-  lg: { container: "h-12 w-12", px: 48, text: "text-base" },
-  xl: { container: "h-16 w-16", px: 64, text: "text-lg" },
+const sizeMap = {
+  sm: { px: 32, fontSize: 12 },
+  md: { px: 40, fontSize: 14 },
+  lg: { px: 48, fontSize: 16 },
+  xl: { px: 64, fontSize: 18 },
 };
 
-const colors = [
-  "bg-indigo-100 text-indigo-700",
-  "bg-pink-100 text-pink-700",
-  "bg-green-100 text-green-700",
-  "bg-amber-100 text-amber-700",
-  "bg-cyan-100 text-cyan-700",
-  "bg-violet-100 text-violet-700",
-  "bg-rose-100 text-rose-700",
-  "bg-teal-100 text-teal-700",
+const colorPairs: { bg: string; text: string }[] = [
+  { bg: "#e0e7ff", text: "#4338ca" },
+  { bg: "#fce7f3", text: "#be185d" },
+  { bg: "#dcfce7", text: "#15803d" },
+  { bg: "#fef3c7", text: "#b45309" },
+  { bg: "#cffafe", text: "#0e7490" },
+  { bg: "#ede9fe", text: "#5b21b6" },
+  { bg: "#ffe4e6", text: "#be123c" },
+  { bg: "#ccfbf1", text: "#0f766e" },
 ];
 
-function getColorForName(name: string): string {
+function getColorForName(name: string): { bg: string; text: string } {
   let hash = 0;
   for (let i = 0; i < name.length; i++)
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return colors[Math.abs(hash) % colors.length];
+  return colorPairs[Math.abs(hash) % colorPairs.length];
 }
 
 export function Avatar({ name, imageUrl, size = "md", color }: AvatarProps) {
-  const s = sizes[size];
+  const s = sizeMap[size];
+  const colorPair = color ? { bg: color, text: "#111" } : getColorForName(name);
 
   if (imageUrl) {
     return (
-      <View className={`${s.container} rounded-full overflow-hidden`}>
+      <View style={{ width: s.px, height: s.px, borderRadius: s.px / 2, overflow: "hidden" }}>
         <Image
           source={{ uri: imageUrl }}
           style={{ width: s.px, height: s.px }}
@@ -51,13 +52,18 @@ export function Avatar({ name, imageUrl, size = "md", color }: AvatarProps) {
     );
   }
 
-  const colorClass = color || getColorForName(name);
-
   return (
     <View
-      className={`${s.container} items-center justify-center rounded-full ${colorClass}`}
+      style={{
+        width: s.px,
+        height: s.px,
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: s.px / 2,
+        backgroundColor: colorPair.bg,
+      }}
     >
-      <Text className={`${s.text} font-semibold`}>{getInitials(name)}</Text>
+      <Text style={{ fontSize: s.fontSize, fontWeight: "600", color: colorPair.text }}>{getInitials(name)}</Text>
     </View>
   );
 }

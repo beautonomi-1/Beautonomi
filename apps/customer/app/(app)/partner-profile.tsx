@@ -25,6 +25,7 @@ import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
 import { useLocation } from "@/hooks/useLocation";
 import { api } from "@/lib/api-client";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
 import { Colors, Shadows } from "@/constants/colors";
 import { Skeleton } from "@/components/Skeleton";
@@ -72,8 +73,8 @@ function Tag({ label, color }: { label: string; color: string }) {
 
 function VerifiedTag() {
   return (
-    <View style={{ backgroundColor: "rgba(255,255,255,0.92)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, flexDirection: "row", alignItems: "center", gap: 5 }}>
-      <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: "#F59E0B", alignItems: "center", justifyContent: "center" }}>
+    <View style={{ backgroundColor: "rgba(255,255,255,0.92)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, flexDirection: "row", alignItems: "center" }}>
+      <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: "#F59E0B", alignItems: "center", justifyContent: "center", marginRight: 5 }}>
         <Ionicons name="checkmark" size={10} color="#fff" />
       </View>
       <Text style={{ fontSize: 11, fontWeight: "600", color: "#111" }}>Verified</Text>
@@ -118,8 +119,8 @@ function TrustModule({ distance_km, rating, review_count }: {
       </View>
       <View style={{ width: 1, backgroundColor: "#E5E7EB" }} />
       <View style={{ flex: 1, alignItems: "center", paddingVertical: 14 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-          <Ionicons name="star" size={18} color="#FACC15" />
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Ionicons name="star" size={18} color="#FACC15" style={{ marginRight: 3 }} />
           <Text style={{ fontSize: 15, fontWeight: "700", color: "#111" }}>
             {rating > 0 ? rating.toFixed(1) : "0.0"}
           </Text>
@@ -153,11 +154,12 @@ const TAB_LABELS: Record<TabKey, string> = {
 };
 
 /* ─── Service Card ─── */
-function ServiceCard({ service, currency, onBook, onDetails }: {
+function ServiceCard({ service, currency, onBook, onDetails, contentPadding }: {
   service: ProviderService;
   currency: string;
   onBook: () => void;
   onDetails: () => void;
+  contentPadding: number;
 }) {
   const displayPrice = service.variants?.length
     ? Math.min(...service.variants.map((v) => v.price))
@@ -165,14 +167,14 @@ function ServiceCard({ service, currency, onBook, onDetails }: {
 
   return (
     <View style={{
-      backgroundColor: "#fff", borderRadius: 12, padding: 16, marginBottom: 12,
+      backgroundColor: "#fff", borderRadius: 12, padding: contentPadding, marginBottom: 12,
       borderWidth: 1, borderColor: "#F3F4F6",
       ...Shadows.cardSmall,
     }}>
       <Text style={{ fontSize: 16, fontWeight: "600", color: "#111827" }}>{service.title}</Text>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-          <Ionicons name="time-outline" size={14} color="#9CA3AF" />
+      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", marginRight: 8 }}>
+          <Ionicons name="time-outline" size={14} color="#9CA3AF" style={{ marginRight: 3 }} />
           <Text style={{ fontSize: 13, color: "#6B7280" }}>{service.duration_minutes} min</Text>
         </View>
         <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
@@ -184,15 +186,15 @@ function ServiceCard({ service, currency, onBook, onDetails }: {
           {service.description}
         </Text>
       ) : null}
-      <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
+      <View style={{ flexDirection: "row", marginTop: 14 }}>
         <TouchableOpacity
           onPress={onDetails}
           style={{
             flex: 1, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 10, paddingVertical: 10,
-            alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 4,
+            alignItems: "center", flexDirection: "row", justifyContent: "center", marginRight: 10,
           }}
         >
-          <Ionicons name="information-circle-outline" size={16} color="#6B7280" />
+          <Ionicons name="information-circle-outline" size={16} color="#6B7280" style={{ marginRight: 4 }} />
           <Text style={{ fontWeight: "500", color: "#374151", fontSize: 14 }}>Details</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -207,13 +209,13 @@ function ServiceCard({ service, currency, onBook, onDetails }: {
 }
 
 /* ─── Category Pill ─── */
-function CategoryPill({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function CategoryPill({ label, active, onPress, contentPadding }: { label: string; active: boolean; onPress: () => void; contentPadding: number }) {
   return (
     <TouchableOpacity
       onPress={onPress}
       style={{
         backgroundColor: active ? "#111827" : "#F3F4F6", borderRadius: 999,
-        paddingHorizontal: 16, paddingVertical: 8, marginRight: 8,
+        paddingHorizontal: contentPadding, paddingVertical: 8, marginRight: 8,
       }}
     >
       <Text style={{ color: active ? "#fff" : "#374151", fontWeight: "600", fontSize: 13 }}>{label}</Text>
@@ -243,16 +245,16 @@ function LocationCard({ loc }: { loc: ProviderLocation }) {
       <Text style={{ fontSize: 13, color: "#6B7280" }}>
         {loc.city}{loc.state ? `, ${loc.state}` : ""} {loc.country}
       </Text>
-      <View style={{ flexDirection: "row", gap: 16, marginTop: 10 }}>
+      <View style={{ flexDirection: "row", marginTop: 10 }}>
         {(loc.latitude != null || fullAddress) && (
-          <TouchableOpacity onPress={openDirections} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Ionicons name="navigate-outline" size={16} color={Colors.primary} />
+          <TouchableOpacity onPress={openDirections} style={{ flexDirection: "row", alignItems: "center", marginRight: 16 }}>
+            <Ionicons name="navigate-outline" size={16} color={Colors.primary} style={{ marginRight: 4 }} />
             <Text style={{ color: Colors.primary, fontWeight: "500", fontSize: 13 }}>Directions</Text>
           </TouchableOpacity>
         )}
         {loc.phone && (
-          <TouchableOpacity onPress={callPhone} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Ionicons name="call-outline" size={16} color={Colors.primary} />
+          <TouchableOpacity onPress={callPhone} style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons name="call-outline" size={16} color={Colors.primary} style={{ marginRight: 4 }} />
             <Text style={{ color: Colors.primary, fontWeight: "500", fontSize: 13 }}>Call</Text>
           </TouchableOpacity>
         )}
@@ -262,12 +264,13 @@ function LocationCard({ loc }: { loc: ProviderLocation }) {
 }
 
 /* ─── Service Detail Modal ─── */
-function ServiceDetailModal({ service, currency, visible, onClose, onBook }: {
+function ServiceDetailModal({ service, currency, visible, onClose, onBook, contentPadding }: {
   service: ProviderService | null;
   currency: string;
   visible: boolean;
   onClose: () => void;
   onBook: (svc: ProviderService) => void;
+  contentPadding: number;
 }) {
   if (!service) return null;
   const displayPrice = service.variants?.length
@@ -284,14 +287,14 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook }: {
             <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB" }} />
           </View>
 
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+          <ScrollView contentContainerStyle={{ paddingHorizontal: contentPadding, paddingBottom: contentPadding }} showsVerticalScrollIndicator={false}>
             {/* Header */}
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
               <View style={{ flex: 1, marginRight: 12 }}>
                 <Text style={{ fontSize: 22, fontWeight: "700", color: "#111827" }}>{service.title}</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                    <Ionicons name="time-outline" size={16} color="#6B7280" />
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginRight: 8 }}>
+                    <Ionicons name="time-outline" size={16} color="#6B7280" style={{ marginRight: 4 }} />
                     <Text style={{ fontSize: 14, color: "#6B7280" }}>{service.duration_minutes} min</Text>
                   </View>
                   <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>
@@ -315,16 +318,16 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook }: {
             {/* Location availability */}
             <View style={{ marginBottom: 20 }}>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>Available at</Text>
-              <View style={{ flexDirection: "row", gap: 12 }}>
+              <View style={{ flexDirection: "row" }}>
                 {service.supports_at_salon && (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#F3F4F6", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
-                    <Ionicons name="business-outline" size={16} color="#6B7280" />
+                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F3F4F6", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 12 }}>
+                    <Ionicons name="business-outline" size={16} color="#6B7280" style={{ marginRight: 6 }} />
                     <Text style={{ fontSize: 13, color: "#374151" }}>At Salon</Text>
                   </View>
                 )}
                 {service.supports_at_home && (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#F3F4F6", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
-                    <Ionicons name="home-outline" size={16} color="#6B7280" />
+                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F3F4F6", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+                    <Ionicons name="home-outline" size={16} color="#6B7280" style={{ marginRight: 6 }} />
                     <Text style={{ fontSize: 13, color: "#374151" }}>House Call</Text>
                   </View>
                 )}
@@ -360,7 +363,7 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook }: {
           </ScrollView>
 
           {/* Bottom CTA */}
-          <View style={{ paddingHorizontal: 20 }}>
+          <View style={{ paddingHorizontal: contentPadding }}>
             <TouchableOpacity
               onPress={() => { onBook(service); onClose(); }}
               style={{ backgroundColor: "#111827", borderRadius: 12, paddingVertical: 16, alignItems: "center" }}
@@ -427,13 +430,14 @@ function GalleryViewer({ images, initialIndex, visible, onClose }: {
 /* ─── Star Renderer ─── */
 function StarRow({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
-    <View style={{ flexDirection: "row", gap: 2 }}>
+    <View style={{ flexDirection: "row" }}>
       {[1, 2, 3, 4, 5].map((star) => (
         <Ionicons
           key={star}
           name={rating >= star ? "star" : rating >= star - 0.5 ? "star-half" : "star-outline"}
           size={size}
           color="#FACC15"
+          style={star < 5 ? { marginRight: 2 } : undefined}
         />
       ))}
     </View>
@@ -449,11 +453,11 @@ function ReviewCard({ review }: { review: Review }) {
 
   return (
     <View style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 14, marginBottom: 10 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
         {review.author?.avatar_url ? (
-          <Image source={{ uri: review.author.avatar_url }} style={{ width: 36, height: 36, borderRadius: 18 }} contentFit="cover" />
+          <Image source={{ uri: review.author.avatar_url }} style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }} contentFit="cover" />
         ) : (
-          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center" }}>
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
             <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 15 }}>{initial}</Text>
           </View>
         )}
@@ -482,19 +486,19 @@ function getRelativeTime(date: Date): string {
 }
 
 /* ─── Staff Card ─── */
-function StaffCard({ member }: { member: StaffMember }) {
+function StaffCard({ member, contentPadding }: { member: StaffMember; contentPadding: number }) {
   const initial = (member.name || "S").charAt(0).toUpperCase();
   return (
     <View style={{
-      backgroundColor: "#fff", borderRadius: 16, padding: 16, marginBottom: 10,
+      backgroundColor: "#fff", borderRadius: 16, padding: contentPadding, marginBottom: 10,
       borderWidth: 1, borderColor: "#F3F4F6",
       ...Shadows.cardSmall,
     }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
         {member.avatar_url ? (
-          <Image source={{ uri: member.avatar_url }} style={{ width: 56, height: 56, borderRadius: 28 }} contentFit="cover" cachePolicy="memory-disk" />
+          <Image source={{ uri: member.avatar_url }} style={{ width: 56, height: 56, borderRadius: 28, marginRight: 12 }} contentFit="cover" cachePolicy="memory-disk" />
         ) : (
-          <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" }}>
+          <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
             <Text style={{ color: "#6B7280", fontWeight: "700", fontSize: 22 }}>{initial}</Text>
           </View>
         )}
@@ -511,9 +515,9 @@ function StaffCard({ member }: { member: StaffMember }) {
         </Text>
       ) : null}
       {member.specialties && member.specialties.length > 0 && (
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 10 }}>
           {member.specialties.map((s, i) => (
-            <View key={i} style={{ backgroundColor: Colors.primaryLight, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+            <View key={i} style={{ backgroundColor: Colors.primaryLight, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginRight: 6, marginBottom: 6 }}>
               <Text style={{ fontSize: 11, color: Colors.primary, fontWeight: "500" }}>{s}</Text>
             </View>
           ))}
@@ -524,10 +528,10 @@ function StaffCard({ member }: { member: StaffMember }) {
 }
 
 /* ─── Membership Plan Card ─── */
-function MembershipCard({ plan, onJoin }: { plan: MembershipPlan; onJoin: () => void }) {
+function MembershipCard({ plan, onJoin, contentPadding }: { plan: MembershipPlan; onJoin: () => void; contentPadding: number }) {
   return (
     <View style={{
-      backgroundColor: "#fff", borderRadius: 16, padding: 16, marginBottom: 12,
+      backgroundColor: "#fff", borderRadius: 16, padding: contentPadding, marginBottom: 12,
       borderWidth: 1, borderColor: "#F3F4F6",
       ...Shadows.cardSmall,
     }}>
@@ -546,10 +550,10 @@ function MembershipCard({ plan, onJoin }: { plan: MembershipPlan; onJoin: () => 
         </View>
       </View>
       {plan.benefits && plan.benefits.length > 0 && (
-        <View style={{ marginTop: 12, gap: 6 }}>
+        <View style={{ marginTop: 12 }}>
           {plan.benefits.map((b, i) => (
-            <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+            <View key={i} style={{ flexDirection: "row", alignItems: "center", marginTop: i === 0 ? 0 : 6 }}>
+              <Ionicons name="checkmark-circle" size={16} color={Colors.success} style={{ marginRight: 6 }} />
               <Text style={{ fontSize: 13, color: "#374151" }}>{b}</Text>
             </View>
           ))}
@@ -573,6 +577,7 @@ export default function PartnerProfileScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
+  const { contentPadding } = useResponsive();
 
   const [provider, setProvider] = useState<PublicProviderDetail | null>(null);
   const [services, setServices] = useState<ProviderServicesResponse | null>(null);
@@ -871,11 +876,11 @@ export default function PartnerProfileScreen() {
         <StatusBar barStyle="light-content" />
         <View style={{ flex: 1, backgroundColor: "#fff" }}>
           <Skeleton width="100%" height={heroHeight} borderRadius={0} />
-          <View style={{ padding: 16, gap: 12 }}>
+          <View style={{ padding: contentPadding }}>
             <Skeleton width="60%" height={24} />
-            <Skeleton width="40%" height={14} />
-            <Skeleton width="100%" height={60} borderRadius={0} />
-            <Skeleton width="100%" height={48} borderRadius={12} />
+            <Skeleton width="40%" height={14} style={{ marginTop: 12 }} />
+            <Skeleton width="100%" height={60} borderRadius={0} style={{ marginTop: 12 }} />
+            <Skeleton width="100%" height={48} borderRadius={12} style={{ marginTop: 12 }} />
           </View>
         </View>
       </>
@@ -887,7 +892,7 @@ export default function PartnerProfileScreen() {
     return (
       <>
         <Stack.Screen options={{ headerShown: false }} />
-        <View style={{ flex: 1, backgroundColor: "#fff", padding: 24, alignItems: "center", justifyContent: "center" }}>
+        <View style={{ flex: 1, backgroundColor: "#fff", padding: contentPadding, alignItems: "center", justifyContent: "center" }}>
           <Ionicons name="alert-circle-outline" size={48} color="#9CA3AF" />
           <Text style={{ color: "#6B7280", marginTop: 12, textAlign: "center", fontSize: 15 }}>{error}</Text>
           <TouchableOpacity onPress={load} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 20 }}>
@@ -923,6 +928,7 @@ export default function PartnerProfileScreen() {
         visible={detailVisible}
         onClose={() => setDetailVisible(false)}
         onBook={handleBookService}
+        contentPadding={contentPadding}
       />
 
       {/* Fullscreen Gallery */}
@@ -935,7 +941,6 @@ export default function PartnerProfileScreen() {
 
       <View style={{ flex: 1, backgroundColor: "#fff" }}>
         <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
-
           {/* ═══════════ HERO GALLERY (4:5) ═══════════ */}
           <View style={{ width: screenWidth, height: heroHeight, backgroundColor: "#E5E7EB" }}>
             {images.length > 0 ? (
@@ -969,19 +974,19 @@ export default function PartnerProfileScreen() {
             </TouchableOpacity>
 
             {/* Tags */}
-            <View style={{ position: "absolute", top: 92, left: 16, gap: 6 }}>
-              {provider.is_verified && <VerifiedTag />}
-              {provider.is_featured && <Tag label="Featured" color="rgba(236,72,153,0.9)" />}
-              {provider.supports_house_calls && <Tag label="House Calls" color="rgba(34,197,94,0.9)" />}
-              {provider.supports_salon && <Tag label="At Salon" color="rgba(139,92,246,0.9)" />}
-              {provider.business_type === "freelancer" && <Tag label="Freelancer" color="rgba(249,115,22,0.9)" />}
+            <View style={{ position: "absolute", top: 92, left: 16, flexDirection: "row", flexWrap: "wrap" }}>
+              {provider.is_verified && <View style={{ marginRight: 6, marginBottom: 6 }}><VerifiedTag /></View>}
+              {provider.is_featured && <View style={{ marginRight: 6, marginBottom: 6 }}><Tag label="Featured" color="rgba(236,72,153,0.9)" /></View>}
+              {provider.supports_house_calls && <View style={{ marginRight: 6, marginBottom: 6 }}><Tag label="House Calls" color="rgba(34,197,94,0.9)" /></View>}
+              {provider.supports_salon && <View style={{ marginRight: 6, marginBottom: 6 }}><Tag label="At Salon" color="rgba(139,92,246,0.9)" /></View>}
+              {provider.business_type === "freelancer" && <View style={{ marginRight: 6, marginBottom: 6 }}><Tag label="Freelancer" color="rgba(249,115,22,0.9)" /></View>}
             </View>
 
             {/* Action icons */}
-            <View style={{ position: "absolute", top: 48, right: 16, gap: 8 }}>
-              <FloatingIcon name={isSaved ? "heart" : "heart-outline"} onPress={toggleWishlist} filled={isSaved} fillColor={Colors.primary} />
-              <FloatingIcon name="share-social-outline" onPress={handleShare} />
-              <FloatingIcon name="chatbubble-ellipses-outline" onPress={handleMessage} />
+            <View style={{ position: "absolute", top: 48, right: 16, flexDirection: "row" }}>
+              <View style={{ marginRight: 8 }}><FloatingIcon name={isSaved ? "heart" : "heart-outline"} onPress={toggleWishlist} filled={isSaved} fillColor={Colors.primary} /></View>
+              <View style={{ marginRight: 8 }}><FloatingIcon name="share-social-outline" onPress={handleShare} /></View>
+              <View style={{ marginRight: 8 }}><FloatingIcon name="chatbubble-ellipses-outline" onPress={handleMessage} /></View>
               <FloatingIcon name="flag-outline" onPress={() => {
                 if (!user) { Alert.alert("Sign in required", "Please sign in to report a provider."); return; }
                 setReportModalVisible(true);
@@ -1023,11 +1028,11 @@ export default function PartnerProfileScreen() {
             </View>
 
             {/* Name, location */}
-            <View style={{ paddingHorizontal: 16, paddingTop: 48 }}>
+            <View style={{ paddingHorizontal: contentPadding, paddingTop: 48 }}>
               <Text style={{ fontSize: 24, fontWeight: "700", color: "#111827", marginBottom: 6 }}>{provider.business_name}</Text>
               {(provider.city || provider.country) && (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 8 }}>
-                  <Ionicons name="location-outline" size={14} color="#6B7280" />
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+                  <Ionicons name="location-outline" size={14} color="#6B7280" style={{ marginRight: 4 }} />
                   <Text style={{ fontSize: 13, color: "#6B7280" }}>{[provider.city, provider.country].filter(Boolean).join(", ")}</Text>
                 </View>
               )}
@@ -1037,20 +1042,20 @@ export default function PartnerProfileScreen() {
 
             {/* Description */}
             {provider.description?.trim() ? (
-              <View style={{ paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderColor: "#E5E7EB" }}>
+              <View style={{ paddingHorizontal: contentPadding, paddingVertical: 14, borderBottomWidth: 1, borderColor: "#E5E7EB" }}>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginBottom: 6 }}>What this provider offers:</Text>
                 <Text style={{ fontSize: 13, color: "#374151", lineHeight: 20 }} numberOfLines={4}>{provider.description}</Text>
               </View>
             ) : null}
 
             {/* ═══════════ SECTION TABS ═══════════ */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: contentPadding, paddingVertical: 12 }}>
               {visibleTabs.map((t) => (
                 <TouchableOpacity
                   key={t}
                   onPress={() => { setActiveTab(t); haptic.selection(); }}
                   style={{
-                    paddingHorizontal: 16, paddingVertical: 8,
+                    paddingHorizontal: contentPadding, paddingVertical: 8,
                     borderBottomWidth: 2, borderColor: activeTab === t ? Colors.primary : "transparent", marginRight: 4,
                   }}
                 >
@@ -1062,7 +1067,7 @@ export default function PartnerProfileScreen() {
             </ScrollView>
 
             {/* ═══════════ TAB CONTENT ═══════════ */}
-            <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16, minHeight: 200 }}>
+            <View style={{ paddingHorizontal: contentPadding, paddingTop: 8, paddingBottom: 16, minHeight: 200 }}>
 
               {/* ── SERVICES ── */}
               {activeTab === "services" && services && services.categories.length > 0 && (
@@ -1071,7 +1076,7 @@ export default function PartnerProfileScreen() {
                   {services.categories.length > 1 && (
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 10 }}>
                       {services.categories.map((cat) => (
-                        <CategoryPill key={cat.id} label={cat.name} active={activeCategory === cat.id} onPress={() => setActiveCategory(cat.id)} />
+                        <CategoryPill key={cat.id} label={cat.name} active={activeCategory === cat.id} onPress={() => setActiveCategory(cat.id)} contentPadding={contentPadding} />
                       ))}
                     </ScrollView>
                   )}
@@ -1082,6 +1087,7 @@ export default function PartnerProfileScreen() {
                       currency={provider.currency}
                       onBook={() => handleBookService(svc)}
                       onDetails={() => { setDetailService(svc); setDetailVisible(true); }}
+                      contentPadding={contentPadding}
                     />
                   ))}
                   {services.total_services > (activeCat ?? services.categories[0]).services.length && (
@@ -1097,9 +1103,9 @@ export default function PartnerProfileScreen() {
                 <View>
                   <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Products</Text>
                   {providerProductsLoading ? (
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                       {[1, 2, 3, 4].map((i) => (
-                        <View key={i} style={{ width: (screenWidth - 44) / 2, backgroundColor: "#F9FAFB", borderRadius: 12, padding: 12 }}>
+                        <View key={i} style={{ width: (screenWidth - 44) / 2, backgroundColor: "#F9FAFB", borderRadius: 12, padding: 12, marginRight: 12, marginBottom: 12 }}>
                           <Skeleton width="100%" height={120} borderRadius={10} />
                           <Skeleton width="70%" height={14} style={{ marginTop: 10 }} />
                           <Skeleton width="40%" height={12} style={{ marginTop: 6 }} />
@@ -1112,7 +1118,7 @@ export default function PartnerProfileScreen() {
                       <Text style={{ fontSize: 14, color: "#9CA3AF", marginTop: 8 }}>No products available</Text>
                     </View>
                   ) : (
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                       {providerProducts.map((prod) => (
                         <TouchableOpacity
                           key={prod.id}
@@ -1124,6 +1130,8 @@ export default function PartnerProfileScreen() {
                             overflow: "hidden",
                             borderWidth: 1,
                             borderColor: "#F3F4F6",
+                            marginRight: 12,
+                            marginBottom: 12,
                             ...Shadows.cardSmall,
                           }}
                           activeOpacity={0.85}
@@ -1173,9 +1181,9 @@ export default function PartnerProfileScreen() {
                       />
                     </Pressable>
                   )}
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                     {images.slice(1).map((uri, i) => (
-                      <Pressable key={i} onPress={() => { setGalleryViewerIndex(i + 1); setGalleryViewerVisible(true); }}>
+                      <Pressable key={i} onPress={() => { setGalleryViewerIndex(i + 1); setGalleryViewerVisible(true); }} style={{ marginRight: 4, marginBottom: 4 }}>
                         <Image
                           source={{ uri }}
                           style={{ width: (screenWidth - 40) / 2, height: (screenWidth - 40) / 2, borderRadius: 8 }}
@@ -1202,19 +1210,19 @@ export default function PartnerProfileScreen() {
                 <View>
                   <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Meet the Team</Text>
                   {staffLoading ? (
-                    <View style={{ gap: 10 }}>
+                    <View>
                       {[1, 2, 3].map((i) => (
-                        <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 16, backgroundColor: "#F9FAFB", borderRadius: 16 }}>
+                        <View key={i} style={{ flexDirection: "row", alignItems: "center", padding: contentPadding, backgroundColor: "#F9FAFB", borderRadius: 16, marginTop: i === 0 ? 0 : 10 }}>
                           <Skeleton width={56} height={56} borderRadius={28} />
-                          <View style={{ flex: 1, gap: 8 }}>
+                          <View style={{ flex: 1, marginLeft: 12 }}>
                             <Skeleton width="60%" height={16} />
-                            <Skeleton width="40%" height={12} />
+                            <Skeleton width="40%" height={12} style={{ marginTop: 8 }} />
                           </View>
                         </View>
                       ))}
                     </View>
                   ) : staff.length > 0 ? (
-                    staff.map((m) => <StaffCard key={m.id} member={m} />)
+                    staff.map((m) => <StaffCard key={m.id} member={m} contentPadding={contentPadding} />)
                   ) : (
                     <Text style={{ color: "#6B7280", fontSize: 14 }}>
                       {provider.staff_count ?? 0} team members. Meet our professionals when you book.
@@ -1230,21 +1238,21 @@ export default function PartnerProfileScreen() {
                   {/* Aggregate */}
                   {provider.review_count > 0 && (
                     <View style={{
-                      flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16,
-                      backgroundColor: "#F9FAFB", borderRadius: 16, padding: 16,
+                      flexDirection: "row", alignItems: "center", marginBottom: 16,
+                      backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding,
                     }}>
-                      <View style={{ alignItems: "center" }}>
+                      <View style={{ alignItems: "center", marginRight: 12 }}>
                         <Text style={{ fontSize: 36, fontWeight: "800", color: "#111827" }}>{provider.rating.toFixed(1)}</Text>
                         <StarRow rating={provider.rating} size={16} />
                         <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>{provider.review_count} {provider.review_count === 1 ? "review" : "reviews"}</Text>
                       </View>
-                      <View style={{ flex: 1, gap: 4, paddingLeft: 12 }}>
+                      <View style={{ flex: 1, paddingLeft: 12 }}>
                         {[5, 4, 3, 2, 1].map((star) => {
                           const count = reviews.filter((r) => Math.round(r.rating) === star).length;
                           const pct = reviews.length > 0 ? (count / reviews.length) * 100 : 0;
                           return (
-                            <View key={star} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                              <Text style={{ fontSize: 11, color: "#6B7280", width: 12, textAlign: "right" }}>{star}</Text>
+                            <View key={star} style={{ flexDirection: "row", alignItems: "center", marginTop: star === 5 ? 0 : 4 }}>
+                              <Text style={{ fontSize: 11, color: "#6B7280", width: 12, textAlign: "right", marginRight: 6 }}>{star}</Text>
                               <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: "#E5E7EB" }}>
                                 <View style={{ width: `${pct}%` as `${number}%`, height: 6, borderRadius: 3, backgroundColor: "#FACC15" }} />
                               </View>
@@ -1255,14 +1263,14 @@ export default function PartnerProfileScreen() {
                     </View>
                   )}
                   {reviewsLoading ? (
-                    <View style={{ gap: 10 }}>
+                    <View>
                       {[1, 2, 3].map((i) => (
-                        <View key={i} style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 14 }}>
-                          <View style={{ flexDirection: "row", gap: 10, marginBottom: 8 }}>
+                        <View key={i} style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 14, marginTop: i === 0 ? 0 : 10 }}>
+                          <View style={{ flexDirection: "row", marginBottom: 8 }}>
                             <Skeleton width={36} height={36} borderRadius={18} />
-                            <View style={{ gap: 6, flex: 1 }}>
+                            <View style={{ flex: 1, marginLeft: 10 }}>
                               <Skeleton width="40%" height={14} />
-                              <Skeleton width="30%" height={10} />
+                              <Skeleton width="30%" height={10} style={{ marginTop: 6 }} />
                             </View>
                           </View>
                           <Skeleton width="90%" height={12} />
@@ -1275,9 +1283,9 @@ export default function PartnerProfileScreen() {
                       {reviews.map((r) => <ReviewCard key={r.id} review={r} />)}
                       <TouchableOpacity
                         onPress={() => router.push({ pathname: "/(app)/review-write", params: { provider_id: provider.id, provider_name: provider.business_name } })}
-                        style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12 }}
+                        style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12 }}
                       >
-                        <Ionicons name="create-outline" size={16} color={Colors.primary} />
+                        <Ionicons name="create-outline" size={16} color={Colors.primary} style={{ marginRight: 6 }} />
                         <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>Write a Review</Text>
                       </TouchableOpacity>
                     </>
@@ -1287,7 +1295,7 @@ export default function PartnerProfileScreen() {
                       <Text style={{ color: "#6B7280", fontSize: 14, marginTop: 8 }}>No reviews yet.</Text>
                       <TouchableOpacity
                         onPress={() => router.push({ pathname: "/(app)/review-write", params: { provider_id: provider.id, provider_name: provider.business_name } })}
-                        style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, marginTop: 12 }}
+                        style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: contentPadding, paddingVertical: 10, marginTop: 12 }}
                       >
                         <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Be the first to review</Text>
                       </TouchableOpacity>
@@ -1301,13 +1309,13 @@ export default function PartnerProfileScreen() {
                 <View>
                   <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Membership Plans</Text>
                   {membershipsLoading ? (
-                    <View style={{ gap: 12 }}>
+                    <View>
                       {[1, 2].map((i) => (
-                        <View key={i} style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: 16, gap: 8 }}>
+                        <View key={i} style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginTop: i === 0 ? 0 : 12 }}>
                           <Skeleton width="60%" height={18} />
-                          <Skeleton width="90%" height={12} />
-                          <Skeleton width="40%" height={14} />
-                          <Skeleton width="100%" height={40} borderRadius={10} />
+                          <Skeleton width="90%" height={12} style={{ marginTop: 8 }} />
+                          <Skeleton width="40%" height={14} style={{ marginTop: 8 }} />
+                          <Skeleton width="100%" height={40} borderRadius={10} style={{ marginTop: 8 }} />
                         </View>
                       ))}
                     </View>
@@ -1317,6 +1325,7 @@ export default function PartnerProfileScreen() {
                         key={plan.id}
                         plan={plan}
                         onJoin={() => handleJoinMembership(plan)}
+                        contentPadding={contentPadding}
                       />
                     ))
                   ) : (
@@ -1335,7 +1344,7 @@ export default function PartnerProfileScreen() {
                   <Text style={{ fontSize: 13, color: "#6B7280", lineHeight: 20, marginBottom: 16 }}>
                     Give the gift of beauty. Purchase a gift card for {provider.business_name} and share it with someone special.
                   </Text>
-                  <View style={{ backgroundColor: "#FFF7ED", borderRadius: 16, padding: 20, alignItems: "center", marginBottom: 16 }}>
+                  <View style={{ backgroundColor: "#FFF7ED", borderRadius: 16, padding: contentPadding, alignItems: "center", marginBottom: 16 }}>
                     <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: "#FDE68A", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
                       <Ionicons name="gift" size={28} color="#F59E0B" />
                     </View>
@@ -1344,9 +1353,9 @@ export default function PartnerProfileScreen() {
                   </View>
                   <TouchableOpacity
                     onPress={() => router.push({ pathname: "/(app)/gift-card-purchase", params: { provider_id: provider.id, provider_name: provider.business_name } })}
-                    style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8 }}
+                    style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: "center", flexDirection: "row", justifyContent: "center" }}
                   >
-                    <Ionicons name="gift-outline" size={20} color="#fff" />
+                    <Ionicons name="gift-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                     <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Buy a Gift Card</Text>
                   </TouchableOpacity>
                 </View>
@@ -1355,15 +1364,15 @@ export default function PartnerProfileScreen() {
 
             {/* ── Request Custom Service ── */}
             {provider.accepts_custom_requests && (
-              <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+              <View style={{ paddingHorizontal: contentPadding, paddingBottom: 16 }}>
                 <TouchableOpacity
                   onPress={() => router.push({ pathname: "/(app)/custom-request-create", params: { provider_id: provider.id, provider_name: provider.business_name } })}
                   style={{
                     borderWidth: 1.5, borderColor: Colors.primary, borderRadius: 12, paddingVertical: 14,
-                    alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, borderStyle: "dashed",
+                    alignItems: "center", flexDirection: "row", justifyContent: "center", borderStyle: "dashed",
                   }}
                 >
-                  <Ionicons name="sparkles-outline" size={18} color={Colors.primary} />
+                  <Ionicons name="sparkles-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
                   <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 15 }}>Request Custom Service</Text>
                 </TouchableOpacity>
               </View>
@@ -1376,28 +1385,28 @@ export default function PartnerProfileScreen() {
 
         {/* ═══════════ STICKY BOTTOM: Message + Book ═══════════ */}
         <View style={{
-          flexDirection: "row", paddingHorizontal: 16, paddingVertical: 12,
+          flexDirection: "row", paddingHorizontal: contentPadding, paddingVertical: 12,
           borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
-          gap: 10, paddingBottom: 28,
+          paddingBottom: 28,
         }}>
           <TouchableOpacity
             onPress={handleMessage}
             style={{
-              flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+              flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", marginRight: 10,
               borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingVertical: 14,
             }}
           >
-            <Ionicons name="chatbubble-outline" size={18} color="#374151" />
+            <Ionicons name="chatbubble-outline" size={18} color="#374151" style={{ marginRight: 6 }} />
             <Text style={{ fontWeight: "600", color: "#374151", fontSize: 15 }}>Message</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleBook}
             style={{
-              flex: 1.5, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+              flex: 1.5, flexDirection: "row", alignItems: "center", justifyContent: "center",
               backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14,
             }}
           >
-            <Ionicons name="calendar-outline" size={18} color="#fff" />
+            <Ionicons name="calendar-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
             <Text style={{ fontWeight: "700", color: "#fff", fontSize: 16 }}>Book Now</Text>
           </TouchableOpacity>
         </View>
@@ -1411,7 +1420,7 @@ export default function PartnerProfileScreen() {
             <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 8 }}>
               <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB" }} />
             </View>
-            <View style={{ paddingHorizontal: 20, paddingBottom: 16 }}>
+            <View style={{ paddingHorizontal: contentPadding, paddingBottom: 16 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <Text style={{ fontSize: 20, fontWeight: "700", color: "#111827" }}>Report Provider</Text>
                 <TouchableOpacity onPress={() => setReportModalVisible(false)} hitSlop={12}>
@@ -1424,7 +1433,7 @@ export default function PartnerProfileScreen() {
               </Text>
 
               {/* Reason chips */}
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16 }}>
                 {REPORT_REASONS.map((reason) => {
                   const active = reportReason === reason;
                   return (
@@ -1436,6 +1445,8 @@ export default function PartnerProfileScreen() {
                         borderWidth: 1.5,
                         borderColor: active ? "#EF4444" : "#E5E7EB",
                         backgroundColor: active ? "#FEF2F2" : "#fff",
+                        marginRight: 8,
+                        marginBottom: 8,
                       }}
                     >
                       <Text style={{ fontSize: 13, fontWeight: active ? "600" : "400", color: active ? "#B91C1C" : "#374151" }}>
@@ -1472,7 +1483,7 @@ export default function PartnerProfileScreen() {
                 style={{
                   backgroundColor: (!reportReason || !reportDescription.trim()) ? "#D1D5DB" : "#EF4444",
                   borderRadius: 12, paddingVertical: 14, alignItems: "center",
-                  flexDirection: "row", justifyContent: "center", gap: 8,
+                  flexDirection: "row", justifyContent: "center",
                   opacity: reportSubmitting ? 0.7 : 1,
                 }}
               >
@@ -1480,7 +1491,7 @@ export default function PartnerProfileScreen() {
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <>
-                    <Ionicons name="flag" size={18} color="#fff" />
+                    <Ionicons name="flag" size={18} color="#fff" style={{ marginRight: 8 }} />
                     <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Submit Report</Text>
                   </>
                 )}

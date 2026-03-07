@@ -120,28 +120,23 @@ export default function PrivacyAndSharingScreen() {
 
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load}>
-      <View className="gap-6">
-        {/* Section header */}
+      <View>
         <View>
-          <Text className="text-lg font-bold text-gray-900">Privacy Controls</Text>
-          <Text className="text-sm text-gray-500 mt-1">
+          <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>Privacy Controls</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
             Manage how your information is used and shared
           </Text>
         </View>
 
-        {/* Toggles */}
-        <View className="gap-3">
-          {PRIVACY_TOGGLES.map((item) => (
-            <View
-              key={item.key}
-              className="bg-white rounded-xl p-4 border border-gray-100"
-            >
-              <View className="flex-row justify-between items-center">
-                <View className="flex-1 mr-3">
-                  <Text className="font-medium text-gray-900">{item.label}</Text>
-                  <Text className="text-sm text-gray-500 mt-1">{item.description}</Text>
+        <View style={{ marginTop: 24 }}>
+          {PRIVACY_TOGGLES.map((item, index) => (
+            <View key={item.key} style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: Colors.gray[100], marginTop: index === 0 ? 0 : 12 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <View style={{ flex: 1, marginRight: 12 }}>
+                  <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{item.label}</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>{item.description}</Text>
                 </View>
-                <View className="items-center">
+                <View style={{ alignItems: "center" }}>
                   {savingKey === item.key ? (
                     <ActivityIndicator size="small" color={Colors.primary} />
                   ) : (
@@ -158,9 +153,8 @@ export default function PrivacyAndSharingScreen() {
           ))}
         </View>
 
-        {/* Info text */}
-        <View className="bg-primary-light rounded-xl p-4 mt-2">
-          <Text className="text-sm text-gray-700 leading-5">
+        <View style={{ backgroundColor: Colors.primaryLight, borderRadius: 12, padding: 16, marginTop: 8 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[700], lineHeight: 20 }}>
             Your data is protected in accordance with the Protection of Personal Information
             Act (POPIA) and our Privacy Policy. You can change these settings at any time.
             Disabling data sharing may limit personalised recommendations.

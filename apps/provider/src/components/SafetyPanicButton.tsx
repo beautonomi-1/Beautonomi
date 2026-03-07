@@ -3,6 +3,7 @@ import { TouchableOpacity, Text, ActivityIndicator, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useApiPost } from "@/hooks/useApi";
+import { twStyle } from "@/lib/twStyle";
 
 interface SafetyPanicButtonProps {
   bookingId?: string | null;
@@ -49,7 +50,7 @@ export function SafetyPanicButton({ bookingId = null }: SafetyPanicButtonProps) 
     <TouchableOpacity
       onPress={handlePress}
       disabled={loading}
-      className="flex-row items-center justify-center py-3.5 rounded-xl border border-red-200 bg-red-50 mb-3"
+      style={twStyle("flex-row items-center justify-center py-3.5 rounded-xl border border-red-200 bg-red-50 mb-3")}
       accessibilityRole="button"
       accessibilityLabel="Safety - get help"
     >
@@ -58,7 +59,7 @@ export function SafetyPanicButton({ bookingId = null }: SafetyPanicButtonProps) 
       ) : (
         <>
           <Ionicons name="shield-checkmark-outline" size={20} color="#dc2626" />
-          <Text className="ml-2 font-medium text-red-700">Safety / Get help</Text>
+          <Text style={twStyle("ml-2 font-medium text-red-700")}>Safety / Get help</Text>
         </>
       )}
     </TouchableOpacity>

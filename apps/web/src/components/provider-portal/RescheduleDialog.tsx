@@ -139,7 +139,7 @@ export function RescheduleDialog({
             <Button
               type="submit"
               disabled={isLoading}
-              className="w-full sm:w-auto bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
+              className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
               {isLoading ? "Rescheduling..." : "Reschedule Appointment"}
             </Button>

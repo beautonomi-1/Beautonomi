@@ -9,12 +9,14 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Avatar } from "@/components/ui/Avatar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 interface Conversation {
   id: string;
@@ -29,6 +31,7 @@ interface Conversation {
 
 export default function MessagingListScreen() {
   const router = useRouter();
+  const { screenPadding } = useResponsive();
   const params = useLocalSearchParams<{ customerId?: string }>();
   const customerId = typeof params.customerId === "string" ? params.customerId : undefined;
   const hasRedirected = useRef(false);
@@ -59,7 +62,7 @@ export default function MessagingListScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Messages" showBack />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -70,7 +73,7 @@ export default function MessagingListScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Messages" showBack />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -85,8 +88,8 @@ export default function MessagingListScreen() {
         subtitle={`${conversations.length} conversation${conversations.length === 1 ? "" : "s"}`}
       />
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -105,7 +108,7 @@ export default function MessagingListScreen() {
               onPress={() =>
                 router.push(`/(app)/(tabs)/more/messaging/${conv.id}` as never)
               }
-              className="mb-2 flex-row items-center rounded-2xl border border-gray-100 bg-white p-4"
+              style={{ marginBottom: 8, flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
               activeOpacity={0.7}
             >
               <Avatar
@@ -113,23 +116,23 @@ export default function MessagingListScreen() {
                 imageUrl={conv.customer_avatar}
                 size="md"
               />
-              <View className="ml-3 flex-1">
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
+              <View style={{ marginLeft: 12, flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
                     {conv.customer_name}
                   </Text>
                   {conv.unread_count > 0 && (
-                    <View className="rounded-full bg-indigo-600 px-2 py-0.5">
-                      <Text className="text-xs font-medium text-white">
+                    <View style={{ borderRadius: 9999, backgroundColor: "#4f46e5", paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.white }}>
                         {conv.unread_count}
                       </Text>
                     </View>
                   )}
                 </View>
-                <Text className="mt-0.5 text-sm text-gray-500" numberOfLines={1}>
+                <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }} numberOfLines={1}>
                   {conv.last_message_preview || "No messages yet"}
                 </Text>
-                <Text className="mt-0.5 text-xs text-gray-400">
+                <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[400] }}>
                   {new Date(conv.last_message_at).toLocaleDateString(undefined, {
                     month: "short",
                     day: "numeric",

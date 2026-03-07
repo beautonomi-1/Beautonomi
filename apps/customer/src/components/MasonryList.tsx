@@ -77,13 +77,13 @@ export function MasonryList<T>({
       {data.length === 0 && ListEmptyComponent ? (
         ListEmptyComponent
       ) : (
-        <View style={{ flexDirection: "row", gap }}>
+        <View style={{ flexDirection: "row" }}>
           {columns.map((col, colIdx) => (
-            <View key={colIdx} style={{ flex: 1, gap }}>
+            <View key={colIdx} style={{ flex: 1, marginRight: colIdx < numColumns - 1 ? gap : 0 }}>
               {col.map((item, idx) => {
                 const globalIdx = data.indexOf(item);
                 return (
-                  <View key={keyExtractor(item, globalIdx)}>
+                  <View key={keyExtractor(item, globalIdx)} style={{ marginBottom: idx < col.length - 1 ? gap : 0 }}>
                     {renderItem(item, globalIdx)}
                   </View>
                 );

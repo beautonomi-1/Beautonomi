@@ -62,7 +62,7 @@ export default function PaymentCallback() {
       >
         {status === "loading" && (
           <>
-            <Loader2 className="w-16 h-16 text-[#FF0077] mx-auto mb-4 animate-spin" />
+            <Loader2 className="w-16 h-16 text-primary mx-auto mb-4 animate-spin" />
             <h2 className="text-2xl font-semibold text-gray-900 mb-2">
               Verifying Payment
             </h2>
@@ -98,7 +98,7 @@ export default function PaymentCallback() {
             <p className="text-gray-600 mb-6">{message}</p>
             <Button
               onClick={() => router.push("/booking")}
-              className="bg-[#FF0077] hover:bg-[#D60565]"
+              className="bg-primary hover:bg-primary-hover"
             >
               Try Again
             </Button>

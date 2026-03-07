@@ -6,6 +6,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 type BookingSummary = {
   totalBookings?: number;
@@ -32,7 +33,7 @@ export default function ReportsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Reports" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -43,7 +44,7 @@ export default function ReportsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Reports" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -64,47 +65,47 @@ export default function ReportsScreen() {
         onBack={() => router.back()}
       />
       <ScrollView
-        className="flex-1"
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
-        <View className="rounded-xl border border-gray-200 bg-white p-4 mb-3">
-          <Text className="text-sm text-gray-500">Last 30 days</Text>
-          <View className="mt-2 flex-row flex-wrap gap-6">
-            <View>
-              <Text className="text-2xl font-bold text-gray-900">{totalBookings}</Text>
-              <Text className="text-xs text-gray-500">Bookings</Text>
+        <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16, marginBottom: 12 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Last 30 days</Text>
+          <View style={{ marginTop: 8, flexDirection: "row", flexWrap: "wrap" }}>
+            <View style={{ marginRight: 24, marginBottom: 24 }}>
+              <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{totalBookings}</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Bookings</Text>
             </View>
-            <View>
-              <Text className="text-2xl font-bold text-gray-900">
+            <View style={{ marginRight: 24, marginBottom: 24 }}>
+              <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>
                 ZAR {(totalRevenue || 0).toLocaleString()}
               </Text>
-              <Text className="text-xs text-gray-500">Revenue</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Revenue</Text>
             </View>
-            <View>
-              <Text className="text-2xl font-bold text-gray-900">
+            <View style={{ marginBottom: 24 }}>
+              <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>
                 ZAR {(avgValue || 0).toLocaleString()}
               </Text>
-              <Text className="text-xs text-gray-500">Avg. booking</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Avg. booking</Text>
             </View>
           </View>
         </View>
 
         {topServices.length > 0 && (
-          <View className="mb-3">
-            <Text className="text-sm font-medium text-gray-700 mb-2">Top services</Text>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 8 }}>Top services</Text>
             {topServices.slice(0, 5).map((s, i) => (
               <View
                 key={i}
-                className="flex-row items-center justify-between rounded-xl border border-gray-200 bg-white p-3 mb-2"
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 12, marginBottom: 8 }}
               >
-                <Text className="font-medium text-gray-900" numberOfLines={1}>
+                <Text style={{ fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
                   {s.serviceName}
                 </Text>
-                <View className="flex-row items-center gap-3">
-                  <Text className="text-sm text-gray-500">{s.bookings} bookings</Text>
-                  <Text className="text-sm font-medium text-gray-700">
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500], marginRight: 12 }}>{s.bookings} bookings</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
                     ZAR {(s.revenue || 0).toLocaleString()}
                   </Text>
                 </View>
@@ -113,8 +114,8 @@ export default function ReportsScreen() {
           </View>
         )}
 
-        <View className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <Text className="text-sm text-gray-600">
+        <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 16 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
             For full reports, breakdowns by location, and exports, use the provider dashboard on the web.
           </Text>
         </View>

@@ -21,6 +21,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { twStyle } from "@/lib/twStyle";
 
 interface OnlineBookingSettings {
   enabled: boolean;
@@ -197,86 +198,86 @@ export default function OnlineBookingScreen() {
       {link && (
         <>
           <SectionHeader title="Booking Link" />
-          <View className="rounded-2xl border border-gray-100 bg-white p-4">
+          <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
             {/* URL display */}
-            <View className="mb-3 flex-row items-center rounded-xl bg-gray-50 p-3">
+            <View style={twStyle("mb-3 flex-row items-center rounded-xl bg-gray-50 p-3")}>
               <Ionicons name="link-outline" size={16} color="#6b7280" />
-              <Text className="ml-2 flex-1 text-sm text-gray-700" selectable>
+              <Text style={twStyle("ml-2 flex-1 text-sm text-gray-700")} selectable>
                 {link.url}
               </Text>
             </View>
 
             {/* Custom slug */}
             <TouchableOpacity
-              className="mb-4 flex-row items-center"
+              style={twStyle("mb-4 flex-row items-center")}
               onPress={() => {
                 setNewSlug(link.slug);
                 setShowSlugEdit(true);
               }}
             >
               <Ionicons name="create-outline" size={14} color="#6366f1" />
-              <Text className="ml-1 text-xs font-medium text-indigo-600">
+              <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
                 Customize URL
               </Text>
             </TouchableOpacity>
 
             {/* Primary share actions */}
-            <View className="flex-row gap-2">
+            <View style={twStyle("flex-row")}>
               <TouchableOpacity
-                className="flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-2.5"
+                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-2.5"), { marginRight: 8 }]}
                 onPress={handleCopyLink}
               >
                 <Ionicons name="copy-outline" size={16} color="#6366f1" />
-                <Text className="ml-1.5 text-sm font-medium text-indigo-700">
+                <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-700")}>
                   Copy
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                className="flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-2.5"
+                style={twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-2.5")}
                 onPress={handleShareLink}
               >
                 <Ionicons name="share-outline" size={16} color="#6366f1" />
-                <Text className="ml-1.5 text-sm font-medium text-indigo-700">
+                <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-700")}>
                   Share
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                className="flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-2.5"
+                style={twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-2.5")}
                 onPress={() => setShowQR(true)}
               >
                 <Ionicons name="qr-code-outline" size={16} color="#6366f1" />
-                <Text className="ml-1.5 text-sm font-medium text-indigo-700">
+                <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-700")}>
                   QR
                 </Text>
               </TouchableOpacity>
             </View>
 
             {/* Social share buttons */}
-            <View className="mt-3 flex-row gap-2">
+            <View style={twStyle("mt-3 flex-row")}>
               <TouchableOpacity
-                className="flex-1 flex-row items-center justify-center rounded-xl bg-green-50 py-2.5"
+                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-green-50 py-2.5"), { marginRight: 8 }]}
                 onPress={handleShareWhatsApp}
               >
                 <Ionicons name="logo-whatsapp" size={16} color="#22c55e" />
-                <Text className="ml-1.5 text-sm font-medium text-green-700">
+                <Text style={twStyle("ml-1.5 text-sm font-medium text-green-700")}>
                   WhatsApp
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                className="flex-1 flex-row items-center justify-center rounded-xl bg-blue-50 py-2.5"
+                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-blue-50 py-2.5"), { marginRight: 8 }]}
                 onPress={handleShareSMS}
               >
                 <Ionicons name="chatbubble-outline" size={16} color="#3b82f6" />
-                <Text className="ml-1.5 text-sm font-medium text-blue-700">
+                <Text style={twStyle("ml-1.5 text-sm font-medium text-blue-700")}>
                   SMS
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                className="flex-1 flex-row items-center justify-center rounded-xl bg-gray-100 py-2.5"
+                style={twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-gray-100 py-2.5")}
                 onPress={() => setShowEmbed(true)}
               >
                 <Ionicons name="code-slash-outline" size={16} color="#6b7280" />
-                <Text className="ml-1.5 text-sm font-medium text-gray-700">
+                <Text style={twStyle("ml-1.5 text-sm font-medium text-gray-700")}>
                   Embed
                 </Text>
               </TouchableOpacity>
@@ -287,13 +288,13 @@ export default function OnlineBookingScreen() {
 
       {/* Booking Settings */}
       <SectionHeader title="Booking Settings" />
-      <View className="rounded-2xl border border-gray-100 bg-white p-4">
-        <View className="mb-4 flex-row items-center justify-between">
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900">
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("mb-4 flex-row items-center justify-between")}>
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>
               Online Booking Enabled
             </Text>
-            <Text className="text-xs text-gray-500">
+            <Text style={twStyle("text-xs text-gray-500")}>
               Allow clients to book online
             </Text>
           </View>
@@ -305,12 +306,12 @@ export default function OnlineBookingScreen() {
           />
         </View>
 
-        <View className="mb-4 flex-row items-center justify-between">
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900">
+        <View style={twStyle("mb-4 flex-row items-center justify-between")}>
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>
               Allow Guest Booking
             </Text>
-            <Text className="text-xs text-gray-500">
+            <Text style={twStyle("text-xs text-gray-500")}>
               Clients can book without an account
             </Text>
           </View>
@@ -322,61 +323,61 @@ export default function OnlineBookingScreen() {
           />
         </View>
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
           Advance Notice (hours)
         </Text>
         <TextInput
-          className="mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={advanceNotice}
           onChangeText={setAdvanceNotice}
           keyboardType="number-pad"
           placeholder="24"
           placeholderTextColor="#9ca3af"
         />
-        <Text className="mb-3 text-xs text-gray-400">
+        <Text style={twStyle("mb-3 text-xs text-gray-400")}>
           Minimum hours before appointment that clients can book
         </Text>
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
           Cancellation Window (hours)
         </Text>
         <TextInput
-          className="mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={cancellationHours}
           onChangeText={setCancellationHours}
           keyboardType="number-pad"
           placeholder="24"
           placeholderTextColor="#9ca3af"
         />
-        <Text className="mb-3 text-xs text-gray-400">
+        <Text style={twStyle("mb-3 text-xs text-gray-400")}>
           Minimum hours before appointment that clients can cancel
         </Text>
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
           Max Advance Booking (days)
         </Text>
         <TextInput
-          className="mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={maxAdvanceDays}
           onChangeText={setMaxAdvanceDays}
           keyboardType="number-pad"
           placeholder="90"
           placeholderTextColor="#9ca3af"
         />
-        <Text className="mb-3 text-xs text-gray-400">
+        <Text style={twStyle("mb-3 text-xs text-gray-400")}>
           How far in advance clients can book
         </Text>
       </View>
 
       {/* Deposit Settings */}
       <SectionHeader title="Deposit Settings" />
-      <View className="rounded-2xl border border-gray-100 bg-white p-4">
-        <View className="mb-4 flex-row items-center justify-between">
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900">
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("mb-4 flex-row items-center justify-between")}>
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>
               Require Deposit
             </Text>
-            <Text className="text-xs text-gray-500">
+            <Text style={twStyle("text-xs text-gray-500")}>
               Clients must pay a deposit to confirm booking
             </Text>
           </View>
@@ -390,25 +391,25 @@ export default function OnlineBookingScreen() {
 
         {requireDeposit && (
           <>
-            <Text className="mb-1 text-sm font-medium text-gray-700">
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
               Deposit Percentage (%)
             </Text>
             <TextInput
-              className="mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={depositPercentage}
               onChangeText={setDepositPercentage}
               keyboardType="number-pad"
               placeholder="50"
               placeholderTextColor="#9ca3af"
             />
-            <Text className="mb-1 text-xs text-gray-400">
+            <Text style={twStyle("mb-1 text-xs text-gray-400")}>
               Percentage of service price required as deposit
             </Text>
           </>
         )}
       </View>
 
-      <View className="mt-4">
+      <View style={twStyle("mt-4")}>
         <ActionButton
           label="Save Settings"
           onPress={handleSave}
@@ -417,7 +418,7 @@ export default function OnlineBookingScreen() {
         />
       </View>
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
 
       {/* QR Code Bottom Sheet */}
       <BottomSheet
@@ -426,8 +427,8 @@ export default function OnlineBookingScreen() {
         title="Booking QR Code"
       >
         {link && (
-          <View className="items-center">
-            <View className="mb-4 rounded-2xl bg-white p-6 shadow-sm">
+          <View style={twStyle("items-center")}>
+            <View style={twStyle("mb-4 rounded-2xl bg-white p-6 shadow-sm")}>
               <QRCode
                 value={link.url}
                 size={220}
@@ -435,29 +436,29 @@ export default function OnlineBookingScreen() {
                 backgroundColor="#ffffff"
               />
             </View>
-            <Text className="mb-1 text-sm font-medium text-gray-900">
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-900")}>
               Scan to book
             </Text>
-            <Text className="mb-4 text-center text-xs text-gray-500">
+            <Text style={twStyle("mb-4 text-center text-xs text-gray-500")}>
               Print this QR code and display it at your reception desk, business
               card, or storefront
             </Text>
-            <View className="w-full flex-row gap-3">
+            <View style={twStyle("w-full flex-row")}>
               <TouchableOpacity
-                className="flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3"
+                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3"), { marginRight: 12 }]}
                 onPress={handleCopyLink}
               >
                 <Ionicons name="copy-outline" size={16} color="#6366f1" />
-                <Text className="ml-1.5 text-sm font-medium text-indigo-700">
+                <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-700")}>
                   Copy Link
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                className="flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3"
+                style={twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3")}
                 onPress={handleShareLink}
               >
                 <Ionicons name="share-outline" size={16} color="#6366f1" />
-                <Text className="ml-1.5 text-sm font-medium text-indigo-700">
+                <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-700")}>
                   Share
                 </Text>
               </TouchableOpacity>
@@ -474,16 +475,16 @@ export default function OnlineBookingScreen() {
       >
         {link && (
           <View>
-            <Text className="mb-2 text-sm text-gray-700">
+            <Text style={twStyle("mb-2 text-sm text-gray-700")}>
               Add this code to your website to embed the booking widget:
             </Text>
-            <View className="mb-4 rounded-xl bg-gray-900 p-4">
-              <Text className="font-mono text-xs leading-5 text-green-400" selectable>
+            <View style={twStyle("mb-4 rounded-xl bg-gray-900 p-4")}>
+              <Text style={twStyle("font-mono text-xs leading-5 text-green-400")} selectable>
                 {`<iframe\n  src="${link.embed_url}"\n  width="100%"\n  height="700"\n  frameborder="0"\n  style="border-radius: 12px;"\n></iframe>`}
               </Text>
             </View>
             <ActionButton label="Copy Embed Code" onPress={handleCopyEmbed} fullWidth />
-            <Text className="mt-2 text-center text-xs text-gray-400">
+            <Text style={twStyle("mt-2 text-center text-xs text-gray-400")}>
               Works with any website builder — WordPress, Wix, Squarespace, etc.
             </Text>
           </View>
@@ -497,13 +498,13 @@ export default function OnlineBookingScreen() {
         title="Customize Booking URL"
       >
         <View>
-          <Text className="mb-2 text-sm text-gray-700">
+          <Text style={twStyle("mb-2 text-sm text-gray-700")}>
             Choose a custom URL for your booking page:
           </Text>
-          <View className="mb-3 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-            <Text className="text-sm text-gray-400">book.beautonomi.com/</Text>
+          <View style={twStyle("mb-3 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+            <Text style={twStyle("text-sm text-gray-400")}>book.beautonomi.com/</Text>
             <TextInput
-              className="flex-1 text-base font-medium text-gray-900"
+              style={twStyle("flex-1 text-base font-medium text-gray-900")}
               value={newSlug}
               onChangeText={(t) => setNewSlug(t.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
               placeholder="your-salon"
@@ -512,7 +513,7 @@ export default function OnlineBookingScreen() {
               autoCorrect={false}
             />
           </View>
-          <Text className="mb-4 text-xs text-gray-400">
+          <Text style={twStyle("mb-4 text-xs text-gray-400")}>
             Only lowercase letters, numbers, and hyphens allowed
           </Text>
           <ActionButton

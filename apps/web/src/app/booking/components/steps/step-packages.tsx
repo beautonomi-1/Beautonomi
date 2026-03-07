@@ -149,7 +149,7 @@ export default function StepPackages({
         onClick={handleSkip}
         className={`w-full p-4 rounded-xl border-2 text-left transition-all touch-target ${
           !bookingState.selectedPackage
-            ? "border-[#FF0077] bg-pink-50"
+            ? "border-primary bg-pink-50"
             : "border-gray-200 bg-white hover:border-gray-300"
         }`}
       >
@@ -161,7 +161,7 @@ export default function StepPackages({
             </p>
           </div>
           {!bookingState.selectedPackage && (
-            <Check className="w-6 h-6 text-[#FF0077]" />
+            <Check className="w-6 h-6 text-primary" />
           )}
         </div>
       </motion.button>
@@ -184,14 +184,14 @@ export default function StepPackages({
               onClick={() => handlePackageSelect(pkg)}
               className={`w-full p-4 rounded-xl border-2 text-left transition-all touch-target ${
                 isSelected
-                  ? "border-[#FF0077] bg-pink-50"
+                  ? "border-primary bg-pink-50"
                   : "border-gray-200 bg-white hover:border-gray-300"
               }`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <Package className="w-5 h-5 text-[#FF0077]" />
+                    <Package className="w-5 h-5 text-primary" />
                     <h3 className="font-semibold text-gray-900">{pkg.title}</h3>
                   </div>
                   {pkg.description && (
@@ -233,7 +233,7 @@ export default function StepPackages({
                     </p>
                   )}
                   {isSelected && (
-                    <Check className="w-6 h-6 text-[#FF0077] mt-2" />
+                    <Check className="w-6 h-6 text-primary mt-2" />
                   )}
                 </div>
               </div>

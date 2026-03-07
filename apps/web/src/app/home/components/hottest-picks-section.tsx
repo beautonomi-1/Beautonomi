@@ -6,7 +6,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { PublicProviderCard } from "@/types/beautonomi";
-import ProviderCard from "./provider-card";
+import ProviderCard from "./provider-card-dynamic";
 
 const HottestPicksSection = () => {
   const [providers, setProviders] = useState<PublicProviderCard[]>([]);

@@ -1,6 +1,7 @@
 import React from "react";
 import { View, Text, ActivityIndicator } from "react-native";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
+import { Colors } from "@/constants/colors";
 
 /**
  * Simple waiting screen that reads on_demand module config.
@@ -14,11 +15,11 @@ export function OnDemandWaitingScreen() {
   const message = uiCopy.waiting_headline ?? uiCopy.message ?? "Connecting you with beauty.";
 
   return (
-    <View className="flex-1 items-center justify-center gap-4 p-6">
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
       <ActivityIndicator size="large" />
-      <Text className="text-lg font-medium">{title}</Text>
-      <Text className="text-sm text-gray-500">{message}</Text>
-      <Text className="text-xs text-gray-400">Timeout: {timeoutSec}s</Text>
+      <Text style={{ fontSize: 18, fontWeight: "500", color: Colors.gray[900], marginTop: 16 }}>{title}</Text>
+      <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 16 }}>{message}</Text>
+      <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 16 }}>Timeout: {timeoutSec}s</Text>
     </View>
   );
 }

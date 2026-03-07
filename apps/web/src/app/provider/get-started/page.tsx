@@ -166,7 +166,7 @@ export default function GetStartedPage() {
           <p className="text-gray-700 mb-4">
             Complete onboarding first to set up your provider account and see your setup steps.
           </p>
-          <Button onClick={() => router.push("/provider/onboarding")} className="bg-[#FF0077] hover:bg-[#D60565] text-white">
+          <Button onClick={() => router.push("/provider/onboarding")} className="bg-primary hover:bg-primary-hover text-white">
             Go to Onboarding
           </Button>
         </div>
@@ -198,7 +198,7 @@ export default function GetStartedPage() {
               <div className="flex gap-4">
                 <Button
                   onClick={() => router.push("/provider/dashboard")}
-                  className="bg-[#FF0077] hover:bg-[#D60565] text-white"
+                  className="bg-primary hover:bg-primary-hover text-white"
                 >
                   Go to Dashboard
                   <ArrowRight className="w-4 h-4 ml-2" />
@@ -245,7 +245,7 @@ export default function GetStartedPage() {
     >
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-[#FF0077] to-[#D60565] rounded-xl p-8 mb-6 text-white">
+        <div className="bg-gradient-to-r from-primary to-primary-hover rounded-xl p-8 mb-6 text-white">
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <div className="flex items-center justify-between mb-3">
@@ -308,7 +308,7 @@ export default function GetStartedPage() {
                 step.completed
                   ? "border-green-200 bg-green-50/30 hover:border-green-300"
                   : step.required
-                  ? "border-[#FF0077]/30 hover:border-[#FF0077]/50"
+                  ? "border-primary/30 hover:border-primary/50"
                   : "border-gray-200 hover:border-gray-300"
               }`}
               onClick={() => handleStepClick(step)}
@@ -334,7 +334,7 @@ export default function GetStartedPage() {
                         {step.title}
                       </h3>
                       {step.required && (
-                        <span className="text-xs bg-[#FF0077] text-white px-2 py-0.5 rounded-full">
+                        <span className="text-xs bg-primary text-white px-2 py-0.5 rounded-full">
                           Required
                         </span>
                       )}
@@ -346,7 +346,7 @@ export default function GetStartedPage() {
                       className={`transition-all ${
                         step.completed
                           ? "border-green-500 text-green-700 hover:bg-green-50 hover:border-green-600"
-                          : "bg-[#FF0077] hover:bg-[#D60565] text-white shadow-sm hover:shadow-md"
+                          : "bg-primary hover:bg-primary-hover text-white shadow-sm hover:shadow-md"
                       }`}
                     >
                       {step.completed ? "Update" : "Set Up"}
@@ -386,7 +386,7 @@ export default function GetStartedPage() {
             {allRequiredComplete && (
               <Button
                 onClick={() => router.push("/provider/dashboard")}
-                className="bg-[#FF0077] hover:bg-[#D60565] text-white flex-1 sm:flex-none"
+                className="bg-primary hover:bg-primary-hover text-white flex-1 sm:flex-none"
               >
                 Go to Dashboard
                 <ArrowRight className="w-4 h-4 ml-2" />

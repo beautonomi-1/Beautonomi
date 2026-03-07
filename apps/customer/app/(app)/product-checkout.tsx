@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Colors, Shadows } from "@/constants/colors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { useCart } from "@/features/shop/useCart";
 import { useProductOrders } from "@/features/shop/useProductOrders";
@@ -50,9 +51,14 @@ interface ShippingConfig {
   estimated_delivery_days: number;
 }
 
+const contentConstraintStyle = (contentMaxWidth: number, isTablet: boolean) =>
+  (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
+
 export default function ProductCheckoutScreen() {
   const router = useRouter();
   const { provider_id } = useLocalSearchParams<{ provider_id: string }>();
+  const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
+  const constraintStyle = contentConstraintStyle(contentMaxWidth, isTablet);
   const cart = useCart();
   const orders = useProductOrders();
   const { user } = useAuth();
@@ -284,7 +290,7 @@ export default function ProductCheckoutScreen() {
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 16,
+          paddingHorizontal: contentPadding,
           paddingVertical: 14,
           backgroundColor: "#fff",
           borderBottomWidth: 1,
@@ -300,27 +306,29 @@ export default function ProductCheckoutScreen() {
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
+          paddingHorizontal: contentPadding,
           paddingBottom: 120,
-          ...(Platform.OS === "web" ? { maxWidth: 600, alignSelf: "center", width: "100%" } as any : {}),
+          ...constraintStyle,
         }}
       >
         {/* Fulfillment type */}
-        <View style={{ backgroundColor: "#fff", padding: 20, marginBottom: 12 }}>
+        <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
             How would you like to receive your order?
           </Text>
-          <View style={{ flexDirection: "row", gap: 12 }}>
+          <View style={{ flexDirection: "row" }}>
             {shippingConfig?.offers_collection !== false && (
               <TouchableOpacity
                 onPress={() => setFulfillment("collection")}
                 style={{
                   flex: 1,
-                  padding: 16,
+                  padding: contentPadding,
                   borderRadius: 14,
                   borderWidth: 2,
                   borderColor: fulfillment === "collection" ? PRIMARY : "#E5E7EB",
                   backgroundColor: fulfillment === "collection" ? "rgba(255,0,119,0.04)" : "#fff",
                   alignItems: "center",
+                  marginRight: 12,
                 }}
               >
                 <Ionicons
@@ -346,7 +354,7 @@ export default function ProductCheckoutScreen() {
                 onPress={() => setFulfillment("delivery")}
                 style={{
                   flex: 1,
-                  padding: 16,
+                  padding: contentPadding,
                   borderRadius: 14,
                   borderWidth: 2,
                   borderColor: fulfillment === "delivery" ? PRIMARY : "#E5E7EB",
@@ -379,7 +387,7 @@ export default function ProductCheckoutScreen() {
 
         {/* Collection location */}
         {fulfillment === "collection" && locations.length > 0 && (
-          <View style={{ backgroundColor: "#fff", padding: 20, marginBottom: 12 }}>
+          <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
               Collection Point
             </Text>
@@ -434,16 +442,16 @@ export default function ProductCheckoutScreen() {
 
         {/* Delivery address */}
         {fulfillment === "delivery" && (
-          <View style={{ backgroundColor: "#fff", padding: 20, marginBottom: 12 }}>
+          <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
               Delivery Address
             </Text>
             {addresses.length === 0 ? (
-              <View style={{ alignItems: "center", padding: 20 }}>
+              <View style={{ alignItems: "center", padding: contentPadding }}>
                 <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 12 }}>No addresses saved</Text>
                 <TouchableOpacity
                   onPress={() => router.push("/account-settings/addresses" as any)}
-                  style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: PRIMARY }}
+                  style={{ paddingHorizontal: contentPadding, paddingVertical: 10, borderRadius: 10, backgroundColor: PRIMARY }}
                 >
                   <Text style={{ color: "#fff", fontWeight: "600" }}>Add Address</Text>
                 </TouchableOpacity>
@@ -496,11 +504,11 @@ export default function ProductCheckoutScreen() {
         )}
 
         {/* Payment method */}
-        <View style={{ backgroundColor: "#fff", padding: 20, marginBottom: 12 }}>
+        <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
             Payment Method
           </Text>
-          <View style={{ gap: 8 }}>
+          <View>
             <TouchableOpacity
               onPress={() => setPaymentMethod("paystack")}
               style={{
@@ -511,6 +519,7 @@ export default function ProductCheckoutScreen() {
                 borderWidth: 1.5,
                 borderColor: paymentMethod === "paystack" ? PRIMARY : "#E5E7EB",
                 backgroundColor: paymentMethod === "paystack" ? "rgba(255,0,119,0.04)" : "#fff",
+                marginBottom: 8,
               }}
             >
               <Ionicons
@@ -567,7 +576,6 @@ export default function ProductCheckoutScreen() {
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  gap: 10,
                   paddingVertical: 12,
                   paddingHorizontal: 14,
                   marginTop: 8,
@@ -578,14 +586,14 @@ export default function ProductCheckoutScreen() {
                 }}
               >
                 <View style={{
-                  width: 22, height: 22, borderRadius: 6, borderWidth: 2,
+                  width: 22, height: 22, borderRadius: 6, borderWidth: 2, marginRight: 10,
                   borderColor: useWallet ? PRIMARY : "#9CA3AF",
                   backgroundColor: useWallet ? PRIMARY : "transparent",
                   alignItems: "center", justifyContent: "center",
                 }}>
                   {useWallet && <Ionicons name="checkmark" size={14} color="#fff" />}
                 </View>
-                <Ionicons name="wallet-outline" size={18} color={useWallet ? PRIMARY : "#6B7280"} />
+                <Ionicons name="wallet-outline" size={18} color={useWallet ? PRIMARY : "#6B7280"} style={{ marginRight: 10 }} />
                 <Text style={{ flex: 1, fontWeight: "500", color: useWallet ? PRIMARY : "#374151", fontSize: 14 }}>
                   Use wallet balance — R{walletBalance.toFixed(2)} available
                 </Text>
@@ -604,7 +612,7 @@ export default function ProductCheckoutScreen() {
         </View>
 
         {/* Order summary */}
-        <View style={{ backgroundColor: "#fff", padding: 20, marginBottom: 12 }}>
+        <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
             Order Summary
           </Text>
@@ -658,7 +666,7 @@ export default function ProductCheckoutScreen() {
       {/* Place Order button */}
       <View
         style={{
-          paddingHorizontal: 20,
+          paddingHorizontal: contentPadding,
           paddingVertical: 14,
           backgroundColor: "#fff",
           borderTopWidth: 1,
@@ -675,7 +683,7 @@ export default function ProductCheckoutScreen() {
             paddingVertical: 16,
             alignItems: "center",
             opacity: placing ? 0.7 : 1,
-            ...(Platform.OS === "web" ? { maxWidth: 600, alignSelf: "center", width: "100%" } as any : {}),
+            ...constraintStyle,
           }}
           accessibilityLabel="Place order"
         >

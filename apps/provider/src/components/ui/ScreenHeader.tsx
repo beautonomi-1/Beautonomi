@@ -1,6 +1,7 @@
 import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { Colors } from "@/constants/colors";
 
 interface ScreenHeaderProps {
   title: string;
@@ -27,12 +28,12 @@ export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction }:
   const showBackButton = showBack ?? !!onBack;
 
   return (
-    <View className="mb-4 flex-row items-center justify-between pt-2">
-      <View className="flex-1 flex-row items-center">
+    <View style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 8 }}>
+      <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
         {showBackButton && (
           <TouchableOpacity
             onPress={handleBack}
-            className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-gray-100"
+            style={{ marginRight: 12, height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: Colors.gray[100] }}
             hitSlop={8}
             accessibilityLabel="Go back"
             accessibilityRole="button"
@@ -40,16 +41,16 @@ export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction }:
             <Ionicons name="chevron-back" size={20} color="#111" />
           </TouchableOpacity>
         )}
-        <View className="flex-1">
-          <Text className="text-2xl font-bold text-gray-900" numberOfLines={1}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }} numberOfLines={1}>
             {title}
           </Text>
           {subtitle ? (
-            <Text className="mt-0.5 text-sm text-gray-500">{subtitle}</Text>
+            <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }}>{subtitle}</Text>
           ) : null}
         </View>
       </View>
-      {rightAction && <View className="ml-3">{rightAction}</View>}
+      {rightAction && <View style={{ marginLeft: 12 }}>{rightAction}</View>}
     </View>
   );
 }

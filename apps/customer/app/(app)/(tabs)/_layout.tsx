@@ -41,21 +41,39 @@ export default function TabsLayout() {
 
   const TAB_BAR_HEIGHT = 60 + (insets.bottom > 0 ? insets.bottom : 10);
 
+  const tabsWrapperStyle =
+    Platform.OS === "web"
+      ? { flex: 1, flexDirection: "column" as const, width: "100%" as const, minHeight: 0 }
+      : { flex: 1 };
+
   return (
-    <Tabs
-      screenOptions={{
-        sceneStyle:
-          Platform.OS === "web" ? { paddingBottom: TAB_BAR_HEIGHT } : undefined,
+    <View nativeID="tabs-root" style={tabsWrapperStyle} collapsable={false}>
+      <Tabs
+        screenOptions={{
+        sceneStyle: {
+          flex: 1,
+          backgroundColor: Colors.white,
+          ...(Platform.OS === "web" ? { width: "100%", paddingBottom: TAB_BAR_HEIGHT } : {}),
+        },
         headerShown: false,
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.gray[400],
         tabBarShowLabel: true,
+        tabBarItemStyle: {
+          minWidth: 64,
+          justifyContent: "center",
+          alignItems: "center",
+        },
         tabBarLabelStyle: {
           fontSize: 10,
           fontWeight: "500",
           marginBottom: 4,
+          textAlign: "center",
         },
         tabBarStyle: {
+          flexDirection: "row",
+          justifyContent: "space-around",
+          alignItems: "center",
           backgroundColor: Colors.white,
           borderTopWidth: 1,
           borderTopColor: Colors.gray[200],
@@ -64,15 +82,8 @@ export default function TabsLayout() {
           paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
           ...Shadows.tabBar,
           ...(isTablet ? { paddingHorizontal: 40 } : {}),
-          ...(Platform.OS === "web"
-            ? ({
-                position: "fixed",
-                bottom: 0,
-                left: 0,
-                right: 0,
-                zIndex: 999,
-              } as any)
-            : {}),
+          // On web, avoid position:fixed (broken with RNW flexbox); keep tab bar in flow at bottom.
+          ...(Platform.OS === "web" ? { width: "100%" } : {}),
         },
       }}
     >
@@ -81,7 +92,9 @@ export default function TabsLayout() {
         options={{
           title: t("customer.home"),
           tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? "home" : "home-outline"} size={24} color={color} />
+            <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name={focused ? "home" : "home-outline"} size={24} color={color} />
+            </View>
           ),
         }}
       />
@@ -90,7 +103,9 @@ export default function TabsLayout() {
         options={{
           title: t("customer.explore"),
           tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? "search" : "search-outline"} size={24} color={color} />
+            <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name={focused ? "search" : "search-outline"} size={24} color={color} />
+            </View>
           ),
         }}
       />
@@ -98,8 +113,11 @@ export default function TabsLayout() {
         name="bookings"
         options={{
           title: t("customer.bookings"),
+          tabBarLabel: t("customer.bookingsShort"),
           tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? "calendar" : "calendar-outline"} size={24} color={color} />
+            <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name={focused ? "calendar" : "calendar-outline"} size={24} color={color} />
+            </View>
           ),
         }}
       />
@@ -108,7 +126,7 @@ export default function TabsLayout() {
         options={{
           title: "Cart",
           tabBarIcon: ({ focused, color }) => (
-            <View>
+            <View style={{ minWidth: 24, minHeight: 24, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name={focused ? "cart" : "cart-outline"} size={24} color={color} />
               {cartCount > 0 && (
                 <View
@@ -145,7 +163,9 @@ export default function TabsLayout() {
         options={{
           title: t("customer.messages"),
           tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? "chatbubble" : "chatbubble-outline"} size={24} color={color} />
+            <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name={focused ? "chatbubble" : "chatbubble-outline"} size={24} color={color} />
+            </View>
           ),
         }}
       />
@@ -154,7 +174,9 @@ export default function TabsLayout() {
         options={{
           title: t("customer.profile"),
           tabBarIcon: ({ focused, color }) => (
-            <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
+            <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
+            </View>
           ),
         }}
       />
@@ -162,6 +184,7 @@ export default function TabsLayout() {
       {/* Hidden tabs */}
       <Tabs.Screen name="search" options={{ href: null }} />
       <Tabs.Screen name="saved" options={{ href: null }} />
-    </Tabs>
+      </Tabs>
+    </View>
   );
 }

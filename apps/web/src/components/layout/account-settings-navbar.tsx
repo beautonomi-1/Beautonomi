@@ -97,7 +97,7 @@ const AccountSettingsNavbar: React.FC = () => {
             {/* Desktop: Account Settings Link */}
             <Link
               href="/account-settings"
-              className="hidden md:flex items-center gap-2 text-sm font-normal text-gray-700 hover:text-[#FF0077] transition-colors"
+              className="hidden md:flex items-center gap-2 text-sm font-normal text-gray-700 hover:text-primary transition-colors"
             >
               <Settings className="h-5 w-5" />
               <span>Account</span>

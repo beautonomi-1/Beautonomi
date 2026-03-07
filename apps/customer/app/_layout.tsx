@@ -22,8 +22,12 @@ if (Platform.OS !== "web") {
   SplashScreen.preventAutoHideAsync();
 }
 
-initSentry();
-initSingular();
+try {
+  initSentry();
+} catch {}
+try {
+  initSingular();
+} catch {}
 
 function SplashController() {
   const { loading } = useAuth();
@@ -36,7 +40,7 @@ function SplashController() {
 function ForceUpdateGate({ children }: { children: React.ReactNode }) {
   const { updateRequired } = useForceUpdate();
   if (updateRequired) {
-    return <View className="flex-1 bg-white" />;
+    return <View style={{ flex: 1, backgroundColor: "#fff" }} />;
   }
   return <>{children}</>;
 }
@@ -50,7 +54,15 @@ function ThemedApp() {
       <OfflineBar />
       <ForceUpdateGate>
         <PushNotificationsProvider>
-          <Stack screenOptions={{ headerShown: false }}>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: {
+                flex: 1,
+                ...(Platform.OS === "web" ? { width: "100%", minHeight: "100%" } : {}),
+              },
+            }}
+          >
             <Stack.Screen name="index" />
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="auth" />
@@ -64,21 +76,28 @@ function ThemedApp() {
 }
 
 function RootLayout() {
+  const isWeb = Platform.OS === "web";
+  const rootStyle: View["props"]["style"] = {
+    flex: 1,
+    ...(isWeb ? { width: "100%", minHeight: "100%" } : {}),
+  };
   return (
     <ErrorBoundary>
-      <SafeAreaProvider>
-        <ThemeProvider>
-          <AuthProvider>
-            <SelectedAddressProvider>
-              <AnalyticsProvider>
-                <ConfigBundleProvider>
-                  <ThemedApp />
-                </ConfigBundleProvider>
-              </AnalyticsProvider>
-            </SelectedAddressProvider>
-          </AuthProvider>
-        </ThemeProvider>
-      </SafeAreaProvider>
+      <View style={rootStyle}>
+        <SafeAreaProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <SelectedAddressProvider>
+                <AnalyticsProvider>
+                  <ConfigBundleProvider>
+                    <ThemedApp />
+                  </ConfigBundleProvider>
+                </AnalyticsProvider>
+              </SelectedAddressProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </SafeAreaProvider>
+      </View>
     </ErrorBoundary>
   );
 }

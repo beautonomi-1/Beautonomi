@@ -100,7 +100,7 @@ export default function BusinessDescriptionPage() {
         />
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FF0077] mx-auto mb-4"></div>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
               <p className="text-gray-600">Loading...</p>
             </div>
           </div>
@@ -175,7 +175,7 @@ export default function BusinessDescriptionPage() {
                 <button
                   type="button"
                   onClick={handleUseTemplate}
-                  className="text-xs text-[#FF0077] hover:underline whitespace-nowrap flex-shrink-0 self-start sm:self-auto"
+                  className="text-xs text-primary hover:underline whitespace-nowrap flex-shrink-0 self-start sm:self-auto"
                 >
                   Use template
                 </button>
@@ -201,7 +201,7 @@ export default function BusinessDescriptionPage() {
               <Button
                 onClick={handleSave}
                 disabled={isSaving || !hasChanges}
-                className="bg-[#FF0077] hover:bg-[#D60565] text-white w-full sm:w-auto"
+                className="bg-primary hover:bg-primary-hover text-white w-full sm:w-auto"
               >
                 {isSaving ? "Saving..." : "Save Changes"}
               </Button>

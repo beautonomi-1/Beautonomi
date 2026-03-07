@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency, formatPercentage } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 type DateRange = "today" | "week" | "month" | "last_month" | "3months";
 
@@ -78,70 +79,68 @@ export default function ClientsReport() {
     <ScreenContainer>
       <ScreenHeader title="Clients" showBack subtitle="New, returning & top spenders" />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4" contentContainerStyle={{ gap: 8 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4")} contentContainerStyle={{ flexDirection: "row" }}>
         {DATE_RANGES.map((r) => (
           <TouchableOpacity
             key={r.value}
-            className={`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`}
+            style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
           >
-            <Text className={`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`}>{r.label}</Text>
+            <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      {loading && !data && <ActivityIndicator className="my-8" color="#ec4899" />}
+      {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#ec4899" />}
       {!loading && !data && <EmptyState icon="people-outline" title="No client data" description="Client analytics will appear here" />}
 
       {data && (
-        <View className="gap-4">
-          <View className="flex-row gap-3">
-            <View className="flex-1">
+        <View>
+          <View style={[twStyle("flex-row"), { marginBottom: 16 }]}>
+            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
               <StatCard title="New Clients" value={String(data.new_clients)} icon="person-add-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
             </View>
-            <View className="flex-1">
+            <View style={twStyle("flex-1")}>
               <StatCard title="Returning" value={String(data.returning_clients)} icon="refresh-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
             </View>
           </View>
 
-          <View className="flex-row gap-3">
+          <View style={twStyle("flex-row")}>
             {data.retention_rate != null && (
-              <View className="flex-1">
+              <View style={twStyle("flex-1")}>
                 <StatCard title="Retention Rate" value={formatPercentage(data.retention_rate)} icon="heart-outline" iconColor="#ec4899" iconBg="bg-pink-50" compact />
               </View>
             )}
             {data.avg_lifetime_value != null && (
-              <View className="flex-1">
+              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
                 <StatCard title="Avg LTV" value={formatCurrency(data.avg_lifetime_value)} icon="diamond-outline" iconColor="#8b5cf6" iconBg="bg-violet-50" compact />
               </View>
             )}
           </View>
 
           {/* New vs Returning visual */}
-          <View className="rounded-2xl border border-gray-100 bg-white p-4">
-            <Text className="text-sm font-medium text-gray-700 mb-3">New vs Returning</Text>
-            <View className="h-6 rounded-full bg-gray-100 flex-row overflow-hidden">
+          <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-3")}>New vs Returning</Text>
+            <View style={twStyle("h-6 rounded-full bg-gray-100 flex-row overflow-hidden")}>
               {data.new_clients + data.returning_clients > 0 && (
                 <>
                   <View
-                    style={{ width: `${(data.new_clients / (data.new_clients + data.returning_clients)) * 100}%` }}
-                    className="h-full bg-green-500"
+                    style={[{ width: `${(data.new_clients / (data.new_clients + data.returning_clients)) * 100}%` }, twStyle("h-full bg-green-500")]}
                   />
                   <View
-                    style={{ width: `${(data.returning_clients / (data.new_clients + data.returning_clients)) * 100}%` }}
-                    className="h-full bg-indigo-500"
+                    style={[{ width: `${(data.returning_clients / (data.new_clients + data.returning_clients)) * 100}%` }, twStyle("h-full bg-indigo-500")]}
                   />
                 </>
               )}
             </View>
-            <View className="flex-row justify-between mt-2">
-              <View className="flex-row items-center">
-                <View className="h-3 w-3 rounded-full bg-green-500 mr-1" />
-                <Text className="text-xs text-gray-500">New ({data.new_clients})</Text>
+            <View style={twStyle("flex-row justify-between mt-2")}>
+              <View style={twStyle("flex-row items-center")}>
+                <View style={twStyle("h-3 w-3 rounded-full bg-green-500 mr-1")} />
+                <Text style={twStyle("text-xs text-gray-500")}>New ({data.new_clients})</Text>
               </View>
-              <View className="flex-row items-center">
-                <View className="h-3 w-3 rounded-full bg-indigo-500 mr-1" />
-                <Text className="text-xs text-gray-500">Returning ({data.returning_clients})</Text>
+              <View style={twStyle("flex-row items-center")}>
+                <View style={twStyle("h-3 w-3 rounded-full bg-indigo-500 mr-1")} />
+                <Text style={twStyle("text-xs text-gray-500")}>Returning ({data.returning_clients})</Text>
               </View>
             </View>
           </View>
@@ -149,19 +148,19 @@ export default function ClientsReport() {
           {data.top_clients.length > 0 && (
             <View>
               <SectionHeader title="Top Clients by Spend" />
-              <View className="rounded-2xl border border-gray-100 bg-white px-4 py-1">
+              <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-1")}>
                 {data.top_clients.slice(0, 10).map((c, i) => (
-                  <View key={i} className="flex-row items-center justify-between py-3 border-b border-gray-50">
-                    <View className="flex-row items-center flex-1">
-                      <View className="h-8 w-8 rounded-full bg-pink-100 items-center justify-center mr-3">
-                        <Text className="text-sm font-bold text-pink-600">{i + 1}</Text>
+                  <View key={i} style={twStyle("flex-row items-center justify-between py-3 border-b border-gray-50")}>
+                    <View style={twStyle("flex-row items-center flex-1")}>
+                      <View style={twStyle("h-8 w-8 rounded-full bg-pink-100 items-center justify-center mr-3")}>
+                        <Text style={twStyle("text-sm font-bold text-pink-600")}>{i + 1}</Text>
                       </View>
-                      <View className="flex-1">
-                        <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>{c.name}</Text>
-                        <Text className="text-xs text-gray-400">{c.visits} visits</Text>
+                      <View style={twStyle("flex-1")}>
+                        <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={1}>{c.name}</Text>
+                        <Text style={twStyle("text-xs text-gray-400")}>{c.visits} visits</Text>
                       </View>
                     </View>
-                    <Text className="text-sm font-semibold text-gray-900">{formatCurrency(c.spend)}</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(c.spend)}</Text>
                   </View>
                 ))}
               </View>
@@ -171,16 +170,16 @@ export default function ClientsReport() {
           {data.growth.length > 0 && (
             <View>
               <SectionHeader title="Client Growth" />
-              <View className="rounded-2xl border border-gray-100 bg-white p-4">
-                <View className="flex-row items-end justify-between gap-1" style={{ height: 140 }}>
+              <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+                <View style={[twStyle("flex-row items-end justify-between"), { height: 140 }]}>
                   {data.growth.map((item, i) => {
                     const maxVal = Math.max(...data.growth.map((d) => d.count), 1);
                     const pct = Math.max((item.count / maxVal) * 100, 4);
                     return (
-                      <View key={i} className="flex-1 items-center" style={{ height: "100%", justifyContent: "flex-end" }}>
-                        <Text className="mb-1 text-[10px] font-medium text-gray-700">{item.count}</Text>
-                        <View style={{ height: `${pct}%`, backgroundColor: "#ec4899", minHeight: 4 }} className="w-full rounded-t-md" />
-                        <Text className="mt-1 text-[10px] text-gray-400">{item.month.slice(-3)}</Text>
+                      <View key={i} style={[twStyle("flex-1 items-center"), { height: "100%", justifyContent: "flex-end" }]}>
+                        <Text style={twStyle("mb-1 text-[10px] font-medium text-gray-700")}>{item.count}</Text>
+                        <View style={[{ height: `${pct}%`, backgroundColor: "#ec4899", minHeight: 4 }, twStyle("w-full rounded-t-md")]} />
+                        <Text style={twStyle("mt-1 text-[10px] text-gray-400")}>{item.month.slice(-3)}</Text>
                       </View>
                     );
                   })}
@@ -189,14 +188,14 @@ export default function ClientsReport() {
             </View>
           )}
 
-          <TouchableOpacity className="rounded-xl bg-gray-100 py-3 px-4 flex-row items-center justify-center" onPress={handleExport}>
+          <TouchableOpacity style={twStyle("rounded-xl bg-gray-100 py-3 px-4 flex-row items-center justify-center")} onPress={handleExport}>
             <Ionicons name="share-outline" size={18} color="#374151" />
-            <Text className="ml-2 text-sm font-medium text-gray-700">Export Report</Text>
+            <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>Export Report</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

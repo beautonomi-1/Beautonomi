@@ -15,6 +15,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 type DateRange = "today" | "week" | "month" | "last_month" | "3months";
 
@@ -88,74 +89,74 @@ export default function StaffReport() {
     <ScreenContainer>
       <ScreenHeader title="Staff" showBack subtitle="Performance, hours & commissions" />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4" contentContainerStyle={{ gap: 8 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4")} contentContainerStyle={{ flexDirection: "row" }}>
         {DATE_RANGES.map((r) => (
           <TouchableOpacity
             key={r.value}
-            className={`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`}
+            style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
           >
-            <Text className={`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`}>{r.label}</Text>
+            <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      {loading && !data && <ActivityIndicator className="my-8" color="#6366f1" />}
+      {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#6366f1" />}
       {!loading && (!data || data.staff.length === 0) && (
         <EmptyState icon="people-outline" title="No staff data" description="Staff performance data will appear here" />
       )}
 
       {data && data.staff.length > 0 && (
-        <View className="gap-4">
+        <View>
           {/* Staff selector chips */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row" }}>
             <TouchableOpacity
-              className={`rounded-full px-4 py-2 ${!selectedStaff ? "bg-indigo-600" : "border border-gray-200 bg-white"}`}
+              style={[twStyle(`rounded-full px-4 py-2 ${!selectedStaff ? "bg-indigo-600" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
               onPress={() => setSelectedStaff(null)}
             >
-              <Text className={`text-sm font-medium ${!selectedStaff ? "text-white" : "text-gray-600"}`}>All Staff</Text>
+              <Text style={twStyle(`text-sm font-medium ${!selectedStaff ? "text-white" : "text-gray-600"}`)}>All Staff</Text>
             </TouchableOpacity>
             {data.staff.map((s) => (
               <TouchableOpacity
                 key={s.name}
-                className={`rounded-full px-4 py-2 ${selectedStaff === s.name ? "bg-indigo-600" : "border border-gray-200 bg-white"}`}
+                style={[twStyle(`rounded-full px-4 py-2 ${selectedStaff === s.name ? "bg-indigo-600" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedStaff(s.name); }}
               >
-                <Text className={`text-sm font-medium ${selectedStaff === s.name ? "text-white" : "text-gray-600"}`}>{s.name}</Text>
+                <Text style={twStyle(`text-sm font-medium ${selectedStaff === s.name ? "text-white" : "text-gray-600"}`)}>{s.name}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
 
           {/* Individual staff detail */}
           {selected && (
-            <View className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
-              <Text className="text-lg font-bold text-indigo-900 mb-3">{selected.name}</Text>
-              <View className="flex-row flex-wrap gap-3">
-                <View className="flex-1 min-w-[45%] bg-white rounded-xl p-3">
-                  <Text className="text-xs text-gray-500">Bookings</Text>
-                  <Text className="text-xl font-bold text-gray-900">{selected.bookings}</Text>
+            <View style={[twStyle("rounded-2xl border border-indigo-100 bg-indigo-50 p-4"), { marginTop: 16 }]}>
+              <Text style={twStyle("text-lg font-bold text-indigo-900 mb-3")}>{selected.name}</Text>
+              <View style={twStyle("flex-row flex-wrap")}>
+                <View style={[twStyle("flex-1 min-w-[45%] bg-white rounded-xl p-3"), { marginRight: 12, marginBottom: 12 }]}>
+                  <Text style={twStyle("text-xs text-gray-500")}>Bookings</Text>
+                  <Text style={twStyle("text-xl font-bold text-gray-900")}>{selected.bookings}</Text>
                 </View>
-                <View className="flex-1 min-w-[45%] bg-white rounded-xl p-3">
-                  <Text className="text-xs text-gray-500">Revenue</Text>
-                  <Text className="text-xl font-bold text-gray-900">{formatCurrency(selected.revenue)}</Text>
+                <View style={[twStyle("flex-1 min-w-[45%] bg-white rounded-xl p-3"), { marginRight: 12, marginBottom: 12 }]}>
+                  <Text style={twStyle("text-xs text-gray-500")}>Revenue</Text>
+                  <Text style={twStyle("text-xl font-bold text-gray-900")}>{formatCurrency(selected.revenue)}</Text>
                 </View>
-                <View className="flex-1 min-w-[45%] bg-white rounded-xl p-3">
-                  <Text className="text-xs text-gray-500">Rating</Text>
-                  <View className="flex-row items-center">
+                <View style={[twStyle("flex-1 min-w-[45%] bg-white rounded-xl p-3"), { marginRight: 12, marginBottom: 12 }]}>
+                  <Text style={twStyle("text-xs text-gray-500")}>Rating</Text>
+                  <View style={twStyle("flex-row items-center")}>
                     <Ionicons name="star" size={16} color="#f59e0b" />
-                    <Text className="text-xl font-bold text-gray-900 ml-1">{selected.rating.toFixed(1)}</Text>
+                    <Text style={twStyle("text-xl font-bold text-gray-900 ml-1")}>{selected.rating.toFixed(1)}</Text>
                   </View>
                 </View>
                 {selected.hours_worked != null && (
-                  <View className="flex-1 min-w-[45%] bg-white rounded-xl p-3">
-                    <Text className="text-xs text-gray-500">Hours Worked</Text>
-                    <Text className="text-xl font-bold text-gray-900">{selected.hours_worked}h</Text>
+                  <View style={[twStyle("flex-1 min-w-[45%] bg-white rounded-xl p-3"), { marginRight: 12, marginBottom: 12 }]}>
+                    <Text style={twStyle("text-xs text-gray-500")}>Hours Worked</Text>
+                    <Text style={twStyle("text-xl font-bold text-gray-900")}>{selected.hours_worked}h</Text>
                   </View>
                 )}
                 {selected.commission != null && (
-                  <View className="flex-1 min-w-[45%] bg-white rounded-xl p-3">
-                    <Text className="text-xs text-gray-500">Commission</Text>
-                    <Text className="text-xl font-bold text-gray-900">{formatCurrency(selected.commission)}</Text>
+                  <View style={[twStyle("flex-1 min-w-[45%] bg-white rounded-xl p-3"), { marginRight: 12, marginBottom: 12 }]}>
+                    <Text style={twStyle("text-xs text-gray-500")}>Commission</Text>
+                    <Text style={twStyle("text-xl font-bold text-gray-900")}>{formatCurrency(selected.commission)}</Text>
                   </View>
                 )}
               </View>
@@ -166,16 +167,16 @@ export default function StaffReport() {
           {!selected && (
             <>
               <SectionHeader title="Bookings per Staff" />
-              <View className="rounded-2xl border border-gray-100 bg-white p-4">
-                <View className="flex-row items-end justify-between gap-1" style={{ height: 140 }}>
+              <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+                <View style={[twStyle("flex-row items-end justify-between"), { height: 140 }]}>
                   {data.staff.map((s, i) => {
                     const maxVal = Math.max(...data.staff.map((d) => d.bookings), 1);
                     const pct = Math.max((s.bookings / maxVal) * 100, 4);
                     return (
-                      <View key={i} className="flex-1 items-center" style={{ height: "100%", justifyContent: "flex-end" }}>
-                        <Text className="mb-1 text-[10px] font-medium text-gray-700">{s.bookings}</Text>
-                        <View style={{ height: `${pct}%`, backgroundColor: "#6366f1", minHeight: 4 }} className="w-full rounded-t-md" />
-                        <Text className="mt-1 text-[9px] text-gray-400" numberOfLines={1}>{s.name.split(' ')[0]}</Text>
+                      <View key={i} style={[twStyle("flex-1 items-center"), { height: "100%", justifyContent: "flex-end", marginRight: i < data.staff.length - 1 ? 4 : 0 }]}>
+                        <Text style={twStyle("mb-1 text-[10px] font-medium text-gray-700")}>{s.bookings}</Text>
+                        <View style={[{ height: `${pct}%`, backgroundColor: "#6366f1", minHeight: 4 }, twStyle("w-full rounded-t-md")]} />
+                        <Text style={twStyle("mt-1 text-[9px] text-gray-400")} numberOfLines={1}>{s.name.split(' ')[0]}</Text>
                       </View>
                     );
                   })}
@@ -183,23 +184,23 @@ export default function StaffReport() {
               </View>
 
               <SectionHeader title="Revenue per Staff" />
-              <View className="rounded-2xl border border-gray-100 bg-white px-4 py-1">
+              <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-1")}>
                 {data.staff.map((s, i) => (
-                  <View key={i} className="flex-row items-center justify-between py-2.5 border-b border-gray-50">
-                    <Text className="text-sm text-gray-600">{s.name}</Text>
-                    <Text className="text-sm font-semibold text-gray-900">{formatCurrency(s.revenue)}</Text>
+                  <View key={i} style={twStyle("flex-row items-center justify-between py-2.5 border-b border-gray-50")}>
+                    <Text style={twStyle("text-sm text-gray-600")}>{s.name}</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(s.revenue)}</Text>
                   </View>
                 ))}
               </View>
 
               <SectionHeader title="Ratings" />
-              <View className="rounded-2xl border border-gray-100 bg-white px-4 py-1">
+              <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-1")}>
                 {data.staff.map((s, i) => (
-                  <View key={i} className="flex-row items-center justify-between py-2.5 border-b border-gray-50">
-                    <Text className="text-sm text-gray-600">{s.name}</Text>
-                    <View className="flex-row items-center">
+                  <View key={i} style={twStyle("flex-row items-center justify-between py-2.5 border-b border-gray-50")}>
+                    <Text style={twStyle("text-sm text-gray-600")}>{s.name}</Text>
+                    <View style={twStyle("flex-row items-center")}>
                       <Ionicons name="star" size={14} color="#f59e0b" />
-                      <Text className="ml-1 text-sm font-semibold text-gray-900">{s.rating.toFixed(1)}</Text>
+                      <Text style={twStyle("ml-1 text-sm font-semibold text-gray-900")}>{s.rating.toFixed(1)}</Text>
                     </View>
                   </View>
                 ))}
@@ -207,14 +208,14 @@ export default function StaffReport() {
             </>
           )}
 
-          <TouchableOpacity className="rounded-xl bg-gray-100 py-3 px-4 flex-row items-center justify-center" onPress={handleExport}>
+          <TouchableOpacity style={twStyle("rounded-xl bg-gray-100 py-3 px-4 flex-row items-center justify-center")} onPress={handleExport}>
             <Ionicons name="share-outline" size={18} color="#374151" />
-            <Text className="ml-2 text-sm font-medium text-gray-700">Export Report</Text>
+            <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>Export Report</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

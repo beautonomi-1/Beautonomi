@@ -519,7 +519,7 @@ export default function BookingFlow() {
                   key={step}
                   className={`flex-1 h-1 rounded-full transition-colors ${
                     isCompleted || isCurrent
-                      ? "bg-[#FF0077]"
+                      ? "bg-primary"
                       : "bg-gray-200"
                   }`}
                   aria-label={`Step ${index + 1} of ${getEffectiveStepOrder().length}: ${step}`}

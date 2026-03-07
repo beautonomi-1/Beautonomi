@@ -46,7 +46,7 @@ function CommentBody({ body }: { body: string }) {
     <span className="text-sm text-gray-800 break-words">
       {parts.map((part, i) =>
         part.startsWith("@") ? (
-          <span key={i} className="font-medium text-[#FF0077]">
+          <span key={i} className="font-medium text-primary">
             {part}
           </span>
         ) : (
@@ -154,7 +154,7 @@ export default function ProviderExploreViewPage() {
         showLoading={false}
       >
         <div className="min-h-screen bg-white flex items-center justify-center">
-          <Loader2 className="w-10 h-10 animate-spin text-[#FF0077]" />
+          <Loader2 className="w-10 h-10 animate-spin text-primary" />
         </div>
       </RoleGuard>
     );
@@ -263,7 +263,7 @@ export default function ProviderExploreViewPage() {
                     href="/explore"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-[#FF0077] hover:underline ml-auto"
+                    className="flex items-center gap-1 text-primary hover:underline ml-auto"
                   >
                     <ExternalLink className="w-4 h-4" />
                     View on Explore
@@ -338,7 +338,7 @@ export default function ProviderExploreViewPage() {
                   type="button"
                   onClick={loadMoreComments}
                   disabled={commentsLoading}
-                  className="mt-3 text-sm text-[#FF0077] hover:underline"
+                  className="mt-3 text-sm text-primary hover:underline"
                 >
                   {commentsLoading ? "Loading..." : "Load more comments"}
                 </button>
@@ -357,12 +357,12 @@ export default function ProviderExploreViewPage() {
                     }
                   }}
                   maxLength={200}
-                  className="flex-1 min-w-0 rounded-lg border border-gray-200 px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#FF0077]/30 focus:border-[#FF0077] outline-none"
+                  className="flex-1 min-w-0 rounded-lg border border-gray-200 px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none"
                 />
                 <Button
                   onClick={submitComment}
                   disabled={!commentInput.trim() || commentSubmitting}
-                  className="bg-[#FF0077] hover:bg-[#D60565] text-white shrink-0"
+                  className="bg-primary hover:bg-primary-hover text-white shrink-0"
                 >
                   {commentSubmitting ? (
                     <>

@@ -29,6 +29,7 @@ import {
   formatDate,
   formatTime,
 } from "@/lib/format";
+import { Colors } from "@/constants/colors";
 
 interface DashboardMetrics {
   revenue_today: number;
@@ -414,27 +415,27 @@ export default function SalesScreen() {
           onChangeText={setClientSearch}
         />
         <TouchableOpacity
-          className="mt-3 flex-row items-center rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4"
+          style={{ marginTop: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], padding: 16 }}
           onPress={handleWalkIn}
           accessibilityLabel="Walk-in customer, no client selected"
           accessibilityRole="button"
         >
-          <Ionicons name="person-outline" size={20} color="#6b7280" />
-          <Text className="ml-3 text-sm font-medium text-gray-700">
+          <Ionicons name="person-outline" size={20} color={Colors.gray[500]} />
+          <Text style={{ marginLeft: 12, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
             Walk-in (No client)
           </Text>
         </TouchableOpacity>
-        <View className="mt-3 gap-2">
-          {filteredClients.map((c) => (
+        <View style={{ marginTop: 12 }}>
+          {filteredClients.map((c, i) => (
             <TouchableOpacity
               key={c.id}
-              className="flex-row items-center rounded-xl border border-gray-100 bg-white p-4"
+              style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, marginTop: i === 0 ? 0 : 8 }}
               onPress={() => handleSelectClient(c)}
               accessibilityLabel={`Select client ${c.full_name}`}
               accessibilityRole="button"
             >
-              <View className="h-11 w-11 items-center justify-center rounded-full bg-indigo-50">
-                <Text className="text-sm font-semibold text-indigo-600">
+              <View style={{ height: 44, width: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: "#eef2ff" }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#4f46e5" }}>
                   {c.full_name
                     .split(" ")
                     .map((w) => w[0])
@@ -443,15 +444,15 @@ export default function SalesScreen() {
                     .toUpperCase()}
                 </Text>
               </View>
-              <View className="ml-3 flex-1">
-                <Text className="text-sm font-medium text-gray-900">
+              <View style={{ marginLeft: 12, flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
                   {c.full_name}
                 </Text>
                 {c.phone && (
-                  <Text className="text-xs text-gray-500">{c.phone}</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{c.phone}</Text>
                 )}
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+              <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
             </TouchableOpacity>
           ))}
         </View>
@@ -462,11 +463,11 @@ export default function SalesScreen() {
   function renderCartItemControls(itemId: string, inCart: CartItem | undefined) {
     if (inCart) {
       return (
-        <View className="flex-row items-center rounded-lg bg-indigo-100 px-2 py-1">
+        <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#e0e7ff", paddingHorizontal: 8, paddingVertical: 4 }}>
           <TouchableOpacity onPress={() => updateQuantity(itemId, inCart.quantity - 1)} accessibilityLabel="Decrease quantity">
             <Ionicons name="remove" size={16} color="#6366f1" />
           </TouchableOpacity>
-          <Text className="mx-2 text-sm font-semibold text-indigo-700">{inCart.quantity}</Text>
+          <Text style={{ marginHorizontal: 8, fontSize: 14, fontWeight: "600", color: "#4338ca" }}>{inCart.quantity}</Text>
           <TouchableOpacity onPress={() => updateQuantity(itemId, inCart.quantity + 1)} accessibilityLabel="Increase quantity">
             <Ionicons name="add" size={16} color="#6366f1" />
           </TouchableOpacity>
@@ -484,92 +485,107 @@ export default function SalesScreen() {
         title="Add Items"
         snapHeight="full"
       >
-        <Text className="mb-2 text-xs text-gray-500">
+        <Text style={{ marginBottom: 8, fontSize: 12, color: Colors.gray[500] }}>
           Client: {selectedClient?.full_name ?? "Walk-in"}
         </Text>
 
-        {/* Tab toggle: Services / Products */}
-        <View className="mb-3 flex-row rounded-xl bg-gray-100 p-1">
+        <View style={{ marginBottom: 12, flexDirection: "row", borderRadius: 12, backgroundColor: Colors.gray[100], padding: 4 }}>
           <TouchableOpacity
-            className={`flex-1 items-center rounded-lg py-2 ${cartTab === "services" ? "bg-white shadow-sm" : ""}`}
+            style={[ { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 8 }, cartTab === "services" && { backgroundColor: Colors.white, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 } ]}
             onPress={() => setCartTab("services")}
             accessibilityLabel="Services tab"
           >
-            <Text className={`text-sm font-medium ${cartTab === "services" ? "text-gray-900" : "text-gray-500"}`}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: cartTab === "services" ? Colors.gray[900] : Colors.gray[500] }}>
               Services
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            className={`flex-1 items-center rounded-lg py-2 ${cartTab === "products" ? "bg-white shadow-sm" : ""}`}
+            style={[ { flex: 1, alignItems: "center", paddingVertical: 8, borderRadius: 8 }, cartTab === "products" && { backgroundColor: Colors.white, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 } ]}
             onPress={() => setCartTab("products")}
             accessibilityLabel="Products tab"
           >
-            <Text className={`text-sm font-medium ${cartTab === "products" ? "text-gray-900" : "text-gray-500"}`}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: cartTab === "products" ? Colors.gray[900] : Colors.gray[500] }}>
               Products
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Services list */}
         {cartTab === "services" && (
-          <View className="gap-2">
-            {(catalogue ?? []).map((svc) => {
+          <View>
+            {(catalogue ?? []).map((svc, i) => {
               const inCart = cart.find((i) => i.item_id === svc.id && i.type === "service");
               return (
                 <TouchableOpacity
                   key={svc.id}
-                  className={`flex-row items-center justify-between rounded-xl border p-4 ${inCart ? "border-indigo-300 bg-indigo-50" : "border-gray-100 bg-white"}`}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    padding: 16,
+                    marginTop: i === 0 ? 0 : 8,
+                    ...(inCart ? { borderColor: "#a5b4fc", backgroundColor: "#eef2ff" } : { borderColor: Colors.gray[100], backgroundColor: Colors.white }),
+                  }}
                   onPress={() => addServiceToCart(svc)}
                   accessibilityLabel={`Add ${svc.title} to cart`}
                 >
-                  <View className="flex-1">
-                    <Text className="text-sm font-medium text-gray-900">{svc.title}</Text>
-                    <Text className="mt-0.5 text-xs text-gray-500">{svc.duration_minutes}min</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{svc.title}</Text>
+                    <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{svc.duration_minutes}min</Text>
                   </View>
-                  <View className="flex-row items-center">
-                    <Text className="mr-3 text-sm font-semibold text-gray-900">{formatCurrency(svc.price, svc.currency)}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text style={{ marginRight: 12, fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{formatCurrency(svc.price, svc.currency)}</Text>
                     {renderCartItemControls(svc.id, inCart)}
                   </View>
                 </TouchableOpacity>
               );
             })}
             {(!catalogue || catalogue.length === 0) && (
-              <Text className="py-6 text-center text-sm text-gray-400">No active services</Text>
+              <Text style={{ paddingVertical: 24, textAlign: "center", fontSize: 14, color: Colors.gray[400] }}>No active services</Text>
             )}
           </View>
         )}
 
-        {/* Products list */}
         {cartTab === "products" && (
-          <View className="gap-2">
-            {products.map((prod) => {
+          <View>
+            {products.map((prod, i) => {
               const inCart = cart.find((i) => i.item_id === prod.id && i.type === "product");
               return (
                 <TouchableOpacity
                   key={prod.id}
-                  className={`flex-row items-center justify-between rounded-xl border p-4 ${inCart ? "border-indigo-300 bg-indigo-50" : "border-gray-100 bg-white"}`}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    padding: 16,
+                    marginTop: i === 0 ? 0 : 8,
+                    ...(inCart ? { borderColor: "#a5b4fc", backgroundColor: "#eef2ff" } : { borderColor: Colors.gray[100], backgroundColor: Colors.white }),
+                  }}
                   onPress={() => addProductToCart(prod)}
                   accessibilityLabel={`Add ${prod.name} to cart`}
                 >
-                  <View className="flex-1">
-                    <Text className="text-sm font-medium text-gray-900">{prod.name}</Text>
-                    {prod.sku && <Text className="mt-0.5 text-xs text-gray-500">SKU: {prod.sku}</Text>}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{prod.name}</Text>
+                    {prod.sku && <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>SKU: {prod.sku}</Text>}
                   </View>
-                  <View className="flex-row items-center">
-                    <Text className="mr-3 text-sm font-semibold text-gray-900">{formatCurrency(prod.retail_price)}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text style={{ marginRight: 12, fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{formatCurrency(prod.retail_price)}</Text>
                     {renderCartItemControls(prod.id, inCart)}
                   </View>
                 </TouchableOpacity>
               );
             })}
             {products.length === 0 && (
-              <Text className="py-6 text-center text-sm text-gray-400">No products available</Text>
+              <Text style={{ paddingVertical: 24, textAlign: "center", fontSize: 14, color: Colors.gray[400] }}>No products available</Text>
             )}
           </View>
         )}
 
         {cart.length > 0 && (
-          <View className="mt-4">
+          <View style={{ marginTop: 16 }}>
             <ActionButton
               label={`Continue with ${cart.length} item${cart.length > 1 ? "s" : ""} (${formatCurrency(cartTotal)})`}
               variant="secondary"
@@ -591,56 +607,53 @@ export default function SalesScreen() {
         title="Review Order"
         snapHeight="full"
       >
-        {/* Client */}
-        <View className="mb-4 flex-row items-center rounded-xl bg-gray-50 p-3">
-          <Ionicons name="person-outline" size={18} color="#6b7280" />
-          <Text className="ml-2 text-sm text-gray-700">
+        <View style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
+          <Ionicons name="person-outline" size={18} color={Colors.gray[500]} />
+          <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[700] }}>
             {selectedClient?.full_name ?? "Walk-in Customer"}
           </Text>
         </View>
 
-        {/* Cart Items */}
         {cart.map((item) => (
           <View
             key={`${item.type}-${item.item_id}`}
-            className="flex-row items-center justify-between border-b border-gray-50 py-3"
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: Colors.gray[50], paddingVertical: 12 }}
           >
-            <View className="flex-1">
-              <Text className="text-sm font-medium text-gray-900">
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
                 {item.name}
               </Text>
-              <Text className="text-xs text-gray-500">
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
                 {item.type === "product" ? "Product" : "Service"} · Qty: {item.quantity}
               </Text>
             </View>
-            <Text className="text-sm font-semibold text-gray-900">
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
               {formatCurrency(item.price * item.quantity)}
             </Text>
           </View>
         ))}
 
-        {/* Team Member */}
         {staffMembers && staffMembers.length > 0 && (
-          <View className="mt-4">
-            <Text className="mb-2 text-sm font-medium text-gray-700">Assigned To</Text>
-            <View className="flex-row flex-wrap gap-2">
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Assigned To</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
               <TouchableOpacity
-                className={`rounded-full px-3 py-1.5 ${!selectedStaffId ? "bg-gray-900" : "border border-gray-200 bg-white"}`}
+                style={[ { borderRadius: 9999, paddingHorizontal: 12, paddingVertical: 6, marginRight: 8, marginBottom: 8 }, !selectedStaffId ? { backgroundColor: Colors.gray[900] } : { borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white } ]}
                 onPress={() => setSelectedStaffId(null)}
                 accessibilityLabel="No staff assigned"
               >
-                <Text className={`text-xs font-medium ${!selectedStaffId ? "text-white" : "text-gray-600"}`}>
+                <Text style={{ fontSize: 12, fontWeight: "500", color: !selectedStaffId ? Colors.white : Colors.gray[600] }}>
                   None
                 </Text>
               </TouchableOpacity>
               {staffMembers.map((s) => (
                 <TouchableOpacity
                   key={s.id}
-                  className={`rounded-full px-3 py-1.5 ${selectedStaffId === s.id ? "bg-gray-900" : "border border-gray-200 bg-white"}`}
+                  style={[ { borderRadius: 9999, paddingHorizontal: 12, paddingVertical: 6, marginRight: 8, marginBottom: 8 }, selectedStaffId === s.id ? { backgroundColor: Colors.gray[900] } : { borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white } ]}
                   onPress={() => setSelectedStaffId(s.id)}
                   accessibilityLabel={`Assign to ${s.name}`}
                 >
-                  <Text className={`text-xs font-medium ${selectedStaffId === s.id ? "text-white" : "text-gray-600"}`}>
+                  <Text style={{ fontSize: 12, fontWeight: "500", color: selectedStaffId === s.id ? Colors.white : Colors.gray[600] }}>
                     {s.name}
                   </Text>
                 </TouchableOpacity>
@@ -649,15 +662,14 @@ export default function SalesScreen() {
           </View>
         )}
 
-        {/* Discount */}
-        <View className="mt-4">
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+        <View style={{ marginTop: 16 }}>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
             Discount (R)
           </Text>
           <TextInput
-            className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"
+            style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, color: Colors.gray[900] }}
             placeholder="0"
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={Colors.gray[400]}
             value={discount}
             onChangeText={setDiscount}
             keyboardType="numeric"
@@ -665,15 +677,14 @@ export default function SalesScreen() {
           />
         </View>
 
-        {/* Tip */}
-        <View className="mt-3">
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+        <View style={{ marginTop: 12 }}>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
             Tip (R)
           </Text>
           <TextInput
-            className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"
+            style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, color: Colors.gray[900] }}
             placeholder="0"
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={Colors.gray[400]}
             value={tip}
             onChangeText={setTip}
             keyboardType="numeric"
@@ -681,84 +692,62 @@ export default function SalesScreen() {
           />
         </View>
 
-        {/* Payment Method */}
-        <Text className="mb-2 mt-4 text-sm font-medium text-gray-700">
+        <Text style={{ marginBottom: 8, marginTop: 16, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
           Payment Method
         </Text>
-        <View className="flex-row gap-2">
-          {PAYMENT_METHODS.map((pm) => (
+        <View style={{ flexDirection: "row" }}>
+          {PAYMENT_METHODS.map((pm, idx) => (
             <TouchableOpacity
               key={pm.value}
-              className={`flex-1 flex-row items-center justify-center rounded-xl border py-3 ${
-                paymentMethod === pm.value
-                  ? "border-indigo-400 bg-indigo-50"
-                  : "border-gray-200 bg-white"
-              }`}
+              style={[
+                { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, paddingVertical: 12 },
+                idx > 0 && { marginLeft: 8 },
+                paymentMethod === pm.value ? { borderColor: "#818cf8", backgroundColor: "#eef2ff" } : { borderColor: Colors.gray[200], backgroundColor: Colors.white },
+              ]}
               onPress={() => setPaymentMethod(pm.value)}
               accessibilityLabel={`Payment method: ${pm.label}`}
               accessibilityRole="button"
             >
-              <Ionicons
-                name={pm.icon}
-                size={16}
-                color={paymentMethod === pm.value ? "#6366f1" : "#6b7280"}
-              />
-              <Text
-                className={`ml-1.5 text-sm font-medium ${
-                  paymentMethod === pm.value
-                    ? "text-indigo-700"
-                    : "text-gray-600"
-                }`}
-              >
+              <Ionicons name={pm.icon} size={16} color={paymentMethod === pm.value ? "#6366f1" : Colors.gray[500]} style={{ marginRight: 6 }} />
+              <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "500", color: paymentMethod === pm.value ? "#4338ca" : Colors.gray[600] }}>
                 {pm.label}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Totals */}
-        <View className="mt-4 rounded-xl bg-gray-50 p-4">
-          <View className="flex-row items-center justify-between">
-            <Text className="text-sm text-gray-600">Subtotal</Text>
-            <Text className="text-sm text-gray-900">
-              {formatCurrency(cartTotal)}
-            </Text>
+        <View style={{ marginTop: 16, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 16 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Subtotal</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{formatCurrency(cartTotal)}</Text>
           </View>
           {discountAmount > 0 && (
-            <View className="mt-1 flex-row items-center justify-between">
-              <Text className="text-sm text-gray-600">Discount</Text>
-              <Text className="text-sm text-red-600">
-                -{formatCurrency(discountAmount)}
-              </Text>
+            <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Discount</Text>
+              <Text style={{ fontSize: 14, color: Colors.error }}>-{formatCurrency(discountAmount)}</Text>
             </View>
           )}
-          <View className="mt-1 flex-row items-center justify-between">
-            <Text className="text-sm text-gray-600">
+          <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
               VAT ({(taxRate * 100).toFixed(0)}%){taxInclusive ? " (incl.)" : ""}
             </Text>
-            <Text className="text-sm text-gray-500">
-              {formatCurrency(taxAmount)}
-            </Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{formatCurrency(taxAmount)}</Text>
           </View>
           {tipAmount > 0 && (
-            <View className="mt-1 flex-row items-center justify-between">
-              <Text className="text-sm text-gray-600">Tip</Text>
-              <Text className="text-sm text-gray-900">
-                +{formatCurrency(tipAmount)}
-              </Text>
+            <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Tip</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[900] }}>+{formatCurrency(tipAmount)}</Text>
             </View>
           )}
-          <View className="mt-2 border-t border-gray-200 pt-2">
-            <View className="flex-row items-center justify-between">
-              <Text className="text-base font-bold text-gray-900">Total</Text>
-              <Text className="text-lg font-bold text-gray-900">
-                {formatCurrency(grandTotal)}
-              </Text>
+          <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: Colors.gray[200], paddingTop: 8 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{formatCurrency(grandTotal)}</Text>
             </View>
           </View>
         </View>
 
-        <View className="mt-4">
+        <View style={{ marginTop: 16 }}>
           <ActionButton
             label={`Complete Sale - ${formatCurrency(grandTotal)}`}
             variant="secondary"
@@ -769,12 +758,12 @@ export default function SalesScreen() {
           />
         </View>
         <TouchableOpacity
-          className="mt-3 items-center py-2"
+          style={{ marginTop: 12, alignItems: "center", paddingVertical: 8 }}
           onPress={() => setCheckoutStep("select_services")}
           accessibilityLabel="Go back to item selection"
           accessibilityRole="button"
         >
-          <Text className="text-sm text-gray-500">Back to items</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Back to items</Text>
         </TouchableOpacity>
       </BottomSheet>
     );
@@ -790,47 +779,41 @@ export default function SalesScreen() {
         title="Receipt"
         snapHeight="half"
       >
-        <View className="items-center">
-          <View className="h-16 w-16 items-center justify-center rounded-full bg-green-100">
+        <View style={{ alignItems: "center" }}>
+          <View style={{ height: 64, width: 64, alignItems: "center", justifyContent: "center", borderRadius: 32, backgroundColor: "#dcfce7" }}>
             <Ionicons name="checkmark-circle" size={36} color="#22c55e" />
           </View>
-          <Text className="mt-3 text-lg font-bold text-gray-900">
+          <Text style={{ marginTop: 12, fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
             Sale Complete!
           </Text>
-          <Text className="mt-1 text-sm text-gray-500">
-            {receiptData.client} &middot;{" "}
-            {format(new Date(receiptData.date), "MMM d, HH:mm")}
+          <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[500] }}>
+            {receiptData.client} · {format(new Date(receiptData.date), "MMM d, HH:mm")}
           </Text>
         </View>
 
-        <View className="mt-4 rounded-xl bg-gray-50 p-4">
+        <View style={{ marginTop: 16, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 16 }}>
           {receiptData.items.map((item, idx) => (
-            <View
-              key={idx}
-              className="flex-row items-center justify-between py-1.5"
-            >
-              <Text className="text-sm text-gray-700">
+            <View key={idx} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 }}>
+              <Text style={{ fontSize: 14, color: Colors.gray[700] }}>
                 {item.name} x{item.quantity}
               </Text>
-              <Text className="text-sm text-gray-900">
+              <Text style={{ fontSize: 14, color: Colors.gray[900] }}>
                 {formatCurrency(item.price * item.quantity)}
               </Text>
             </View>
           ))}
-          <View className="mt-2 border-t border-gray-200 pt-2">
-            <View className="flex-row items-center justify-between">
-              <Text className="text-base font-bold text-gray-900">Total</Text>
-              <Text className="text-lg font-bold text-gray-900">
-                {formatCurrency(receiptData.total)}
-              </Text>
+          <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: Colors.gray[200], paddingTop: 8 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{formatCurrency(receiptData.total)}</Text>
             </View>
-            <Text className="mt-1 text-xs text-gray-500 capitalize">
+            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500], textTransform: "capitalize" }}>
               Paid via {receiptData.method}
             </Text>
           </View>
         </View>
 
-        <View className="mt-4">
+        <View style={{ marginTop: 16 }}>
           <ActionButton
             label="Done"
             variant="primary"
@@ -849,7 +832,7 @@ export default function SalesScreen() {
         subtitle={`${sales.length} transactions`}
         rightAction={
           <TouchableOpacity
-            className="min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-gray-100"
+            style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: Colors.gray[100] }}
             onPress={() => router.push("/(app)/(tabs)/more/finance" as any)}
             accessibilityLabel="View finance reports"
             accessibilityRole="button"
@@ -859,47 +842,41 @@ export default function SalesScreen() {
         }
       />
 
-      {/* Revenue Stats */}
-      <View className={`gap-3 ${isTablet ? "flex-row" : ""}`}>
-        <View className={isTablet ? "flex-1" : ""}>
+      <View style={[ isTablet ? { flexDirection: "row" } : {} ]}>
+        <View style={[ isTablet ? { flex: 1 } : {}, isTablet && { marginRight: 12 } ]}>
           <StatCard
             title="Today's Revenue"
             value={formatCurrency(metrics?.revenue_today ?? 0)}
             icon="wallet-outline"
             iconColor="#22c55e"
-            iconBg="bg-green-50"
+            iconBg="#f0fdf4"
           />
         </View>
-        <View className={isTablet ? "flex-1" : ""}>
+        <View style={[ isTablet ? { flex: 1 } : { marginTop: 12 }, isTablet && { marginRight: 12 } ]}>
           <StatCard
             title="Monthly Revenue"
             value={formatCurrency(metrics?.revenue_this_month ?? 0)}
             icon="trending-up-outline"
             iconColor="#6366f1"
-            iconBg="bg-indigo-50"
-            trend={
-              metrics?.revenue_growth
-                ? { value: metrics.revenue_growth }
-                : undefined
-            }
+            iconBg="#eef2ff"
+            trend={metrics?.revenue_growth ? { value: metrics.revenue_growth } : undefined}
           />
         </View>
         {isTablet && (
-          <View className="flex-1">
+          <View style={{ flex: 1, marginTop: 0 }}>
             <StatCard
               title="Pending"
               value={formatCurrency(metrics?.pending_payments_amount ?? 0)}
               subtitle={`${metrics?.pending_payments_count ?? 0} payments`}
               icon="time-outline"
               iconColor="#f59e0b"
-              iconBg="bg-amber-50"
+              iconBg="#fffbeb"
             />
           </View>
         )}
       </View>
 
-      {/* Date filter */}
-      <View className="mt-4">
+      <View style={{ marginTop: 16 }}>
         <FilterChipGroup
           options={DATE_RANGES}
           selected={dateRange}
@@ -907,9 +884,8 @@ export default function SalesScreen() {
         />
       </View>
 
-      {/* Transactions */}
-      <View className="mt-4">
-        <Text className="mb-3 text-base font-semibold text-gray-900">
+      <View style={{ marginTop: 16 }}>
+        <Text style={{ marginBottom: 12, fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
           Transactions ({sales.length})
         </Text>
 
@@ -922,43 +898,34 @@ export default function SalesScreen() {
             description="Sales created via POS will appear here"
           />
         ) : (
-          <View className={isTablet ? "flex-row flex-wrap gap-3" : "gap-2"}>
+          <View style={[ isTablet ? { flexDirection: "row", flexWrap: "wrap" } : {} ]}>
             {sales.map((sale) => (
               <View
                 key={sale.id}
-                className={`rounded-xl border border-gray-100 bg-white p-4 ${
-                  isTablet ? "w-[48.5%]" : ""
-                }`}
+                style={[
+                  { borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 },
+                  isTablet ? { width: "48.5%", marginRight: 12, marginBottom: 12 } : { marginBottom: 8 },
+                ]}
                 accessibilityLabel={`Sale: ${sale.client_name ?? "Walk-in"}, ${formatCurrency(sale.total)}`}
               >
-                <View className="flex-row items-start justify-between">
-                  <View className="flex-1">
-                    <Text
-                      className="text-sm font-semibold text-gray-900"
-                      numberOfLines={1}
-                    >
+                <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
                       {sale.client_name ?? "Walk-in"}
                     </Text>
-                    <Text className="mt-0.5 text-xs text-gray-500">
-                      {sale.ref_number} · {formatDate(sale.date, "MMM d")} at{" "}
-                      {formatTime(sale.date)}
+                    <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
+                      {sale.ref_number} · {formatDate(sale.date, "MMM d")} at {formatTime(sale.date)}
                     </Text>
                   </View>
-                  <Text className="text-base font-bold text-gray-900">
+                  <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
                     {formatCurrency(sale.total)}
                   </Text>
                 </View>
-                <View className="mt-2 flex-row items-center justify-between">
-                  <Text
-                    className="text-xs text-gray-500"
-                    numberOfLines={1}
-                  >
+                <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }} numberOfLines={1}>
                     {sale.items?.map((i) => i.name).join(", ") || "Items"}
                   </Text>
-                  <Badge
-                    status={sale.payment_method}
-                    size="sm"
-                  />
+                  <Badge status={sale.payment_method} size="sm" />
                 </View>
               </View>
             ))}
@@ -966,10 +933,8 @@ export default function SalesScreen() {
         )}
       </View>
 
-      {/* New Sale FAB */}
       <TouchableOpacity
-        className="absolute bottom-24 right-5 h-14 w-14 items-center justify-center rounded-full bg-indigo-600 shadow-lg"
-        style={{ elevation: 8 }}
+        style={{ position: "absolute", bottom: 96, right: 20, height: 56, width: 56, alignItems: "center", justifyContent: "center", borderRadius: 28, backgroundColor: "#4f46e5", elevation: 8 }}
         onPress={startNewSale}
         accessibilityLabel="New sale"
         accessibilityRole="button"
@@ -995,7 +960,7 @@ export default function SalesScreen() {
         }}
       />
 
-      <View className="h-8" />
+      <View style={{ height: 32 }} />
     </ScreenContainer>
   );
 }

@@ -7,6 +7,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { Colors } from "@/constants/colors";
 
 export default function SettingsWebScreen() {
   const router = useRouter();
@@ -17,21 +18,21 @@ export default function SettingsWebScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader title={displayTitle} onBack={() => router.back()} />
-      <View className="px-2 pt-4">
-        <View className="rounded-xl border border-gray-200 bg-gray-50 p-5">
-          <View className="mb-4 h-12 w-12 items-center justify-center rounded-full bg-gray-200">
+      <View style={{ paddingHorizontal: 8, paddingTop: 16 }}>
+        <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 20 }}>
+          <View style={{ marginBottom: 16, height: 48, width: 48, alignItems: "center", justifyContent: "center", borderRadius: 24, backgroundColor: Colors.gray[200] }}>
             <Ionicons name="desktop-outline" size={24} color="#6b7280" />
           </View>
-          <Text className="text-base font-medium text-gray-900">{displayTitle}</Text>
-          <Text className="mt-2 text-sm text-gray-600 leading-5">{displayDescription}</Text>
-          <Text className="mt-4 text-sm text-gray-500">
+          <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[900] }}>{displayTitle}</Text>
+          <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600], lineHeight: 20 }}>{displayDescription}</Text>
+          <Text style={{ marginTop: 16, fontSize: 14, color: Colors.gray[500] }}>
             All settings are available in-app. Go to More → Settings & account to manage this and other settings without leaving the app.
           </Text>
           <TouchableOpacity
             onPress={() => router.back()}
-            className="mt-4 rounded-xl bg-gray-900 py-2.5"
+            style={{ marginTop: 16, borderRadius: 12, backgroundColor: Colors.gray[900], paddingVertical: 10 }}
           >
-            <Text className="text-center font-medium text-white">Back to Settings</Text>
+            <Text style={{ textAlign: "center", fontWeight: "500", color: Colors.white }}>Back to Settings</Text>
           </TouchableOpacity>
         </View>
       </View>

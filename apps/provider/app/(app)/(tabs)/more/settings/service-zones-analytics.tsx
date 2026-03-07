@@ -12,6 +12,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatCard } from "@/components/ui/StatCard";
 import { formatCurrency } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface ZoneStat {
   zone_id: string;
@@ -81,19 +82,19 @@ export default function ServiceZonesAnalyticsScreen() {
         showBack
         subtitle="At-home booking performance"
       />
-      <View className="mb-3 flex-row gap-2">
-        {(["week", "month", "quarter"] as const).map((p) => (
+      <View style={twStyle("mb-3 flex-row")}>
+        {(["week", "month", "quarter"] as const).map((p, i) => (
           <TouchableOpacity
             key={p}
-            className={`flex-1 rounded-xl border py-2 ${
+            style={[twStyle(`flex-1 rounded-xl border py-2 ${
               period === p ? "border-indigo-300 bg-indigo-50" : "border-gray-100 bg-white"
-            }`}
+            }`), i < 2 ? { marginRight: 8 } : undefined]}
             onPress={() => setPeriod(p)}
           >
             <Text
-              className={`text-center text-sm font-medium capitalize ${
+              style={twStyle(`text-center text-sm font-medium capitalize ${
                 period === p ? "text-indigo-700" : "text-gray-600"
-              }`}
+              }`)}
             >
               {p}
             </Text>
@@ -103,8 +104,8 @@ export default function ServiceZonesAnalyticsScreen() {
       {summary && (
         <>
           <SectionHeader title="Summary" />
-          <View className="mb-4 flex-row flex-wrap gap-3">
-            <View className="flex-1 min-w-[100px]">
+          <View style={twStyle("mb-4 flex-row flex-wrap")}>
+            <View style={[twStyle("flex-1 min-w-[100px]"), { marginRight: 12, marginBottom: 12 }]}>
               <StatCard
                 title="Zones"
                 value={`${summary.active_zones}/${summary.total_zones}`}
@@ -114,7 +115,7 @@ export default function ServiceZonesAnalyticsScreen() {
                 compact
               />
             </View>
-            <View className="flex-1 min-w-[100px]">
+            <View style={[twStyle("flex-1 min-w-[100px]"), { marginRight: 12, marginBottom: 12 }]}>
               <StatCard
                 title="At-home bookings"
                 value={String(summary.total_at_home_bookings)}
@@ -124,7 +125,7 @@ export default function ServiceZonesAnalyticsScreen() {
                 compact
               />
             </View>
-            <View className="flex-1 min-w-[100px]">
+            <View style={[twStyle("flex-1 min-w-[100px]"), { marginRight: 12, marginBottom: 12 }]}>
               <StatCard
                 title="Revenue"
                 value={formatCurrency(summary.total_revenue)}
@@ -134,7 +135,7 @@ export default function ServiceZonesAnalyticsScreen() {
                 compact
               />
             </View>
-            <View className="flex-1 min-w-[100px]">
+            <View style={[twStyle("flex-1 min-w-[100px]"), { marginRight: 12, marginBottom: 12 }]}>
               <StatCard
                 title="Travel fees"
                 value={formatCurrency(summary.total_travel_fees)}
@@ -155,44 +156,44 @@ export default function ServiceZonesAnalyticsScreen() {
           description="Add service zones and complete at-home bookings to see analytics."
         />
       ) : (
-        <View className="gap-2">
-          {zones.map((z) => (
+        <View>
+          {zones.map((z, idx) => (
             <View
               key={z.zone_id}
-              className="rounded-xl border border-gray-100 bg-white p-4"
+              style={[twStyle("rounded-xl border border-gray-100 bg-white p-4"), idx > 0 ? { marginTop: 8 } : undefined]}
             >
-              <View className="flex-row items-center justify-between">
-                <Text className="font-medium text-gray-900">{z.zone_name}</Text>
+              <View style={twStyle("flex-row items-center justify-between")}>
+                <Text style={twStyle("font-medium text-gray-900")}>{z.zone_name}</Text>
                 <View
-                  className={`rounded-full px-2 py-0.5 ${
+                  style={twStyle(`rounded-full px-2 py-0.5 ${
                     z.is_active ? "bg-green-50" : "bg-gray-100"
-                  }`}
+                  }`)}
                 >
                   <Text
-                    className={`text-[10px] font-medium ${
+                    style={twStyle(`text-[10px] font-medium ${
                       z.is_active ? "text-green-700" : "text-gray-500"
-                    }`}
+                    }`)}
                   >
                     {z.is_active ? "Active" : "Inactive"}
                   </Text>
                 </View>
               </View>
-              <View className="mt-2 flex-row flex-wrap gap-3">
-                <Text className="text-xs text-gray-500">
+              <View style={twStyle("mt-2 flex-row flex-wrap")}>
+                <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 12 }]}>
                   Bookings: {z.total_bookings} ({z.completed_bookings} completed)
                 </Text>
-                <Text className="text-xs text-gray-500">
+                <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 12 }]}>
                   Revenue: {formatCurrency(z.total_revenue)}
                 </Text>
-                <Text className="text-xs text-gray-500">
+                <Text style={twStyle("text-xs text-gray-500")}>
                   Travel: {formatCurrency(z.total_travel_fees)}
                 </Text>
               </View>
-              <View className="mt-1 flex-row gap-2">
-                <Text className="text-[10px] text-gray-400">
+              <View style={twStyle("mt-1 flex-row")}>
+                <Text style={[twStyle("text-[10px] text-gray-400"), { marginRight: 8 }]}>
                   Completion: {z.completion_rate.toFixed(0)}%
                 </Text>
-                <Text className="text-[10px] text-gray-400">
+                <Text style={twStyle("text-[10px] text-gray-400")}>
                   Avg: {formatCurrency(z.average_booking_value)}
                 </Text>
               </View>
@@ -200,7 +201,7 @@ export default function ServiceZonesAnalyticsScreen() {
           ))}
         </View>
       )}
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

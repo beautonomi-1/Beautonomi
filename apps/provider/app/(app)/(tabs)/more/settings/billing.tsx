@@ -22,6 +22,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -161,15 +162,15 @@ export default function BillingScreen() {
         actionLabel={editing ? "Cancel" : "Edit"}
         onAction={() => setEditing(!editing)}
       />
-      <View className="rounded-2xl border border-gray-100 bg-white p-4">
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
         {editing ? (
           <>
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
                 Billing Address
               </Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={form.billingAddress}
                 onChangeText={(t) => setForm((p) => ({ ...p, billingAddress: t }))}
                 placeholder="Street, City, Code"
@@ -178,12 +179,12 @@ export default function BillingScreen() {
                 accessibilityLabel="Billing address"
               />
             </View>
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
                 Billing Email
               </Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={form.billingEmail}
                 onChangeText={(t) => setForm((p) => ({ ...p, billingEmail: t }))}
                 placeholder="billing@example.com"
@@ -193,12 +194,12 @@ export default function BillingScreen() {
                 accessibilityLabel="Billing email"
               />
             </View>
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">
+            <View style={twStyle("mb-3")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
                 Billing Phone
               </Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={form.billingPhone}
                 onChangeText={(t) => setForm((p) => ({ ...p, billingPhone: t }))}
                 placeholder="+27 81 234 5678"
@@ -238,18 +239,18 @@ export default function BillingScreen() {
       {/* ─── Payment Methods ─── */}
       <SectionHeader title="Payment Methods" />
       {paymentMethods.length === 0 ? (
-        <View className="items-center rounded-2xl border border-gray-100 bg-white px-4 py-8">
+        <View style={twStyle("items-center rounded-2xl border border-gray-100 bg-white px-4 py-8")}>
           <Ionicons name="card-outline" size={24} color="#d1d5db" />
-          <Text className="mt-2 text-sm text-gray-400">
+          <Text style={twStyle("mt-2 text-sm text-gray-400")}>
             No payment methods on file
           </Text>
         </View>
       ) : (
-        <View className="rounded-2xl border border-gray-100 bg-white">
+        <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
           {paymentMethods.map((pm, i, arr) => (
             <View
               key={pm.id}
-              className={`flex-row items-center px-4 py-3.5 ${i < arr.length - 1 ? "border-b border-gray-50" : ""}`}
+              style={twStyle(`flex-row items-center px-4 py-3.5 ${i < arr.length - 1 ? "border-b border-gray-50" : ""}`)}
               accessibilityLabel={`${pm.name} ending in ${pm.last4 ?? "****"}`}
             >
               <Ionicons
@@ -257,19 +258,19 @@ export default function BillingScreen() {
                 size={20}
                 color="#6366f1"
               />
-              <View className="ml-3 flex-1">
-                <Text className="text-sm font-medium text-gray-900">
+              <View style={twStyle("ml-3 flex-1")}>
+                <Text style={twStyle("text-sm font-medium text-gray-900")}>
                   {pm.name}
                 </Text>
                 {pm.last4 && (
-                  <Text className="text-xs text-gray-500">
+                  <Text style={twStyle("text-xs text-gray-500")}>
                     •••• {pm.last4}
                   </Text>
                 )}
               </View>
               {pm.is_default && (
-                <View className="rounded-full bg-indigo-50 px-2.5 py-0.5">
-                  <Text className="text-xs font-medium text-indigo-700">
+                <View style={twStyle("rounded-full bg-indigo-50 px-2.5 py-0.5")}>
+                  <Text style={twStyle("text-xs font-medium text-indigo-700")}>
                     Default
                   </Text>
                 </View>
@@ -282,7 +283,7 @@ export default function BillingScreen() {
       {/* ─── Invoices ─── */}
       <SectionHeader title="Invoices" />
 
-      <View className="mb-3">
+      <View style={twStyle("mb-3")}>
         <FilterChipGroup
           options={[
             { label: "All", value: "all" },
@@ -301,7 +302,7 @@ export default function BillingScreen() {
           description="Your invoices will appear here"
         />
       ) : (
-        <View className="rounded-2xl border border-gray-100 bg-white">
+        <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
           {invoices
             .filter((inv) => {
               if (invoiceFilter === "all") return true;
@@ -312,18 +313,18 @@ export default function BillingScreen() {
             return (
               <TouchableOpacity
                 key={inv.id}
-                className={`flex-row items-center px-4 py-3.5 ${i < arr.length - 1 ? "border-b border-gray-50" : ""}`}
+                style={twStyle(`flex-row items-center px-4 py-3.5 ${i < arr.length - 1 ? "border-b border-gray-50" : ""}`)}
                 accessibilityLabel={`Invoice ${inv.invoice_number}, ${formatCurrency(inv.total_amount)}, ${inv.status}`}
                 onPress={() => setSelectedInvoice(inv)}
               >
-                <View className="mr-3 h-9 w-9 items-center justify-center rounded-lg bg-gray-50">
+                <View style={twStyle("mr-3 h-9 w-9 items-center justify-center rounded-lg bg-gray-50")}>
                   <Ionicons name="document-text-outline" size={18} color="#6b7280" />
                 </View>
-                <View className="flex-1">
-                  <Text className="text-sm font-medium text-gray-900">
+                <View style={twStyle("flex-1")}>
+                  <Text style={twStyle("text-sm font-medium text-gray-900")}>
                     {inv.invoice_number}
                   </Text>
-                  <Text className="text-xs text-gray-400">
+                  <Text style={twStyle("text-xs text-gray-400")}>
                     {formatDate(inv.issue_date)}
                     {inv.due_date && !inv.paid_at
                       ? ` · Due ${formatDate(inv.due_date)}`
@@ -331,12 +332,12 @@ export default function BillingScreen() {
                     {inv.paid_at ? ` · Paid ${formatDate(inv.paid_at)}` : ""}
                   </Text>
                 </View>
-                <View className="items-end">
-                  <Text className="text-sm font-semibold text-gray-900">
+                <View style={twStyle("items-end")}>
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                     {formatCurrency(inv.total_amount)}
                   </Text>
-                  <View className={`mt-0.5 rounded-full px-2 py-0.5 ${st.bg}`}>
-                    <Text className={`text-[10px] font-medium capitalize ${st.text}`}>
+                  <View style={twStyle(`mt-0.5 rounded-full px-2 py-0.5 ${st.bg}`)}>
+                    <Text style={twStyle(`text-[10px] font-medium capitalize ${st.text}`)}>
                       {inv.status}
                     </Text>
                   </View>
@@ -347,7 +348,7 @@ export default function BillingScreen() {
         </View>
       )}
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
 
       {/* ─── Invoice Detail Sheet ─── */}
       <BottomSheet
@@ -357,44 +358,44 @@ export default function BillingScreen() {
       >
         {selectedInvoice && (
           <View>
-            <View className="mb-3 flex-row items-center justify-between">
-              <Text className="text-sm text-gray-500">{formatDate(selectedInvoice.issue_date)}</Text>
-              <View className={`rounded-full px-3 py-1 ${invoiceStatusStyle(selectedInvoice.status).bg}`}>
-                <Text className={`text-xs font-medium capitalize ${invoiceStatusStyle(selectedInvoice.status).text}`}>
+            <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+              <Text style={twStyle("text-sm text-gray-500")}>{formatDate(selectedInvoice.issue_date)}</Text>
+              <View style={twStyle(`rounded-full px-3 py-1 ${invoiceStatusStyle(selectedInvoice.status).bg}`)}>
+                <Text style={twStyle(`text-xs font-medium capitalize ${invoiceStatusStyle(selectedInvoice.status).text}`)}>
                   {selectedInvoice.status}
                 </Text>
               </View>
             </View>
 
-            <View className="mb-3 rounded-xl border border-gray-200 bg-white p-4">
-              <View className="flex-row justify-between">
-                <Text className="text-sm text-gray-500">Amount</Text>
-                <Text className="text-lg font-bold text-gray-900">{formatCurrency(selectedInvoice.total_amount)}</Text>
+            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white p-4")}>
+              <View style={twStyle("flex-row justify-between")}>
+                <Text style={twStyle("text-sm text-gray-500")}>Amount</Text>
+                <Text style={twStyle("text-lg font-bold text-gray-900")}>{formatCurrency(selectedInvoice.total_amount)}</Text>
               </View>
               {selectedInvoice.due_date && (
-                <View className="mt-1 flex-row justify-between">
-                  <Text className="text-sm text-gray-500">Due Date</Text>
-                  <Text className="text-sm text-gray-700">{formatDate(selectedInvoice.due_date)}</Text>
+                <View style={twStyle("mt-1 flex-row justify-between")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Due Date</Text>
+                  <Text style={twStyle("text-sm text-gray-700")}>{formatDate(selectedInvoice.due_date)}</Text>
                 </View>
               )}
               {selectedInvoice.paid_at && (
-                <View className="mt-1 flex-row justify-between">
-                  <Text className="text-sm text-gray-500">Paid On</Text>
-                  <Text className="text-sm text-green-700">{formatDate(selectedInvoice.paid_at)}</Text>
+                <View style={twStyle("mt-1 flex-row justify-between")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Paid On</Text>
+                  <Text style={twStyle("text-sm text-green-700")}>{formatDate(selectedInvoice.paid_at)}</Text>
                 </View>
               )}
               {selectedInvoice.invoice_type && (
-                <View className="mt-1 flex-row justify-between">
-                  <Text className="text-sm text-gray-500">Type</Text>
-                  <Text className="text-sm text-gray-700 capitalize">{selectedInvoice.invoice_type}</Text>
+                <View style={twStyle("mt-1 flex-row justify-between")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Type</Text>
+                  <Text style={twStyle("text-sm text-gray-700 capitalize")}>{selectedInvoice.invoice_type}</Text>
                 </View>
               )}
             </View>
 
             {/* Actions */}
-            <View className="gap-2">
+            <View>
               <TouchableOpacity
-                className="flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3"
+                style={[twStyle("flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3"), { marginBottom: 8 }]}
                 onPress={async () => {
                   try {
                     await Share.share({
@@ -405,17 +406,17 @@ export default function BillingScreen() {
                 }}
               >
                 <Ionicons name="share-outline" size={18} color="#6366f1" />
-                <Text className="ml-2 text-sm font-medium text-indigo-600">Share Invoice</Text>
+                <Text style={twStyle("ml-2 text-sm font-medium text-indigo-600")}>Share Invoice</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                className="flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3"
+                style={twStyle("flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3")}
                 onPress={() =>
                   Linking.openURL(`/api/provider/invoices/${selectedInvoice.id}/download`).catch(() => {})
                 }
               >
                 <Ionicons name="download-outline" size={18} color="#6b7280" />
-                <Text className="ml-2 text-sm font-medium text-gray-700">Download</Text>
+                <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>Download</Text>
               </TouchableOpacity>
 
               {selectedInvoice.status !== "paid" && selectedInvoice.status !== "cancelled" && (
@@ -430,10 +431,10 @@ export default function BillingScreen() {
                       fullWidth
                     />
                   ) : (
-                    <View className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                      <Text className="mb-1 text-sm font-medium text-gray-700">Payment Amount</Text>
+                    <View style={twStyle("rounded-xl border border-gray-200 bg-gray-50 p-4")}>
+                      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Payment Amount</Text>
                       <TextInput
-                        className="mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                        style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                         value={paymentAmount}
                         onChangeText={setPaymentAmount}
                         keyboardType="decimal-pad"
@@ -468,7 +469,7 @@ export default function BillingScreen() {
 
                   {selectedInvoice.status === "draft" && (
                     <TouchableOpacity
-                      className="flex-row items-center justify-center rounded-xl border border-blue-200 bg-blue-50 py-3"
+                      style={twStyle("flex-row items-center justify-center rounded-xl border border-blue-200 bg-blue-50 py-3")}
                       onPress={async () => {
                         const { error: err } = await patchInvoice(
                           `/api/provider/invoices/${selectedInvoice.id}`,
@@ -483,7 +484,7 @@ export default function BillingScreen() {
                       }}
                     >
                       <Ionicons name="send-outline" size={18} color="#2563eb" />
-                      <Text className="ml-2 text-sm font-medium text-blue-700">Mark as Sent</Text>
+                      <Text style={twStyle("ml-2 text-sm font-medium text-blue-700")}>Mark as Sent</Text>
                     </TouchableOpacity>
                   )}
                 </>
@@ -510,10 +511,10 @@ function Row({
   value: string;
 }) {
   return (
-    <View className="flex-row items-center py-2.5">
+    <View style={twStyle("flex-row items-center py-2.5")}>
       <Ionicons name={icon} size={18} color="#6b7280" />
-      <Text className="ml-3 w-20 text-sm text-gray-500">{label}</Text>
-      <Text className="flex-1 text-sm text-gray-900">{value}</Text>
+      <Text style={twStyle("ml-3 w-20 text-sm text-gray-500")}>{label}</Text>
+      <Text style={twStyle("flex-1 text-sm text-gray-900")}>{value}</Text>
     </View>
   );
 }

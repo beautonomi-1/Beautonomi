@@ -159,11 +159,11 @@ export default function ProviderSettings() {
 
       {/* Upgrade Banner for Freelancers */}
       {!isLoading && businessType === "freelancer" && (
-        <Alert className="mb-6 border-[#FF0077]/20 bg-gradient-to-r from-[#FF0077]/5 to-[#D60565]/5">
-          <Sparkles className="w-4 h-4 text-[#FF0077]" />
+        <Alert className="mb-6 border-primary/20 bg-gradient-to-r from-primary/5 to-primary-hover/5">
+          <Sparkles className="w-4 h-4 text-primary" />
           <AlertDescription className="flex items-center justify-between">
             <div>
-              <span className="font-medium text-[#FF0077]">
+              <span className="font-medium text-primary">
                 Ready to grow your business?
               </span>
               <span className="text-gray-700 ml-2">
@@ -172,7 +172,7 @@ export default function ProviderSettings() {
               </span>
             </div>
             <Link href="/provider/settings/upgrade-to-salon">
-              <button className="ml-4 px-4 py-2 bg-[#FF0077] hover:bg-[#D60565] text-white rounded-md text-sm font-medium transition-colors">
+              <button className="ml-4 px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-md text-sm font-medium transition-colors">
                 Upgrade Now
               </button>
             </Link>
@@ -189,43 +189,43 @@ export default function ProviderSettings() {
             <TabsList className="inline-flex h-auto w-full sm:w-auto sm:grid sm:grid-cols-7 gap-1 sm:gap-2 bg-transparent p-0 sm:p-1 sm:bg-muted rounded-none sm:rounded-md border-b border-gray-200 sm:border-b-0">
               <TabsTrigger 
                 value="appointment-activity"
-                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
               >
                 Appointment Activity
               </TabsTrigger>
               <TabsTrigger 
                 value="clients"
-                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
               >
                 Clients
               </TabsTrigger>
               <TabsTrigger 
                 value="services"
-                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
               >
                 Services
               </TabsTrigger>
               <TabsTrigger 
                 value="sales"
-                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
               >
                 Sales
               </TabsTrigger>
               <TabsTrigger 
                 value="team"
-                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
               >
                 Team
               </TabsTrigger>
               <TabsTrigger 
                 value="marketing-integrations"
-                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
               >
                 Marketing
               </TabsTrigger>
               <TabsTrigger 
                 value="account"
-                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
               >
                 Account
               </TabsTrigger>
@@ -255,18 +255,18 @@ export default function ProviderSettings() {
                         href={item.href}
                         className={`flex items-center justify-between p-4 border rounded-lg transition-colors ${
                           isUpgrade
-                            ? "border-[#FF0077] bg-gradient-to-r from-[#FF0077]/5 to-[#D60565]/5 hover:from-[#FF0077]/10 hover:to-[#D60565]/10"
+                            ? "border-primary bg-gradient-to-r from-primary/5 to-primary-hover/5 hover:from-primary/10 hover:to-primary-hover/10"
                             : "border-gray-200 hover:bg-gray-50"
                         }`}
                       >
                         <div className="flex items-center gap-3">
                           {isUpgrade && (
-                            <Sparkles className="w-5 h-5 text-[#FF0077]" />
+                            <Sparkles className="w-5 h-5 text-primary" />
                           )}
                           <div>
                             <h4
                               className={`font-medium ${
-                                isUpgrade ? "text-[#FF0077]" : ""
+                                isUpgrade ? "text-primary" : ""
                               }`}
                             >
                               {item.title}

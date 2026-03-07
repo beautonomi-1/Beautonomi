@@ -17,6 +17,7 @@ import { useLocalSearchParams, Stack, router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
 import { Skeleton } from "@/components/Skeleton";
@@ -141,9 +142,9 @@ function CountdownBar({ expiresAt }: { expiresAt: string }) {
   return (
     <View style={{
       flexDirection: "row", alignItems: "center", backgroundColor: bgColor,
-      borderRadius: 12, padding: 12, marginBottom: 16, gap: 8,
+      borderRadius: 12, padding: 12, marginBottom: 16,
     }}>
-      <Ionicons name="time-outline" size={18} color={iconColor} />
+      <Ionicons name="time-outline" size={18} color={iconColor} style={{ marginRight: 8 }} />
       <Text style={{ fontSize: 13, fontWeight: "600", color: textColor, flex: 1 }}>
         {countdown.expired
           ? "Time slot expired — please go back and select a new time"
@@ -154,9 +155,10 @@ function CountdownBar({ expiresAt }: { expiresAt: string }) {
 }
 
 /* ─── Cancellation Policy Section ─── */
-function CancellationPolicy({ policy, currency }: {
+function CancellationPolicy({ policy, currency, contentPadding }: {
   policy: HoldData["cancellation_policy"];
   currency: string;
+  contentPadding: number;
 }) {
   if (!policy) return null;
   const windowHrs = policy.cancellation_window_hours;
@@ -166,24 +168,24 @@ function CancellationPolicy({ policy, currency }: {
 
   return (
     <View style={{
-      backgroundColor: "#F9FAFB", borderRadius: 16, padding: 16, marginBottom: 16,
+      backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginBottom: 16,
       borderWidth: 1, borderColor: "#F3F4F6",
     }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 10 }}>
-        <Ionicons name="shield-checkmark-outline" size={18} color="#6B7280" />
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+        <Ionicons name="shield-checkmark-outline" size={18} color="#6B7280" style={{ marginRight: 6 }} />
         <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Cancellation Policy</Text>
       </View>
       {windowHrs != null && windowHrs > 0 && (
-        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
-          <Ionicons name="checkmark-circle-outline" size={16} color={Colors.success} style={{ marginTop: 1 }} />
+        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 6 }}>
+          <Ionicons name="checkmark-circle-outline" size={16} color={Colors.success} style={{ marginTop: 1, marginRight: 8 }} />
           <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 20 }}>
             Free cancellation up to {windowHrs} {windowHrs === 1 ? "hour" : "hours"} before your appointment
           </Text>
         </View>
       )}
       {noShowFee ? (
-        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
-          <Ionicons name="alert-circle-outline" size={16} color={Colors.warning} style={{ marginTop: 1 }} />
+        <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+          <Ionicons name="alert-circle-outline" size={16} color={Colors.warning} style={{ marginTop: 1, marginRight: 8 }} />
           <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 20 }}>
             No-show fee of {formatCurrency(policy.no_show_fee_amount!, policy.currency || currency)} applies
           </Text>
@@ -199,13 +201,13 @@ function EditChip({ label, onPress }: { label: string; onPress: () => void }) {
     <TouchableOpacity
       onPress={onPress}
       style={{
-        flexDirection: "row", alignItems: "center", gap: 4,
+        flexDirection: "row", alignItems: "center",
         backgroundColor: "#F3F4F6", borderRadius: 999,
         paddingHorizontal: 10, paddingVertical: 5,
       }}
       accessibilityRole="button" accessibilityLabel={`Change ${label}`}
     >
-      <Ionicons name="pencil" size={12} color="#6B7280" />
+      <Ionicons name="pencil" size={12} color="#6B7280" style={{ marginRight: 4 }} />
       <Text style={{ fontSize: 11, color: "#6B7280", fontWeight: "500" }}>Change</Text>
     </TouchableOpacity>
   );
@@ -245,7 +247,7 @@ function SavedCardSelector({ cards, selected, onSelect, onAddNew, onSetDefault }
             key={card.id}
             onPress={() => { haptic.light(); onSelect(card.id); }}
             style={{
-              flexDirection: "row", alignItems: "center", gap: 12,
+              flexDirection: "row", alignItems: "center",
               padding: 14, borderRadius: 14, marginBottom: 8,
               borderWidth: 1.5,
               borderColor: active ? Colors.primary : "#E5E7EB",
@@ -256,7 +258,7 @@ function SavedCardSelector({ cards, selected, onSelect, onAddNew, onSetDefault }
           >
             <View style={{
               width: 40, height: 28, borderRadius: 6, backgroundColor: "#F3F4F6",
-              alignItems: "center", justifyContent: "center",
+              alignItems: "center", justifyContent: "center", marginRight: 12,
             }}>
               <Ionicons name={cardBrandIcon(card.card_type)} size={20} color={active ? Colors.primary : "#6B7280"} />
             </View>
@@ -288,11 +290,11 @@ function SavedCardSelector({ cards, selected, onSelect, onAddNew, onSetDefault }
       <Pressable
         onPress={onAddNew}
         style={{
-          flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+          flexDirection: "row", alignItems: "center", justifyContent: "center",
           padding: 12, borderRadius: 14, borderWidth: 1, borderColor: "#E5E7EB", borderStyle: "dashed",
         }}
       >
-        <Ionicons name="add-circle-outline" size={18} color="#6B7280" />
+        <Ionicons name="add-circle-outline" size={18} color="#6B7280" style={{ marginRight: 6 }} />
         <Text style={{ fontSize: 13, fontWeight: "500", color: "#6B7280" }}>Use a new card</Text>
       </Pressable>
     </View>
@@ -309,7 +311,7 @@ function SaveCardToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () 
       <Pressable
         onPress={() => { haptic.light(); onToggle(); }}
         style={{
-          flexDirection: "row", alignItems: "center", gap: 10,
+          flexDirection: "row", alignItems: "center",
           paddingVertical: 12, paddingHorizontal: 2,
         }}
         accessibilityRole="switch" accessibilityState={{ checked: enabled }}
@@ -318,7 +320,7 @@ function SaveCardToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () 
         <View style={{
           width: 44, height: 24, borderRadius: 12, justifyContent: "center",
           backgroundColor: enabled ? Colors.primary : "#D1D5DB",
-          paddingHorizontal: 2,
+          paddingHorizontal: 2, marginRight: 10,
         }}>
           <View style={{
             width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff",
@@ -348,6 +350,8 @@ function SaveCardToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () 
    ═══════════════════════════════════════════ */
 export default function BookCheckoutScreen() {
   useScreenTracking("Book Checkout");
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const {
     hold_id,
     service_name: routeServiceName,
@@ -654,23 +658,23 @@ export default function BookCheckoutScreen() {
       <>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={{ flex: 1, backgroundColor: "#fff" }}>
-          <View style={{ paddingTop: 52, paddingHorizontal: 16, paddingBottom: 12, flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: "#F3F4F6" }} />
+          <View style={{ paddingTop: 52, paddingHorizontal: contentPadding, paddingBottom: 12, flexDirection: "row", alignItems: "center" }}>
+            <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: "#F3F4F6", marginRight: 12 }} />
             <Skeleton width="40%" height={18} />
           </View>
-          <View style={{ paddingHorizontal: 16, gap: 12 }}>
+          <View style={{ paddingHorizontal: contentPadding }}>
             <Skeleton width="100%" height={48} borderRadius={12} />
-            <View style={{ flexDirection: "row", gap: 12, backgroundColor: "#F9FAFB", borderRadius: 16, padding: 16 }}>
+            <View style={{ flexDirection: "row", backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginTop: 12 }}>
               <Skeleton width={48} height={48} borderRadius={24} />
-              <View style={{ flex: 1, gap: 6 }}>
+              <View style={{ flex: 1, marginLeft: 12 }}>
                 <Skeleton width="60%" height={16} />
-                <Skeleton width="40%" height={12} />
+                <Skeleton width="40%" height={12} style={{ marginTop: 6 }} />
               </View>
             </View>
-            <Skeleton width="100%" height={80} borderRadius={16} />
-            <Skeleton width="100%" height={60} borderRadius={16} />
-            <Skeleton width="100%" height={60} borderRadius={16} />
-            <Skeleton width="100%" height={56} borderRadius={14} />
+            <Skeleton width="100%" height={80} borderRadius={16} style={{ marginTop: 12 }} />
+            <Skeleton width="100%" height={60} borderRadius={16} style={{ marginTop: 12 }} />
+            <Skeleton width="100%" height={60} borderRadius={16} style={{ marginTop: 12 }} />
+            <Skeleton width="100%" height={56} borderRadius={14} style={{ marginTop: 12 }} />
           </View>
         </View>
       </>
@@ -682,7 +686,7 @@ export default function BookCheckoutScreen() {
     return (
       <>
         <Stack.Screen options={{ headerShown: false }} />
-        <View style={{ flex: 1, backgroundColor: "#fff", padding: 24, alignItems: "center", justifyContent: "center" }}>
+        <View style={{ flex: 1, backgroundColor: "#fff", padding: contentPadding, alignItems: "center", justifyContent: "center" }}>
           <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "#FEF2F2", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
             <Ionicons name="time-outline" size={32} color="#EF4444" />
           </View>
@@ -712,7 +716,7 @@ export default function BookCheckoutScreen() {
       <View style={{ flex: 1, backgroundColor: "#fff" }}>
         {/* ═══ Custom Header ═══ */}
         <View style={{
-          flexDirection: "row", alignItems: "center", paddingTop: 52, paddingHorizontal: 16, paddingBottom: 8,
+          flexDirection: "row", alignItems: "center", paddingTop: 52, paddingHorizontal: contentPadding, paddingBottom: 8,
           backgroundColor: "#fff", borderBottomWidth: 1, borderColor: "#F3F4F6",
         }}>
           <TouchableOpacity
@@ -741,7 +745,7 @@ export default function BookCheckoutScreen() {
         >
           <ScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
+            contentContainerStyle={{ padding: contentPadding, paddingBottom: 20, ...constraint }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
@@ -750,13 +754,13 @@ export default function BookCheckoutScreen() {
 
             {/* ═══ Provider Identity ═══ */}
             <View style={{
-              flexDirection: "row", alignItems: "center", gap: 12,
+              flexDirection: "row", alignItems: "center",
               backgroundColor: "#F9FAFB", borderRadius: 16, padding: 14, marginBottom: 16,
             }}>
               {thumbnailUrl ? (
-                <Image source={{ uri: thumbnailUrl }} style={{ width: 48, height: 48, borderRadius: 24 }} contentFit="cover" cachePolicy="memory-disk" />
+                <Image source={{ uri: thumbnailUrl }} style={{ width: 48, height: 48, borderRadius: 24, marginRight: 12 }} contentFit="cover" cachePolicy="memory-disk" />
               ) : (
-                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
                   <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 20 }}>{providerInitial}</Text>
                 </View>
               )}
@@ -769,18 +773,18 @@ export default function BookCheckoutScreen() {
             </View>
 
             {/* ═══ Appointment Details (with edit options) ═══ */}
-            <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: 16, marginBottom: 16 }}>
+            <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginBottom: 16 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="calendar-outline" size={18} color="#6B7280" />
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Ionicons name="calendar-outline" size={18} color="#6B7280" style={{ marginRight: 6 }} />
                   <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Appointment Details</Text>
                 </View>
                 <EditChip label="date and time" onPress={() => router.back()} />
               </View>
 
               {/* Date & Time */}
-              <View style={{ flexDirection: "row", gap: 16, marginBottom: 10 }}>
-                <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", marginBottom: 10 }}>
+                <View style={{ flex: 1, marginRight: 16 }}>
                   <Text style={{ fontSize: 11, color: "#9CA3AF", fontWeight: "500", marginBottom: 4 }}>DATE</Text>
                   <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{formatDateOnly(hold.start_at)}</Text>
                 </View>
@@ -791,10 +795,11 @@ export default function BookCheckoutScreen() {
               </View>
 
               {/* Location */}
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingTop: 10, borderTopWidth: 1, borderColor: "#E5E7EB" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", paddingTop: 10, borderTopWidth: 1, borderColor: "#E5E7EB" }}>
                 <Ionicons
                   name={hold.location_type === "at_home" ? "home-outline" : "business-outline"}
                   size={14} color="#6B7280"
+                  style={{ marginRight: 6 }}
                 />
                 <Text style={{ fontSize: 13, color: "#6B7280" }}>
                   {hold.location_type === "at_home" ? "At your location" : hold.location_name || "At salon"}
@@ -817,8 +822,8 @@ export default function BookCheckoutScreen() {
                   }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>{serviceName}</Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}>
-                        <Ionicons name="time-outline" size={12} color="#9CA3AF" />
+                      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
+                        <Ionicons name="time-outline" size={12} color="#9CA3AF" style={{ marginRight: 4 }} />
                         <Text style={{ fontSize: 12, color: "#6B7280" }}>{svc.duration_minutes} min</Text>
                       </View>
                     </View>
@@ -836,8 +841,8 @@ export default function BookCheckoutScreen() {
                 flexDirection: "row", justifyContent: "space-between", alignItems: "center",
                 backgroundColor: "#FFFBEB", borderRadius: 12, padding: 12, marginBottom: 16,
               }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
-                  <Ionicons name="car-outline" size={16} color="#92400E" />
+                <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                  <Ionicons name="car-outline" size={16} color="#92400E" style={{ marginRight: 8 }} />
                   <View>
                     <Text style={{ fontSize: 13, fontWeight: "600", color: "#92400E" }}>Travel fee</Text>
                     {hold.travel_distance_km != null && (
@@ -850,7 +855,7 @@ export default function BookCheckoutScreen() {
             )}
 
             {/* ═══ Total ═══ */}
-            <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: 16, marginBottom: 16 }}>
+            <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginBottom: 16 }}>
               {travelFee > 0 && (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderColor: "#E5E7EB" }}>
                   <Text style={{ fontSize: 13, color: "#6B7280" }}>Subtotal</Text>
@@ -867,9 +872,9 @@ export default function BookCheckoutScreen() {
             {bookingCustomDefinitions.length > 0 && (
               <View style={{ marginBottom: 16 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Additional details</Text>
-                <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: 14, gap: 12 }}>
-                  {bookingCustomDefinitions.map((field) => (
-                    <View key={field.id}>
+                <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: 14 }}>
+                  {bookingCustomDefinitions.map((field, fi) => (
+                    <View key={field.id} style={{ marginTop: fi === 0 ? 0 : 12 }}>
                       <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 4 }}>
                         {field.label}{field.is_required ? " *" : ""}
                       </Text>
@@ -917,13 +922,13 @@ export default function BookCheckoutScreen() {
                                 [form.id]: { ...(prev[form.id] ?? {}), [field.id]: !cur },
                               }));
                             }}
-                            style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+                            style={{ flexDirection: "row", alignItems: "center" }}
                           >
                             <View style={{
                               width: 22, height: 22, borderRadius: 6, borderWidth: 2,
                               borderColor: providerFormValues[form.id]?.[field.id] ? Colors.primary : "#9CA3AF",
                               backgroundColor: providerFormValues[form.id]?.[field.id] ? Colors.primary : "transparent",
-                              alignItems: "center", justifyContent: "center",
+                              alignItems: "center", justifyContent: "center", marginRight: 8,
                             }}>
                               {providerFormValues[form.id]?.[field.id] && <Ionicons name="checkmark" size={14} color="#fff" />}
                             </View>
@@ -960,11 +965,11 @@ export default function BookCheckoutScreen() {
             {hasDeposit && (
               <View style={{ marginBottom: 16 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Payment Option</Text>
-                <View style={{ flexDirection: "row", gap: 10 }}>
+                <View style={{ flexDirection: "row" }}>
                   <Pressable
                     onPress={() => { haptic.light(); setPaymentOption("full"); }}
                     style={{
-                      flex: 1, borderRadius: 14, borderWidth: 1.5, padding: 14, alignItems: "center",
+                      flex: 1, borderRadius: 14, borderWidth: 1.5, padding: 14, alignItems: "center", marginRight: 10,
                       borderColor: paymentOption === "full" ? Colors.primary : "#E5E7EB",
                       backgroundColor: paymentOption === "full" ? Colors.primaryLight : "#fff",
                     }}
@@ -1007,25 +1012,25 @@ export default function BookCheckoutScreen() {
             {/* ═══ Payment Method ═══ */}
             <View style={{ marginBottom: 16 }}>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Payment Method</Text>
-              <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
+              <View style={{ flexDirection: "row", marginBottom: 12 }}>
                 <Pressable
                   onPress={() => { haptic.light(); setPaymentMethod("card"); }}
                   style={{
-                    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+                    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", marginRight: 10,
                     paddingVertical: 14, borderRadius: 14, borderWidth: 1.5,
                     borderColor: paymentMethod === "card" ? Colors.primary : "#E5E7EB",
                     backgroundColor: paymentMethod === "card" ? Colors.primaryLight : "#fff",
                   }}
                   accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === "card" }}
                 >
-                  <Ionicons name="card-outline" size={18} color={paymentMethod === "card" ? Colors.primary : "#6B7280"} />
+                  <Ionicons name="card-outline" size={18} color={paymentMethod === "card" ? Colors.primary : "#6B7280"} style={{ marginRight: 8 }} />
                   <Text style={{ fontWeight: "600", color: paymentMethod === "card" ? Colors.primary : "#374151" }}>Card</Text>
                   {paymentMethod === "card" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
                 </Pressable>
                 <Pressable
                   onPress={() => { haptic.light(); setPaymentMethod("cash"); }}
                   style={{
-                    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+                    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
                     paddingVertical: 14, borderRadius: 14, borderWidth: 1.5,
                     borderColor: paymentMethod === "cash" ? Colors.primary : "#E5E7EB",
                     backgroundColor: paymentMethod === "cash" ? Colors.primaryLight : "#fff",
@@ -1045,7 +1050,6 @@ export default function BookCheckoutScreen() {
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 10,
                     paddingVertical: 12,
                     paddingHorizontal: 14,
                     marginBottom: 12,
@@ -1061,11 +1065,11 @@ export default function BookCheckoutScreen() {
                     width: 22, height: 22, borderRadius: 6, borderWidth: 2,
                     borderColor: useWallet ? Colors.primary : "#9CA3AF",
                     backgroundColor: useWallet ? Colors.primary : "transparent",
-                    alignItems: "center", justifyContent: "center",
+                    alignItems: "center", justifyContent: "center", marginRight: 10,
                   }}>
                     {useWallet && <Ionicons name="checkmark" size={14} color="#fff" />}
                   </View>
-                  <Ionicons name="wallet-outline" size={18} color={useWallet ? Colors.primary : "#6B7280"} />
+                  <Ionicons name="wallet-outline" size={18} color={useWallet ? Colors.primary : "#6B7280"} style={{ marginRight: 10 }} />
                   <Text style={{ flex: 1, fontWeight: "500", color: useWallet ? Colors.primary : "#374151", fontSize: 14 }}>
                     Use wallet balance — {formatCurrency(walletBalance, currency)} available
                   </Text>
@@ -1076,9 +1080,9 @@ export default function BookCheckoutScreen() {
               {paymentMethod === "card" && (
                 <View>
                   {cardsLoading ? (
-                    <View style={{ gap: 8, marginBottom: 12 }}>
+                    <View style={{ marginBottom: 12 }}>
                       <Skeleton width="100%" height={56} borderRadius={14} />
-                      <Skeleton width="100%" height={56} borderRadius={14} />
+                      <Skeleton width="100%" height={56} borderRadius={14} style={{ marginTop: 8 }} />
                     </View>
                   ) : savedCards.length > 0 && !useNewCard ? (
                     <SavedCardSelector
@@ -1101,9 +1105,9 @@ export default function BookCheckoutScreen() {
                   {useNewCard && savedCards.length > 0 && (
                     <Pressable
                       onPress={() => { setUseNewCard(false); if (defaultCard) setSelectedCardId(defaultCard.id); }}
-                      style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12, paddingVertical: 4 }}
+                      style={{ flexDirection: "row", alignItems: "center", marginBottom: 12, paddingVertical: 4 }}
                     >
-                      <Ionicons name="arrow-back-outline" size={14} color={Colors.primary} />
+                      <Ionicons name="arrow-back-outline" size={14} color={Colors.primary} style={{ marginRight: 6 }} />
                       <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>Use a saved card</Text>
                     </Pressable>
                   )}
@@ -1117,7 +1121,7 @@ export default function BookCheckoutScreen() {
             </View>
 
             {/* ═══ Cancellation Policy ═══ */}
-            <CancellationPolicy policy={hold.cancellation_policy} currency={currency} />
+            <CancellationPolicy policy={hold.cancellation_policy} currency={currency} contentPadding={contentPadding} />
 
             {/* Error banner */}
             {(error || payError) && (
@@ -1129,7 +1133,7 @@ export default function BookCheckoutScreen() {
 
           {/* ═══ Sticky Bottom CTA ═══ */}
           <View style={{
-            paddingHorizontal: 16, paddingVertical: 12, paddingBottom: 28,
+            paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
             borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
           }}>
             {/* Price summary */}
@@ -1152,7 +1156,6 @@ export default function BookCheckoutScreen() {
                   alignItems: "center",
                   flexDirection: "row",
                   justifyContent: "center",
-                  gap: 8,
                   marginBottom: 10,
                   borderWidth: 1.5,
                   borderColor: "#E5E7EB",
@@ -1164,7 +1167,7 @@ export default function BookCheckoutScreen() {
                 {requestingNow ? (
                   <ActivityIndicator size="small" color="#6B7280" />
                 ) : (
-                  <Ionicons name="flash-outline" size={20} color="#374151" />
+                  <Ionicons name="flash-outline" size={20} color="#374151" style={{ marginRight: 8 }} />
                 )}
                 <Text style={{ color: "#374151", fontWeight: "600", fontSize: 15 }}>
                   {requestingNow ? "Submitting..." : "Request now"}
@@ -1177,7 +1180,7 @@ export default function BookCheckoutScreen() {
               style={{
                 backgroundColor: isExpired ? "#D1D5DB" : Colors.primary,
                 borderRadius: 14, paddingVertical: 16,
-                alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8,
+                alignItems: "center", flexDirection: "row", justifyContent: "center",
                 opacity: (consuming || payLoading) ? 0.7 : 1,
               }}
               accessibilityRole="button"
@@ -1185,15 +1188,15 @@ export default function BookCheckoutScreen() {
               accessibilityState={{ disabled: consuming || payLoading || isExpired }}
             >
               {(consuming || payLoading) ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <ActivityIndicator size="small" color="#fff" />
-                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
+                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16, marginLeft: 8 }}>
                     {payLoading ? "Charging card..." : "Processing..."}
                   </Text>
                 </View>
               ) : (
                 <>
-                  <Ionicons name={isExpired ? "time-outline" : usingSavedCard ? "card" : "shield-checkmark"} size={20} color="#fff" />
+                  <Ionicons name={isExpired ? "time-outline" : usingSavedCard ? "card" : "shield-checkmark"} size={20} color="#fff" style={{ marginRight: 8 }} />
                   <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
                     {isExpired
                       ? "Slot Expired"

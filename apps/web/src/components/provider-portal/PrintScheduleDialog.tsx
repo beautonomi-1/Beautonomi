@@ -293,8 +293,8 @@ export function PrintScheduleDialog({
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <DialogHeader className="px-4 pt-4 pb-2 flex-shrink-0">
             <DialogTitle className="flex items-center gap-2 text-base font-semibold">
-              <div className="p-1.5 rounded-lg bg-[#FF0077]/10">
-                <Printer className="w-4 h-4 text-[#FF0077]" />
+              <div className="p-1.5 rounded-lg bg-primary/10">
+                <Printer className="w-4 h-4 text-primary" />
               </div>
               Print Schedule
             </DialogTitle>
@@ -334,7 +334,7 @@ export function PrintScheduleDialog({
                       onCheckedChange={(checked) =>
                         setOptions({ ...options, [key]: !!checked })
                       }
-                      className="h-4 w-4 rounded-md border-2 border-gray-300 data-[state=checked]:bg-[#FF0077] data-[state=checked]:border-[#FF0077] data-[state=checked]:text-white transition-colors group-hover:border-gray-400"
+                      className="h-4 w-4 rounded-md border-2 border-gray-300 data-[state=checked]:bg-primary data-[state=checked]:border-primary data-[state=checked]:text-white transition-colors group-hover:border-gray-400"
                     />
                     <span className="text-xs text-gray-600">{label}</span>
                   </label>
@@ -463,7 +463,7 @@ export function PrintScheduleDialog({
           <Button
             size="sm"
             onClick={handlePrint}
-            className="bg-[#FF0077] hover:bg-[#D60565]"
+            className="bg-primary hover:bg-primary-hover"
           >
             <Printer className="w-3.5 h-3.5 mr-1.5" />
             Print

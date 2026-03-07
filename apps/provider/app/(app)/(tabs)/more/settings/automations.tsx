@@ -13,6 +13,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { twStyle } from "@/lib/twStyle";
 
 interface Automation {
   id: string;
@@ -113,10 +114,10 @@ export default function AutomationsScreen() {
           scrollEnabled={false}
           contentContainerStyle={{ paddingBottom: 120 }}
           renderItem={({ item }: { item: Automation }) => (
-            <View className="mb-2 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4">
-              <View className="flex-1">
-                <Text className="font-medium text-gray-900">{item.name}</Text>
-                <Text className="mt-0.5 text-xs text-gray-500">
+            <View style={twStyle("mb-2 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4")}>
+              <View style={twStyle("flex-1")}>
+                <Text style={twStyle("font-medium text-gray-900")}>{item.name}</Text>
+                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                   {item.trigger_type} → {item.action_type}
                 </Text>
               </View>
@@ -126,7 +127,7 @@ export default function AutomationsScreen() {
                 trackColor={{ false: "#d1d5db", true: "#6366f1" }}
               />
               <TouchableOpacity
-                className="ml-2 p-2"
+                style={twStyle("ml-2 p-2")}
                 onPress={() => handleDelete(item)}
               >
                 <Ionicons name="trash-outline" size={20} color="#dc2626" />
@@ -135,7 +136,7 @@ export default function AutomationsScreen() {
           )}
         />
       )}
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

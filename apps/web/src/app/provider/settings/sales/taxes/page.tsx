@@ -235,7 +235,7 @@ export default function TaxesSettings() {
                     href="https://www.sars.gov.za/individuals/tax-types/value-added-tax-vat/" 
                     target="_blank" 
                     rel="noopener noreferrer"
-                    className="text-[#FF0077] hover:underline"
+                    className="text-primary hover:underline"
                   >
                     Learn more about VAT registration on SARS website →
                   </a>

@@ -17,6 +17,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { Colors } from "@/constants/colors";
 
 interface ProviderProfile {
   description?: string | null;
@@ -76,12 +77,12 @@ export default function SettingsBusinessDescriptionScreen() {
           <TouchableOpacity
             onPress={handleSave}
             disabled={saving}
-            className="min-h-[40px] flex-row items-center justify-center rounded-full bg-indigo-600 px-4"
+            style={{ minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#4f46e6", paddingHorizontal: 16 }}
           >
             {saving ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text className="font-medium text-white">Save</Text>
+              <Text style={{ fontWeight: "500", color: Colors.white }}>Save</Text>
             )}
           </TouchableOpacity>
         }
@@ -89,29 +90,29 @@ export default function SettingsBusinessDescriptionScreen() {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        className="flex-1"
+        style={{ flex: 1 }}
       >
         <ScrollView
-          className="flex-1"
+          style={{ flex: 1 }}
           contentContainerStyle={{ paddingBottom: 100 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="px-2 pt-2">
+          <View style={{ paddingHorizontal: 8, paddingTop: 8 }}>
             {error && (
-              <View className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3">
-                <Text className="text-sm text-red-700">{error}</Text>
-                <TouchableOpacity onPress={() => refresh()} className="mt-2">
-                  <Text className="text-sm font-medium text-red-700">Retry</Text>
+              <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: "#fecaca", backgroundColor: "#fef2f2", padding: 12 }}>
+                <Text style={{ fontSize: 14, color: "#b91c1c" }}>{error}</Text>
+                <TouchableOpacity onPress={() => refresh()} style={{ marginTop: 8 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: "#b91c1c" }}>Retry</Text>
                 </TouchableOpacity>
               </View>
             )}
 
-            <Text className="mb-1 text-sm font-medium text-gray-700">
+            <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
               Description
             </Text>
             <TextInput
-              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 min-h-[140px]"
+              style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900], minHeight: 140 }}
               placeholder="Describe your business for customers. What you offer, your style, experience, etc."
               placeholderTextColor="#9ca3af"
               value={description}
@@ -122,11 +123,11 @@ export default function SettingsBusinessDescriptionScreen() {
               maxLength={MAX_LENGTH + 1}
               accessibilityLabel="Business description"
             />
-            <Text className="mt-1 text-xs text-gray-500">
+            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
               {description.length} / {MAX_LENGTH} characters
             </Text>
 
-            <View className="mt-4">
+            <View style={{ marginTop: 16 }}>
               <ActionButton
                 label={saving ? "Saving..." : "Save description"}
                 onPress={handleSave}

@@ -30,7 +30,7 @@ export function ProviderPageHeader({
       <div className="flex items-center gap-2">
         {actions}
         {primaryAction && (
-          <Button onClick={primaryAction.onClick} className="bg-[#FF0077] hover:bg-[#D60565]">
+          <Button onClick={primaryAction.onClick} className="bg-primary hover:bg-primary-hover">
             {primaryAction.icon || <Plus className="w-4 h-4 mr-2" />}
             {primaryAction.label}
           </Button>

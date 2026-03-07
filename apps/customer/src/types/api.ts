@@ -187,6 +187,8 @@ export interface Booking {
 
 export interface HomeApiResponse {
   topRated: PublicProviderCard[];
+  /** Sponsored/boosted listings (when ads module enabled). Aligned with web. */
+  sponsored?: PublicProviderCard[];
   nearest: PublicProviderCard[];
   hottest: PublicProviderCard[];
   upcoming: PublicProviderCard[];

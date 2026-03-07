@@ -9,10 +9,12 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 export interface BillingItem {
   id: string;
@@ -27,6 +29,7 @@ export interface BillingItem {
 /** Content-only for use in Settings hub tab. */
 export function BillingHistoryContent() {
   const router = useRouter();
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<BillingItem[]>(
     "/api/provider/billing-history"
@@ -49,14 +52,14 @@ export function BillingHistoryContent() {
 
   if (loading && !data) {
     return (
-      <View className="flex-1 items-center justify-center py-12">
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
         <LoadingState />
       </View>
     );
   }
   if (error && !data) {
     return (
-      <View className="flex-1 justify-center px-4">
+      <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
         <ErrorState message={error} onRetry={refresh} />
       </View>
     );
@@ -64,20 +67,20 @@ export function BillingHistoryContent() {
 
   return (
     <ScrollView
-      className="flex-1"
-      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+      style={{ flex: 1 }}
+      contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
       showsVerticalScrollIndicator={false}
     >
       {items.length === 0 ? (
-        <View className="items-center py-16">
-          <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-indigo-100">
+        <View style={{ alignItems: "center", paddingVertical: 64 }}>
+          <View style={{ marginBottom: 16, width: 64, height: 64, alignItems: "center", justifyContent: "center", borderRadius: 32, backgroundColor: "#e0e7ff" }}>
             <Ionicons name="document-text-outline" size={32} color="#6366f1" />
           </View>
-          <Text className="text-center font-semibold text-gray-900">No billing history</Text>
-          <Text className="mt-1 text-center text-sm text-gray-500">
+          <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900] }}>No billing history</Text>
+          <Text style={{ marginTop: 4, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
             Subscription and platform payments will appear here.
           </Text>
         </View>
@@ -85,29 +88,33 @@ export function BillingHistoryContent() {
         items.map((item) => (
           <View
             key={item.id}
-            className="mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4"
+            style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
           >
-            <View className="h-10 w-10 items-center justify-center rounded-xl bg-indigo-100">
+            <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#e0e7ff" }}>
               <Ionicons name="receipt-outline" size={20} color="#6366f1" />
             </View>
-            <View className="ml-3 flex-1 min-w-0">
-              <Text className="font-semibold text-gray-900" numberOfLines={1}>
+            <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+              <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
                 {item.description ?? "Payment"}
               </Text>
-              <Text className="mt-0.5 text-sm text-gray-600">
+              <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }}>
                 {item.currency} {Number(item.amount).toFixed(2)}
               </Text>
-              <Text className="mt-0.5 text-xs text-gray-500">
+              <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
                 {new Date(item.created_at).toLocaleDateString()}
               </Text>
             </View>
             <View
-              className={`mr-2 rounded-full px-2.5 py-1 ${
-                item.status === "paid" ? "bg-green-100" : "bg-gray-100"
-              }`}
+              style={{
+                marginRight: 8,
+                borderRadius: 9999,
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                backgroundColor: item.status === "paid" ? "#dcfce7" : Colors.gray[100],
+              }}
             >
               <Text
-                className={`text-xs font-medium ${item.status === "paid" ? "text-green-800" : "text-gray-700"}`}
+                style={{ fontSize: 12, fontWeight: "500", color: item.status === "paid" ? "#166534" : Colors.gray[700] }}
               >
                 {item.status}
               </Text>
@@ -115,7 +122,7 @@ export function BillingHistoryContent() {
             {item.invoice_url ? (
               <TouchableOpacity
                 onPress={() => openInvoice(item)}
-                className="h-9 w-9 items-center justify-center rounded-lg bg-indigo-50"
+                style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#eef2ff" }}
               >
                 <Ionicons name="open-outline" size={18} color="#6366f1" />
               </TouchableOpacity>

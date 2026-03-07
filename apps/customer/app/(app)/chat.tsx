@@ -16,6 +16,7 @@ import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 import { Colors } from "@/constants/colors";
 import { useImagePicker } from "@/hooks/useImagePicker";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -32,6 +33,7 @@ const PAGE_SIZE = 50;
 
 export default function ChatScreen() {
   useScreenTracking("Chat");
+  const { contentPadding } = useResponsive();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, loading: authLoading, refreshSession } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -253,16 +255,16 @@ export default function ChatScreen() {
 
   if (authLoading) {
     return (
-      <View className="flex-1 bg-white items-center justify-center">
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text className="text-gray-600 mt-3">Loading…</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 12 }}>Loading…</Text>
       </View>
     );
   }
   if (!user) {
     return (
-      <View className="flex-1 bg-white items-center justify-center">
-        <Text className="text-gray-600">Log in to view this conversation</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ color: Colors.gray[600] }}>Log in to view this conversation</Text>
       </View>
     );
   }
@@ -271,12 +273,12 @@ export default function ChatScreen() {
     <>
       <Stack.Screen options={{ title: "Chat", headerBackTitle: "Back" }} />
       <KeyboardAvoidingView
-        className="flex-1 bg-white"
+        style={{ flex: 1, backgroundColor: Colors.white }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
       >
         {loading ? (
-          <View className="flex-1">
+          <View style={{ flex: 1 }}>
             <MessageSkeleton />
             <MessageSkeleton isMe />
             <MessageSkeleton />
@@ -289,7 +291,7 @@ export default function ChatScreen() {
               ref={flatListRef}
               data={messages}
               keyExtractor={(m) => m.id}
-              contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+              contentContainerStyle={{ padding: contentPadding, paddingBottom: 8 }}
               onScroll={({ nativeEvent }) => {
                 if (nativeEvent.contentOffset.y < 80) {
                   loadOlder();
@@ -298,30 +300,19 @@ export default function ChatScreen() {
               scrollEventThrottle={200}
               ListHeaderComponent={
                 loadingMore ? (
-                  <View className="py-3 items-center">
+                  <View style={{ paddingVertical: 12, alignItems: "center" }}>
                     <ActivityIndicator size="small" color={Colors.primary} />
                   </View>
                 ) : hasMore ? (
-                  <TouchableOpacity
-                    onPress={loadOlder}
-                    className="py-3 items-center"
-                  >
-                    <Text className="text-sm text-gray-400">
-                      Load older messages
-                    </Text>
+                  <TouchableOpacity onPress={loadOlder} style={{ paddingVertical: 12, alignItems: "center" }}>
+                    <Text style={{ fontSize: 14, color: Colors.gray[400] }}>Load older messages</Text>
                   </TouchableOpacity>
                 ) : null
               }
               ListEmptyComponent={
-                <View className="py-8 items-center">
-                  <Ionicons
-                    name="chatbubble-ellipses-outline"
-                    size={48}
-                    color={Colors.primary}
-                  />
-                  <Text className="text-gray-500 mt-3">
-                    No messages yet. Say hello!
-                  </Text>
+                <View style={{ paddingVertical: 32, alignItems: "center" }}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={48} color={Colors.primary} />
+                  <Text style={{ color: Colors.gray[500], marginTop: 12 }}>No messages yet. Say hello!</Text>
                 </View>
               }
               renderItem={({ item }) => {
@@ -332,16 +323,20 @@ export default function ChatScreen() {
                       .filter(Boolean)
                   : [];
                 return (
-                  <View
-                    className={`mb-3 ${isMe ? "items-end" : "items-start"}`}
-                  >
+                  <View style={{ marginBottom: 12, alignItems: isMe ? "flex-end" : "flex-start" }}>
                     <View
-                      className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
-                        isMe ? "bg-primary rounded-br-md" : "bg-gray-100 rounded-bl-md"
-                      }`}
+                      style={{
+                        maxWidth: "80%",
+                        borderRadius: 16,
+                        paddingHorizontal: 16,
+                        paddingVertical: 10,
+                        backgroundColor: isMe ? Colors.primary : Colors.gray[100],
+                        borderBottomRightRadius: isMe ? 8 : 16,
+                        borderBottomLeftRadius: isMe ? 16 : 8,
+                      }}
                     >
                       {urls.length > 0 && (
-                        <View className="gap-2 mb-2">
+                        <View style={{ marginBottom: 8 }}>
                           {urls.map((url: string, i: number) => (
                             <Image
                               key={i}
@@ -350,6 +345,7 @@ export default function ChatScreen() {
                                 width: 192,
                                 height: 192,
                                 borderRadius: 8,
+                                marginBottom: i < urls.length - 1 ? 8 : 0,
                               }}
                               contentFit="cover"
                               cachePolicy="memory-disk"
@@ -359,19 +355,11 @@ export default function ChatScreen() {
                         </View>
                       )}
                       {item.content ? (
-                        <Text
-                          className={
-                            isMe ? "text-white text-[15px]" : "text-gray-900 text-[15px]"
-                          }
-                        >
+                        <Text style={{ color: isMe ? Colors.white : Colors.gray[900], fontSize: 15 }}>
                           {item.content}
                         </Text>
                       ) : null}
-                      <Text
-                        className={`text-[11px] mt-1 ${
-                          isMe ? "text-white/70" : "text-gray-400"
-                        }`}
-                      >
+                      <Text style={{ fontSize: 11, marginTop: 4, color: isMe ? "rgba(255,255,255,0.7)" : Colors.gray[400] }}>
                         {formatTime(item.created_at)}
                       </Text>
                     </View>
@@ -382,13 +370,20 @@ export default function ChatScreen() {
 
             {/* Input bar */}
             <View
-              className="flex-row items-end border-t border-gray-100 px-3 py-2 gap-2"
-              style={{ paddingBottom: Platform.OS === "ios" ? 4 : 2 }}
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-end",
+                borderTopWidth: 1,
+                borderTopColor: Colors.gray[100],
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                paddingBottom: Platform.OS === "ios" ? 4 : 2,
+              }}
             >
               <TouchableOpacity
                 onPress={sendImage}
                 disabled={sending || uploading}
-                className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
+                style={{ marginRight: 8, width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center" }}
               >
                 {uploading ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
@@ -397,7 +392,7 @@ export default function ChatScreen() {
                 )}
               </TouchableOpacity>
               <TextInput
-                className="flex-1 border border-gray-200 rounded-2xl px-4 py-2.5 text-[15px] max-h-24"
+                style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 16, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, maxHeight: 96 }}
                 placeholder="Message..."
                 placeholderTextColor="#9ca3af"
                 value={input}
@@ -439,8 +434,7 @@ export default function ChatScreen() {
 function MessageSkeleton({ isMe }: { isMe?: boolean }) {
   return (
     <View
-      className={`mb-3 px-4 ${isMe ? "items-end" : "items-start"}`}
-      style={{ paddingTop: 8 }}
+      style={{ marginBottom: 12, paddingHorizontal: 16, alignItems: isMe ? "flex-end" : "flex-start", paddingTop: 8 }}
     >
       <View
         style={{

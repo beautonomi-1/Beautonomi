@@ -23,7 +23,7 @@ export function ProviderTopbar() {
     <div className="h-16 border-b border-gray-200 bg-white flex items-center justify-between px-4 md:px-6 w-full overflow-x-hidden">
       {/* Left: Logo (hidden on desktop, shown on mobile) */}
       <div className="md:hidden flex items-center gap-2 min-w-0 flex-shrink">
-        <span className="text-xl font-semibold text-[#FF0077] whitespace-nowrap">Beautonomi</span>
+        <span className="text-xl font-semibold text-primary whitespace-nowrap">Beautonomi</span>
         {/* Setup Progress on Mobile - Circular Wheel */}
         {setupCompletion < 100 && (
           <Link href="/provider/get-started" className="flex items-center gap-1.5 flex-shrink-0">
@@ -33,7 +33,7 @@ export function ProviderTopbar() {
               strokeWidth={3}
               showPercentage={true}
             />
-            <span className="text-xs font-medium text-[#FF0077] hidden sm:inline whitespace-nowrap">
+            <span className="text-xs font-medium text-primary hidden sm:inline whitespace-nowrap">
               Setup
             </span>
           </Link>
@@ -71,7 +71,7 @@ export function ProviderTopbar() {
             />
             <Badge
               variant="outline"
-              className="bg-[#FF0077]/10 text-[#FF0077] border-[#FF0077]/20 hover:bg-[#FF0077]/20 cursor-pointer whitespace-nowrap"
+              className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 cursor-pointer whitespace-nowrap"
             >
               Complete Setup {setupCompletion}%
             </Badge>
@@ -81,7 +81,7 @@ export function ProviderTopbar() {
         {/* Notifications - Added margin-left for better separation from progress */}
         <Button variant="ghost" size="icon" className="relative ml-1">
           <Bell className="w-5 h-5" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-[#FF0077] rounded-full"></span>
+          <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full"></span>
         </Button>
 
         {/* User Menu */}
@@ -89,7 +89,7 @@ export function ProviderTopbar() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 h-auto p-1">
               <Avatar className="w-8 h-8">
-                <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077]">
+                <AvatarFallback className="bg-primary/10 text-primary">
                   {provider?.owner_name?.charAt(0) || "U"}
                 </AvatarFallback>
               </Avatar>

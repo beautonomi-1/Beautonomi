@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { Colors } from "@/constants/colors";
 
 interface EmptyStateProps {
   icon?: keyof typeof Ionicons.glyphMap;
@@ -11,20 +12,20 @@ interface EmptyStateProps {
 
 export function EmptyState({ icon = "folder-open-outline", title, description, actionLabel, onAction }: EmptyStateProps) {
   return (
-    <View className="flex-1 items-center justify-center px-8 py-16">
-      <View className="mb-4 h-16 w-16 items-center justify-center rounded-2xl bg-gray-100">
-        <Ionicons name={icon} size={28} color="#9ca3af" />
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, paddingVertical: 64 }}>
+      <View style={{ marginBottom: 16, height: 64, width: 64, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: Colors.gray[100] }}>
+        <Ionicons name={icon} size={28} color={Colors.gray[400]} />
       </View>
-      <Text className="text-center text-lg font-semibold text-gray-900">{title}</Text>
+      <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>{title}</Text>
       {description && (
-        <Text className="mt-2 text-center text-sm leading-5 text-gray-500">{description}</Text>
+        <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, lineHeight: 20, color: Colors.gray[500] }}>{description}</Text>
       )}
       {actionLabel && onAction && (
         <TouchableOpacity
-          className="mt-6 rounded-xl bg-gray-900 px-6 py-3"
+          style={{ marginTop: 24, borderRadius: 12, backgroundColor: Colors.gray[900], paddingHorizontal: 24, paddingVertical: 12 }}
           onPress={onAction}
         >
-          <Text className="font-medium text-white">{actionLabel}</Text>
+          <Text style={{ fontWeight: "500", color: Colors.white }}>{actionLabel}</Text>
         </TouchableOpacity>
       )}
     </View>

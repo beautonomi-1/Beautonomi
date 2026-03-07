@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { Colors } from "@/constants/colors";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -19,6 +20,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
+import { twStyle } from "@/lib/twStyle";
 
 interface ResourceGroup {
   id: string;
@@ -31,7 +33,7 @@ interface ResourceGroup {
 }
 
 const COLORS = [
-  "#FF0077",
+  Colors.primary,
   "#6366f1",
   "#22c55e",
   "#f59e0b",
@@ -50,10 +52,15 @@ export default function ResourceGroupsScreen() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<ResourceGroup | null>(null);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    name: string;
+    description: string;
+    color: string;
+    is_active: boolean;
+  }>({
     name: "",
     description: "",
-    color: "#FF0077",
+    color: Colors.primary,
     is_active: true,
   });
 
@@ -93,7 +100,7 @@ export default function ResourceGroupsScreen() {
 
   function openCreate() {
     setEditing(null);
-    setForm({ name: "", description: "", color: "#FF0077", is_active: true });
+    setForm({ name: "", description: "", color: Colors.primary, is_active: true });
     setShowForm(true);
   }
 
@@ -174,7 +181,7 @@ export default function ResourceGroupsScreen() {
         subtitle={`${groups?.length ?? 0} groups`}
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-900"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
             onPress={openCreate}
           >
             <Ionicons name="add" size={20} color="#fff" />
@@ -184,8 +191,8 @@ export default function ResourceGroupsScreen() {
 
       {/* Stats */}
       {groups && groups.length > 0 && (
-        <View className="mb-3 flex-row gap-3">
-          <View className="flex-1">
+        <View style={twStyle("mb-3 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <StatCard
               title="Active"
               value={String(activeCount)}
@@ -195,7 +202,7 @@ export default function ResourceGroupsScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <StatCard
               title="Resources"
               value={String(totalResources)}
@@ -210,7 +217,7 @@ export default function ResourceGroupsScreen() {
 
       {/* Search */}
       {groups && groups.length > 2 && (
-        <View className="mb-3">
+        <View style={twStyle("mb-3")}>
           <SearchBar
             value={search}
             onChangeText={setSearch}
@@ -238,53 +245,52 @@ export default function ResourceGroupsScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: group }: { item: ResourceGroup }) => (
             <TouchableOpacity
-              className={`rounded-xl border bg-white p-4 ${
+              style={twStyle(`rounded-xl border bg-white p-4 ${
                 group.is_active ? "border-gray-100" : "border-gray-100 opacity-60"
-              }`}
+              }`)}
               onPress={() => openEdit(group)}
               activeOpacity={0.7}
             >
-              <View className="flex-row items-center">
+              <View style={twStyle("flex-row items-center")}>
                 <View
-                  className="h-10 w-10 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: group.color + "20" }}
+                  style={[twStyle("h-10 w-10 items-center justify-center rounded-xl"), { backgroundColor: group.color + "20" }]}
                 >
                   <View
-                    className="h-4 w-4 rounded-full"
-                    style={{ backgroundColor: group.color }}
+                    style={[twStyle("h-4 w-4 rounded-full"), { backgroundColor: group.color }]}
                   />
                 </View>
-                <View className="ml-3 flex-1">
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-sm font-semibold text-gray-900">
+                <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("flex-row items-center")}>
+                    <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>
                       {group.name}
                     </Text>
                     {!group.is_active && (
-                      <View className="rounded-full bg-gray-100 px-2 py-0.5">
-                        <Text className="text-[10px] font-medium text-gray-500">
+                      <View style={twStyle("rounded-full bg-gray-100 px-2 py-0.5")}>
+                        <Text style={twStyle("text-[10px] font-medium text-gray-500")}>
                           Inactive
                         </Text>
                       </View>
                     )}
                   </View>
                   {group.description && (
-                    <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={1}>
+                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")} numberOfLines={1}>
                       {group.description}
                     </Text>
                   )}
                   {group.resource_count !== undefined && (
-                    <Text className="mt-0.5 text-xs text-indigo-500">
+                    <Text style={twStyle("mt-0.5 text-xs text-indigo-500")}>
                       {group.resource_count} resource{group.resource_count !== 1 ? "s" : ""}
                     </Text>
                   )}
                 </View>
-                <View className="flex-row items-center gap-2">
+                <View style={twStyle("flex-row items-center")}>
                   <TouchableOpacity
                     onPress={() => handleToggleActive(group)}
-                    className="rounded-full p-1"
+                    style={[twStyle("rounded-full p-1"), { marginRight: 8 }]}
                   >
                     <Ionicons
                       name={group.is_active ? "eye-outline" : "eye-off-outline"}
@@ -308,36 +314,35 @@ export default function ResourceGroupsScreen() {
         title={editing ? "Edit Resource Group" : "New Resource Group"}
       >
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Name *
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
             placeholder="e.g. Treatment Rooms"
             placeholderTextColor="#9ca3af"
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Description
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
             onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
             placeholder="Optional..."
             placeholderTextColor="#9ca3af"
             multiline
           />
-          <Text className="mb-2 text-sm font-medium text-gray-700">Color</Text>
-          <View className="mb-3 flex-row flex-wrap gap-3">
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Color</Text>
+          <View style={twStyle("mb-3 flex-row flex-wrap")}>
             {COLORS.map((c) => (
               <TouchableOpacity
                 key={c}
-                className={`h-10 w-10 items-center justify-center rounded-full ${
+                style={[twStyle(`h-10 w-10 items-center justify-center rounded-full ${
                   form.color === c ? "border-2 border-gray-900" : ""
-                }`}
-                style={{ backgroundColor: c }}
+                }`), { backgroundColor: c, marginRight: 12, marginBottom: 12 }]}
                 onPress={() => setForm((p) => ({ ...p, color: c }))}
               >
                 {form.color === c && (
@@ -346,8 +351,8 @@ export default function ResourceGroupsScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <View className="mb-4 flex-row items-center justify-between">
-            <Text className="text-sm font-medium text-gray-700">Active</Text>
+          <View style={twStyle("mb-4 flex-row items-center justify-between")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
             <Switch
               value={form.is_active}
               onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}

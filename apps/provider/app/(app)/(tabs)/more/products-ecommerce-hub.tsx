@@ -7,6 +7,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 type Product = {
   id: string;
@@ -40,7 +41,7 @@ export default function ProductsEcommerceHubScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Products & e-commerce" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -51,7 +52,7 @@ export default function ProductsEcommerceHubScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Products & e-commerce" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -66,96 +67,96 @@ export default function ProductsEcommerceHubScreen() {
         onBack={() => router.back()}
       />
       <ScrollView
-        className="flex-1"
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
-        <View className="mb-4 gap-3">
-          <View className="flex-row gap-3">
+        <View style={{ marginBottom: 16 }}>
+          <View style={{ flexDirection: "row" }}>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/products-hub" as never)}
-              className="flex-1 flex-row items-center rounded-xl border border-gray-200 bg-white p-4"
+              style={{ flex: 1, marginRight: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               activeOpacity={0.7}
             >
-              <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-violet-100">
+              <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#ede9fe" }}>
                 <Ionicons name="cube-outline" size={22} color="#8b5cf6" />
               </View>
-              <View className="flex-1">
-                <Text className="font-semibold text-gray-900">Products & inventory</Text>
-                <Text className="text-xs text-gray-500">Manage catalog & stock</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Products & inventory</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Manage catalog & stock</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/product-orders" as never)}
-              className="flex-1 flex-row items-center rounded-xl border border-gray-200 bg-white p-4"
+              style={{ flex: 1, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16, marginBottom: 12 }}
               activeOpacity={0.7}
             >
-              <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-teal-100">
+              <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#ccfbf1" }}>
                 <Ionicons name="receipt-outline" size={22} color="#0d9488" />
               </View>
-              <View className="flex-1">
-                <Text className="font-semibold text-gray-900">Product orders</Text>
-                <Text className="text-xs text-gray-500">View & fulfill orders</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Product orders</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>View & fulfill orders</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
             </TouchableOpacity>
           </View>
           <TouchableOpacity
             onPress={() => router.push("/(app)/(tabs)/more/settings/shipping-config" as never)}
-            className="flex-row items-center rounded-xl border border-gray-200 bg-white p-4"
+            style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
             activeOpacity={0.7}
           >
-            <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-slate-100">
+            <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#f1f5f9" }}>
               <Ionicons name="car-outline" size={22} color="#475569" />
             </View>
-            <View className="flex-1">
-              <Text className="font-semibold text-gray-900">Shipping & collection</Text>
-              <Text className="text-xs text-gray-500">Delivery and collection options</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Shipping & collection</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Delivery and collection options</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
           </TouchableOpacity>
         </View>
         {products.length === 0 ? (
-          <View className="py-8 px-4 items-center">
+          <View style={{ paddingVertical: 32, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="cube-outline" size={48} color="#9ca3af" />
-            <Text className="mt-4 text-center text-gray-600">No products yet</Text>
-            <Text className="mt-2 text-center text-sm text-gray-500 mb-4">
+            <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>No products yet</Text>
+            <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500], marginBottom: 16 }}>
               Add your first product in the app
             </Text>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/product-form" as never)}
-              className="rounded-xl bg-violet-600 px-6 py-3"
+              style={{ borderRadius: 12, backgroundColor: "#7c3aed", paddingHorizontal: 24, paddingVertical: 12 }}
               activeOpacity={0.8}
             >
-              <Text className="font-semibold text-white">Add product</Text>
+              <Text style={{ fontWeight: "600", color: Colors.white }}>Add product</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <View className="pb-4">
-            <Text className="mb-2 px-1 text-sm font-medium text-gray-500">Recent products</Text>
+          <View style={{ paddingBottom: 16 }}>
+            <Text style={{ marginBottom: 8, paddingHorizontal: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[500] }}>Recent products</Text>
             {products.slice(0, 10).map((p) => (
               <TouchableOpacity
                 key={p.id}
                 onPress={() => router.push({ pathname: "/(app)/(tabs)/more/product-form", params: { id: p.id } } as never)}
-                className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-white p-4"
+                style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
                 activeOpacity={0.7}
               >
-                <View className="flex-1">
-                  <Text className="font-semibold text-gray-900">{p.name}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{p.name}</Text>
                   {p.sku && (
-                    <Text className="mt-0.5 text-xs text-gray-500">SKU: {p.sku}</Text>
+                    <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>SKU: {p.sku}</Text>
                   )}
                 </View>
-                <View className="items-end">
+                <View style={{ alignItems: "flex-end" }}>
                   {typeof p.retail_price === "number" && (
-                    <Text className="font-medium text-gray-700">
+                    <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>
                       ZAR {p.retail_price.toLocaleString()}
                     </Text>
                   )}
                   {p.stock_quantity != null && (
-                    <Text className="text-xs text-gray-500">Stock: {p.stock_quantity}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Stock: {p.stock_quantity}</Text>
                   )}
                   <Ionicons name="chevron-forward" size={18} color="#9ca3af" style={{ marginTop: 4 }} />
                 </View>
@@ -164,10 +165,10 @@ export default function ProductsEcommerceHubScreen() {
             {products.length > 10 && (
               <TouchableOpacity
                 onPress={() => router.push("/(app)/(tabs)/more/products-hub" as never)}
-                className="rounded-xl border border-gray-200 bg-gray-50 py-3"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 12 }}
                 activeOpacity={0.7}
               >
-                <Text className="text-center font-medium text-violet-600">View all products</Text>
+                <Text style={{ textAlign: "center", fontWeight: "500", color: "#7c3aed" }}>View all products</Text>
               </TouchableOpacity>
             )}
           </View>

@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { formatCurrency } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 /* ─── types (aligned with API: hours_before, refund_percentage, is_default) ─── */
 interface CancellationPolicy {
@@ -197,7 +198,7 @@ export default function CancellationPoliciesScreen() {
         subtitle={`${policies?.length ?? 0} ${(policies?.length ?? 0) === 1 ? "policy" : "policies"}`}
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-indigo-600"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-indigo-600")}
             onPress={openAddSheet}
             accessibilityLabel="Add new cancellation policy"
             accessibilityRole="button"
@@ -224,24 +225,25 @@ export default function CancellationPoliciesScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: policy }: { item: CancellationPolicy }) => (
             <View
-              className="rounded-xl border border-gray-100 bg-white p-4"
+              style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
               accessibilityLabel={`Cancellation policy ${policy.name}`}
             >
               {/* Header */}
-              <View className="flex-row items-start justify-between">
-                <View className="flex-1">
-                  <Text className="text-base font-semibold text-gray-900">
+              <View style={twStyle("flex-row items-start justify-between")}>
+                <View style={twStyle("flex-1")}>
+                  <Text style={twStyle("text-base font-semibold text-gray-900")}>
                     {policy.name}
                   </Text>
                 </View>
                 <View
-                  className={`rounded-full px-2 py-0.5 ${policy.is_default ? "bg-indigo-50" : "bg-gray-100"}`}
+                  style={twStyle(`rounded-full px-2 py-0.5 ${policy.is_default ? "bg-indigo-50" : "bg-gray-100"}`)}
                 >
                   <Text
-                    className={`text-xs font-medium ${policy.is_default ? "text-indigo-700" : "text-gray-500"}`}
+                    style={twStyle(`text-xs font-medium ${policy.is_default ? "text-indigo-700" : "text-gray-500"}`)}
                   >
                     {policy.is_default ? "Default" : "Custom"}
                   </Text>
@@ -249,16 +251,16 @@ export default function CancellationPoliciesScreen() {
               </View>
 
               {/* Details */}
-              <View className="mt-2 flex-row flex-wrap items-center gap-4">
-                <View className="flex-row items-center">
+              <View style={twStyle("mt-2 flex-row flex-wrap items-center")}>
+                <View style={[twStyle("flex-row items-center"), { marginRight: 16 }]}>
                   <Ionicons name="time-outline" size={12} color="#9ca3af" />
-                  <Text className="ml-1 text-xs text-gray-500">
+                  <Text style={twStyle("ml-1 text-xs text-gray-500")}>
                     Within {policy.hours_before}h of appointment
                   </Text>
                 </View>
-                <View className="flex-row items-center">
+                <View style={[twStyle("flex-row items-center"), { marginRight: 16 }]}>
                   <Ionicons name="cash-outline" size={12} color="#9ca3af" />
-                  <Text className="ml-1 text-xs text-gray-500">
+                  <Text style={twStyle("ml-1 text-xs text-gray-500")}>
                     {policy.fee_type === "percentage"
                       ? `${policy.fee_amount}%`
                       : formatCurrency(policy.fee_amount)}{" "}
@@ -266,9 +268,9 @@ export default function CancellationPoliciesScreen() {
                   </Text>
                 </View>
                 {(policy.refund_percentage ?? 0) > 0 && (
-                  <View className="flex-row items-center">
+                  <View style={twStyle("flex-row items-center")}>
                     <Ionicons name="return-down-back-outline" size={12} color="#9ca3af" />
-                    <Text className="ml-1 text-xs text-gray-500">
+                    <Text style={twStyle("ml-1 text-xs text-gray-500")}>
                       {policy.refund_percentage}% refund
                     </Text>
                   </View>
@@ -276,26 +278,26 @@ export default function CancellationPoliciesScreen() {
               </View>
 
               {/* Actions */}
-              <View className="mt-3 flex-row items-center gap-2 border-t border-gray-50 pt-3">
+              <View style={twStyle("mt-3 flex-row items-center border-t border-gray-50 pt-3")}>
                 <TouchableOpacity
-                  className="flex-1 flex-row items-center justify-center rounded-lg bg-gray-100 py-2"
+                  style={[twStyle("flex-1 flex-row items-center justify-center rounded-lg bg-gray-100 py-2"), { marginRight: 8 }]}
                   onPress={() => openEditSheet(policy)}
                   accessibilityLabel={`Edit ${policy.name} policy`}
                   accessibilityRole="button"
                 >
                   <Ionicons name="create-outline" size={14} color="#6b7280" />
-                  <Text className="ml-1 text-xs font-medium text-gray-600">
+                  <Text style={twStyle("ml-1 text-xs font-medium text-gray-600")}>
                     Edit
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  className="flex-row items-center justify-center rounded-lg bg-red-50 px-4 py-2"
+                  style={twStyle("flex-row items-center justify-center rounded-lg bg-red-50 px-4 py-2")}
                   onPress={() => handleDelete(policy)}
                   accessibilityLabel={`Delete ${policy.name} policy`}
                   accessibilityRole="button"
                 >
                   <Ionicons name="trash-outline" size={14} color="#ef4444" />
-                  <Text className="ml-1 text-xs font-medium text-red-600">
+                  <Text style={twStyle("ml-1 text-xs font-medium text-red-600")}>
                     Delete
                   </Text>
                 </TouchableOpacity>
@@ -313,37 +315,37 @@ export default function CancellationPoliciesScreen() {
         snapHeight="half"
       >
         {/* Name */}
-        <View className="mb-4">
-          <Text className="mb-1 text-sm font-medium text-gray-700">
-            Policy Name <Text className="text-red-500">*</Text>
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+            Policy Name <Text style={twStyle("text-red-500")}>*</Text>
           </Text>
           <TextInput
-            className={`rounded-xl border bg-gray-50 px-4 py-3 text-sm text-gray-900 ${formErrors.name ? "border-red-400" : "border-gray-200"}`}
+            style={twStyle(`rounded-xl border bg-gray-50 px-4 py-3 text-sm text-gray-900 ${formErrors.name ? "border-red-400" : "border-gray-200"}`)}
             value={form.name}
             onChangeText={(v) => { updateField("name", v); setFormErrors((prev) => ({ ...prev, name: undefined })); }}
             placeholder="e.g. Standard cancellation"
             placeholderTextColor="#9ca3af"
             accessibilityLabel="Policy name"
           />
-          {formErrors.name && <Text className="mt-1 text-xs text-red-500">{formErrors.name}</Text>}
+          {formErrors.name && <Text style={twStyle("mt-1 text-xs text-red-500")}>{formErrors.name}</Text>}
         </View>
 
         {/* Fee Type */}
-        <View className="mb-4">
-          <Text className="mb-2 text-sm font-medium text-gray-700">
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
             Fee Type
           </Text>
-          <View className="flex-row gap-2">
+          <View style={twStyle("flex-row")}>
             {(["percentage", "fixed"] as const).map((type) => (
               <TouchableOpacity
                 key={type}
-                className={`flex-1 items-center rounded-xl py-3 ${form.fee_type === type ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`}
+                style={[twStyle(`flex-1 items-center rounded-xl py-3 ${form.fee_type === type ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), type === "percentage" ? { marginRight: 8 } : undefined]}
                 onPress={() => updateField("fee_type", type)}
                 accessibilityLabel={`Fee type ${type}`}
                 accessibilityRole="button"
               >
                 <Text
-                  className={`text-sm font-medium capitalize ${form.fee_type === type ? "text-white" : "text-gray-600"}`}
+                  style={twStyle(`text-sm font-medium capitalize ${form.fee_type === type ? "text-white" : "text-gray-600"}`)}
                 >
                   {type}
                 </Text>
@@ -353,18 +355,18 @@ export default function CancellationPoliciesScreen() {
         </View>
 
         {/* Fee Amount */}
-        <View className="mb-4">
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Fee Amount
           </Text>
-          <View className="flex-row items-center">
+          <View style={twStyle("flex-row items-center")}>
             {form.fee_type === "fixed" && (
-              <Text className="mr-2 text-lg font-semibold text-gray-400">
+              <Text style={twStyle("mr-2 text-lg font-semibold text-gray-400")}>
                 R
               </Text>
             )}
             <TextInput
-              className={`flex-1 rounded-xl border bg-gray-50 px-4 py-3 text-sm text-gray-900 ${formErrors.fee_amount ? "border-red-400" : "border-gray-200"}`}
+              style={twStyle(`flex-1 rounded-xl border bg-gray-50 px-4 py-3 text-sm text-gray-900 ${formErrors.fee_amount ? "border-red-400" : "border-gray-200"}`)}
               value={form.fee_amount}
               onChangeText={(v) => { updateField("fee_amount", v); setFormErrors((prev) => ({ ...prev, fee_amount: undefined })); }}
               keyboardType="decimal-pad"
@@ -373,22 +375,22 @@ export default function CancellationPoliciesScreen() {
               accessibilityLabel="Fee amount"
             />
             {form.fee_type === "percentage" && (
-              <Text className="ml-2 text-lg font-semibold text-gray-400">
+              <Text style={twStyle("ml-2 text-lg font-semibold text-gray-400")}>
                 %
               </Text>
             )}
           </View>
-          {formErrors.fee_amount && <Text className="mt-1 text-xs text-red-500">{formErrors.fee_amount}</Text>}
+          {formErrors.fee_amount && <Text style={twStyle("mt-1 text-xs text-red-500")}>{formErrors.fee_amount}</Text>}
         </View>
 
         {/* Hours Before */}
-        <View className="mb-4">
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Hours Before Appointment
           </Text>
-          <View className="flex-row items-center">
+          <View style={twStyle("flex-row items-center")}>
             <TextInput
-              className={`flex-1 rounded-xl border bg-gray-50 px-4 py-3 text-sm text-gray-900 ${formErrors.hours_before ? "border-red-400" : "border-gray-200"}`}
+              style={twStyle(`flex-1 rounded-xl border bg-gray-50 px-4 py-3 text-sm text-gray-900 ${formErrors.hours_before ? "border-red-400" : "border-gray-200"}`)}
               value={form.hours_before}
               onChangeText={(v) => { updateField("hours_before", v); setFormErrors((prev) => ({ ...prev, hours_before: undefined })); }}
               keyboardType="number-pad"
@@ -396,19 +398,19 @@ export default function CancellationPoliciesScreen() {
               placeholderTextColor="#9ca3af"
               accessibilityLabel="Hours before appointment"
             />
-            <Text className="ml-2 text-sm text-gray-400">hours</Text>
+            <Text style={twStyle("ml-2 text-sm text-gray-400")}>hours</Text>
           </View>
-          {formErrors.hours_before && <Text className="mt-1 text-xs text-red-500">{formErrors.hours_before}</Text>}
+          {formErrors.hours_before && <Text style={twStyle("mt-1 text-xs text-red-500")}>{formErrors.hours_before}</Text>}
         </View>
 
         {/* Refund Percentage */}
-        <View className="mb-4">
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Refund Percentage
           </Text>
-          <View className="flex-row items-center">
+          <View style={twStyle("flex-row items-center")}>
             <TextInput
-              className={`flex-1 rounded-xl border bg-gray-50 px-4 py-3 text-sm text-gray-900 ${formErrors.refund_percentage ? "border-red-400" : "border-gray-200"}`}
+              style={twStyle(`flex-1 rounded-xl border bg-gray-50 px-4 py-3 text-sm text-gray-900 ${formErrors.refund_percentage ? "border-red-400" : "border-gray-200"}`)}
               value={form.refund_percentage}
               onChangeText={(v) => { updateField("refund_percentage", v); setFormErrors((prev) => ({ ...prev, refund_percentage: undefined })); }}
               keyboardType="number-pad"
@@ -416,16 +418,16 @@ export default function CancellationPoliciesScreen() {
               placeholderTextColor="#9ca3af"
               accessibilityLabel="Refund percentage"
             />
-            <Text className="ml-2 text-lg font-semibold text-gray-400">
+            <Text style={twStyle("ml-2 text-lg font-semibold text-gray-400")}>
               %
             </Text>
           </View>
-          {formErrors.refund_percentage && <Text className="mt-1 text-xs text-red-500">{formErrors.refund_percentage}</Text>}
+          {formErrors.refund_percentage && <Text style={twStyle("mt-1 text-xs text-red-500")}>{formErrors.refund_percentage}</Text>}
         </View>
 
         {/* Default Toggle */}
-        <View className="mb-6 flex-row items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
-          <Text className="text-sm font-medium text-gray-700">
+        <View style={twStyle("mb-6 flex-row items-center justify-between rounded-xl bg-gray-50 px-4 py-3")}>
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>
             Set as Default Policy
           </Text>
           <Switch

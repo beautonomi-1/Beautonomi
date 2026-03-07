@@ -600,7 +600,7 @@ export function ProductCreateEditDialog({
                     <Button
                       type="button"
                       variant="link"
-                      className="p-0 h-auto text-[#FF0077] hover:text-[#D60565] text-sm font-normal"
+                      className="p-0 h-auto text-primary hover:text-primary-hover text-sm font-normal"
                       onClick={() => setIsBrandDialogOpen(true)}
                     >
                       <Plus className="w-3 h-3 mr-1" />
@@ -689,7 +689,7 @@ export function ProductCreateEditDialog({
                     <Button
                       type="button"
                       variant="link"
-                      className="p-0 h-auto text-[#FF0077] hover:text-[#D60565] text-sm font-normal"
+                      className="p-0 h-auto text-primary hover:text-primary-hover text-sm font-normal"
                       onClick={() => setIsCategoryDialogOpen(true)}
                     >
                       <Plus className="w-3 h-3 mr-1" />
@@ -1028,7 +1028,7 @@ export function ProductCreateEditDialog({
                     <div className="flex gap-2">
                       <Button 
                         variant="link" 
-                        className="p-0 h-auto text-[#FF0077] hover:text-[#D60565] text-sm font-normal"
+                        className="p-0 h-auto text-primary hover:text-primary-hover text-sm font-normal"
                         onClick={generateSku}
                         type="button"
                       >
@@ -1037,7 +1037,7 @@ export function ProductCreateEditDialog({
                       </Button>
                       <Button 
                         variant="link" 
-                        className="p-0 h-auto text-[#FF0077] hover:text-[#D60565] text-sm font-normal"
+                        className="p-0 h-auto text-primary hover:text-primary-hover text-sm font-normal"
                         onClick={addAnotherSkuCode}
                         type="button"
                       >
@@ -1224,12 +1224,12 @@ export function ProductCreateEditDialog({
                         <X className="h-4 w-4" />
                       </Button>
                       <div className="mt-2">
-                        <span className="text-xs bg-[#FF0077] text-white px-2 py-1 rounded">Main Photo</span>
+                        <span className="text-xs bg-primary text-white px-2 py-1 rounded">Main Photo</span>
                       </div>
                     </div>
                   ) : (
                     <div className="flex-1 flex flex-col items-center justify-center mb-4">
-                      <div className="bg-[#FF0077] text-white rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-4">
+                      <div className="bg-primary text-white rounded-full w-24 h-24 flex items-center justify-center mx-auto mb-4">
                         <Camera className="w-12 h-12" />
                       </div>
                       <input

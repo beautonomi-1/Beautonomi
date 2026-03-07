@@ -85,7 +85,7 @@ export default function Features({ content }: FeaturesProps) {
             return (
               <div 
                 key={index} 
-                className="group relative bg-white rounded-xl p-6 md:p-8 border border-gray-200 hover:border-[#FF0077] hover:shadow-xl transition-all duration-300 cursor-pointer"
+                className="group relative bg-white rounded-xl p-6 md:p-8 border border-gray-200 hover:border-primary hover:shadow-xl transition-all duration-300 cursor-pointer"
               >
                 <div className={`inline-flex p-4 bg-gradient-to-br ${feature.color} rounded-xl mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300`}>
                   <Icon className="w-6 h-6 md:w-7 md:h-7 text-white" />

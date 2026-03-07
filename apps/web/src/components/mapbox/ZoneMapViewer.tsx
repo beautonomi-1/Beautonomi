@@ -73,7 +73,7 @@ export default function ZoneMapViewer({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center border rounded-lg" style={{ height }}>
-        <Loader2 className="w-6 h-6 animate-spin text-[#FF0077]" />
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
       </div>
     );
   }
@@ -87,7 +87,7 @@ export default function ZoneMapViewer({
             <div
               key={zone.id || index}
               className={`p-3 border rounded-lg cursor-pointer hover:bg-gray-50 ${
-                zone.is_active ? "border-[#FF0077]" : "border-gray-300"
+                zone.is_active ? "border-primary" : "border-gray-300"
               }`}
               onClick={() => onZoneClick?.(zone)}
             >

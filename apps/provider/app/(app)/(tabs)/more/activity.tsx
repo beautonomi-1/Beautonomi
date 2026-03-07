@@ -7,10 +7,12 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 interface DashboardData {
   total_bookings: number;
@@ -42,6 +44,7 @@ function formatCurrency(amount: number): string {
 
 export default function ActivityScreen() {
   const [refreshing, setRefreshing] = useState(false);
+  const { screenPadding } = useResponsive();
   const { data, loading, error, refresh } = useApi<DashboardData>("/api/provider/dashboard");
 
   const onRefresh = useCallback(async () => {
@@ -54,7 +57,7 @@ export default function ActivityScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Activity" showBack />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -65,7 +68,7 @@ export default function ActivityScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Activity" showBack />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -80,66 +83,66 @@ export default function ActivityScreen() {
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Activity" showBack />
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
       >
         {/* Summary cards */}
-        <View className="mb-4 flex-row flex-wrap gap-3">
-          <View className="min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4">
-            <View className="flex-row items-center">
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-indigo-50">
+        <View style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap" }}>
+          <View style={{ minWidth: "45%", flex: 1, marginRight: 12, marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#eef2ff" }}>
                 <Ionicons name="calendar-outline" size={20} color="#6366f1" />
               </View>
-              <Text className="ml-2 text-2xl font-bold text-gray-900">
+              <Text style={{ marginLeft: 8, fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>
                 {stats.appointments_today ?? 0}
               </Text>
             </View>
-            <Text className="mt-1 text-xs text-gray-500">Appointments today</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Appointments today</Text>
           </View>
-          <View className="min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4">
-            <View className="flex-row items-center">
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-emerald-50">
+          <View style={{ minWidth: "45%", flex: 1, marginRight: 12, marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#ecfdf5" }}>
                 <Ionicons name="cash-outline" size={20} color="#059669" />
               </View>
-              <Text className="ml-2 text-lg font-bold text-gray-900">
+              <Text style={{ marginLeft: 8, fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
                 {formatCurrency(stats.revenue_this_month ?? 0)}
               </Text>
             </View>
-            <Text className="mt-1 text-xs text-gray-500">Revenue this month</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Revenue this month</Text>
             {(stats.revenue_growth ?? 0) !== 0 && (
               <Text
-                className={`mt-0.5 text-xs font-medium ${(stats.revenue_growth ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}
+                style={{ marginTop: 2, fontSize: 12, fontWeight: "500", color: (stats.revenue_growth ?? 0) >= 0 ? "#16a34a" : "#dc2626" }}
               >
                 {(stats.revenue_growth ?? 0) >= 0 ? "+" : ""}
                 {stats.revenue_growth}% vs last month
               </Text>
             )}
           </View>
-          <View className="min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4">
-            <View className="flex-row items-center">
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-amber-50">
+          <View style={{ minWidth: "45%", flex: 1, marginRight: 12, marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#fffbeb" }}>
                 <Ionicons name="wallet-outline" size={20} color="#d97706" />
               </View>
-              <Text className="ml-2 text-lg font-bold text-gray-900">
+              <Text style={{ marginLeft: 8, fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
                 {formatCurrency(stats.available_balance ?? 0)}
               </Text>
             </View>
-            <Text className="mt-1 text-xs text-gray-500">Available balance</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Available balance</Text>
           </View>
-          <View className="min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4">
-            <View className="flex-row items-center">
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-rose-50">
+          <View style={{ minWidth: "45%", flex: 1, marginRight: 12, marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#fff1f2" }}>
                 <Ionicons name="star-outline" size={20} color="#e11d48" />
               </View>
-              <Text className="ml-2 text-lg font-bold text-gray-900">
+              <Text style={{ marginLeft: 8, fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
                 {(stats.average_rating ?? 0).toFixed(1)}
               </Text>
             </View>
-            <Text className="mt-1 text-xs text-gray-500">
+            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
               {stats.total_reviews ?? 0} reviews
             </Text>
           </View>
@@ -147,49 +150,49 @@ export default function ActivityScreen() {
 
         {/* Points & recent activity */}
         {stats.gamification && (
-          <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-            <View className="flex-row items-center justify-between">
-              <Text className="text-base font-semibold text-gray-900">
+          <View style={{ marginBottom: 16, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
                 Reward points
               </Text>
-              <View className="flex-row items-center rounded-full bg-amber-50 px-2.5 py-1">
+              <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 9999, backgroundColor: "#fffbeb", paddingHorizontal: 10, paddingVertical: 4 }}>
                 <Ionicons name="trophy-outline" size={14} color="#b45309" />
-                <Text className="ml-1 text-sm font-semibold text-amber-800">
+                <Text style={{ marginLeft: 4, fontSize: 14, fontWeight: "600", color: "#92400e" }}>
                   {stats.gamification.total_points ?? 0} pts
                 </Text>
               </View>
             </View>
             {stats.gamification.current_badge && (
-              <Text className="mt-1 text-xs text-gray-500">
+              <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
                 Badge: {stats.gamification.current_badge.name}
               </Text>
             )}
           </View>
         )}
 
-        <View className="mb-2 flex-row items-center justify-between">
-          <Text className="text-sm font-semibold text-gray-700">
+        <View style={{ marginBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>
             Recent activity
           </Text>
         </View>
         {recent.length === 0 ? (
-          <View className="rounded-2xl border border-gray-100 bg-gray-50/50 p-6">
-            <Text className="text-center text-sm text-gray-500">
+          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: "rgba(249,250,251,0.5)", padding: 24 }}>
+            <Text style={{ textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
               No recent point activity. Complete bookings and grow your business to earn rewards.
             </Text>
           </View>
         ) : (
-          <View className="rounded-2xl border border-gray-100 bg-white">
+          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white }}>
             {recent.slice(0, 10).map((tx, i) => (
               <View
                 key={tx.created_at + i}
-                className={`flex-row items-center justify-between border-gray-100 px-4 py-3 ${i > 0 ? "border-t" : ""}`}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderTopWidth: i > 0 ? 1 : 0, borderTopColor: Colors.gray[100], paddingHorizontal: 16, paddingVertical: 12 }}
               >
-                <View className="flex-1">
-                  <Text className="text-sm font-medium text-gray-900">
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
                     {tx.description || tx.source || "Points"}
                   </Text>
-                  <Text className="text-xs text-gray-500">
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
                     {new Date(tx.created_at).toLocaleDateString(undefined, {
                       month: "short",
                       day: "numeric",
@@ -198,7 +201,7 @@ export default function ActivityScreen() {
                     })}
                   </Text>
                 </View>
-                <Text className="text-sm font-semibold text-green-600">
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#16a34a" }}>
                   +{tx.points}
                 </Text>
               </View>

@@ -16,6 +16,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface PackageReport {
   id: string;
@@ -80,7 +81,7 @@ export default function PackageReportScreen() {
         subtitle="Sales & usage analytics"
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-100"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
             onPress={handleExport}
           >
             <Ionicons name="download-outline" size={18} color="#374151" />
@@ -88,19 +89,19 @@ export default function PackageReportScreen() {
         }
       />
 
-      <View className="mb-3 flex-row gap-2">
-        <View className="flex-1">
+      <View style={twStyle("mb-3 flex-row")}>
+        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
           <StatCard title="Total Sold" value={String(stats?.total_sold ?? 0)} icon="layers-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
           <StatCard title="Revenue" value={formatCurrency(stats?.total_revenue ?? 0)} icon="cash-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard title="Active" value={String(stats?.active_subscriptions ?? 0)} icon="radio-button-on" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
         </View>
       </View>
 
-      <View className="mb-3">
+      <View style={twStyle("mb-3")}>
         <FilterChipGroup options={PERIOD_FILTERS} selected={period} onSelect={setPeriod} />
       </View>
 
@@ -115,45 +116,45 @@ export default function PackageReportScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: pkg }: { item: PackageReport }) => (
-            <View className="rounded-xl border border-gray-100 bg-white p-4">
-              <View className="flex-row items-start justify-between">
-                <View className="flex-1">
-                  <Text className="text-sm font-semibold text-gray-900">{pkg.name}</Text>
-                  <Text className="mt-0.5 text-xs text-gray-500">
+            <View style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}>
+              <View style={twStyle("flex-row items-start justify-between")}>
+                <View style={twStyle("flex-1")}>
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>{pkg.name}</Text>
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                     {pkg.services_included} services included
                   </Text>
-                  <View className="mt-2 flex-row items-center gap-3">
-                    <View className="flex-row items-center gap-1">
-                      <Ionicons name="cart-outline" size={12} color="#6b7280" />
-                      <Text className="text-xs text-gray-500">{pkg.total_sold} sold</Text>
+                  <View style={twStyle("mt-2 flex-row items-center")}>
+                    <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
+                      <Ionicons name="cart-outline" size={12} color="#6b7280" style={{ marginRight: 4 }} />
+                      <Text style={twStyle("text-xs text-gray-500")}>{pkg.total_sold} sold</Text>
                     </View>
-                    <View className="flex-row items-center gap-1">
-                      <Ionicons name="people-outline" size={12} color="#6b7280" />
-                      <Text className="text-xs text-gray-500">{pkg.active_count} active</Text>
+                    <View style={twStyle("flex-row items-center")}>
+                      <Ionicons name="people-outline" size={12} color="#6b7280" style={{ marginRight: 4 }} />
+                      <Text style={twStyle("text-xs text-gray-500")}>{pkg.active_count} active</Text>
                     </View>
                   </View>
                 </View>
-                <View className="items-end">
-                  <Text className="text-base font-bold text-gray-900">
+                <View style={twStyle("items-end")}>
+                  <Text style={twStyle("text-base font-bold text-gray-900")}>
                     {formatCurrency(pkg.total_revenue)}
                   </Text>
-                  <View className="mt-1 flex-row items-center gap-1">
-                    <Text className="text-xs text-gray-500">Usage:</Text>
-                    <Text className={`text-xs font-semibold ${
+                  <View style={twStyle("mt-1 flex-row items-center")}>
+                    <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 4 }]}>Usage:</Text>
+                    <Text style={twStyle(`text-xs font-semibold ${
                       pkg.usage_rate >= 0.7 ? "text-green-600" : pkg.usage_rate >= 0.4 ? "text-amber-600" : "text-red-600"
-                    }`}>
+                    }`)}>
                       {(pkg.usage_rate * 100).toFixed(0)}%
                     </Text>
                   </View>
                   {/* Usage bar */}
-                  <View className="mt-1 h-1.5 w-16 rounded-full bg-gray-100 overflow-hidden">
+                  <View style={twStyle("mt-1 h-1.5 w-16 rounded-full bg-gray-100 overflow-hidden")}>
                     <View
-                      className={`h-full rounded-full ${
+                      style={[twStyle(`h-full rounded-full ${
                         pkg.usage_rate >= 0.7 ? "bg-green-500" : pkg.usage_rate >= 0.4 ? "bg-amber-500" : "bg-red-500"
-                      }`}
-                      style={{ width: `${Math.min(pkg.usage_rate * 100, 100)}%` }}
+                      }`), { width: `${Math.min(pkg.usage_rate * 100, 100)}%` }]}
                     />
                   </View>
                 </View>

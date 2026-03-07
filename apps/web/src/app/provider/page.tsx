@@ -130,7 +130,7 @@ export default function ProviderPage() {
                   setInitialMode("signup");
                   setIsLoginModalOpen(true);
                 }}
-                className="bg-gradient-to-r from-[#FF0077] to-[#D60565]"
+                className="bg-gradient-to-r from-primary to-primary-hover"
               >
                 Get Started
               </Button>
@@ -213,7 +213,7 @@ export default function ProviderPage() {
                     setInitialMode("signup");
                     setIsLoginModalOpen(true);
                   }}
-                  className="bg-gradient-to-r from-[#FF0077] to-[#D60565] text-white hover:opacity-90"
+                  className="bg-gradient-to-r from-primary to-primary-hover text-white hover:opacity-90"
                 >
                   <Building2 className="w-5 h-5 mr-2" />
                   Create Provider Account

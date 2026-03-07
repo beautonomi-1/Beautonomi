@@ -21,6 +21,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatDate } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface StaffMember {
   id: string;
@@ -171,31 +172,31 @@ export default function TimeClockScreen() {
         subtitle={`${stats.active} of ${stats.totalStaff} clocked in`}
         rightAction={
           <TouchableOpacity
-            className="flex-row items-center rounded-xl bg-gray-900 px-4 py-2"
+            style={twStyle("flex-row items-center rounded-xl bg-gray-900 px-4 py-2")}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setShowPinClock(true);
             }}
           >
             <Ionicons name="finger-print-outline" size={18} color="#fff" />
-            <Text className="ml-1.5 text-sm font-semibold text-white">PIN Clock</Text>
+            <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>PIN Clock</Text>
           </TouchableOpacity>
         }
       />
 
-      <View className="mb-4 flex-row gap-3">
-        <View className="flex-1">
+      <View style={twStyle("mb-4 flex-row")}>
+        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
           <StatCard title="Active" value={String(stats.active)} icon="radio-button-on" iconColor="#22c55e" iconBg="bg-green-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
           <StatCard title="Total Staff" value={String(stats.totalStaff)} icon="people-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard title="Hours Today" value={stats.totalHours.toFixed(1)} icon="time-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
         </View>
       </View>
 
-      <View className="mb-3">
+      <View style={twStyle("mb-3")}>
         <FilterChipGroup options={TAB_OPTIONS} selected={tab} onSelect={setTab} />
       </View>
 
@@ -212,43 +213,44 @@ export default function TimeClockScreen() {
               showsVerticalScrollIndicator={false}
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+              contentContainerStyle={{ paddingBottom: 120 }}
+              ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
               renderItem={({ item: member }: { item: StaffMember & { isClockedIn: boolean; clockInTime: string | null; currentCard: TimeCard | null } }) => (
-                <View className={`rounded-xl border bg-white p-4 ${
+                <View style={twStyle(`rounded-xl border bg-white p-4 ${
                   member.isClockedIn ? "border-green-200" : "border-gray-100"
-                }`}>
-                  <View className="flex-row items-center">
-                    <View className="relative">
+                }`)}>
+                  <View style={twStyle("flex-row items-center")}>
+                    <View style={twStyle("relative")}>
                       <Avatar name={member.name} size="sm" />
                       {member.isClockedIn && (
-                        <View className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-green-500" />
+                        <View style={twStyle("absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-green-500")} />
                       )}
                     </View>
-                    <View className="ml-3 flex-1">
-                      <Text className="text-sm font-semibold text-gray-900">{member.name}</Text>
+                    <View style={twStyle("ml-3 flex-1")}>
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>{member.name}</Text>
                       {member.isClockedIn ? (
-                        <Text className="text-xs text-green-600">
+                        <Text style={twStyle("text-xs text-green-600")}>
                           Clocked in at {member.clockInTime}
                         </Text>
                       ) : (
-                        <Text className="text-xs text-gray-400">Not clocked in</Text>
+                        <Text style={twStyle("text-xs text-gray-400")}>Not clocked in</Text>
                       )}
                     </View>
                     {member.isClockedIn ? (
                       <TouchableOpacity
-                        className="rounded-lg bg-red-50 px-4 py-2"
+                        style={twStyle("rounded-lg bg-red-50 px-4 py-2")}
                         onPress={() => handleDirectClock(member.id, "clock_out")}
                         disabled={clocking}
                       >
-                        <Text className="text-sm font-medium text-red-700">Clock Out</Text>
+                        <Text style={twStyle("text-sm font-medium text-red-700")}>Clock Out</Text>
                       </TouchableOpacity>
                     ) : (
                       <TouchableOpacity
-                        className="rounded-lg bg-green-50 px-4 py-2"
+                        style={twStyle("rounded-lg bg-green-50 px-4 py-2")}
                         onPress={() => handleDirectClock(member.id, "clock_in")}
                         disabled={clocking}
                       >
-                        <Text className="text-sm font-medium text-green-700">Clock In</Text>
+                        <Text style={twStyle("text-sm font-medium text-green-700")}>Clock In</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -259,7 +261,7 @@ export default function TimeClockScreen() {
         </>
       ) : (
         <>
-          <View className="mb-3">
+          <View style={twStyle("mb-3")}>
             <FilterChipGroup options={CARD_FILTERS} selected={cardFilter} onSelect={setCardFilter} />
           </View>
 
@@ -274,40 +276,41 @@ export default function TimeClockScreen() {
               showsVerticalScrollIndicator={false}
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+              contentContainerStyle={{ paddingBottom: 120 }}
+              ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
               renderItem={({ item: card }: { item: TimeCard }) => (
                 <TouchableOpacity
-                  className="rounded-xl border border-gray-100 bg-white p-4"
+                  style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
                   onPress={() => openEditCard(card)}
                   activeOpacity={0.7}
                 >
-                  <View className="flex-row items-center">
+                  <View style={twStyle("flex-row items-center")}>
                     <Avatar name={card.team_member_name} size="sm" />
-                    <View className="ml-2.5 flex-1">
-                      <Text className="text-sm font-semibold text-gray-900">{card.team_member_name}</Text>
-                      <Text className="text-xs text-gray-500">{formatDate(card.date)}</Text>
+                    <View style={twStyle("ml-2.5 flex-1")}>
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>{card.team_member_name}</Text>
+                      <Text style={twStyle("text-xs text-gray-500")}>{formatDate(card.date)}</Text>
                     </View>
-                    <View className="items-end">
-                      <View className="flex-row items-center gap-3">
+                    <View style={twStyle("items-end")}>
+                      <View style={twStyle("flex-row items-center")}>
                         {card.clock_in_time && (
-                          <View className="flex-row items-center">
+                          <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
                             <Ionicons name="log-in-outline" size={12} color="#22c55e" />
-                            <Text className="ml-0.5 text-xs text-green-600">{card.clock_in_time}</Text>
+                            <Text style={twStyle("ml-0.5 text-xs text-green-600")}>{card.clock_in_time}</Text>
                           </View>
                         )}
                         {card.clock_out_time && (
-                          <View className="flex-row items-center">
+                          <View style={twStyle("flex-row items-center")}>
                             <Ionicons name="log-out-outline" size={12} color="#ef4444" />
-                            <Text className="ml-0.5 text-xs text-red-600">{card.clock_out_time}</Text>
+                            <Text style={twStyle("ml-0.5 text-xs text-red-600")}>{card.clock_out_time}</Text>
                           </View>
                         )}
                       </View>
-                      <View className={`mt-1 rounded-full px-2 py-0.5 ${
+                      <View style={twStyle(`mt-1 rounded-full px-2 py-0.5 ${
                         card.status === "clocked_in" ? "bg-green-50" : "bg-gray-100"
-                      }`}>
-                        <Text className={`text-[10px] font-medium ${
+                      }`)}>
+                        <Text style={twStyle(`text-[10px] font-medium ${
                           card.status === "clocked_in" ? "text-green-700" : "text-gray-500"
-                        }`}>
+                        }`)}>
                           {card.status === "clocked_in"
                             ? "Active"
                             : card.total_hours
@@ -318,7 +321,7 @@ export default function TimeClockScreen() {
                     </View>
                   </View>
                   {card.notes && (
-                    <Text className="mt-2 text-xs text-gray-400" numberOfLines={1}>
+                    <Text style={twStyle("mt-2 text-xs text-gray-400")} numberOfLines={1}>
                       {card.notes}
                     </Text>
                   )}
@@ -331,15 +334,15 @@ export default function TimeClockScreen() {
 
       {/* PIN Clock modal */}
       <BottomSheet visible={showPinClock} onClose={() => setShowPinClock(false)} title="PIN Clock In/Out">
-        <View className="items-center">
-          <View className="mb-4 h-20 w-20 items-center justify-center rounded-full bg-indigo-50">
+        <View style={twStyle("items-center")}>
+          <View style={twStyle("mb-4 h-20 w-20 items-center justify-center rounded-full bg-indigo-50")}>
             <Ionicons name="finger-print" size={40} color="#6366f1" />
           </View>
-          <Text className="mb-4 text-center text-sm text-gray-500">
+          <Text style={twStyle("mb-4 text-center text-sm text-gray-500")}>
             Enter your 4-digit PIN to clock in or out
           </Text>
           <TextInput
-            className="mb-4 w-48 rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-center text-2xl font-bold tracking-[12px] text-gray-900"
+            style={twStyle("mb-4 w-48 rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-center text-2xl font-bold tracking-[12px] text-gray-900")}
             value={pin}
             onChangeText={(t) => setPin(t.replace(/\D/g, "").slice(0, 4))}
             keyboardType="number-pad"
@@ -360,23 +363,23 @@ export default function TimeClockScreen() {
       >
         {editingCard && (
           <View>
-            <Text className="mb-3 text-sm text-gray-500">{formatDate(editingCard.date)}</Text>
+            <Text style={twStyle("mb-3 text-sm text-gray-500")}>{formatDate(editingCard.date)}</Text>
 
-            <View className="mb-3 flex-row gap-3">
-              <View className="flex-1">
-                <Text className="mb-1 text-sm font-medium text-gray-700">Clock In</Text>
+            <View style={twStyle("mb-3 flex-row")}>
+              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Clock In</Text>
                 <TextInput
-                  className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   value={editForm.clockIn}
                   onChangeText={(t) => setEditForm((p) => ({ ...p, clockIn: t }))}
                   placeholder="HH:MM"
                   placeholderTextColor="#9ca3af"
                 />
               </View>
-              <View className="flex-1">
-                <Text className="mb-1 text-sm font-medium text-gray-700">Clock Out</Text>
+              <View style={twStyle("flex-1")}>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Clock Out</Text>
                 <TextInput
-                  className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                  style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   value={editForm.clockOut}
                   onChangeText={(t) => setEditForm((p) => ({ ...p, clockOut: t }))}
                   placeholder="HH:MM"
@@ -385,9 +388,9 @@ export default function TimeClockScreen() {
               </View>
             </View>
 
-            <Text className="mb-1 text-sm font-medium text-gray-700">Notes</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes</Text>
             <TextInput
-              className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={editForm.notes}
               onChangeText={(t) => setEditForm((p) => ({ ...p, notes: t }))}
               placeholder="Optional notes..."

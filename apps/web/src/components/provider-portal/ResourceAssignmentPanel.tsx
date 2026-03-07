@@ -184,7 +184,7 @@ export default function ResourceAssignmentPanel({
               <Button
                 onClick={handleAssignResource}
                 disabled={!selectedResourceId || isLoading}
-                className="bg-[#FF0077] hover:bg-[#D60565]"
+                className="bg-primary hover:bg-primary-hover"
               >
                 <Plus className="w-4 h-4 mr-1" />
                 Assign

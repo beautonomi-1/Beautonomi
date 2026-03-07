@@ -288,7 +288,7 @@ export function ExploreModerationTable() {
             className="flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
           >
             {selectedIds.size === posts.length ? (
-              <CheckSquare className="w-4 h-4 text-[#FF0077]" />
+              <CheckSquare className="w-4 h-4 text-primary" />
             ) : (
               <Square className="w-4 h-4 text-gray-400" />
             )}
@@ -322,7 +322,7 @@ export function ExploreModerationTable() {
 
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="w-10 h-10 animate-spin text-[#FF0077]" />
+          <Loader2 className="w-10 h-10 animate-spin text-primary" />
         </div>
       ) : posts.length === 0 ? (
         <div className="rounded-lg border border-gray-200 p-8 text-center text-gray-500">
@@ -357,7 +357,7 @@ export function ExploreModerationTable() {
                         className="p-1 rounded hover:bg-gray-100"
                       >
                         {selectedIds.has(post.id) ? (
-                          <CheckSquare className="w-4 h-4 text-[#FF0077]" />
+                          <CheckSquare className="w-4 h-4 text-primary" />
                         ) : (
                           <Square className="w-4 h-4 text-gray-400" />
                         )}
@@ -476,7 +476,7 @@ export function ExploreModerationTable() {
               <Button variant="outline" onClick={() => setHideReasonModal({ post: null, bulk: false })}>
                 Cancel
               </Button>
-              <Button onClick={confirmHideWithReason} className="bg-[#FF0077] hover:bg-[#D60565]">
+              <Button onClick={confirmHideWithReason} className="bg-primary hover:bg-primary-hover">
                 Hide post
               </Button>
             </div>
@@ -505,7 +505,7 @@ export function ExploreModerationTable() {
               <Button
                 onClick={confirmBulkHide}
                 disabled={bulkActionLoading}
-                className="bg-[#FF0077] hover:bg-[#D60565]"
+                className="bg-primary hover:bg-primary-hover"
               >
                 {bulkActionLoading ? "Hiding…" : "Hide selected"}
               </Button>

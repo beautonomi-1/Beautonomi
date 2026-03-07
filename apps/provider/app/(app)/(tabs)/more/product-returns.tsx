@@ -11,11 +11,13 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { twStyle } from "@/lib/twStyle";
 
 interface ReturnRequest {
   id: string;
@@ -44,6 +46,7 @@ const STATUS_OPTIONS = [
 
 /** Content-only for use in Orders hub (Returns tab). */
 export function ProductReturnsContent() {
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
   const [viewReturn, setViewReturn] = useState<ReturnRequest | null>(null);
@@ -104,14 +107,14 @@ export function ProductReturnsContent() {
 
   if (loading && !data) {
     return (
-      <View className="flex-1 items-center justify-center py-12">
+      <View style={twStyle("flex-1 items-center justify-center py-12")}>
         <LoadingState />
       </View>
     );
   }
   if (error && !data) {
     return (
-      <View className="flex-1 justify-center px-4">
+      <View style={twStyle("flex-1 justify-center px-4")}>
         <ErrorState message={error} onRetry={refresh} />
       </View>
     );
@@ -119,15 +122,15 @@ export function ProductReturnsContent() {
 
   return (
     <>
-      <View className="mb-2 flex-row flex-wrap gap-2 px-4">
+      <View style={twStyle("mb-2 flex-row flex-wrap px-4")}>
         {STATUS_OPTIONS.map((opt) => (
           <TouchableOpacity
             key={opt.value || "all"}
             onPress={() => setStatusFilter(opt.value)}
-            className={`rounded-full px-3 py-1.5 ${statusFilter === opt.value ? "bg-red-600" : "bg-gray-100"}`}
+            style={[twStyle(`rounded-full px-3 py-1.5 ${statusFilter === opt.value ? "bg-red-600" : "bg-gray-100"}`), { marginRight: 8, marginBottom: 8 }]}
           >
             <Text
-              className={`text-xs font-medium ${statusFilter === opt.value ? "text-white" : "text-gray-700"}`}
+              style={twStyle(`text-xs font-medium ${statusFilter === opt.value ? "text-white" : "text-gray-700"}`)}
             >
               {opt.label}
             </Text>
@@ -135,20 +138,20 @@ export function ProductReturnsContent() {
         ))}
       </View>
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={twStyle("flex-1")}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
       >
         {returnsList.length === 0 ? (
-          <View className="items-center py-16">
-            <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-red-100">
+          <View style={twStyle("items-center py-16")}>
+            <View style={twStyle("mb-4 h-16 w-16 items-center justify-center rounded-full bg-red-100")}>
               <Ionicons name="arrow-undo-outline" size={32} color="#ef4444" />
             </View>
-            <Text className="text-center font-semibold text-gray-900">No return requests</Text>
-            <Text className="mt-1 text-center text-sm text-gray-500">
+            <Text style={twStyle("text-center font-semibold text-gray-900")}>No return requests</Text>
+            <Text style={twStyle("mt-1 text-center text-sm text-gray-500")}>
               {statusFilter ? `No returns with status "${statusFilter}".` : "Return requests will appear here."}
             </Text>
           </View>
@@ -158,20 +161,20 @@ export function ProductReturnsContent() {
               key={r.id}
               onPress={() => openReturn(r)}
               activeOpacity={0.7}
-              className="mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4"
+              style={twStyle("mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4")}
             >
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-red-100">
+              <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-red-100")}>
                 <Ionicons name="arrow-undo-outline" size={20} color="#ef4444" />
               </View>
-              <View className="ml-3 flex-1 min-w-0">
-                <Text className="font-semibold text-gray-900" numberOfLines={1}>
+              <View style={twStyle("ml-3 flex-1 min-w-0")}>
+                <Text style={twStyle("font-semibold text-gray-900")} numberOfLines={1}>
                   {r.order?.order_number ?? r.id.slice(0, 8)}
                 </Text>
-                <Text className="mt-0.5 text-sm text-gray-600">
+                <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
                   {r.customer?.full_name ?? "Customer"}
                   {r.refund_amount != null ? ` · R ${Number(r.refund_amount).toFixed(2)}` : ""}
                 </Text>
-                <Text className="mt-0.5 text-xs text-gray-500">{r.status}</Text>
+                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{r.status}</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
             </TouchableOpacity>
@@ -187,21 +190,21 @@ export function ProductReturnsContent() {
           subtitle={detail?.customer?.full_name ?? "Return request"}
         >
           {loadingDetail ? (
-            <View className="items-center py-6">
+            <View style={twStyle("items-center py-6")}>
               <LoadingState />
             </View>
           ) : detail ? (
             <>
-              <View className="mb-3 flex-row flex-wrap gap-2">
-                <View className="rounded-full bg-gray-100 px-2.5 py-1">
-                  <Text className="text-xs font-medium text-gray-700">{detail.status}</Text>
+              <View style={twStyle("mb-3 flex-row flex-wrap")}>
+                <View style={[twStyle("rounded-full bg-gray-100 px-2.5 py-1"), { marginRight: 8, marginBottom: 8 }]}>
+                  <Text style={twStyle("text-xs font-medium text-gray-700")}>{detail.status}</Text>
                 </View>
               </View>
               {detail.reason ? (
-                <Text className="mb-3 text-sm text-gray-600">Reason: {detail.reason}</Text>
+                <Text style={twStyle("mb-3 text-sm text-gray-600")}>Reason: {detail.reason}</Text>
               ) : null}
               {detail.refund_amount != null && (
-                <Text className="mb-3 text-sm font-medium text-gray-900">
+                <Text style={twStyle("mb-3 text-sm font-medium text-gray-900")}>
                   Refund amount: R {Number(detail.refund_amount).toFixed(2)}
                 </Text>
               )}
@@ -220,17 +223,17 @@ export function ProductReturnsContent() {
                       performAction(action);
                     }
                   }}
-                  className={`mb-2 rounded-xl py-3 ${action === "reject" ? "bg-red-50" : "bg-emerald-50"}`}
+                  style={twStyle(`mb-2 rounded-xl py-3 ${action === "reject" ? "bg-red-50" : "bg-emerald-50"}`)}
                 >
                   <Text
-                    className={`text-center text-sm font-medium ${action === "reject" ? "text-red-600" : "text-emerald-700"}`}
+                    style={twStyle(`text-center text-sm font-medium ${action === "reject" ? "text-red-600" : "text-emerald-700"}`)}
                   >
                     {label}
                   </Text>
                 </TouchableOpacity>
               ))}
               {getActions(detail.status).length === 0 && (
-                <Text className="text-sm text-gray-500">No further actions for this status.</Text>
+                <Text style={twStyle("text-sm text-gray-500")}>No further actions for this status.</Text>
               )}
             </>
           ) : null}

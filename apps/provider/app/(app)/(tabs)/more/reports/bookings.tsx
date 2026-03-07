@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatPercentage } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 type DateRange = "today" | "week" | "month" | "last_month" | "3months";
 
@@ -87,40 +88,40 @@ export default function BookingsReport() {
     <ScreenContainer>
       <ScreenHeader title="Bookings" showBack subtitle="Booking analytics & trends" />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4" contentContainerStyle={{ gap: 8 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4")} contentContainerStyle={{ flexDirection: "row" }}>
         {DATE_RANGES.map((r) => (
           <TouchableOpacity
             key={r.value}
-            className={`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`}
+            style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
           >
-            <Text className={`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`}>{r.label}</Text>
+            <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      {loading && !data && <ActivityIndicator className="my-8" color="#3b82f6" />}
+      {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#3b82f6" />}
       {!loading && !data && <EmptyState icon="calendar-outline" title="No bookings data" description="Booking analytics will appear here" />}
 
       {data && (
-        <View className="gap-4">
-          <View className="flex-row gap-3">
-            <View className="flex-1">
+        <View>
+          <View style={twStyle("flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
               <StatCard title="Total Bookings" value={String(data.total_bookings)} icon="calendar-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
             </View>
-            <View className="flex-1">
+            <View style={twStyle("flex-1")}>
               <StatCard title="Completion Rate" value={formatPercentage(data.completion_rate)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
             </View>
           </View>
 
-          <View className="flex-row gap-3">
+          <View style={[twStyle("flex-row"), { marginTop: 16 }]}>
             {data.cancellation_count != null && (
-              <View className="flex-1">
+              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
                 <StatCard title="Cancellations" value={String(data.cancellation_count)} icon="close-circle-outline" iconColor="#ef4444" iconBg="bg-red-50" compact />
               </View>
             )}
             {data.no_show_count != null && (
-              <View className="flex-1">
+              <View style={twStyle("flex-1")}>
                 <StatCard title="No Shows" value={String(data.no_show_count)} icon="eye-off-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
               </View>
             )}
@@ -129,23 +130,23 @@ export default function BookingsReport() {
           {data.by_status.length > 0 && (
             <View>
               <SectionHeader title="Status Breakdown" />
-              <View className="rounded-2xl border border-gray-100 bg-white p-4 gap-2">
+              <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
                 {data.by_status.map((s, i) => {
-                  const total = data.by_status.reduce((sum, st) => sum + st.count, 0);
-                  const pct = total > 0 ? (s.count / total) * 100 : 0;
-                  const color = STATUS_COLORS[s.status] || "#9ca3af";
-                  return (
-                    <View key={i}>
-                      <View className="flex-row justify-between mb-1">
-                        <Text className="text-sm text-gray-600 capitalize">{s.status.replace(/_/g, " ")}</Text>
-                        <Text className="text-sm font-semibold text-gray-900">{s.count} ({pct.toFixed(0)}%)</Text>
-                      </View>
-                      <View className="h-2 rounded-full bg-gray-100">
-                        <View style={{ width: `${Math.max(pct, 1)}%`, backgroundColor: color }} className="h-full rounded-full" />
-                      </View>
+                const total = data.by_status.reduce((sum, st) => sum + st.count, 0);
+                const pct = total > 0 ? (s.count / total) * 100 : 0;
+                const color = STATUS_COLORS[s.status] || "#9ca3af";
+                return (
+                  <View key={i} style={i > 0 ? { marginTop: 8 } : undefined}>
+                    <View style={twStyle("flex-row justify-between mb-1")}>
+                      <Text style={twStyle("text-sm text-gray-600 capitalize")}>{s.status.replace(/_/g, " ")}</Text>
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>{s.count} ({pct.toFixed(0)}%)</Text>
                     </View>
-                  );
-                })}
+                    <View style={twStyle("h-2 rounded-full bg-gray-100")}>
+                      <View style={[{ width: `${Math.max(pct, 1)}%`, backgroundColor: color }, twStyle("h-full rounded-full")]} />
+                    </View>
+                  </View>
+                );
+              })}
               </View>
             </View>
           )}
@@ -153,16 +154,16 @@ export default function BookingsReport() {
           {data.by_day_of_week.length > 0 && (
             <View>
               <SectionHeader title="By Day of Week" />
-              <View className="rounded-2xl border border-gray-100 bg-white p-4">
-                <View className="flex-row items-end justify-between gap-1" style={{ height: 140 }}>
+              <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+                <View style={[twStyle("flex-row items-end justify-between"), { height: 140 }]}>
                   {data.by_day_of_week.map((item, i) => {
                     const maxVal = Math.max(...data.by_day_of_week.map((d) => d.count), 1);
                     const pct = Math.max((item.count / maxVal) * 100, 4);
                     return (
-                      <View key={i} className="flex-1 items-center" style={{ height: "100%", justifyContent: "flex-end" }}>
-                        <Text className="mb-1 text-[10px] font-medium text-gray-700">{item.count}</Text>
-                        <View style={{ height: `${pct}%`, backgroundColor: "#3b82f6", minHeight: 4 }} className="w-full rounded-t-md" />
-                        <Text className="mt-1 text-[10px] text-gray-400">{item.day.slice(0, 3)}</Text>
+                      <View key={i} style={[twStyle("flex-1 items-center"), { height: "100%", justifyContent: "flex-end", marginRight: i < data.by_day_of_week.length - 1 ? 4 : 0 }]}>
+                        <Text style={twStyle("mb-1 text-[10px] font-medium text-gray-700")}>{item.count}</Text>
+                        <View style={[{ height: `${pct}%`, backgroundColor: "#3b82f6", minHeight: 4 }, twStyle("w-full rounded-t-md")]} />
+                        <Text style={twStyle("mt-1 text-[10px] text-gray-400")}>{item.day.slice(0, 3)}</Text>
                       </View>
                     );
                   })}
@@ -174,25 +175,25 @@ export default function BookingsReport() {
           {data.cancellation_reasons && data.cancellation_reasons.length > 0 && (
             <View>
               <SectionHeader title="Cancellation Reasons" />
-              <View className="rounded-2xl border border-gray-100 bg-white px-4 py-2">
+              <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-2")}>
                 {data.cancellation_reasons.map((r, i) => (
-                  <View key={i} className="flex-row items-center justify-between py-2.5 border-b border-gray-50">
-                    <Text className="text-sm text-gray-600">{r.reason}</Text>
-                    <Text className="text-sm font-semibold text-gray-900">{r.count}</Text>
+                  <View key={i} style={twStyle("flex-row items-center justify-between py-2.5 border-b border-gray-50")}>
+                    <Text style={twStyle("text-sm text-gray-600")}>{r.reason}</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{r.count}</Text>
                   </View>
                 ))}
               </View>
             </View>
           )}
 
-          <TouchableOpacity className="rounded-xl bg-gray-100 py-3 px-4 flex-row items-center justify-center" onPress={handleExport}>
+          <TouchableOpacity style={twStyle("rounded-xl bg-gray-100 py-3 px-4 flex-row items-center justify-center")} onPress={handleExport}>
             <Ionicons name="share-outline" size={18} color="#374151" />
-            <Text className="ml-2 text-sm font-medium text-gray-700">Export Report</Text>
+            <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>Export Report</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

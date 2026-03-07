@@ -248,7 +248,7 @@ export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
                     whileTap={{ scale: 0.95 }}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all ${
                       appStoreInfo?.platform === store.platform
-                        ? 'bg-pink-50 border-[#FF0077] text-[#FF0077]'
+                        ? 'bg-pink-50 border-primary text-primary'
                         : 'bg-white/60 border-gray-200 text-gray-600 hover:border-gray-300'
                     }`}
                   >
@@ -275,7 +275,7 @@ export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
               >
                 <Button
                   onClick={handleRate}
-                  className="w-full bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white shadow-lg h-12 text-base font-semibold"
+                  className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white shadow-lg h-12 text-base font-semibold"
                   size="lg"
                 >
                   <Image

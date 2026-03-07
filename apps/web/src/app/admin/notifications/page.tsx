@@ -1134,7 +1134,7 @@ function SendNotificationTab({ onSend }: { onSend: () => void }) {
           </div>
         )}
 
-        <Button type="submit" disabled={isSending} className="bg-[#FF0077] hover:bg-[#D60565]">
+        <Button type="submit" disabled={isSending} className="bg-primary hover:bg-primary-hover">
           {isSending
             ? "Sending..."
             : type === "scheduled"

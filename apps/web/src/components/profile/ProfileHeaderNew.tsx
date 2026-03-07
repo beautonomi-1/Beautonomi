@@ -191,7 +191,7 @@ export default function ProfileHeaderNew({ user, onUpdate }: ProfileHeaderProps)
             ) : (
               <button
                 onClick={() => setIsEditingHandle(true)}
-                className="text-sm text-zinc-400 hover:text-[#FF0077] underline font-medium transition-colors text-left"
+                className="text-sm text-zinc-400 hover:text-primary underline font-medium transition-colors text-left"
               >
                 Add handle
               </button>
@@ -206,7 +206,7 @@ export default function ProfileHeaderNew({ user, onUpdate }: ProfileHeaderProps)
                 <span className="text-xs text-zinc-400">•</span>
                 <Link 
                   href="/account-settings/loyalty"
-                  className="text-xs text-[#FF0077] hover:text-[#E6006A] font-medium transition-colors flex items-center gap-1"
+                  className="text-xs text-primary hover:text-primary-hover font-medium transition-colors flex items-center gap-1"
                 >
                   <Sparkles className="h-3 w-3" />
                   {loyaltyPoints.toLocaleString()} points
@@ -291,7 +291,7 @@ export default function ProfileHeaderNew({ user, onUpdate }: ProfileHeaderProps)
               </Button>
               <Button
                 onClick={handleSaveHandle}
-                className="flex-1 bg-[#FF0077] hover:bg-[#E6006A] text-white"
+                className="flex-1 bg-primary hover:bg-primary-hover text-white"
               >
                 Save
               </Button>

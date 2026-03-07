@@ -9,11 +9,14 @@ import * as Haptics from "expo-haptics";
 import { useTranslation , i18n, supportedLanguages } from "@beautonomi/i18n";
 
 import { changeLanguage } from "@/lib/i18n";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { twStyle } from "@/lib/twStyle";
 
 export default function LanguageSettingsScreen() {
   const router = useRouter();
+  const { screenPadding } = useResponsive();
   const { t } = useTranslation();
   const [currentCode, setCurrentCode] = useState(i18n.language || "en");
 
@@ -43,8 +46,8 @@ export default function LanguageSettingsScreen() {
         onBack={() => router.back()}
       />
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+        style={twStyle("flex-1")}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
         {supportedLanguages.map(({ code, name, nativeName }) => {
@@ -53,15 +56,15 @@ export default function LanguageSettingsScreen() {
             <TouchableOpacity
               key={code}
               onPress={() => handleSelect(code)}
-              className="flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-4 mb-2"
+              style={twStyle("flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-4 mb-2")}
               accessibilityRole="radio"
               accessibilityState={{ checked: isSelected }}
               accessibilityLabel={`${name} (${nativeName})`}
             >
               <View>
-                <Text className="text-base font-medium text-gray-900">{name}</Text>
+                <Text style={twStyle("text-base font-medium text-gray-900")}>{name}</Text>
                 {nativeName !== name && (
-                  <Text className="text-sm text-gray-500">{nativeName}</Text>
+                  <Text style={twStyle("text-sm text-gray-500")}>{nativeName}</Text>
                 )}
               </View>
               {isSelected && (

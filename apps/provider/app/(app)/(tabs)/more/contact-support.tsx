@@ -6,6 +6,7 @@ import * as Haptics from "expo-haptics";
 import { useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { Colors } from "@/constants/colors";
 
 export default function ContactSupportScreen() {
   const router = useRouter();
@@ -42,39 +43,39 @@ export default function ContactSupportScreen() {
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Contact support" onBack={() => router.back()} />
       <ScrollView
-        className="flex-1"
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 100 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View className="px-2 pt-4">
+        <View style={{ paddingHorizontal: 8, paddingTop: 16 }}>
           <TouchableOpacity
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.push("/(app)/(tabs)/more/support-tickets" as never);
             }}
-            className="flex-row items-center rounded-xl border border-gray-200 bg-white p-4 mb-6"
+            style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16, marginBottom: 24 }}
             activeOpacity={0.7}
             accessibilityLabel="My support tickets. View and reply to your tickets."
             accessibilityRole="button"
           >
-            <View className="h-10 w-10 items-center justify-center rounded-full bg-indigo-100">
+            <View style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#e0e7ff" }}>
               <Ionicons name="chatbubbles-outline" size={22} color="#4f46e5" />
             </View>
-            <View className="ml-3 flex-1">
-              <Text className="font-semibold text-gray-900">My support tickets</Text>
-              <Text className="text-sm text-gray-500">View and reply to your tickets</Text>
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>My support tickets</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[500] }}>View and reply to your tickets</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
           </TouchableOpacity>
 
-          <Text className="text-sm font-medium text-gray-700 mb-2">Submit a new ticket</Text>
+          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 8 }}>Submit a new ticket</Text>
           <TextInput
             value={subject}
             onChangeText={setSubject}
             placeholder="Subject"
             placeholderTextColor="#9ca3af"
-            className="mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+            style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             accessibilityLabel="Ticket subject"
             accessibilityRole="none"
           />
@@ -83,7 +84,7 @@ export default function ContactSupportScreen() {
             onChangeText={setMessage}
             placeholder="Describe your issue or question..."
             placeholderTextColor="#9ca3af"
-            className="mb-4 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900 min-h-[120px]"
+            style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900], minHeight: 120 }}
             multiline
             textAlignVertical="top"
             accessibilityLabel="Ticket message"
@@ -92,12 +93,12 @@ export default function ContactSupportScreen() {
           <TouchableOpacity
             onPress={handleSubmit}
             disabled={submitting || !subject.trim() || !message.trim()}
-            className="rounded-xl bg-gray-900 py-3 items-center"
+            style={{ borderRadius: 12, backgroundColor: Colors.gray[900], paddingVertical: 12, alignItems: "center" }}
             activeOpacity={0.8}
             accessibilityLabel={submitting ? "Sending ticket" : "Send support ticket"}
             accessibilityRole="button"
           >
-            <Text className="font-medium text-white">
+            <Text style={{ fontWeight: "500", color: Colors.white }}>
               {submitting ? "Sending…" : "Send ticket"}
             </Text>
           </TouchableOpacity>

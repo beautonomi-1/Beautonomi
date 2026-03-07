@@ -5,6 +5,7 @@ import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useImagePicker } from "@/hooks/useImagePicker";
+import { Colors } from "@/constants/colors";
 
 export default function PersonalInfoScreen() {
   useScreenTracking("Personal Info");
@@ -93,44 +94,45 @@ export default function PersonalInfoScreen() {
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load}>
       {profile && (
-        <View className="gap-4">
-          <View className="items-center mb-4">
+        <View>
+          <View style={{ alignItems: "center", marginBottom: 16 }}>
             <Pressable onPress={uploadAvatar} disabled={pickLoading}>
               {profile.avatar_url ? (
                 <Image source={{ uri: profile.avatar_url }} style={{ width: 96, height: 96, borderRadius: 48 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
               ) : (
-                <View className="w-24 h-24 rounded-full bg-gray-200 items-center justify-center">
-                  <Text className="text-3xl text-gray-500">
+                <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: Colors.gray[200], alignItems: "center", justifyContent: "center" }}>
+                  <Text style={{ fontSize: 30, color: Colors.gray[500] }}>
                     {(profile.full_name || profile.email || "?").charAt(0).toUpperCase()}
                   </Text>
                 </View>
               )}
             </Pressable>
-            <Text className="text-sm text-primary mt-2">Tap to change photo</Text>
+            <Text style={{ fontSize: 14, color: Colors.primary, marginTop: 8 }}>Tap to change photo</Text>
           </View>
-          <View>
-            <Text className="text-sm font-medium text-gray-700 mb-1">Full name</Text>
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Full name</Text>
             <TextInput
-              className="rounded-xl border border-gray-300 bg-white px-4 py-3 text-base text-gray-900"
+              style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
               value={fullName}
               onChangeText={setFullName}
               placeholder="Your name"
+              placeholderTextColor={Colors.gray[400]}
             />
           </View>
           <View>
-            <Text className="text-sm font-medium text-gray-700 mb-1">Email</Text>
-            <Text className="py-3 text-gray-600">{profile.email || "-"}</Text>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Email</Text>
+            <Text style={{ paddingVertical: 12, color: Colors.gray[600] }}>{profile.email || "-"}</Text>
           </View>
-          <View>
-            <Text className="text-sm font-medium text-gray-700 mb-1">Phone</Text>
-            <Text className="py-3 text-gray-600">{profile.phone || "-"}</Text>
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Phone</Text>
+            <Text style={{ paddingVertical: 12, color: Colors.gray[600] }}>{profile.phone || "-"}</Text>
           </View>
           <TouchableOpacity
             onPress={save}
             disabled={saving}
-            className="bg-primary py-3 rounded-xl items-center mt-4"
+            style={{ backgroundColor: Colors.primary, paddingVertical: 12, borderRadius: 12, alignItems: "center", marginTop: 16 }}
           >
-            <Text className="text-white font-semibold">{saving ? "Saving..." : "Save"}</Text>
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>{saving ? "Saving..." : "Save"}</Text>
           </TouchableOpacity>
         </View>
       )}

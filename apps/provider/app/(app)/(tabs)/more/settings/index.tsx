@@ -8,6 +8,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useBiometricAuth } from "@/hooks/useBiometricAuth";
 import { useTheme } from "@/providers/ThemeProvider";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { twStyle } from "@/lib/twStyle";
 
 interface SettingItem {
   icon: keyof typeof Ionicons.glyphMap;
@@ -140,7 +141,7 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { isTablet } = useResponsive();
+  const { screenPadding } = useResponsive();
   const { isAvailable, biometricType, isEnabled, enable, disable } = useBiometricAuth();
   const { themeMode, setThemeMode } = useTheme();
 
@@ -159,34 +160,34 @@ export default function SettingsScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
+    <SafeAreaView style={twStyle("flex-1 bg-white")} edges={["top"]}>
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: isTablet ? 24 : 16, paddingBottom: 120 }}
+        style={twStyle("flex-1")}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
       >
         <ScreenHeader title="Settings" showBack subtitle="Business configuration" />
 
         {SETTINGS_SECTIONS.map((section) => (
-          <View key={section.title} className="mb-4">
-            <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+          <View key={section.title} style={twStyle("mb-4")}>
+            <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
               {section.title}
             </Text>
-            <View className="rounded-2xl border border-gray-100 bg-white">
+            <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
               {section.items.map((item, idx) => (
                 <TouchableOpacity
                   key={item.route}
-                  className={`min-h-[56px] flex-row items-center px-4 py-3.5 ${
+                  style={twStyle(`min-h-[56px] flex-row items-center px-4 py-3.5 ${
                     idx < section.items.length - 1 ? "border-b border-gray-50" : ""
-                  }`}
+                  }`)}
                   onPress={() => router.push(item.route as any)}
                 >
-                  <View className="min-h-[36px] min-w-[36px] items-center justify-center rounded-lg bg-gray-50">
+                  <View style={twStyle("min-h-[36px] min-w-[36px] items-center justify-center rounded-lg bg-gray-50")}>
                     <Ionicons name={item.icon} size={18} color={item.color} />
                   </View>
-                  <View className="ml-3 flex-1">
-                    <Text className="text-base font-medium text-gray-900">{item.label}</Text>
-                    <Text className="text-xs text-gray-500">{item.subtitle}</Text>
+                  <View style={twStyle("ml-3 flex-1")}>
+                    <Text style={twStyle("text-base font-medium text-gray-900")}>{item.label}</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>{item.subtitle}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
                 </TouchableOpacity>
@@ -197,24 +198,24 @@ export default function SettingsScreen() {
 
         {/* Security */}
         {Platform.OS !== "web" && isAvailable && (
-          <View className="mb-4">
-            <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+          <View style={twStyle("mb-4")}>
+            <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
               Security
             </Text>
-            <View className="rounded-2xl border border-gray-100 bg-white">
-              <View className="min-h-[56px] flex-row items-center px-4 py-3.5">
-                <View className="min-h-[36px] min-w-[36px] items-center justify-center rounded-lg bg-gray-50">
+            <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
+              <View style={twStyle("min-h-[56px] flex-row items-center px-4 py-3.5")}>
+                <View style={twStyle("min-h-[36px] min-w-[36px] items-center justify-center rounded-lg bg-gray-50")}>
                   <Ionicons
                     name={biometricType === "face" ? "scan-outline" : "finger-print-outline"}
                     size={18}
                     color="#6366f1"
                   />
                 </View>
-                <View className="ml-3 flex-1">
-                  <Text className="text-base font-medium text-gray-900">
+                <View style={twStyle("ml-3 flex-1")}>
+                  <Text style={twStyle("text-base font-medium text-gray-900")}>
                     {biometricLabel} Lock
                   </Text>
-                  <Text className="text-xs text-gray-500">
+                  <Text style={twStyle("text-xs text-gray-500")}>
                     Require {biometricLabel.toLowerCase()} to open the app
                   </Text>
                 </View>
@@ -231,17 +232,17 @@ export default function SettingsScreen() {
         )}
 
         {/* Appearance */}
-        <View className="mb-4">
-          <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
             Appearance
           </Text>
-          <View className="rounded-2xl border border-gray-100 bg-white">
+          <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
             {(["light", "dark", "system"] as const).map((mode, idx) => (
               <TouchableOpacity
                 key={mode}
-                className={`min-h-[48px] flex-row items-center px-4 py-3 ${
+                style={twStyle(`min-h-[48px] flex-row items-center px-4 py-3 ${
                   idx < 2 ? "border-b border-gray-50" : ""
-                }`}
+                }`)}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setThemeMode(mode);
@@ -249,14 +250,14 @@ export default function SettingsScreen() {
                 accessibilityRole="radio"
                 accessibilityState={{ selected: themeMode === mode }}
               >
-                <View className="min-h-[36px] min-w-[36px] items-center justify-center rounded-lg bg-gray-50">
+                <View style={twStyle("min-h-[36px] min-w-[36px] items-center justify-center rounded-lg bg-gray-50")}>
                   <Ionicons
                     name={mode === "light" ? "sunny-outline" : mode === "dark" ? "moon-outline" : "phone-portrait-outline"}
                     size={18}
                     color={themeMode === mode ? "#6366f1" : "#9ca3af"}
                   />
                 </View>
-                <Text className="ml-3 flex-1 text-base font-medium text-gray-900">
+                <Text style={twStyle("ml-3 flex-1 text-base font-medium text-gray-900")}>
                   {mode === "light" ? "Light" : mode === "dark" ? "Dark" : "System Default"}
                 </Text>
                 {themeMode === mode && (
@@ -268,8 +269,8 @@ export default function SettingsScreen() {
         </View>
 
         {/* App version */}
-        <View className="mt-6 items-center pb-4">
-          <Text className="text-xs text-gray-400">
+        <View style={twStyle("mt-6 items-center pb-4")}>
+          <Text style={twStyle("text-xs text-gray-400")}>
             Beautonomi Provider v{Constants.expoConfig?.version ?? "1.0.0"}
           </Text>
         </View>

@@ -7,6 +7,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { twStyle } from "@/lib/twStyle";
 
 interface ChannelPrefs {
   email: boolean;
@@ -176,29 +177,29 @@ export default function NotificationPreferencesScreen() {
 
       {/* Test notification */}
       <TouchableOpacity
-        className="mb-4 flex-row items-center rounded-xl border border-indigo-100 bg-indigo-50 p-3"
+        style={twStyle("mb-4 flex-row items-center rounded-xl border border-indigo-100 bg-indigo-50 p-3")}
         onPress={handleTestNotification}
         disabled={testing}
       >
         <Ionicons name="notifications-outline" size={18} color="#6366f1" />
-        <Text className="ml-2 flex-1 text-sm font-medium text-indigo-700">
+        <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-indigo-700")}>
           Send Test Notification
         </Text>
         <Ionicons name="chevron-forward" size={16} color="#6366f1" />
       </TouchableOpacity>
 
       {/* Quiet hours */}
-      <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row flex-1 items-center">
-            <View className="h-9 w-9 items-center justify-center rounded-lg bg-purple-50">
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row flex-1 items-center")}>
+            <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-purple-50")}>
               <Ionicons name="moon-outline" size={18} color="#a855f7" />
             </View>
-            <View className="ml-3 flex-1">
-              <Text className="text-sm font-medium text-gray-900">
+            <View style={twStyle("ml-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
                 Quiet Hours
               </Text>
-              <Text className="text-xs text-gray-500">
+              <Text style={twStyle("text-xs text-gray-500")}>
                 {local.quiet_hours_enabled
                   ? `${local.quiet_hours_start} – ${local.quiet_hours_end}`
                   : "Mute push notifications during specified hours"}
@@ -218,16 +219,16 @@ export default function NotificationPreferencesScreen() {
       </View>
 
       {/* Digest mode */}
-      <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+      <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
         Delivery Mode
       </Text>
-      <View className="mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white">
+      <View style={twStyle("mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
         {DIGEST_OPTIONS.map((opt, idx) => (
           <TouchableOpacity
             key={opt.value}
-            className={`flex-row items-center px-4 py-3.5 ${
+            style={twStyle(`flex-row items-center px-4 py-3.5 ${
               idx < DIGEST_OPTIONS.length - 1 ? "border-b border-gray-50" : ""
-            } ${local.digest_mode === opt.value ? "bg-indigo-50/50" : ""}`}
+            } ${local.digest_mode === opt.value ? "bg-indigo-50/50" : ""}`)}
             onPress={() => {
               setLocal((p) => ({
                 ...p,
@@ -236,11 +237,11 @@ export default function NotificationPreferencesScreen() {
               setDirty(true);
             }}
           >
-            <View className="flex-1">
-              <Text className="text-sm font-medium text-gray-900">
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
                 {opt.label}
               </Text>
-              <Text className="text-xs text-gray-500">{opt.desc}</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>{opt.desc}</Text>
             </View>
             {local.digest_mode === opt.value && (
               <Ionicons name="checkmark-circle" size={22} color="#6366f1" />
@@ -251,52 +252,53 @@ export default function NotificationPreferencesScreen() {
 
       {/* Channel preferences */}
       {SECTIONS.map((section) => (
-        <View key={section.title} className="mb-5">
-          <View className="mb-2 flex-row items-center justify-between">
-            <Text className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+        <View key={section.title} style={twStyle("mb-5")}>
+          <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+            <Text style={twStyle("text-xs font-semibold uppercase tracking-wider text-gray-400")}>
               {section.title}
             </Text>
-            <View className="flex-row gap-2">
+            <View style={twStyle("flex-row")}>
               <TouchableOpacity
+                style={{ marginRight: 8 }}
                 onPress={() => enableAllInSection(section.keys)}
               >
-                <Text className="text-[10px] font-medium text-indigo-600">
+                <Text style={twStyle("text-[10px] font-medium text-indigo-600")}>
                   Enable All
                 </Text>
               </TouchableOpacity>
-              <Text className="text-[10px] text-gray-300">|</Text>
+              <Text style={twStyle("text-[10px] text-gray-300")}>|</Text>
               <TouchableOpacity
                 onPress={() => disableAllInSection(section.keys)}
               >
-                <Text className="text-[10px] font-medium text-gray-400">
+                <Text style={twStyle("text-[10px] font-medium text-gray-400")}>
                   Disable All
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
-          <View className="rounded-2xl border border-gray-100 bg-white">
-            <View className="flex-row items-center border-b border-gray-50 px-4 py-2">
-              <View className="flex-1" />
-              <Text className="w-14 text-center text-[10px] font-semibold text-gray-400">
+          <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
+            <View style={twStyle("flex-row items-center border-b border-gray-50 px-4 py-2")}>
+              <View style={twStyle("flex-1")} />
+              <Text style={twStyle("w-14 text-center text-[10px] font-semibold text-gray-400")}>
                 Email
               </Text>
-              <Text className="w-14 text-center text-[10px] font-semibold text-gray-400">
+              <Text style={twStyle("w-14 text-center text-[10px] font-semibold text-gray-400")}>
                 SMS
               </Text>
-              <Text className="w-14 text-center text-[10px] font-semibold text-gray-400">
+              <Text style={twStyle("w-14 text-center text-[10px] font-semibold text-gray-400")}>
                 Push
               </Text>
             </View>
             {section.keys.map((key, idx) => (
               <View
                 key={key}
-                className={`flex-row items-center px-4 py-3 ${
+                style={twStyle(`flex-row items-center px-4 py-3 ${
                   idx < section.keys.length - 1
                     ? "border-b border-gray-50"
                     : ""
-                }`}
+                }`)}
               >
-                <View className="flex-row flex-1 items-center">
+                <View style={twStyle("flex-row flex-1 items-center")}>
                   <Ionicons
                     name={
                       (PREF_LABELS[key]?.icon as any) ?? "notifications-outline"
@@ -304,12 +306,12 @@ export default function NotificationPreferencesScreen() {
                     size={16}
                     color="#6b7280"
                   />
-                  <Text className="ml-2 text-sm font-medium text-gray-900">
+                  <Text style={twStyle("ml-2 text-sm font-medium text-gray-900")}>
                     {PREF_LABELS[key]?.label ?? key}
                   </Text>
                 </View>
                 {(["email", "sms", "push"] as const).map((ch) => (
-                  <View key={ch} className="w-14 items-center">
+                  <View key={ch} style={twStyle("w-14 items-center")}>
                     <Switch
                       value={(local[key] as ChannelPrefs)?.[ch] ?? false}
                       onValueChange={() => toggle(key, ch)}
@@ -332,7 +334,7 @@ export default function NotificationPreferencesScreen() {
       ))}
 
       {dirty && (
-        <View className="mb-6">
+        <View style={twStyle("mb-6")}>
           <ActionButton
             label="Save Preferences"
             onPress={handleSave}
@@ -341,7 +343,7 @@ export default function NotificationPreferencesScreen() {
           />
         </View>
       )}
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

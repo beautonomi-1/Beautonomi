@@ -21,6 +21,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
+import { twStyle } from "@/lib/twStyle";
 
 interface NoteTemplate {
   id: string;
@@ -205,7 +206,7 @@ export default function NoteTemplatesScreen() {
         subtitle={`${templates?.length ?? 0} templates`}
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-900"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
             onPress={openCreate}
           >
             <Ionicons name="add" size={20} color="#fff" />
@@ -214,8 +215,8 @@ export default function NoteTemplatesScreen() {
       />
 
       {templates && templates.length > 0 && (
-        <View className="mb-3 flex-row gap-3">
-          <View className="flex-1">
+        <View style={twStyle("mb-3 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <StatCard
               title="Internal"
               value={String(internalCount)}
@@ -225,7 +226,7 @@ export default function NoteTemplatesScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <StatCard
               title="Client Visible"
               value={String(clientVisibleCount)}
@@ -239,13 +240,13 @@ export default function NoteTemplatesScreen() {
       )}
 
       {templates && templates.length > 2 && (
-        <View className="mb-3">
+        <View style={twStyle("mb-3")}>
           <SearchBar
             value={search}
             onChangeText={setSearch}
             placeholder="Search templates..."
           />
-          <View className="mt-2">
+          <View style={twStyle("mt-2")}>
             <FilterChipGroup
               options={[
                 { label: "All", value: "all" },
@@ -264,16 +265,16 @@ export default function NoteTemplatesScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          className="mb-3"
+          style={twStyle("mb-3")}
         >
-          <View className="flex-row gap-2">
+          <View style={twStyle("flex-row")}>
             {categories.map((cat) => (
               <TouchableOpacity
                 key={cat}
-                className="rounded-full bg-indigo-50 px-3 py-1.5"
+                style={[twStyle("rounded-full bg-indigo-50 px-3 py-1.5"), { marginRight: 8 }]}
                 onPress={() => setSearch(cat)}
               >
-                <Text className="text-xs font-medium text-indigo-600">
+                <Text style={twStyle("text-xs font-medium text-indigo-600")}>
                   {cat}
                 </Text>
               </TouchableOpacity>
@@ -301,29 +302,30 @@ export default function NoteTemplatesScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: tmpl }: { item: NoteTemplate }) => (
             <TouchableOpacity
-              className="rounded-xl border border-gray-100 bg-white p-4"
+              style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
               onPress={() => openEdit(tmpl)}
               onLongPress={() => openPreview(tmpl)}
               activeOpacity={0.7}
             >
-              <View className="flex-row items-start justify-between">
-                <View className="flex-1">
-                  <Text className="text-sm font-semibold text-gray-900">
+              <View style={twStyle("flex-row items-start justify-between")}>
+                <View style={twStyle("flex-1")}>
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                     {tmpl.name}
                   </Text>
                   <Text
-                    className="mt-1 text-xs text-gray-500"
+                    style={twStyle("mt-1 text-xs text-gray-500")}
                     numberOfLines={2}
                   >
                     {tmpl.content}
                   </Text>
                 </View>
-                <View className="ml-2 flex-row items-center gap-1">
+                <View style={twStyle("ml-2 flex-row items-center")}>
                   <TouchableOpacity
-                    className="p-1"
+                    style={[twStyle("p-1"), { marginRight: 4 }]}
                     onPress={() => handleCopyContent(tmpl)}
                   >
                     <Ionicons
@@ -333,7 +335,7 @@ export default function NoteTemplatesScreen() {
                     />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    className="p-1"
+                    style={[twStyle("p-1"), { marginRight: 4 }]}
                     onPress={() => handleDuplicate(tmpl)}
                   >
                     <Ionicons
@@ -343,7 +345,7 @@ export default function NoteTemplatesScreen() {
                     />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    className="p-1"
+                    style={twStyle("p-1")}
                     onPress={() => handleDelete(tmpl)}
                   >
                     <Ionicons
@@ -354,25 +356,25 @@ export default function NoteTemplatesScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
-              <View className="mt-2 flex-row items-center gap-2">
+              <View style={twStyle("mt-2 flex-row items-center")}>
                 <View
-                  className={`rounded-full px-2 py-0.5 ${
+                  style={[twStyle(`rounded-full px-2 py-0.5 ${
                     tmpl.type === "internal" ? "bg-indigo-50" : "bg-green-50"
-                  }`}
+                  }`), { marginRight: 8 }]}
                 >
                   <Text
-                    className={`text-[10px] font-medium ${
+                    style={twStyle(`text-[10px] font-medium ${
                       tmpl.type === "internal"
                         ? "text-indigo-600"
                         : "text-green-600"
-                    }`}
+                    }`)}
                   >
                     {tmpl.type === "internal" ? "Internal" : "Client Visible"}
                   </Text>
                 </View>
                 {tmpl.category && (
-                  <View className="rounded-full bg-gray-100 px-2 py-0.5">
-                    <Text className="text-[10px] text-gray-600">
+                  <View style={twStyle("rounded-full bg-gray-100 px-2 py-0.5")}>
+                    <Text style={twStyle("text-[10px] text-gray-600")}>
                       {tmpl.category}
                     </Text>
                   </View>
@@ -390,21 +392,21 @@ export default function NoteTemplatesScreen() {
         title={editing ? "Edit Template" : "New Template"}
       >
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Name *
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
             placeholder="e.g. Post-Treatment Care"
             placeholderTextColor="#9ca3af"
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Content *
           </Text>
           <TextInput
-            className="mb-3 min-h-[100px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 min-h-[100px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.content}
             onChangeText={(t) => setForm((p) => ({ ...p, content: t }))}
             placeholder="Template content..."
@@ -412,33 +414,33 @@ export default function NoteTemplatesScreen() {
             multiline
             textAlignVertical="top"
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">Type</Text>
-          <View className="mb-3 flex-row gap-2">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Type</Text>
+          <View style={twStyle("mb-3 flex-row")}>
             {TYPE_OPTIONS.map((opt) => (
               <TouchableOpacity
                 key={opt.value}
-                className={`rounded-full px-4 py-2 ${
+                style={[twStyle(`rounded-full px-4 py-2 ${
                   form.type === opt.value ? "bg-indigo-600" : "bg-gray-100"
-                }`}
+                }`), { marginRight: 8 }]}
                 onPress={() => setForm((p) => ({ ...p, type: opt.value }))}
               >
                 <Text
-                  className={`text-sm ${
+                  style={twStyle(`text-sm ${
                     form.type === opt.value
                       ? "font-medium text-white"
                       : "text-gray-700"
-                  }`}
+                  }`)}
                 >
                   {opt.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Category
           </Text>
           <TextInput
-            className="mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.category}
             onChangeText={(t) => setForm((p) => ({ ...p, category: t }))}
             placeholder="e.g. Aftercare, Booking notes"
@@ -448,22 +450,22 @@ export default function NoteTemplatesScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              className="mb-3 mt-1"
+              style={twStyle("mb-3 mt-1")}
             >
-              <View className="flex-row gap-1">
+              <View style={twStyle("flex-row")}>
                 {categories.map((cat) => (
                   <TouchableOpacity
                     key={cat}
-                    className="rounded-full bg-gray-100 px-2.5 py-1"
+                    style={[twStyle("rounded-full bg-gray-100 px-2.5 py-1"), { marginRight: 4 }]}
                     onPress={() => setForm((p) => ({ ...p, category: cat }))}
                   >
-                    <Text className="text-xs text-gray-600">{cat}</Text>
+                    <Text style={twStyle("text-xs text-gray-600")}>{cat}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </ScrollView>
           )}
-          <View className="mt-2">
+          <View style={twStyle("mt-2")}>
             <ActionButton
               label={editing ? "Update" : "Create"}
               onPress={handleSave}
@@ -482,16 +484,16 @@ export default function NoteTemplatesScreen() {
       >
         {previewing && (
           <View>
-            <Text className="mb-2 text-base font-semibold text-gray-900">
+            <Text style={twStyle("mb-2 text-base font-semibold text-gray-900")}>
               {previewing.name}
             </Text>
-            <View className="rounded-xl bg-gray-50 p-4">
-              <Text className="text-sm leading-5 text-gray-700">
+            <View style={twStyle("rounded-xl bg-gray-50 p-4")}>
+              <Text style={twStyle("text-sm leading-5 text-gray-700")}>
                 {previewing.content}
               </Text>
             </View>
-            <View className="mt-3 flex-row gap-2">
-              <View className="flex-1">
+            <View style={twStyle("mt-3 flex-row")}>
+              <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
                 <ActionButton
                   label="Copy Content"
                   onPress={() => handleCopyContent(previewing)}
@@ -499,7 +501,7 @@ export default function NoteTemplatesScreen() {
                   fullWidth
                 />
               </View>
-              <View className="flex-1">
+              <View style={twStyle("flex-1")}>
                 <ActionButton
                   label="Edit"
                   onPress={() => {

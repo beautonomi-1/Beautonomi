@@ -14,6 +14,7 @@ import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -21,6 +22,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { twStyle } from "@/lib/twStyle";
 
 interface TimeBlock {
   id: string;
@@ -40,6 +42,7 @@ interface TimeBlock {
 
 /** Content-only for use in Schedule hub (Time blocks tab). */
 export function TimeBlocksContent() {
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState("");
@@ -127,14 +130,14 @@ export function TimeBlocksContent() {
 
   if (loading && !data) {
     return (
-      <View className="flex-1 items-center justify-center py-12">
+      <View style={twStyle("flex-1 items-center justify-center py-12")}>
         <LoadingState />
       </View>
     );
   }
   if (error && !data) {
     return (
-      <View className="flex-1 justify-center px-4">
+      <View style={twStyle("flex-1 justify-center px-4")}>
         <ErrorState message={error} onRetry={refresh} />
       </View>
     );
@@ -143,8 +146,8 @@ export function TimeBlocksContent() {
   return (
     <>
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={twStyle("flex-1")}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -162,23 +165,22 @@ export function TimeBlocksContent() {
           <>
             <TouchableOpacity
               onPress={openAdd}
-              className="mb-3 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-100 py-3"
+              style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-100 py-3")}
             >
               <Ionicons name="add" size={18} color="#374151" />
-              <Text className="ml-2 font-medium text-gray-700">Add time block</Text>
+              <Text style={twStyle("ml-2 font-medium text-gray-700")}>Add time block</Text>
             </TouchableOpacity>
             {blocks.map((block) => (
             <View
               key={block.id}
-              className="mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4"
+              style={twStyle("mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4")}
             >
               <View
-                className="h-10 w-10 items-center justify-center rounded-xl"
-                style={{
+                style={[twStyle("h-10 w-10 items-center justify-center rounded-xl"), {
                   backgroundColor: block.blocked_time_type_color
                     ? `${block.blocked_time_type_color}20`
                     : "#f3f4f6",
-                }}
+                }]}
               >
                 <Ionicons
                   name="time-outline"
@@ -186,22 +188,22 @@ export function TimeBlocksContent() {
                   color={block.blocked_time_type_color || "#6b7280"}
                 />
               </View>
-              <View className="ml-3 flex-1">
-                <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
+              <View style={twStyle("ml-3 flex-1")}>
+                <Text style={twStyle("text-base font-semibold text-gray-900")} numberOfLines={1}>
                   {block.name}
                 </Text>
-                <Text className="mt-0.5 text-sm text-gray-600">
+                <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
                   {block.date} · {block.start_time} – {block.end_time}
                 </Text>
                 {block.team_member_name && (
-                  <Text className="mt-0.5 text-xs text-gray-500">
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                     {block.team_member_name}
                   </Text>
                 )}
               </View>
               <TouchableOpacity
                 onPress={() => handleDelete(block)}
-                className="ml-2 h-9 w-9 items-center justify-center rounded-lg bg-red-50"
+                style={twStyle("ml-2 h-9 w-9 items-center justify-center rounded-lg bg-red-50")}
               >
                 <Ionicons name="trash-outline" size={18} color="#dc2626" />
               </TouchableOpacity>
@@ -217,21 +219,21 @@ export function TimeBlocksContent() {
         title="Add time block"
         subtitle="Block off a slot so clients can't book"
       >
-        <Text className="mb-2 text-sm font-medium text-gray-700">Name *</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Name *</Text>
         <TextInput
-          className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           placeholder="e.g. Lunch, Meeting"
           placeholderTextColor="#9ca3af"
           value={name}
           onChangeText={setName}
         />
-        <Text className="mb-2 text-sm font-medium text-gray-700">Date</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Date</Text>
         <TouchableOpacity
           onPress={() => setShowDatePicker(true)}
-          className="mb-4 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+          style={twStyle("mb-4 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
         >
           <Ionicons name="calendar-outline" size={20} color="#6b7280" />
-          <Text className="ml-2 text-base text-gray-900">
+          <Text style={twStyle("ml-2 text-base text-gray-900")}>
             {format(blockDate, "EEE, d MMM yyyy")}
           </Text>
         </TouchableOpacity>
@@ -246,13 +248,13 @@ export function TimeBlocksContent() {
             }}
           />
         )}
-        <Text className="mb-2 text-sm font-medium text-gray-700">Start time</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Start time</Text>
         <TouchableOpacity
           onPress={() => setShowStartPicker(true)}
-          className="mb-4 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+          style={twStyle("mb-4 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
         >
           <Ionicons name="time-outline" size={20} color="#6b7280" />
-          <Text className="ml-2 text-base text-gray-900">{startTime}</Text>
+          <Text style={twStyle("ml-2 text-base text-gray-900")}>{startTime}</Text>
         </TouchableOpacity>
         {showStartPicker && (
           <DateTimePicker
@@ -265,13 +267,13 @@ export function TimeBlocksContent() {
             }}
           />
         )}
-        <Text className="mb-2 text-sm font-medium text-gray-700">End time</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>End time</Text>
         <TouchableOpacity
           onPress={() => setShowEndPicker(true)}
-          className="mb-6 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+          style={twStyle("mb-6 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
         >
           <Ionicons name="time-outline" size={20} color="#6b7280" />
-          <Text className="ml-2 text-base text-gray-900">{endTime}</Text>
+          <Text style={twStyle("ml-2 text-base text-gray-900")}>{endTime}</Text>
         </TouchableOpacity>
         {showEndPicker && (
           <DateTimePicker

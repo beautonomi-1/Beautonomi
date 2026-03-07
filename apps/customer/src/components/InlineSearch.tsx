@@ -207,7 +207,6 @@ export function InlineSearch({ onSearch }: InlineSearchProps) {
                   alignItems: "center",
                   paddingHorizontal: 14,
                   paddingVertical: 12,
-                  gap: 10,
                   borderBottomWidth: 1,
                   borderColor: "#F3F4F6",
                 }}
@@ -216,6 +215,7 @@ export function InlineSearch({ onSearch }: InlineSearchProps) {
                   name={ICON_MAP[item.type] ?? "search-outline"}
                   size={16}
                   color="#6B7280"
+                  style={{ marginRight: 10 }}
                 />
                 <View style={{ flex: 1 }}>
                   <Text

@@ -2,6 +2,7 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTranslation, supportedLanguages } from "@beautonomi/i18n";
+import { Colors } from "@/constants/colors";
 import { changeLanguage } from "@/lib/i18n";
 
 export default function LanguageSettings() {
@@ -13,45 +14,47 @@ export default function LanguageSettings() {
   };
 
   return (
-    <View className="flex-1 bg-white px-5 pt-4">
-      <Text className="text-sm text-gray-500 mb-4">
+    <View style={{ flex: 1, backgroundColor: Colors.white, paddingHorizontal: 20, paddingTop: 16 }}>
+      <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 16 }}>
         Choose your preferred language. The app interface will update immediately.
       </Text>
 
-      <View className="gap-2">
-        {supportedLanguages.map((lang) => {
+      <View>
+        {supportedLanguages.map((lang, index) => {
           const isActive = i18n.language === lang.code;
           return (
             <TouchableOpacity
               key={lang.code}
               onPress={() => handleSelect(lang.code)}
-              className={`rounded-2xl border p-4 flex-row items-center justify-between ${
-                isActive
-                  ? "border-pink-300 bg-pink-50"
-                  : "border-gray-100 bg-white"
-              }`}
+              style={{
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: isActive ? "#F9A8D4" : Colors.gray[100],
+                backgroundColor: isActive ? "#FDF2F8" : Colors.white,
+                padding: 16,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginTop: index === 0 ? 0 : 8,
+              }}
               accessibilityLabel={`Select ${lang.name}`}
               accessibilityRole="button"
             >
               <View>
-                <Text
-                  className={`text-base font-semibold ${
-                    isActive ? "text-pink-700" : "text-gray-900"
-                  }`}
-                >
+                <Text style={{ fontSize: 16, fontWeight: "600", color: isActive ? "#BE185D" : Colors.gray[900] }}>
                   {lang.nativeName}
                 </Text>
-                <Text className="text-sm text-gray-500">{lang.name}</Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{lang.name}</Text>
               </View>
               {isActive && (
-                <Ionicons name="checkmark-circle" size={24} color="#FF0077" />
+                <Ionicons name="checkmark-circle" size={24} color={Colors.primary} />
               )}
             </TouchableOpacity>
           );
         })}
       </View>
 
-      <Text className="text-xs text-gray-400 text-center mt-6">
+      <Text style={{ fontSize: 12, color: Colors.gray[400], textAlign: "center", marginTop: 24 }}>
         Some content from service providers may remain in its original language.
       </Text>
     </View>

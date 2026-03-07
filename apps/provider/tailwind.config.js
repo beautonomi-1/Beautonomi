@@ -1,3 +1,8 @@
+/**
+ * Provider app Tailwind + NativeWind.
+ * Presets: nativewind/preset + @beautonomi/ui-tokens (primary, muted, spacing, etc.).
+ * Extend only app-specific tokens (e.g. primary-light).
+ */
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: "class",
@@ -13,7 +18,6 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: "#FF0077",
         "primary-light": "rgba(255, 0, 119, 0.05)",
       },
     },

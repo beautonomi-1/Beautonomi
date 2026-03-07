@@ -31,10 +31,10 @@ export function SearchBar({ placeholder = "Search...", value, onChangeText, debo
   }
 
   return (
-    <View className="flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+    <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#f9fafb", paddingHorizontal: 12, paddingVertical: 10 }}>
       <Ionicons name="search-outline" size={18} color="#9ca3af" />
       <TextInput
-        className="ml-2 flex-1 text-base text-gray-900"
+        style={{ marginLeft: 8, flex: 1, fontSize: 16, color: "#111827" }}
         placeholder={placeholder}
         placeholderTextColor="#9ca3af"
         value={localValue}

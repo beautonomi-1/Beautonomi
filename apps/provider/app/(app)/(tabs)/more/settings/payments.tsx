@@ -18,6 +18,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { useYocoIntegration } from "@/hooks/useYoco";
+import { twStyle } from "@/lib/twStyle";
 
 /* ─── types ─── */
 interface PaymentSettings {
@@ -71,11 +72,11 @@ function ToggleRow({
   accessibilityLabel?: string;
 }) {
   return (
-    <View className="flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5">
-      <View className="mr-3 flex-1">
-        <Text className="text-sm font-medium text-gray-700">{label}</Text>
+    <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5")}>
+      <View style={twStyle("mr-3 flex-1")}>
+        <Text style={twStyle("text-sm font-medium text-gray-700")}>{label}</Text>
         {description && (
-          <Text className="mt-0.5 text-xs text-gray-400">{description}</Text>
+          <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>{description}</Text>
         )}
       </View>
       <Switch
@@ -201,32 +202,32 @@ export default function PaymentSettingsScreen() {
       {/* ─── Yoco Integration ─── */}
       <SectionHeader title="Payment Gateway" />
       <TouchableOpacity
-        className="rounded-2xl border border-gray-100 bg-white p-4"
+        style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}
         onPress={() => router.push("/(app)/(tabs)/more/settings/yoco-devices")}
         accessibilityLabel="Yoco payment gateway — tap to manage"
         accessibilityRole="button"
       >
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center">
-            <View className="h-10 w-10 items-center justify-center rounded-lg bg-blue-50">
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row items-center")}>
+            <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-blue-50")}>
               <Ionicons name="card-outline" size={20} color="#3b82f6" />
             </View>
-            <View className="ml-3">
-              <Text className="text-base font-semibold text-gray-900">
+            <View style={twStyle("ml-3")}>
+              <Text style={twStyle("text-base font-semibold text-gray-900")}>
                 Yoco
               </Text>
-              <Text className="text-xs text-gray-500">Card & tap-to-pay</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>Card & tap-to-pay</Text>
             </View>
           </View>
-          <View className="flex-row items-center">
+          <View style={twStyle("flex-row items-center")}>
             <View
-              className={`mr-2 flex-row items-center rounded-full px-3 py-1 ${yocoConnected ? "bg-green-50" : "bg-gray-100"}`}
+              style={twStyle(`mr-2 flex-row items-center rounded-full px-3 py-1 ${yocoConnected ? "bg-green-50" : "bg-gray-100"}`)}
             >
               <View
-                className={`mr-1.5 h-2 w-2 rounded-full ${yocoConnected ? "bg-green-500" : "bg-gray-400"}`}
+                style={twStyle(`mr-1.5 h-2 w-2 rounded-full ${yocoConnected ? "bg-green-500" : "bg-gray-400"}`)}
               />
               <Text
-                className={`text-xs font-medium ${yocoConnected ? "text-green-700" : "text-gray-500"}`}
+                style={twStyle(`text-xs font-medium ${yocoConnected ? "text-green-700" : "text-gray-500"}`)}
               >
                 {yocoConnected ? "Connected" : "Not connected"}
               </Text>
@@ -235,7 +236,7 @@ export default function PaymentSettingsScreen() {
           </View>
         </View>
         {!yocoConnected && (
-          <Text className="mt-2 text-xs text-indigo-600">
+          <Text style={twStyle("mt-2 text-xs text-indigo-600")}>
             Tap to connect your Yoco account →
           </Text>
         )}
@@ -243,7 +244,7 @@ export default function PaymentSettingsScreen() {
 
       {/* ─── Accepted Payment Methods ─── */}
       <SectionHeader title="Accepted Payment Methods" />
-      <View className="rounded-2xl border border-gray-100 bg-white">
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         <ToggleRow
           label="Accept Cash"
           description="Allow cash payments at point of sale"
@@ -258,13 +259,13 @@ export default function PaymentSettingsScreen() {
           onValueChange={(v) => update("accept_card", v)}
           accessibilityLabel="Toggle accept card payments"
         />
-        <View className="px-4 py-3.5">
-          <View className="flex-row items-center justify-between">
-            <View className="mr-3 flex-1">
-              <Text className="text-sm font-medium text-gray-700">
+        <View style={twStyle("px-4 py-3.5")}>
+          <View style={twStyle("flex-row items-center justify-between")}>
+            <View style={twStyle("mr-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>
                 Accept Online Payments
               </Text>
-              <Text className="mt-0.5 text-xs text-gray-400">
+              <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>
                 Allow clients to pay online when booking
               </Text>
             </View>
@@ -281,7 +282,7 @@ export default function PaymentSettingsScreen() {
 
       {/* ─── Tax Settings ─── */}
       <SectionHeader title="Tax Settings" />
-      <View className="rounded-2xl border border-gray-100 bg-white">
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         <ToggleRow
           label="VAT Registered"
           description="Is your business VAT registered?"
@@ -291,12 +292,12 @@ export default function PaymentSettingsScreen() {
         />
 
         {form.vat_registered && (
-          <View className="border-b border-gray-50 px-4 py-3.5">
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">
+          <View style={twStyle("border-b border-gray-50 px-4 py-3.5")}>
+            <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
               VAT Number
             </Text>
             <TextInput
-              className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900"
+              style={twStyle("rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900")}
               value={form.vat_number ?? ""}
               onChangeText={(v) => update("vat_number", v)}
               placeholder="Enter VAT number"
@@ -306,13 +307,13 @@ export default function PaymentSettingsScreen() {
           </View>
         )}
 
-        <View className="border-b border-gray-50 px-4 py-3.5">
-          <Text className="mb-1.5 text-sm font-medium text-gray-700">
+        <View style={twStyle("border-b border-gray-50 px-4 py-3.5")}>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
             Tax Rate (%)
           </Text>
-          <View className="flex-row items-center">
+          <View style={twStyle("flex-row items-center")}>
             <TextInput
-              className="flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900"
+              style={twStyle("flex-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900")}
               value={form.tax_rate.toString()}
               onChangeText={(v) => {
                 const num = parseFloat(v) || 0;
@@ -323,17 +324,17 @@ export default function PaymentSettingsScreen() {
               placeholderTextColor="#9ca3af"
               accessibilityLabel="Tax rate percentage"
             />
-            <Text className="ml-2 text-lg font-semibold text-gray-400">%</Text>
+            <Text style={twStyle("ml-2 text-lg font-semibold text-gray-400")}>%</Text>
           </View>
         </View>
 
-        <View className="px-4 py-3.5">
-          <View className="flex-row items-center justify-between">
-            <View className="mr-3 flex-1">
-              <Text className="text-sm font-medium text-gray-700">
+        <View style={twStyle("px-4 py-3.5")}>
+          <View style={twStyle("flex-row items-center justify-between")}>
+            <View style={twStyle("mr-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>
                 Prices Include Tax
               </Text>
-              <Text className="mt-0.5 text-xs text-gray-400">
+              <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>
                 Service prices are tax-inclusive
               </Text>
             </View>
@@ -350,7 +351,7 @@ export default function PaymentSettingsScreen() {
 
       {/* ─── Tips ─── */}
       <SectionHeader title="Tip Settings" />
-      <View className="rounded-2xl border border-gray-100 bg-white">
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
         <ToggleRow
           label="Enable Tips"
           description="Allow clients to add tips"
@@ -361,23 +362,23 @@ export default function PaymentSettingsScreen() {
 
         {form.tips_enabled && (
           <>
-            <View className="border-b border-gray-50 px-4 py-3.5">
-              <Text className="mb-2 text-sm font-medium text-gray-700">
+            <View style={twStyle("border-b border-gray-50 px-4 py-3.5")}>
+              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
                 Tip Presets
               </Text>
-              <View className="flex-row flex-wrap gap-2">
+              <View style={twStyle("flex-row flex-wrap")}>
                 {PRESET_OPTIONS.map((p) => {
                   const selected = form.tip_presets.includes(p);
                   return (
                     <TouchableOpacity
                       key={p}
-                      className={`rounded-full px-4 py-2 ${selected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`}
+                      style={[twStyle(`rounded-full px-4 py-2 ${selected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), { marginRight: 8, marginBottom: 8 }]}
                       onPress={() => togglePreset(p)}
                       accessibilityLabel={`${p}% tip preset ${selected ? "selected" : "not selected"}`}
                       accessibilityRole="button"
                     >
                       <Text
-                        className={`text-sm font-medium ${selected ? "text-white" : "text-gray-600"}`}
+                        style={twStyle(`text-sm font-medium ${selected ? "text-white" : "text-gray-600"}`)}
                       >
                         {p}%
                       </Text>
@@ -387,9 +388,9 @@ export default function PaymentSettingsScreen() {
               </View>
             </View>
 
-            <View className="px-4 py-3.5">
-              <View className="flex-row items-center justify-between">
-                <Text className="text-sm text-gray-700">
+            <View style={twStyle("px-4 py-3.5")}>
+              <View style={twStyle("flex-row items-center justify-between")}>
+                <Text style={twStyle("text-sm text-gray-700")}>
                   Auto-send Receipts
                 </Text>
                 <Switch
@@ -407,9 +408,9 @@ export default function PaymentSettingsScreen() {
 
       {/* ─── Currency ─── */}
       <SectionHeader title="Currency" />
-      <View className="rounded-2xl border border-gray-100 bg-white px-4 py-3.5">
-        <Text className="mb-2 text-sm font-medium text-gray-700">Currency</Text>
-        <View className="flex-row flex-wrap gap-2">
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-3.5")}>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Currency</Text>
+        <View style={twStyle("flex-row flex-wrap")}>
           {(["ZAR", "USD", "GBP", "EUR", "BWP", "NAD", "MZN"] as const).map((c) => {
             const symbols: Record<string, string> = {
               ZAR: "R",
@@ -424,13 +425,13 @@ export default function PaymentSettingsScreen() {
             return (
               <TouchableOpacity
                 key={c}
-                className={`rounded-full px-4 py-2 ${selected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`}
+                style={[twStyle(`rounded-full px-4 py-2 ${selected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), { marginRight: 8, marginBottom: 8 }]}
                 onPress={() => update("currency", c)}
                 accessibilityLabel={`Select currency ${c}`}
                 accessibilityRole="button"
               >
                 <Text
-                  className={`text-sm font-medium ${selected ? "text-white" : "text-gray-600"}`}
+                  style={twStyle(`text-sm font-medium ${selected ? "text-white" : "text-gray-600"}`)}
                 >
                   {c} ({symbols[c]})
                 </Text>
@@ -441,7 +442,7 @@ export default function PaymentSettingsScreen() {
       </View>
 
       {/* ─── Save ─── */}
-      <View className="mt-6">
+      <View style={twStyle("mt-6")}>
         <ActionButton
           label={saving ? "Saving…" : "Save Payment Settings"}
           onPress={handleSave}
@@ -452,12 +453,12 @@ export default function PaymentSettingsScreen() {
       </View>
 
       {hasChanges && (
-        <Text className="mt-2 text-center text-xs text-amber-600">
+        <Text style={twStyle("mt-2 text-center text-xs text-amber-600")}>
           You have unsaved changes
         </Text>
       )}
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

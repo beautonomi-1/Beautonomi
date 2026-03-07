@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Colors, Shadows } from "@/constants/colors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
 
 const PRIMARY = Colors.primary;
@@ -50,6 +51,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function OrderCard({ order, onPress }: { order: ProductOrder; onPress: () => void }) {
+  const { contentPadding } = useResponsive();
   const firstImage = order.items?.[0]?.product_image_url;
   const itemCount = order.items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
   const date = new Date(order.created_at).toLocaleDateString("en-ZA", {
@@ -64,14 +66,14 @@ function OrderCard({ order, onPress }: { order: ProductOrder; onPress: () => voi
       style={{
         backgroundColor: "#fff",
         borderRadius: 16,
-        marginHorizontal: 16,
+        marginHorizontal: contentPadding,
         marginBottom: 12,
         overflow: "hidden",
         ...Shadows.card,
       }}
       activeOpacity={0.85}
     >
-      <View style={{ flexDirection: "row", padding: 16 }}>
+      <View style={{ flexDirection: "row", padding: contentPadding }}>
         <View
           style={{
             width: 64,
@@ -123,6 +125,7 @@ function OrderCard({ order, onPress }: { order: ProductOrder; onPress: () => voi
 
 export default function ProductOrdersScreen() {
   const router = useRouter();
+  const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
   const { orders, loading, fetchOrders } = useProductOrders();
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -161,7 +164,7 @@ export default function ProductOrdersScreen() {
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 16,
+          paddingHorizontal: contentPadding,
           paddingVertical: 14,
           backgroundColor: "#fff",
           borderBottomWidth: 1,
@@ -181,7 +184,7 @@ export default function ProductOrdersScreen() {
         <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 16 }}
+          contentContainerStyle={{ paddingHorizontal: contentPadding }}
           data={FILTER_TABS}
           keyExtractor={(t) => t.key ?? "all"}
           renderItem={({ item: t }) => {
@@ -190,7 +193,7 @@ export default function ProductOrdersScreen() {
               <TouchableOpacity
                 onPress={() => handleFilterChange(t.key)}
                 style={{
-                  paddingHorizontal: 16,
+                  paddingHorizontal: contentPadding,
                   paddingVertical: 8,
                   borderRadius: 20,
                   marginRight: 8,
@@ -211,7 +214,7 @@ export default function ProductOrdersScreen() {
           <ActivityIndicator size="large" color={PRIMARY} />
         </View>
       ) : orders.length === 0 ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: contentPadding }}>
           <Ionicons name="receipt-outline" size={64} color="#D1D5DB" />
           <Text style={{ fontSize: 18, fontWeight: "600", color: "#374151", marginTop: 16 }}>
             No orders yet
@@ -233,7 +236,8 @@ export default function ProductOrdersScreen() {
           contentContainerStyle={{
             paddingTop: 12,
             paddingBottom: 24,
-            ...(Platform.OS === "web" ? { maxWidth: 600, alignSelf: "center", width: "100%" } as any : {}),
+            paddingHorizontal: contentPadding,
+            ...((isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {}),
           }}
           renderItem={({ item: order }) => (
             <OrderCard

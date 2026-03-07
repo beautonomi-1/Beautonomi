@@ -123,7 +123,7 @@ export default function ProviderAnalyticsPage() {
                 onClick={() => setPeriod("week")}
                 className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
                   period === "week" 
-                    ? "bg-[#FF0077] text-white" 
+                    ? "bg-primary text-white" 
                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
               >
@@ -133,7 +133,7 @@ export default function ProviderAnalyticsPage() {
                 onClick={() => setPeriod("month")}
                 className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
                   period === "month" 
-                    ? "bg-[#FF0077] text-white" 
+                    ? "bg-primary text-white" 
                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
               >
@@ -143,7 +143,7 @@ export default function ProviderAnalyticsPage() {
                 onClick={() => setPeriod("year")}
                 className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
                   period === "year" 
-                    ? "bg-[#FF0077] text-white" 
+                    ? "bg-primary text-white" 
                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 }`}
               >
@@ -263,7 +263,7 @@ export default function ProviderAnalyticsPage() {
                 <YAxis />
                 <Tooltip formatter={(value: number) => formatCurrency(value)} />
                 <Legend />
-                <Line type="monotone" dataKey="revenue" stroke="#FF0077" strokeWidth={2} name="Revenue" />
+                <Line type="monotone" dataKey="revenue" stroke="var(--primary)" strokeWidth={2} name="Revenue" />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -282,7 +282,7 @@ export default function ProviderAnalyticsPage() {
                 <YAxis />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="bookings" fill="#FF0077" name="Bookings" />
+                <Bar dataKey="bookings" fill="var(--primary)" name="Bookings" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

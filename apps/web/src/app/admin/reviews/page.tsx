@@ -346,14 +346,14 @@ export default function AdminReviews() {
                         placeholder="Search by customer, provider, booking number, or comment..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-10 backdrop-blur-sm bg-white/60 border border-white/40 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+                        className="pl-10 backdrop-blur-sm bg-white/60 border border-white/40 focus:border-primary focus:ring-primary rounded-xl"
                       />
                     </div>
                   </div>
                   <select
                     value={statusFilter}
                     onChange={(e) => setStatusFilter(e.target.value)}
-                    className="px-4 py-2 border border-white/40 rounded-xl backdrop-blur-sm bg-white/60 focus:border-[#FF0077] focus:ring-[#FF0077]"
+                    className="px-4 py-2 border border-white/40 rounded-xl backdrop-blur-sm bg-white/60 focus:border-primary focus:ring-primary"
                   >
                     <option value="all">All Status</option>
                     <option value="visible">Visible</option>
@@ -363,7 +363,7 @@ export default function AdminReviews() {
                   <select
                     value={ratingFilter}
                     onChange={(e) => setRatingFilter(e.target.value)}
-                    className="px-4 py-2 border border-white/40 rounded-xl backdrop-blur-sm bg-white/60 focus:border-[#FF0077] focus:ring-[#FF0077]"
+                    className="px-4 py-2 border border-white/40 rounded-xl backdrop-blur-sm bg-white/60 focus:border-primary focus:ring-primary"
                   >
                     <option value="all">All Ratings</option>
                     <option value="5">5 Stars</option>
@@ -379,14 +379,14 @@ export default function AdminReviews() {
                     placeholder="Start Date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="backdrop-blur-sm bg-white/60 border border-white/40 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+                    className="backdrop-blur-sm bg-white/60 border border-white/40 focus:border-primary focus:ring-primary rounded-xl"
                   />
                   <Input
                     type="date"
                     placeholder="End Date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="backdrop-blur-sm bg-white/60 border border-white/40 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+                    className="backdrop-blur-sm bg-white/60 border border-white/40 focus:border-primary focus:ring-primary rounded-xl"
                   />
                 </div>
               </div>
@@ -395,10 +395,10 @@ export default function AdminReviews() {
             {/* Reviews List */}
             <Tabs defaultValue="all" className="space-y-4">
               <TabsList className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-1 shadow-lg">
-                <TabsTrigger value="all" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white rounded-lg transition-all">All ({groupedReviews.all.length})</TabsTrigger>
-                <TabsTrigger value="visible" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white rounded-lg transition-all">Visible ({groupedReviews.visible.length})</TabsTrigger>
-                <TabsTrigger value="hidden" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white rounded-lg transition-all">Hidden ({groupedReviews.hidden.length})</TabsTrigger>
-                <TabsTrigger value="flagged" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white rounded-lg transition-all">Flagged ({groupedReviews.flagged.length})</TabsTrigger>
+                <TabsTrigger value="all" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white rounded-lg transition-all">All ({groupedReviews.all.length})</TabsTrigger>
+                <TabsTrigger value="visible" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white rounded-lg transition-all">Visible ({groupedReviews.visible.length})</TabsTrigger>
+                <TabsTrigger value="hidden" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white rounded-lg transition-all">Hidden ({groupedReviews.hidden.length})</TabsTrigger>
+                <TabsTrigger value="flagged" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white rounded-lg transition-all">Flagged ({groupedReviews.flagged.length})</TabsTrigger>
               </TabsList>
 
           <TabsContent value="all" className="space-y-4">

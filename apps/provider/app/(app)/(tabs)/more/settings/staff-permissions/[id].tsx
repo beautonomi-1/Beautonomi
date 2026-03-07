@@ -12,6 +12,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { twStyle } from "@/lib/twStyle";
 
 interface PermissionsResponse {
   permissions: Record<string, boolean>;
@@ -81,16 +82,16 @@ export default function StaffPermissionEditScreen() {
     <ScreenContainer>
       <ScreenHeader title="Permissions" showBack />
       <SectionHeader title="Access" />
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        <View className="mb-4 rounded-2xl border border-gray-100 bg-white">
+      <ScrollView style={twStyle("flex-1")} showsVerticalScrollIndicator={false}>
+        <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white")}>
           {keys.map((key, i) => (
             <View
               key={key}
-              className={`flex-row items-center justify-between px-4 py-3.5 ${
+              style={twStyle(`flex-row items-center justify-between px-4 py-3.5 ${
                 i < keys.length - 1 ? "border-b border-gray-50" : ""
-              }`}
+              }`)}
             >
-              <Text className="text-sm text-gray-700">
+              <Text style={twStyle("text-sm text-gray-700")}>
                 {PERMISSION_LABELS[key] ?? key}
               </Text>
               <Switch
@@ -107,7 +108,7 @@ export default function StaffPermissionEditScreen() {
           loading={saving}
           fullWidth
         />
-        <View className="h-8" />
+        <View style={twStyle("h-8")} />
       </ScrollView>
     </ScreenContainer>
   );

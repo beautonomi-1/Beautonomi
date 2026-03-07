@@ -7,6 +7,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { twStyle } from "@/lib/twStyle";
 
 interface VisibilitySettings {
   show_customer_list_to_salon: boolean;
@@ -81,31 +82,31 @@ export default function CustomerVisibilityScreen() {
       <ScreenHeader title="Customer Visibility" showBack subtitle="Control what's visible" />
 
       {/* Preview cards */}
-      <View className="mb-4 flex-row gap-3">
-        <View className="flex-1 items-center rounded-2xl border border-gray-100 bg-white p-4">
+      <View style={twStyle("mb-4 flex-row")}>
+        <View style={[twStyle("flex-1 items-center rounded-2xl border border-gray-100 bg-white p-4"), { marginRight: 12 }]}>
           <Ionicons name={customerVis.icon as any} size={28} color={customerVis.color} />
-          <Text className="mt-2 text-xs font-semibold text-gray-900">Client Visibility</Text>
-          <Text className="text-[10px] capitalize text-gray-500">{customerMode.replace("_", " ")}</Text>
+          <Text style={twStyle("mt-2 text-xs font-semibold text-gray-900")}>Client Visibility</Text>
+          <Text style={twStyle("text-[10px] capitalize text-gray-500")}>{customerMode.replace("_", " ")}</Text>
         </View>
-        <View className="flex-1 items-center rounded-2xl border border-gray-100 bg-white p-4">
+        <View style={twStyle("flex-1 items-center rounded-2xl border border-gray-100 bg-white p-4")}>
           <Ionicons name={salonVis.icon as any} size={28} color={salonVis.color} />
-          <Text className="mt-2 text-xs font-semibold text-gray-900">Salon Visibility</Text>
-          <Text className="text-[10px] capitalize text-gray-500">{salonMode.replace("_", " ")}</Text>
+          <Text style={twStyle("mt-2 text-xs font-semibold text-gray-900")}>Salon Visibility</Text>
+          <Text style={twStyle("text-[10px] capitalize text-gray-500")}>{salonMode.replace("_", " ")}</Text>
         </View>
       </View>
 
-      <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+      <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
         Access Controls
       </Text>
-      <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-        <View className="mb-4 flex-row items-center justify-between">
-          <View className="flex-row flex-1 items-center">
-            <View className="h-9 w-9 items-center justify-center rounded-lg bg-indigo-50">
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("mb-4 flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row flex-1 items-center")}>
+            <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-indigo-50")}>
               <Ionicons name="list-outline" size={18} color="#6366f1" />
             </View>
-            <View className="ml-3 flex-1">
-              <Text className="text-sm font-medium text-gray-900">Show Client List to Staff</Text>
-              <Text className="text-xs text-gray-500">Staff can see the full client list</Text>
+            <View style={twStyle("ml-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>Show Client List to Staff</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>Staff can see the full client list</Text>
             </View>
           </View>
           <Switch
@@ -115,14 +116,14 @@ export default function CustomerVisibilityScreen() {
             thumbColor={showToSalon ? "#6366f1" : "#f4f4f5"}
           />
         </View>
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row flex-1 items-center">
-            <View className="h-9 w-9 items-center justify-center rounded-lg bg-green-50">
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row flex-1 items-center")}>
+            <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-green-50")}>
               <Ionicons name="storefront-outline" size={18} color="#22c55e" />
             </View>
-            <View className="ml-3 flex-1">
-              <Text className="text-sm font-medium text-gray-900">Show Salon on Client App</Text>
-              <Text className="text-xs text-gray-500">Appear in client searches</Text>
+            <View style={twStyle("ml-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>Show Salon on Client App</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>Appear in client searches</Text>
             </View>
           </View>
           <Switch
@@ -134,24 +135,24 @@ export default function CustomerVisibilityScreen() {
         </View>
       </View>
 
-      <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+      <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
         Who Can See Your Clients
       </Text>
-      <View className="mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white">
+      <View style={twStyle("mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
         {MODE_OPTIONS.map((opt, idx) => (
           <TouchableOpacity
             key={opt.value}
-            className={`flex-row items-center px-4 py-3.5 ${
+            style={twStyle(`flex-row items-center px-4 py-3.5 ${
               idx < MODE_OPTIONS.length - 1 ? "border-b border-gray-50" : ""
-            } ${customerMode === opt.value ? "bg-indigo-50/50" : ""}`}
+            } ${customerMode === opt.value ? "bg-indigo-50/50" : ""}`)}
             onPress={() => update(() => setCustomerMode(opt.value))}
           >
-            <View className="h-9 w-9 items-center justify-center rounded-lg bg-gray-100">
+            <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-100")}>
               <Ionicons name={opt.icon as any} size={18} color="#6b7280" />
             </View>
-            <View className="ml-3 flex-1">
-              <Text className="text-sm font-medium text-gray-900">{opt.label}</Text>
-              <Text className="text-xs text-gray-500">{opt.description}</Text>
+            <View style={twStyle("ml-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{opt.label}</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>{opt.description}</Text>
             </View>
             {customerMode === opt.value && (
               <Ionicons name="checkmark-circle" size={22} color="#6366f1" />
@@ -160,24 +161,24 @@ export default function CustomerVisibilityScreen() {
         ))}
       </View>
 
-      <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+      <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
         Who Can See Your Salon
       </Text>
-      <View className="mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white">
+      <View style={twStyle("mb-4 overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
         {MODE_OPTIONS.map((opt, idx) => (
           <TouchableOpacity
             key={opt.value}
-            className={`flex-row items-center px-4 py-3.5 ${
+            style={twStyle(`flex-row items-center px-4 py-3.5 ${
               idx < MODE_OPTIONS.length - 1 ? "border-b border-gray-50" : ""
-            } ${salonMode === opt.value ? "bg-indigo-50/50" : ""}`}
+            } ${salonMode === opt.value ? "bg-indigo-50/50" : ""}`)}
             onPress={() => update(() => setSalonMode(opt.value))}
           >
-            <View className="h-9 w-9 items-center justify-center rounded-lg bg-gray-100">
+            <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-gray-100")}>
               <Ionicons name={opt.icon as any} size={18} color="#6b7280" />
             </View>
-            <View className="ml-3 flex-1">
-              <Text className="text-sm font-medium text-gray-900">{opt.label}</Text>
-              <Text className="text-xs text-gray-500">{opt.description}</Text>
+            <View style={twStyle("ml-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>{opt.label}</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>{opt.description}</Text>
             </View>
             {salonMode === opt.value && (
               <Ionicons name="checkmark-circle" size={22} color="#6366f1" />
@@ -187,7 +188,7 @@ export default function CustomerVisibilityScreen() {
       </View>
 
       <ActionButton label="Save Settings" onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

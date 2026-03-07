@@ -422,8 +422,8 @@ export function DragDropProvider({
             <div className="space-y-4 py-4">
               {/* Client & Service Info */}
               <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <div className="w-10 h-10 rounded-full bg-[#FF0077]/10 flex items-center justify-center">
-                  <User className="w-5 h-5 text-[#FF0077]" />
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <User className="w-5 h-5 text-primary" />
                 </div>
                 <div>
                   <p className="font-semibold">
@@ -457,10 +457,10 @@ export function DragDropProvider({
                   <ArrowRight className="w-5 h-5 text-gray-400" />
                   <div className="flex-1 text-right">
                     <p className="text-xs text-gray-500 mb-1">To</p>
-                    <p className="font-medium text-[#FF0077]">
+                    <p className="font-medium text-primary">
                       {formatDate(rescheduleConfirmation.newDate)}
                     </p>
-                    <p className="text-sm text-[#FF0077]">
+                    <p className="text-sm text-primary">
                       {formatTime12h(rescheduleConfirmation.newTime)} -{" "}
                       {formatTime12h(
                         getEndTime(
@@ -503,7 +503,7 @@ export function DragDropProvider({
             <Button
               onClick={confirmReschedule}
               disabled={isRescheduling}
-              className="bg-[#FF0077] hover:bg-[#D60565]"
+              className="bg-primary hover:bg-primary-hover"
             >
               {isRescheduling ? "Rescheduling..." : "Confirm Reschedule"}
             </Button>
@@ -676,9 +676,9 @@ export function DraggableAppointment({
       style={{ ...style, touchAction: "manipulation" }}
       className={cn(
         "cursor-grab active:cursor-grabbing",
-        "focus:outline-none focus:ring-2 focus:ring-[#FF0077] focus:ring-offset-1",
+        "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1",
         isDraggingThis && "opacity-50",
-        isFocused && "ring-2 ring-[#FF0077] ring-offset-1",
+        isFocused && "ring-2 ring-primary ring-offset-1",
         className
       )}
       aria-label={`Appointment: ${appointment.client_name} for ${appointment.service_name} at ${appointment.scheduled_time}`}
@@ -723,8 +723,8 @@ export function DroppableTimeSlot({
   const getValidationColors = () => {
     if (!isCurrentDropTarget || !validationState) {
       return {
-        ring: "ring-[#FF0077]",
-        bg: "bg-[#FF0077]/10",
+        ring: "ring-primary",
+        bg: "bg-primary/10",
       };
     }
     
@@ -827,18 +827,18 @@ export function DragIndicator({ time, duration, className }: DragIndicatorProps)
   return (
     <div
       className={cn(
-        "absolute inset-x-1 rounded-lg border-2 border-dashed border-[#FF0077]",
-        "bg-[#FF0077]/10 flex items-center justify-center",
+        "absolute inset-x-1 rounded-lg border-2 border-dashed border-primary",
+        "bg-primary/10 flex items-center justify-center",
         "pointer-events-none z-50",
         className
       )}
     >
       <div className="text-center">
-        <Clock className="w-4 h-4 text-[#FF0077] mx-auto mb-1" />
-        <p className="text-xs font-medium text-[#FF0077]">
+        <Clock className="w-4 h-4 text-primary mx-auto mb-1" />
+        <p className="text-xs font-medium text-primary">
           {formatTime12h(time)}
         </p>
-        <p className="text-[10px] text-[#FF0077]/70">{duration} min</p>
+        <p className="text-[10px] text-primary/70">{duration} min</p>
       </div>
     </div>
   );
@@ -951,11 +951,11 @@ export function SnapLineIndicator({
 
   return (
     <div
-      className="absolute left-0 right-0 h-0.5 bg-[#FF0077] pointer-events-none z-30"
+      className="absolute left-0 right-0 h-0.5 bg-primary pointer-events-none z-30"
       style={{ top: `${top}px` }}
     >
-      <div className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-[#FF0077]" />
-      <div className="absolute left-2 -top-3 text-[10px] font-medium text-[#FF0077] bg-white px-1 rounded shadow">
+      <div className="absolute -left-1 -top-1 w-2 h-2 rounded-full bg-primary" />
+      <div className="absolute left-2 -top-3 text-[10px] font-medium text-primary bg-white px-1 rounded shadow">
         {snapTime}
       </div>
     </div>

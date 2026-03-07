@@ -34,7 +34,7 @@ export default function BackButton({
       className={`
         ${showOnMobile ? 'flex' : 'hidden md:flex'} 
         items-center gap-2 
-        text-gray-600 hover:text-[#FF0077] 
+        text-gray-600 hover:text-primary 
         mb-3 md:mb-4 
         px-2 md:px-4
         py-2 md:py-2

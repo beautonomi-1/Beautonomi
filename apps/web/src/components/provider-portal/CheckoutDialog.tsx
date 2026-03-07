@@ -189,7 +189,7 @@ export function CheckoutDialog({
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-hidden flex flex-col p-0">
         {/* Header */}
-        <DialogHeader className="px-6 pt-6 pb-4 bg-gradient-to-r from-[#FF0077] to-[#FF6B35] text-white rounded-t-lg">
+        <DialogHeader className="px-6 pt-6 pb-4 bg-gradient-to-r from-primary to-[#FF6B35] text-white rounded-t-lg">
           <div className="flex items-center justify-between">
             <div>
               <DialogTitle className="text-xl font-bold text-white">
@@ -273,7 +273,7 @@ export function CheckoutDialog({
 
             <Button
               onClick={handleClose}
-              className="mt-6 bg-[#FF0077] hover:bg-[#D60565]"
+              className="mt-6 bg-primary hover:bg-primary-hover"
             >
               Done
             </Button>
@@ -295,8 +295,8 @@ export function CheckoutDialog({
                         className="flex items-center justify-between py-2"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[#FF0077]/10 flex items-center justify-center">
-                            <Clock className="w-4 h-4 text-[#FF0077]" />
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Clock className="w-4 h-4 text-primary" />
                           </div>
                           <div>
                             <p className="font-medium">{service.name}</p>
@@ -401,7 +401,7 @@ export function CheckoutDialog({
                           variant={tipPercentage === percent && !customTip ? "default" : "outline"}
                           className={cn(
                             "h-12 flex flex-col",
-                            tipPercentage === percent && !customTip && "bg-[#FF0077] hover:bg-[#D60565]"
+                            tipPercentage === percent && !customTip && "bg-primary hover:bg-primary-hover"
                           )}
                           onClick={() => {
                             setTipPercentage(percent);
@@ -447,13 +447,13 @@ export function CheckoutDialog({
                             className={cn(
                               "relative p-3 rounded-xl border-2 text-left transition-all",
                               isSelected 
-                                ? "border-[#FF0077] bg-[#FF0077]/5 shadow-sm" 
+                                ? "border-primary bg-primary/5 shadow-sm" 
                                 : "border-gray-200 hover:border-gray-300 bg-white"
                             )}
                             onClick={() => setPaymentMethod(method.id)}
                           >
                             {isSelected && (
-                              <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-[#FF0077] flex items-center justify-center">
+                              <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
                                 <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                 </svg>
@@ -462,14 +462,14 @@ export function CheckoutDialog({
                             <div className="flex items-start gap-3">
                               <div className={cn(
                                 "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0",
-                                isSelected ? "bg-[#FF0077]/10 text-[#FF0077]" : "bg-gray-100 text-gray-500"
+                                isSelected ? "bg-primary/10 text-primary" : "bg-gray-100 text-gray-500"
                               )}>
                                 <Icon className="w-4 h-4" />
                               </div>
                               <div className="min-w-0 flex-1">
                                 <p className={cn(
                                   "font-medium text-sm",
-                                  isSelected ? "text-[#FF0077]" : "text-gray-900"
+                                  isSelected ? "text-primary" : "text-gray-900"
                                 )}>
                                   {method.name}
                                 </p>
@@ -533,7 +533,7 @@ export function CheckoutDialog({
                 <Separator className="my-2" />
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total</span>
-                  <span className="text-[#FF0077]">{formatCurrency(calculations.total)}</span>
+                  <span className="text-primary">{formatCurrency(calculations.total)}</span>
                 </div>
               </div>
 
@@ -545,7 +545,7 @@ export function CheckoutDialog({
                       Cancel
                     </Button>
                     <Button
-                      className="flex-1 bg-[#FF0077] hover:bg-[#D60565]"
+                      className="flex-1 bg-primary hover:bg-primary-hover"
                       onClick={() => setStep("payment")}
                     >
                       Continue to Payment
@@ -558,7 +558,7 @@ export function CheckoutDialog({
                       Back
                     </Button>
                     <Button
-                      className="flex-1 bg-[#FF0077] hover:bg-[#D60565]"
+                      className="flex-1 bg-primary hover:bg-primary-hover"
                       onClick={handleComplete}
                       disabled={isProcessing}
                     >

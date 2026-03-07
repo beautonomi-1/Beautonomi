@@ -172,7 +172,7 @@ export default function ReferralSourcesSettings() {
           </div>
           <Button
             onClick={handleCreate}
-            className="w-full sm:w-auto bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
+            className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
           >
             <Plus className="w-4 h-4 mr-2" />
             Add Source
@@ -291,7 +291,7 @@ export default function ReferralSourcesSettings() {
             </Button>
             <Button
               onClick={handleSave}
-              className="bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
+              className="bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
               {editingSource ? "Update" : "Create"}
             </Button>

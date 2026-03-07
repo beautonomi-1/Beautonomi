@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "provider",
+    "name": "Beautonomi Provider",
     "slug": "provider",
     "scheme": "provider",
     "updates": {
@@ -17,8 +17,8 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "@sentry/react-native",
       "singular-react-native",
+      ["onesignal-expo-plugin", { "mode": "development" }],
       ["expo-splash-screen", {
         "backgroundColor": "#ffffff",
         "image": "./assets/splash-icon.png",
@@ -32,11 +32,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.beautonomi.provider",
-      "infoPlist": { "UIBackgroundModes": ["remote-notification"] },
+      "bundleIdentifier": "com.beautonomi.partner",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"],
+        "ITSAppUsesNonExemptEncryption": false
+      },
       "entitlements": {
         "aps-environment": "development",
-        "com.apple.security.application-groups": ["group.com.beautonomi.provider.onesignal"]
+        "com.apple.security.application-groups": ["group.com.beautonomi.partner.onesignal"]
       },
       "associatedDomains": [
         "applinks:beautonomi.com",
@@ -48,7 +51,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.beautonomi.provider",
+      "package": "com.beautonomi.partner",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "intentFilters": [

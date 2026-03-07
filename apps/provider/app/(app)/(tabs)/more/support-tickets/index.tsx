@@ -7,6 +7,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 type Ticket = {
   id: string;
@@ -21,18 +22,18 @@ type Ticket = {
 
 type TicketsResponse = { tickets?: Ticket[]; total?: number };
 
-function statusColor(status: string): string {
+function statusBgColor(status: string): string {
   switch (status) {
     case "open":
-      return "bg-blue-100";
+      return "#dbeafe";
     case "in_progress":
-      return "bg-amber-100";
+      return "#fef3c2";
     case "resolved":
-      return "bg-green-100";
+      return "#dcfce7";
     case "closed":
-      return "bg-gray-100";
+      return Colors.gray[100];
     default:
-      return "bg-gray-100";
+      return Colors.gray[100];
   }
 }
 
@@ -53,7 +54,7 @@ export default function SupportTicketsListScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="My support tickets" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -64,7 +65,7 @@ export default function SupportTicketsListScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="My support tickets" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -75,7 +76,7 @@ export default function SupportTicketsListScreen() {
     <ScreenContainer>
       <ScreenHeader title="My support tickets" onBack={() => router.back()} />
       <ScrollView
-        className="flex-1"
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -83,36 +84,36 @@ export default function SupportTicketsListScreen() {
         showsVerticalScrollIndicator={false}
       >
         {tickets.length === 0 ? (
-          <View className="py-12 px-4 items-center">
+          <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="chatbubbles-outline" size={48} color="#9ca3af" />
-            <Text className="mt-4 text-center text-gray-600">No support tickets yet</Text>
-            <Text className="mt-2 text-center text-sm text-gray-500">
+            <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>No support tickets yet</Text>
+            <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
               Tap Contact support in Settings to submit a ticket
             </Text>
           </View>
         ) : (
-          <View className="px-2 pb-4">
+          <View style={{ paddingHorizontal: 8, paddingBottom: 16 }}>
             {tickets.map((t) => (
               <TouchableOpacity
                 key={t.id}
                 onPress={() => router.push(`/(app)/(tabs)/more/support-tickets/${t.id}` as never)}
                 activeOpacity={0.7}
-                className="mb-3 rounded-xl border border-gray-200 bg-white p-4"
+                style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
                 accessibilityLabel={`Support ticket ${t.ticket_number}, ${t.subject}, ${t.status.replace("_", " ")}`}
                 accessibilityRole="button"
               >
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="font-mono text-xs text-gray-500">{t.ticket_number}</Text>
-                  <View className={`rounded-full px-2 py-0.5 ${statusColor(t.status)}`}>
-                    <Text className="text-xs font-medium text-gray-800">
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <Text style={{ fontFamily: "monospace", fontSize: 12, color: Colors.gray[500] }}>{t.ticket_number}</Text>
+                  <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: statusBgColor(t.status) }}>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[800] }}>
                       {t.status.replace("_", " ")}
                     </Text>
                   </View>
                 </View>
-                <Text className="font-semibold text-gray-900" numberOfLines={2}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={2}>
                   {t.subject}
                 </Text>
-                <Text className="mt-1 text-xs text-gray-500">
+                <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
                   Updated {new Date(t.updated_at).toLocaleDateString()}
                 </Text>
               </TouchableOpacity>

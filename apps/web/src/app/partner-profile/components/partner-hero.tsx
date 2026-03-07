@@ -547,7 +547,7 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
             <button
               onClick={handleMessageClick}
               disabled={isMessageLoading}
-              className="group flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 rounded-xl bg-gradient-to-r from-[#FF0077] to-[#FF4DA6] text-white font-medium shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex-shrink-0 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="group flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 rounded-xl bg-gradient-to-r from-primary to-[#FF4DA6] text-white font-medium shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex-shrink-0 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
               {isMessageLoading ? (
                 <>
@@ -566,11 +566,11 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
               disabled={isToggling}
               className={`group flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 rounded-xl border-2 transition-all duration-200 flex-shrink-0 disabled:opacity-70 disabled:cursor-not-allowed ${
                 isInWishlist 
-                  ? "bg-gradient-to-r from-pink-50 to-rose-50 border-[#FF0077] text-[#FF0077] shadow-md hover:shadow-lg" 
-                  : "bg-white border-gray-200 text-gray-700 hover:border-[#FF0077] hover:text-[#FF0077] hover:bg-pink-50"
+                  ? "bg-gradient-to-r from-pink-50 to-rose-50 border-primary text-primary shadow-md hover:shadow-lg" 
+                  : "bg-white border-gray-200 text-gray-700 hover:border-primary hover:text-primary hover:bg-pink-50"
               }`}
             >
-              <Heart className={`h-4 w-4 md:h-5 md:w-5 transition-all ${isInWishlist ? "fill-[#FF0077] text-[#FF0077] scale-110" : "text-gray-600 group-hover:text-[#FF0077] group-hover:scale-110"}`} />
+              <Heart className={`h-4 w-4 md:h-5 md:w-5 transition-all ${isInWishlist ? "fill-primary text-primary scale-110" : "text-gray-600 group-hover:text-primary group-hover:scale-110"}`} />
               <span className="hidden md:inline text-sm font-medium">Save</span>
             </button>
             <button

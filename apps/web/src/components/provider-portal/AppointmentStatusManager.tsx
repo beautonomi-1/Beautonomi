@@ -250,9 +250,9 @@ export function AppointmentStatusManager({
                         type="button"
                         className={cn(
                           "flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left",
-                          "hover:border-[#FF0077] hover:bg-[#FF0077]/5",
+                          "hover:border-primary hover:bg-primary/5",
                           selectedStatus === status.value
-                            ? "border-[#FF0077] bg-[#FF0077]/5"
+                            ? "border-primary bg-primary/5"
                             : "border-gray-200"
                         )}
                         onClick={() => handleStatusSelect(status.value)}

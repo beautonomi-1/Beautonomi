@@ -662,7 +662,7 @@ export default function WhatsAppChat({
     return (
       <div className="flex flex-col h-full bg-[#f0f2f5] items-center justify-center">
         <div className="text-center p-8">
-          <div className="w-16 h-16 rounded-full bg-[#FF0077] mx-auto mb-4 flex items-center justify-center">
+          <div className="w-16 h-16 rounded-full bg-primary mx-auto mb-4 flex items-center justify-center">
             <Send className="w-8 h-8 text-white" />
           </div>
           <p className="text-[#667781] text-sm">Select a conversation to start messaging</p>
@@ -674,7 +674,7 @@ export default function WhatsAppChat({
   return (
     <div className="flex flex-col h-full bg-gray-100 overflow-hidden relative">
       {/* Header - Beautonomi brand */}
-      <div className="bg-[#FF0077] text-white px-3 md:px-4 py-3 flex items-center gap-2 md:gap-3 shadow-md sticky top-0 z-20 flex-shrink-0">
+      <div className="bg-primary text-white px-3 md:px-4 py-3 flex items-center gap-2 md:gap-3 shadow-md sticky top-0 z-20 flex-shrink-0">
         {onBack && (
           <button
             onClick={onBack}
@@ -875,7 +875,7 @@ export default function WhatsAppChat({
                   }`}
                 >
                   {!isOwnMessage && message.sender_name && (
-                    <p className="text-xs font-semibold text-[#FF0077] mb-1">
+                    <p className="text-xs font-semibold text-primary mb-1">
                       {message.sender_name}
                     </p>
                   )}
@@ -980,7 +980,7 @@ export default function WhatsAppChat({
                                   console.error(err);
                                 }
                               }}
-                              className="w-full mt-2 bg-[#FF0077] hover:bg-[#E6006A] text-white text-xs font-medium"
+                              className="w-full mt-2 bg-primary hover:bg-primary-hover text-white text-xs font-medium"
                             >
                               Accept & Pay
                             </Button>
@@ -992,7 +992,7 @@ export default function WhatsAppChat({
                           Or view:{" "}
                           <a
                             href="/account-settings/custom-requests"
-                            className="underline text-[#FF0077]"
+                            className="underline text-primary"
                           >
                             Custom Requests
                           </a>
@@ -1004,7 +1004,7 @@ export default function WhatsAppChat({
                     message.attachments[0]?.type === "custom_request" ? (
                     <div className="space-y-2">
                       <p className="text-sm text-[#111b21]">{message.content}</p>
-                      <div className="rounded-md border border-[#FF0077]/20 bg-white/50 p-3">
+                      <div className="rounded-md border border-primary/20 bg-white/50 p-3">
                         <div className="text-sm font-semibold text-[#111b21]">Custom Request</div>
                         <div className="text-xs text-[#667781] mt-1">
                           {messagesEndpoint ? (
@@ -1012,7 +1012,7 @@ export default function WhatsAppChat({
                               Track it in{" "}
                               <a
                                 href="/provider/custom-requests"
-                                className="underline text-[#FF0077]"
+                                className="underline text-primary"
                               >
                                 Custom Requests
                               </a>
@@ -1022,7 +1022,7 @@ export default function WhatsAppChat({
                               View & respond in{" "}
                               <a
                                 href="/account-settings/custom-requests"
-                                className="underline text-[#FF0077]"
+                                className="underline text-primary"
                               >
                                 Custom Requests
                               </a>
@@ -1072,7 +1072,7 @@ export default function WhatsAppChat({
                                   rel="noopener noreferrer"
                                   className="flex items-center gap-2 p-2 bg-white/50 rounded border border-gray-200 hover:bg-white/70 transition-colors"
                                 >
-                                  <File className="w-5 h-5 text-[#FF0077]" />
+                                  <File className="w-5 h-5 text-primary" />
                                   <span className="text-sm text-[#111b21] truncate flex-1">
                                     {attachment.name || "Document"}
                                   </span>
@@ -1101,7 +1101,7 @@ export default function WhatsAppChat({
                       <span 
                         className={`text-[10px] ${
                           message.read_at 
-                            ? "text-[#FF0077]"
+                            ? "text-primary"
                             : "text-[#667781]"
                         }`}
                         title={
@@ -1153,9 +1153,9 @@ export default function WhatsAppChat({
                 ) : (
                   <div className="relative w-20 h-20 rounded-lg border border-gray-200 bg-gray-100 flex items-center justify-center">
                     {isVideo(file.type) ? (
-                      <Play className="w-6 h-6 text-[#FF0077]" />
+                      <Play className="w-6 h-6 text-primary" />
                     ) : (
-                      <File className="w-6 h-6 text-[#FF0077]" />
+                      <File className="w-6 h-6 text-primary" />
                     )}
                     <button
                       onClick={() => removeFile(index)}
@@ -1200,7 +1200,7 @@ export default function WhatsAppChat({
             className="p-2 hover:bg-gray-100 active:bg-gray-200 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
             title="Attach file"
           >
-            <Paperclip className="w-5 h-5 text-[#FF0077]" />
+            <Paperclip className="w-5 h-5 text-primary" />
           </button>
           
           <div className="flex-1 relative">
@@ -1215,7 +1215,7 @@ export default function WhatsAppChat({
                 }
               }}
               placeholder={selectedFiles.length > 0 ? "Add a caption (optional)" : "Type a message"}
-              className="rounded-full border-gray-200 bg-gray-100 focus:bg-white focus:border-[#FF0077] pr-12 py-5 md:py-6 text-sm md:text-base message-input"
+              className="rounded-full border-gray-200 bg-gray-100 focus:bg-white focus:border-primary pr-12 py-5 md:py-6 text-sm md:text-base message-input"
               disabled={isSending || isUploading}
               autoFocus
             />
@@ -1223,7 +1223,7 @@ export default function WhatsAppChat({
           <Button
             onClick={sendMessage}
             disabled={(!messageInput.trim() && selectedFiles.length === 0) || isSending || isUploading}
-            className="rounded-full bg-[#FF0077] hover:bg-[#E6006A] active:bg-[#D60565] text-white p-2.5 md:p-3 h-auto w-auto min-w-[44px] md:min-w-[48px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+            className="rounded-full bg-primary hover:bg-primary-hover active:bg-primary-hover text-white p-2.5 md:p-3 h-auto w-auto min-w-[44px] md:min-w-[48px] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
           >
             {isUploading ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

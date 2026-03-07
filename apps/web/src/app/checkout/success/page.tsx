@@ -5,8 +5,8 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 
-/** Beautonomi pink (logo / home brand) */
-const ACCENT = "#FF0077";
+/** Beautonomi primary (use CSS var in styles for single source) */
+const ACCENT = "var(--primary, #FF0077)";
 const BG = "#F7F7F7";
 const TEXT_PRIMARY = "#222222";
 const TEXT_SECONDARY = "#6B7280";

@@ -11,12 +11,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { Colors } from "@/constants/colors";
 
 interface Promotion {
   id: string;
@@ -34,6 +36,7 @@ interface Promotion {
 
 /** Content-only for use in Marketing hub (Promo codes tab). */
 export function PromotionsContent() {
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [code, setCode] = useState("");
@@ -126,14 +129,14 @@ export function PromotionsContent() {
 
   if (loading && !data) {
     return (
-      <View className="flex-1 items-center justify-center py-12">
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
         <LoadingState />
       </View>
     );
   }
   if (error && !data) {
     return (
-      <View className="flex-1 justify-center px-4">
+      <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
         <ErrorState message={error} onRetry={refresh} />
       </View>
     );
@@ -142,69 +145,69 @@ export function PromotionsContent() {
   return (
     <>
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
       >
         {promotions.length === 0 ? (
-          <View className="items-center py-16">
-            <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-orange-100">
+          <View style={{ alignItems: "center", paddingVertical: 64 }}>
+            <View style={{ marginBottom: 16, height: 64, width: 64, alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#ffedd5" }}>
               <Ionicons name="pricetag-outline" size={32} color="#f97316" />
             </View>
-            <Text className="text-center font-semibold text-gray-900">No promo codes yet</Text>
-            <Text className="mt-1 text-center text-sm text-gray-500">
+            <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900] }}>No promo codes yet</Text>
+            <Text style={{ marginTop: 4, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
               Create promo codes for percentage or fixed-amount discounts.
             </Text>
             <TouchableOpacity
               onPress={() => setCreateOpen(true)}
-              className="mt-6 flex-row items-center justify-center rounded-xl bg-orange-500 px-6 py-3"
+              style={{ marginTop: 24, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#f97316", paddingHorizontal: 24, paddingVertical: 12 }}
             >
               <Ionicons name="add" size={20} color="#fff" />
-              <Text className="ml-2 font-medium text-white">New promo code</Text>
+              <Text style={{ marginLeft: 8, fontWeight: "500", color: Colors.white }}>New promo code</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <>
             <TouchableOpacity
               onPress={() => setCreateOpen(true)}
-              className="mb-3 flex-row items-center justify-center rounded-xl border border-orange-200 bg-orange-50 py-3"
+              style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: "#fed7aa", backgroundColor: "#fff7ed", paddingVertical: 12 }}
             >
               <Ionicons name="add" size={18} color="#f97316" />
-              <Text className="ml-2 font-medium text-orange-700">New promo code</Text>
+              <Text style={{ marginLeft: 8, fontWeight: "500", color: "#c2410c" }}>New promo code</Text>
             </TouchableOpacity>
             {promotions.map((p) => (
             <View
               key={p.id}
-              className="mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4"
+              style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
             >
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-orange-100">
+              <View style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#ffedd5" }}>
                 <Ionicons name="pricetag-outline" size={20} color="#f97316" />
               </View>
-              <View className="ml-3 flex-1 min-w-0">
-                <Text className="font-semibold text-gray-900">{p.code}</Text>
-                <Text className="mt-0.5 text-sm text-gray-600">
+              <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{p.code}</Text>
+                <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }}>
                   {p.type === "percentage" ? `${p.value}% off` : `R ${Number(p.value).toFixed(2)} off`}
                   {p.description ? ` · ${p.description}` : ""}
                 </Text>
-                <Text className="mt-0.5 text-xs text-gray-500">
+                <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
                   Used {p.uses_count}
                   {p.max_uses != null ? ` / ${p.max_uses}` : ""}
                 </Text>
               </View>
               <TouchableOpacity
                 onPress={() => toggleActive(p)}
-                className={`mr-2 rounded-lg px-3 py-1.5 ${p.is_active ? "bg-green-100" : "bg-gray-100"}`}
+                style={{ marginRight: 8, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: p.is_active ? "#dcfce7" : Colors.gray[100] }}
               >
-                <Text className={`text-xs font-medium ${p.is_active ? "text-green-800" : "text-gray-600"}`}>
+                <Text style={{ fontSize: 12, fontWeight: "500", color: p.is_active ? "#166534" : Colors.gray[600] }}>
                   {p.is_active ? "On" : "Off"}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => handleDelete(p)}
-                className="h-9 w-9 items-center justify-center rounded-lg bg-red-50"
+                style={{ height: 36, width: 36, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#fee2e2" }}
               >
                 <Ionicons name="trash-outline" size={18} color="#dc2626" />
               </TouchableOpacity>
@@ -220,52 +223,48 @@ export function PromotionsContent() {
         title="New promo code"
         subtitle="Percentage or fixed amount"
       >
-        <Text className="mb-2 text-sm font-medium text-gray-700">Code *</Text>
+        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Code *</Text>
         <TextInput
-          className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
           placeholder="e.g. SAVE20"
           placeholderTextColor="#9ca3af"
           value={code}
           onChangeText={(t) => setCode(t.toUpperCase())}
           autoCapitalize="characters"
         />
-        <Text className="mb-2 text-sm font-medium text-gray-700">Type</Text>
-        <View className="mb-4 flex-row gap-2">
+        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Type</Text>
+        <View style={{ marginBottom: 16, flexDirection: "row" }}>
           <TouchableOpacity
             onPress={() => setPromoType("percentage")}
-            className={`flex-1 rounded-xl py-2.5 ${promoType === "percentage" ? "bg-orange-500" : "bg-gray-100"}`}
+            style={{ flex: 1, marginRight: 8, borderRadius: 12, paddingVertical: 10, backgroundColor: promoType === "percentage" ? "#f97316" : Colors.gray[100] }}
           >
-            <Text
-              className={`text-center text-sm font-medium ${promoType === "percentage" ? "text-white" : "text-gray-700"}`}
-            >
+            <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: promoType === "percentage" ? Colors.white : Colors.gray[700] }}>
               Percentage
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setPromoType("fixed_amount")}
-            className={`flex-1 rounded-xl py-2.5 ${promoType === "fixed_amount" ? "bg-orange-500" : "bg-gray-100"}`}
+            style={{ flex: 1, borderRadius: 12, paddingVertical: 10, backgroundColor: promoType === "fixed_amount" ? "#f97316" : Colors.gray[100] }}
           >
-            <Text
-              className={`text-center text-sm font-medium ${promoType === "fixed_amount" ? "text-white" : "text-gray-700"}`}
-            >
+            <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: promoType === "fixed_amount" ? Colors.white : Colors.gray[700] }}>
               Fixed amount
             </Text>
           </TouchableOpacity>
         </View>
-        <Text className="mb-2 text-sm font-medium text-gray-700">
+        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
           Value {promoType === "percentage" ? "(0–100)" : "(R)"} *
         </Text>
         <TextInput
-          className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
           placeholder={promoType === "percentage" ? "20" : "50"}
           placeholderTextColor="#9ca3af"
           value={value}
           onChangeText={setValue}
           keyboardType="decimal-pad"
         />
-        <Text className="mb-2 text-sm font-medium text-gray-700">Description (optional)</Text>
+        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Description (optional)</Text>
         <TextInput
-          className="mb-6 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={{ marginBottom: 24, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
           placeholder="e.g. Summer sale"
           placeholderTextColor="#9ca3af"
           value={description}

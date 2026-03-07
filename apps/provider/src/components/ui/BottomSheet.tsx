@@ -108,17 +108,13 @@ export function BottomSheet({
     <Modal visible transparent animationType="none" onRequestClose={closeSheet}>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <KeyboardAvoidingView
-          className="flex-1"
+          style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           keyboardVerticalOffset={0}
         >
-          {/* Animated backdrop */}
-          <Animated.View
-            className="absolute inset-0"
-            style={backdropAnimatedStyle}
-          >
+          <Animated.View style={[{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }, backdropAnimatedStyle]}>
             <Pressable
-              className="flex-1 bg-black/40"
+              style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)" }}
               onPress={closeSheet}
               accessibilityLabel="Close"
               accessibilityRole="button"
@@ -127,8 +123,8 @@ export function BottomSheet({
 
           {/* Animated sheet - explicit opaque background for form content */}
           <Animated.View
-            className="absolute bottom-0 left-0 right-0 rounded-t-3xl bg-white"
             style={[
+              { position: "absolute", bottom: 0, left: 0, right: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
               {
                 maxHeight: sheetHeight,
                 backgroundColor: "#ffffff",
@@ -144,28 +140,23 @@ export function BottomSheet({
             {/* Drag handle */}
             {showHandle && (
               <GestureDetector gesture={panGesture}>
-                <Animated.View className="items-center pb-1 pt-3">
-                  <View className="h-1 w-10 rounded-full bg-gray-300" />
+                <Animated.View style={{ alignItems: "center", paddingBottom: 4, paddingTop: 12 }}>
+                  <View style={{ height: 4, width: 40, borderRadius: 2, backgroundColor: "#d1d5db" }} />
                 </Animated.View>
               </GestureDetector>
             )}
 
-            {/* Title bar */}
             {title && (
-              <View className="flex-row items-center justify-between border-b border-gray-100 px-5 pb-3 pt-1">
-                <View className="mr-3 flex-1">
-                  <Text className="text-lg font-bold text-gray-900">
-                    {title}
-                  </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: "#f3f4f6", paddingHorizontal: 20, paddingBottom: 12, paddingTop: 4 }}>
+                <View style={{ marginRight: 12, flex: 1 }}>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{title}</Text>
                   {subtitle && (
-                    <Text className="mt-0.5 text-xs text-gray-500">
-                      {subtitle}
-                    </Text>
+                    <Text style={{ marginTop: 2, fontSize: 12, color: "#6b7280" }}>{subtitle}</Text>
                   )}
                 </View>
                 <TouchableOpacity
                   onPress={closeSheet}
-                  className="min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-gray-100"
+                  style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: "#f3f4f6" }}
                   accessibilityLabel="Close"
                   accessibilityRole="button"
                 >
@@ -174,10 +165,8 @@ export function BottomSheet({
               </View>
             )}
 
-            {/* Content - solid background so form fields are not transparent */}
             <ScrollView
-              className="flex-1"
-              style={{ backgroundColor: "#ffffff" }}
+              style={{ flex: 1, backgroundColor: "#ffffff" }}
               contentContainerStyle={{
                 padding: 20,
                 paddingBottom: 40,

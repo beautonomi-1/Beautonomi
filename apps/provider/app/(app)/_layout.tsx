@@ -29,7 +29,7 @@ export default function AppLayout() {
           <Stack
           screenOptions={{
             headerShown: false,
-            contentStyle: { backgroundColor: "#ffffff" },
+            contentStyle: { flex: 1, backgroundColor: "#ffffff" },
           }}
         >
           <Stack.Screen name="(tabs)" />

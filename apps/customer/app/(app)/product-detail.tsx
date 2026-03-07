@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { Colors, Shadows } from "@/constants/colors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { haptic } from "@/lib/haptics";
 import { emitCartUpdated } from "@/lib/cart-events";
 import type { PublicProductVariant } from "@/types/api";
@@ -51,6 +52,7 @@ function formatVariantLabel(optionValues?: Record<string, string>): string {
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
+  const { contentPadding } = useResponsive();
   const { width: screenWidth } = useWindowDimensions();
 
   const [data, setData] = useState<ProductDetailResponse | null>(null);
@@ -164,7 +166,7 @@ export default function ProductDetailScreen() {
     return (
       <>
         <Stack.Screen options={{ title: "Product", headerShown: true }} />
-        <View style={{ flex: 1, backgroundColor: "#fff", padding: 24, justifyContent: "center", alignItems: "center" }}>
+        <View style={{ flex: 1, backgroundColor: "#fff", padding: contentPadding, justifyContent: "center", alignItems: "center" }}>
           <Ionicons name="alert-circle-outline" size={48} color="#9CA3AF" />
           <Text style={{ color: "#6B7280", marginTop: 12, textAlign: "center" }}>{error ?? "Product not found"}</Text>
           <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: Colors.primary, borderRadius: 12 }}>
@@ -205,7 +207,7 @@ export default function ProductDetailScreen() {
           )}
         </View>
 
-        <View style={{ padding: 16 }}>
+        <View style={{ padding: contentPadding }}>
           {product.brand ? (
             <Text style={{ fontSize: 12, color: "#9CA3AF", fontWeight: "500", marginBottom: 4 }}>{product.brand}</Text>
           ) : null}
@@ -217,7 +219,7 @@ export default function ProductDetailScreen() {
           {hasVariants && (
             <View style={{ marginTop: 20 }}>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Option</Text>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                 {variants.map((v) => {
                   const label = formatVariantLabel(v.option_values) || `Variant ${v.id.slice(0, 8)}`;
                   const isSelected = selectedVariant?.id === v.id;
@@ -231,13 +233,15 @@ export default function ProductDetailScreen() {
                         setSelectedVariant(v as PublicProductVariant);
                       }}
                       style={{
-                        paddingHorizontal: 16,
+                        paddingHorizontal: contentPadding,
                         paddingVertical: 10,
                         borderRadius: 12,
                         borderWidth: 2,
                         borderColor: isSelected ? Colors.primary : "#E5E7EB",
                         backgroundColor: isSelected ? Colors.primaryLight : "#fff",
                         opacity: outOfStock ? 0.6 : 1,
+                        marginRight: 10,
+                        marginBottom: 10,
                       }}
                       disabled={outOfStock}
                     >
@@ -273,7 +277,6 @@ export default function ProductDetailScreen() {
               alignItems: "center",
               flexDirection: "row",
               justifyContent: "center",
-              gap: 8,
               ...Shadows.cardSmall,
             }}
           >
@@ -281,7 +284,7 @@ export default function ProductDetailScreen() {
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <>
-                <Ionicons name="cart-outline" size={22} color="#fff" />
+                <Ionicons name="cart-outline" size={22} color="#fff" style={{ marginRight: 8 }} />
                 <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
                   {inStock ? "Add to cart" : "Sold out"}
                 </Text>

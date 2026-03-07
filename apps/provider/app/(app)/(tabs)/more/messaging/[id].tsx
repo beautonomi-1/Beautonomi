@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -24,6 +25,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "@/lib/supabase/client";
 import { Colors } from "@/constants/colors";
 import * as Haptics from "expo-haptics";
+import { twStyle } from "@/lib/twStyle";
 
 interface CustomOfferAttachment {
   type: "custom_offer";
@@ -58,6 +60,7 @@ const initialScrollDone = { current: false };
 
 export default function ChatScreen() {
   const router = useRouter();
+  const { screenPadding } = useResponsive();
   const { id } = useLocalSearchParams<{ id: string }>();
   const conversationId = typeof id === "string" ? id : Array.isArray(id) ? id[0] : undefined;
 
@@ -277,7 +280,7 @@ export default function ChatScreen() {
   // No conversation id (invalid or list opened without id)
   if (!conversationId) {
     return (
-      <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
+      <SafeAreaView style={twStyle("flex-1 bg-white")} edges={["top"]}>
         <ScreenHeader title="Chat" showBack />
         <ErrorState
           message="No conversation selected"
@@ -290,7 +293,7 @@ export default function ChatScreen() {
   // API error
   if (conversationError && !conversation) {
     return (
-      <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
+      <SafeAreaView style={twStyle("flex-1 bg-white")} edges={["top"]}>
         <ScreenHeader title="Chat" showBack />
         <ErrorState message={conversationError} onRetry={refresh} />
       </SafeAreaView>
@@ -298,16 +301,16 @@ export default function ChatScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
-      <View className="border-b border-gray-100 px-4">
+    <SafeAreaView style={twStyle("flex-1 bg-white")} edges={["top"]}>
+      <View style={twStyle("border-b border-gray-100 px-4")}>
         <ScreenHeader
           title={conversation?.customer_name ?? "Chat"}
           showBack
           rightAction={
-            <View className="flex-row items-center gap-1">
+            <View style={twStyle("flex-row items-center")}>
               <TouchableOpacity
                 onPress={showClientMenu}
-                className="p-2 rounded-full bg-gray-100"
+                style={[twStyle("p-2 rounded-full bg-gray-100"), { marginRight: 4 }]}
                 accessibilityLabel="Client details and options"
               >
                 <Ionicons name="ellipsis-horizontal" size={20} color="#374151" />
@@ -315,7 +318,7 @@ export default function ChatScreen() {
               {customerId ? (
                 <TouchableOpacity
                   onPress={() => setShowCustomOfferSheet(true)}
-                  className="p-2 rounded-full bg-primary/10"
+                  style={twStyle("p-2 rounded-full bg-primary/10")}
                   accessibilityLabel="Send custom offer"
                 >
                   <Ionicons name="pricetag-outline" size={20} color={Colors.primary} />
@@ -327,13 +330,12 @@ export default function ChatScreen() {
       </View>
 
       <KeyboardAvoidingView
-        className="flex-1"
+        style={[twStyle("flex-1"), { flex: 1 }]}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-        style={{ flex: 1 }}
       >
         {loading && !conversation ? (
-          <View className="flex-1 justify-center py-8">
+          <View style={twStyle("flex-1 justify-center py-8")}>
             <LoadingState />
           </View>
         ) : (
@@ -345,18 +347,18 @@ export default function ChatScreen() {
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{
                 flexGrow: 1,
-                paddingHorizontal: 16,
+                paddingHorizontal: screenPadding,
                 paddingTop: 12,
                 paddingBottom: 8,
               }}
               ListEmptyComponent={
-                <View className="py-12 items-center">
+                <View style={twStyle("py-12 items-center")}>
                   <Ionicons
                     name="chatbubble-ellipses-outline"
                     size={48}
                     color={Colors.primary}
                   />
-                  <Text className="text-gray-500 mt-3 text-center">
+                  <Text style={twStyle("text-gray-500 mt-3 text-center")}>
                     No messages yet. Say hello!
                   </Text>
                 </View>
@@ -368,48 +370,48 @@ export default function ChatScreen() {
 
                 return (
                   <View
-                    className={`mb-3 ${isMe ? "items-end" : "items-start"}`}
+                    style={twStyle(`mb-3 ${isMe ? "items-end" : "items-start"}`)}
                   >
                     {showOfferCard ? (
                       <View
-                        className={`max-w-[85%] rounded-2xl overflow-hidden ${
+                        style={twStyle(`max-w-[85%] rounded-2xl overflow-hidden ${
                           isMe ? "rounded-br-sm bg-primary/10 border border-primary/20" : "rounded-bl-sm bg-gray-100 border border-gray-200"
-                        }`}
+                        }`)}
                       >
-                        <View className="px-4 pt-3 pb-2">
-                          <View className="flex-row items-center gap-2 mb-1">
-                            <Ionicons name="pricetag" size={16} color={isMe ? Colors.primary : "#6b7280"} />
-                            <Text className="text-sm font-semibold text-gray-900">Custom offer</Text>
+                        <View style={twStyle("px-4 pt-3 pb-2")}>
+                          <View style={twStyle("flex-row items-center mb-1")}>
+                            <Ionicons name="pricetag" size={16} color={isMe ? Colors.primary : "#6b7280"} style={{ marginRight: 8 }} />
+                            <Text style={twStyle("text-sm font-semibold text-gray-900")}>Custom offer</Text>
                           </View>
                           {typeof offer?.price === "number" && (
-                            <Text className="text-base font-medium text-gray-900 mt-0.5">
+                            <Text style={twStyle("text-base font-medium text-gray-900 mt-0.5")}>
                               {formatCurrency(offer.price, offer.currency ?? "ZAR")}
                             </Text>
                           )}
                           {offer?.duration_minutes != null && offer.duration_minutes > 0 && (
-                            <Text className="text-sm text-gray-600 mt-0.5">{offer.duration_minutes} min</Text>
+                            <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>{offer.duration_minutes} min</Text>
                           )}
                           {offer?.preferred_start_at && (
-                            <Text className="text-sm text-gray-600 mt-0.5">
+                            <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
                               {formatDateTime(offer.preferred_start_at)}
                             </Text>
                           )}
                           {offer?.withdrawn ? (
-                            <View className="mt-2 px-2 py-1 rounded bg-amber-100 self-start">
-                              <Text className="text-xs font-medium text-amber-800">Withdrawn</Text>
+                            <View style={twStyle("mt-2 px-2 py-1 rounded bg-amber-100 self-start")}>
+                              <Text style={twStyle("text-xs font-medium text-amber-800")}>Withdrawn</Text>
                             </View>
                           ) : isMe && offer?.offer_id ? (
                             <TouchableOpacity
                               onPress={() => handleWithdrawOffer(offer.offer_id!)}
-                              className="mt-2 px-3 py-1.5 rounded-lg bg-amber-500 active:opacity-80"
+                              style={twStyle("mt-2 px-3 py-1.5 rounded-lg bg-amber-500 active:opacity-80")}
                               activeOpacity={0.8}
                             >
-                              <Text className="text-sm font-medium text-white">Withdraw offer</Text>
+                              <Text style={twStyle("text-sm font-medium text-white")}>Withdraw offer</Text>
                             </TouchableOpacity>
                           ) : null}
                         </View>
-                        <View className="px-4 pb-2 flex-row items-center justify-end gap-1">
-                          <Text className="text-[11px] text-gray-400">{formatTime(msg.created_at)}</Text>
+                        <View style={twStyle("px-4 pb-2 flex-row items-center justify-end")}>
+                          <Text style={[twStyle("text-[11px] text-gray-400"), { marginRight: 4 }]}>{formatTime(msg.created_at)}</Text>
                           {isMe ? (
                             <Ionicons
                               name={msg.read_at ? "checkmark-done" : "checkmark"}
@@ -422,17 +424,17 @@ export default function ChatScreen() {
                     ) : null}
                     {(!showOfferCard || !!msg.content) ? (
                       <View
-                        className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${showOfferCard ? "mt-1" : ""} ${
+                        style={twStyle(`max-w-[80%] rounded-2xl px-4 py-2.5 ${showOfferCard ? "mt-1" : ""} ${
                           isMe ? "rounded-br-sm bg-primary" : "rounded-bl-sm bg-gray-100"
-                        }`}
+                        }`)}
                       >
                         <Text
-                          className={`text-[15px] leading-5 ${isMe ? "text-white" : "text-gray-900"}`}
+                          style={twStyle(`text-[15px] leading-5 ${isMe ? "text-white" : "text-gray-900"}`)}
                         >
                           {msg.content || " "}
                         </Text>
-                        <View className="flex-row items-center justify-end gap-1 mt-1">
-                          <Text className={`text-[11px] ${isMe ? "text-white/80" : "text-gray-400"}`}>
+                        <View style={twStyle("flex-row items-center justify-end mt-1")}>
+                          <Text style={[twStyle(`text-[11px] ${isMe ? "text-white/80" : "text-gray-400"}`), { marginRight: 4 }]}>
                             {formatTime(msg.created_at)}
                           </Text>
                           {isMe ? (
@@ -450,9 +452,9 @@ export default function ChatScreen() {
               }}
             />
 
-            <View className="border-t border-gray-100 px-3 py-2 flex-row items-end gap-2">
+            <View style={twStyle("border-t border-gray-100 px-3 py-2 flex-row items-end")}>
               <TextInput
-                className="flex-1 border border-gray-200 rounded-2xl px-4 py-2.5 text-[15px] text-gray-900 max-h-24 bg-gray-50"
+                style={[twStyle("flex-1 border border-gray-200 rounded-2xl px-4 py-2.5 text-[15px] text-gray-900 max-h-24 bg-gray-50"), { marginRight: 8 }]}
                 placeholder="Message..."
                 placeholderTextColor="#9ca3af"
                 value={message}

@@ -99,7 +99,7 @@ export default function PartnerNavbar() {
           {/* Mobile Layout */}
           <div className="flex md:hidden items-center justify-between py-3">
             <Link href="/" className="flex-shrink-0">
-              <h1 className="text-xl font-bold text-[#FF0077]">BEAUTONOMI</h1>
+              <h1 className="text-xl font-bold text-primary">BEAUTONOMI</h1>
             </Link>
             <Button
               variant="ghost"
@@ -116,7 +116,7 @@ export default function PartnerNavbar() {
             {/* Logo */}
             <Link href="/" className="flex-shrink-0">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-[#FF0077] to-[#D60565] rounded-lg flex items-center justify-center">
+                <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-hover rounded-lg flex items-center justify-center">
                   <span className="text-white font-bold text-lg">B</span>
                 </div>
                 <h1 className="text-xl font-bold text-gray-900">beautonomi</h1>
@@ -129,13 +129,13 @@ export default function PartnerNavbar() {
               <FeaturesDropdown />
               <Link
                 href="/pricing"
-                className="text-sm font-medium text-gray-700 hover:text-[#FF0077] transition-colors whitespace-nowrap"
+                className="text-sm font-medium text-gray-700 hover:text-primary transition-colors whitespace-nowrap"
               >
                 Pricing
               </Link>
               <Link
                 href="/why-beautonomi"
-                className="text-sm font-medium text-gray-700 hover:text-[#FF0077] transition-colors whitespace-nowrap hidden lg:block"
+                className="text-sm font-medium text-gray-700 hover:text-primary transition-colors whitespace-nowrap hidden lg:block"
               >
                 Why Beautonomi
               </Link>
@@ -145,20 +145,20 @@ export default function PartnerNavbar() {
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
               <button
                 onClick={handleLoginClick}
-                className="text-sm font-medium text-gray-700 hover:text-[#FF0077] transition-colors hidden xl:block whitespace-nowrap"
+                className="text-sm font-medium text-gray-700 hover:text-primary transition-colors hidden xl:block whitespace-nowrap"
               >
                 Log in
               </button>
               <Button
                 variant="outline"
                 onClick={handleBookDemo}
-                className="border-2 border-[#FF0077] text-[#FF0077] hover:bg-[#FF0077] hover:text-white px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-full transition-all hidden md:flex whitespace-nowrap"
+                className="border-2 border-primary text-primary hover:bg-primary hover:text-white px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-full transition-all hidden md:flex whitespace-nowrap"
               >
                 Book a demo
               </Button>
               <Button
                 onClick={handleTryItNow}
-                className="bg-[#FF0077] hover:bg-[#D60565] text-white px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-full transition-all whitespace-nowrap"
+                className="bg-primary hover:bg-primary-hover text-white px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-full transition-all whitespace-nowrap"
               >
                 Try it now
               </Button>
@@ -179,21 +179,21 @@ export default function PartnerNavbar() {
                 </p>
                 <Link
                   href="/become-a-partner"
-                  className="block text-base font-normal text-gray-700 hover:text-[#FF0077] py-2"
+                  className="block text-base font-normal text-gray-700 hover:text-primary py-2"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Become service provider
                 </Link>
                 <Link
                   href="/pricing"
-                  className="block text-base font-normal text-gray-700 hover:text-[#FF0077] py-2"
+                  className="block text-base font-normal text-gray-700 hover:text-primary py-2"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Pricing
                 </Link>
                 <Link
                   href="/why-beautonomi"
-                  className="block text-base font-normal text-gray-700 hover:text-[#FF0077] py-2"
+                  className="block text-base font-normal text-gray-700 hover:text-primary py-2"
                   onClick={() => setIsMenuOpen(false)}
                 >
                   Why Beautonomi
@@ -202,25 +202,25 @@ export default function PartnerNavbar() {
               <div className="pt-4 border-t space-y-2">
                 <button
                   onClick={handleSignUpClick}
-                  className="block text-base font-normal text-gray-700 hover:text-[#FF0077] py-2 w-full text-left"
+                  className="block text-base font-normal text-gray-700 hover:text-primary py-2 w-full text-left"
                 >
                   Sign up
                 </button>
                 <button
                   onClick={handleLoginClick}
-                  className="block text-base font-normal text-gray-700 hover:text-[#FF0077] py-2 w-full text-left"
+                  className="block text-base font-normal text-gray-700 hover:text-primary py-2 w-full text-left"
                 >
                   Log in
                 </button>
                 <Button
                   variant="outline"
-                  className="w-full border-2 border-[#FF0077] text-[#FF0077] hover:bg-[#FF0077] hover:text-white mt-2"
+                  className="w-full border-2 border-primary text-primary hover:bg-primary hover:text-white mt-2"
                   onClick={handleBookDemo}
                 >
                   Book a demo
                 </Button>
                 <Button
-                  className="w-full bg-[#FF0077] hover:bg-[#D60565] text-white mt-2"
+                  className="w-full bg-primary hover:bg-primary-hover text-white mt-2"
                   onClick={handleTryItNow}
                 >
                   Try it now

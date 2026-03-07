@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
+import { twStyle } from "@/lib/twStyle";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -25,19 +26,19 @@ export default function SettingsScreen() {
   // #endregion
 
   return (
-    <View className="flex-1 bg-white p-6">
-      <Text className="text-2xl font-semibold text-gray-900">Settings</Text>
+    <View style={twStyle("flex-1 bg-white p-6")}>
+      <Text style={twStyle("text-2xl font-semibold text-gray-900")}>Settings</Text>
       {user?.phone && (
-        <Text className="mt-2 text-gray-500">{user.phone}</Text>
+        <Text style={twStyle("mt-2 text-gray-500")}>{user.phone}</Text>
       )}
       <TouchableOpacity
-        className="mt-8 rounded-lg border border-gray-300 py-3"
+        style={twStyle("mt-8 rounded-lg border border-gray-300 py-3")}
         onPress={async () => {
         await signOut();
         router.replace("/(auth)/login" as never);
       }}
       >
-        <Text className="text-center font-medium text-gray-900">Sign out</Text>
+        <Text style={twStyle("text-center font-medium text-gray-900")}>Sign out</Text>
       </TouchableOpacity>
     </View>
   );

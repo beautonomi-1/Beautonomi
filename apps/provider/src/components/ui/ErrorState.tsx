@@ -9,20 +9,20 @@ interface ErrorStateProps {
 
 export function ErrorState({ message = "Something went wrong", onRetry, retryLabel = "Try Again" }: ErrorStateProps) {
   return (
-    <View className="flex-1 items-center justify-center px-8 py-16">
-      <View className="mb-4 h-16 w-16 items-center justify-center rounded-2xl bg-red-50">
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, paddingVertical: 64 }}>
+      <View style={{ marginBottom: 16, height: 64, width: 64, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: "#fef2f2" }}>
         <Ionicons name="alert-circle-outline" size={28} color="#ef4444" />
       </View>
-      <Text className="text-center text-base font-medium text-gray-900">Error</Text>
-      <Text className="mt-1 text-center text-sm text-gray-500">{message}</Text>
+      <Text style={{ textAlign: "center", fontSize: 16, fontWeight: "500", color: "#111827" }}>Error</Text>
+      <Text style={{ marginTop: 4, textAlign: "center", fontSize: 14, color: "#6b7280" }}>{message}</Text>
       {onRetry && (
         <TouchableOpacity
-          className="mt-6 rounded-xl bg-gray-900 px-6 py-3"
+          style={{ marginTop: 24, borderRadius: 12, backgroundColor: "#111827", paddingHorizontal: 24, paddingVertical: 12 }}
           onPress={onRetry}
           accessibilityLabel={retryLabel}
           accessibilityRole="button"
         >
-          <Text className="font-medium text-white">{retryLabel}</Text>
+          <Text style={{ fontWeight: "500", color: "#fff" }}>{retryLabel}</Text>
         </TouchableOpacity>
       )}
     </View>

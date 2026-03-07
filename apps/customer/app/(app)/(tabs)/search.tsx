@@ -12,12 +12,14 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { ProviderCard } from "@/components/ProviderCard";
 import type { SearchResult, Category } from "@/types/api";
 
 export default function SearchScreen() {
   useScreenTracking("Search");
+  const { contentPadding } = useResponsive();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("");
   const [results, setResults] = useState<SearchResult | null>(null);
@@ -79,24 +81,24 @@ export default function SearchScreen() {
   const onRefresh = () => search(true);
 
   return (
-    <View className="flex-1 bg-white">
-      <View className="px-4 pt-4 pb-2 border-b border-gray-100">
+    <View style={{ flex: 1, backgroundColor: Colors.white }}>
+      <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="flex-row items-center mb-4 -ml-1"
+          style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, marginLeft: -4 }}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           accessibilityRole="button"
           accessibilityLabel="Go back"
           accessibilityHint="Navigate to the previous screen"
         >
-          <Ionicons name="arrow-back" size={24} color="#374151" />
-          <Text className="text-base font-medium text-gray-700 ml-2">Back</Text>
+          <Ionicons name="arrow-back" size={24} color={Colors.gray[700]} />
+          <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[700], marginLeft: 8 }}>Back</Text>
         </TouchableOpacity>
-        <Text className="text-2xl font-bold text-gray-900 mb-4">Search</Text>
+        <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 16 }}>Search</Text>
         <TextInput
-          className="rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
           placeholder="Search providers..."
-          placeholderTextColor="#9ca3af"
+          placeholderTextColor={Colors.gray[400]}
           value={query}
           onChangeText={setQuery}
           onSubmitEditing={() => search()}
@@ -107,47 +109,38 @@ export default function SearchScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          className="mt-3 -mx-4 px-4"
+          style={{ marginTop: 12, marginHorizontal: -16, paddingHorizontal: 16 }}
+          contentContainerStyle={{}}
           accessibilityRole="list"
           accessibilityLabel="Category filters"
         >
           <TouchableOpacity
             onPress={() => setCategory("")}
-            className={`mr-2 px-4 py-2 rounded-full ${
-              !category ? "bg-primary" : "bg-gray-100"
-            }`}
+            style={{ marginRight: 8, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 9999, backgroundColor: !category ? Colors.primary : Colors.gray[100] }}
             accessibilityRole="button"
             accessibilityLabel="All categories"
             accessibilityState={{ selected: !category }}
             accessibilityHint="Show providers from all categories"
           >
-            <Text className={`font-medium ${!category ? "text-white" : "text-gray-700"}`}>
-              All
-            </Text>
+            <Text style={{ fontWeight: "500", color: !category ? Colors.white : Colors.gray[700] }}>All</Text>
           </TouchableOpacity>
           {categories.map((c) => (
             <TouchableOpacity
               key={c.id}
               onPress={() => setCategory(c.slug)}
-              className={`mr-2 px-4 py-2 rounded-full ${
-                category === c.slug ? "bg-primary" : "bg-gray-100"
-              }`}
+              style={{ marginRight: 8, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 9999, backgroundColor: category === c.slug ? Colors.primary : Colors.gray[100] }}
               accessibilityRole="button"
               accessibilityLabel={`${c.name} category`}
               accessibilityState={{ selected: category === c.slug }}
               accessibilityHint={`Filter by ${c.name} category`}
             >
-              <Text
-                className={`font-medium ${category === c.slug ? "text-white" : "text-gray-700"}`}
-              >
-                {c.name}
-              </Text>
+              <Text style={{ fontWeight: "500", color: category === c.slug ? Colors.white : Colors.gray[700] }}>{c.name}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
         <TouchableOpacity
           onPress={() => search()}
-          className="mt-4 py-3 rounded-xl bg-primary items-center"
+          style={{ marginTop: 16, paddingVertical: 12, borderRadius: 12, backgroundColor: Colors.primary, alignItems: "center" }}
           disabled={loading}
           accessibilityRole="button"
           accessibilityLabel={loading ? "Searching" : "Search"}
@@ -157,14 +150,14 @@ export default function SearchScreen() {
           {loading ? (
             <ActivityIndicator color="white" size="small" />
           ) : (
-            <Text className="font-semibold text-white">Search</Text>
+            <Text style={{ fontWeight: "600", color: Colors.white }}>Search</Text>
           )}
         </TouchableOpacity>
       </View>
 
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: contentPadding, paddingBottom: 100 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
         }
@@ -172,38 +165,36 @@ export default function SearchScreen() {
         accessibilityLabel="Search results"
       >
         {error && (
-          <View className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
-            <Text className="text-red-700">{error}</Text>
+          <View style={{ backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <Text style={{ color: "#B91C1C" }}>{error}</Text>
           </View>
         )}
 
         {loading && !searched ? null : !results && searched ? (
-          <View className="py-12 items-center">
-            <Text className="text-gray-600">No results. Try different filters.</Text>
+          <View style={{ paddingVertical: 48, alignItems: "center" }}>
+            <Text style={{ color: Colors.gray[600] }}>No results. Try different filters.</Text>
           </View>
         ) : results && results.providers.length === 0 ? (
-          <View className="py-12 items-center">
-            <Text className="text-gray-600 mb-2">No providers found</Text>
-            <Text className="text-gray-500 text-sm text-center">
-              Try a different search term or category
-            </Text>
+          <View style={{ paddingVertical: 48, alignItems: "center" }}>
+            <Text style={{ color: Colors.gray[600], marginBottom: 8 }}>No providers found</Text>
+            <Text style={{ color: Colors.gray[500], fontSize: 14, textAlign: "center" }}>Try a different search term or category</Text>
           </View>
         ) : results ? (
           <>
-            <Text className="text-sm text-gray-500 mb-4">
+            <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 16 }}>
               {results.total} provider{results.total !== 1 ? "s" : ""} found
             </Text>
-            <View className="gap-4">
+            <View>
               {results.providers.map((p) => (
-                <View key={p.id} className="mb-4">
+                <View key={p.id} style={{ marginBottom: 16 }}>
                   <ProviderCard provider={p} />
                 </View>
               ))}
             </View>
           </>
         ) : (
-          <View className="py-12 items-center">
-            <Text className="text-gray-500 text-center">
+          <View style={{ paddingVertical: 48, alignItems: "center" }}>
+            <Text style={{ color: Colors.gray[500], textAlign: "center" }}>
               Enter a search term or select a category to find providers
             </Text>
           </View>

@@ -140,9 +140,9 @@ export default function Index() {
 
   if (loading || portalState === "idle" || portalState === "loading") {
     return (
-      <View className="flex-1 items-center justify-center bg-white">
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text className="mt-4 text-base text-gray-600">Loading…</Text>
+        <Text style={{ marginTop: 16, fontSize: 16, color: Colors.gray[600] }}>Loading…</Text>
       </View>
     );
   }
@@ -165,9 +165,9 @@ export default function Index() {
 
   if (portalState === "ok" && (checkingProfile || hasProfile === null)) {
     return (
-      <View className="flex-1 items-center justify-center bg-white">
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text className="mt-4 text-base text-gray-600">Loading…</Text>
+        <Text style={{ marginTop: 16, fontSize: 16, color: Colors.gray[600] }}>Loading…</Text>
       </View>
     );
   }

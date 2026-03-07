@@ -15,6 +15,7 @@ import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { twStyle } from "@/lib/twStyle";
 
 type Message = {
   id: string;
@@ -112,8 +113,8 @@ export default function SupportTicketDetailScreen() {
     return (
       <ScreenContainer>
         <ScreenHeader title="Ticket" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center">
-          <Text className="text-gray-500">Invalid ticket</Text>
+        <View style={twStyle("flex-1 items-center justify-center")}>
+          <Text style={twStyle("text-gray-500")}>Invalid ticket</Text>
         </View>
       </ScreenContainer>
     );
@@ -123,7 +124,7 @@ export default function SupportTicketDetailScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Ticket" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center">
+        <View style={twStyle("flex-1 items-center justify-center")}>
           <ActivityIndicator size="large" color="#6366f1" />
         </View>
       </ScreenContainer>
@@ -134,15 +135,15 @@ export default function SupportTicketDetailScreen() {
     return (
       <ScreenContainer>
         <ScreenHeader title="Ticket" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center px-4">
-          <Text className="text-gray-500 text-center">Ticket not found</Text>
+        <View style={twStyle("flex-1 items-center justify-center px-4")}>
+          <Text style={twStyle("text-gray-500 text-center")}>Ticket not found</Text>
           <TouchableOpacity
             onPress={() => router.back()}
-            className="mt-4"
+            style={twStyle("mt-4")}
             accessibilityLabel="Back to ticket list"
             accessibilityRole="button"
           >
-            <Text className="text-indigo-600 font-medium">Back to list</Text>
+            <Text style={twStyle("text-indigo-600 font-medium")}>Back to list</Text>
           </TouchableOpacity>
         </View>
       </ScreenContainer>
@@ -156,41 +157,41 @@ export default function SupportTicketDetailScreen() {
       <ScreenHeader title={ticket.ticket_number} onBack={() => router.back()} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        className="flex-1"
+        style={twStyle("flex-1")}
       >
         <ScrollView
-          className="flex-1"
+          style={twStyle("flex-1")}
           contentContainerStyle={{ paddingBottom: 120 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="px-2 pt-2">
-            <View className="mb-3 flex-row items-center justify-between">
-              <View className={`rounded-full px-2 py-1 ${statusColor(ticket.status)}`}>
-                <Text className="text-xs font-medium text-gray-800">
+          <View style={twStyle("px-2 pt-2")}>
+            <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+              <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(ticket.status)}`)}>
+                <Text style={twStyle("text-xs font-medium text-gray-800")}>
                   {ticket.status.replace("_", " ")}
                 </Text>
               </View>
-              <Text className="text-xs text-gray-500">
+              <Text style={twStyle("text-xs text-gray-500")}>
                 {new Date(ticket.created_at).toLocaleDateString()}
               </Text>
             </View>
-            <Text className="text-lg font-semibold text-gray-900 mb-4">{ticket.subject}</Text>
+            <Text style={twStyle("text-lg font-semibold text-gray-900 mb-4")}>{ticket.subject}</Text>
 
             {messages.map((m) => (
-              <View key={m.id} className="mb-3 rounded-xl bg-gray-50 p-3">
-                <Text className="text-sm text-gray-800">{m.message}</Text>
-                <Text className="mt-2 text-xs text-gray-400">
+              <View key={m.id} style={twStyle("mb-3 rounded-xl bg-gray-50 p-3")}>
+                <Text style={twStyle("text-sm text-gray-800")}>{m.message}</Text>
+                <Text style={twStyle("mt-2 text-xs text-gray-400")}>
                   {new Date(m.created_at).toLocaleString()}
                 </Text>
               </View>
             ))}
 
             {canReply && (
-              <View className="mt-4">
-                <Text className="mb-2 text-sm font-medium text-gray-700">Add a reply</Text>
+              <View style={twStyle("mt-4")}>
+                <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Add a reply</Text>
                 <TextInput
-                  className="mb-3 min-h-[100px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                  style={twStyle("mb-3 min-h-[100px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   placeholder="Type your message..."
                   placeholderTextColor="#9ca3af"
                   value={reply}
@@ -208,7 +209,7 @@ export default function SupportTicketDetailScreen() {
             )}
 
             {(ticket.status === "closed" || ticket.status === "resolved") && (
-              <Text className="mt-4 text-sm text-gray-500">
+              <Text style={twStyle("mt-4 text-sm text-gray-500")}>
                 This ticket is {ticket.status}. Submit a new ticket from Settings → Contact support to
                 continue.
               </Text>

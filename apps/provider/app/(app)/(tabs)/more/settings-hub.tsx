@@ -19,10 +19,10 @@ export default function SettingsHubScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Settings" showBack subtitle="Business, plan & billing" />
-      <View className="mb-4">
+      <View style={{ marginBottom: 16 }}>
         <SegmentTabs tabs={TABS} activeKey={activeKey} onSelect={setActiveKey} />
       </View>
-      <View className="flex-1 min-h-0">
+      <View style={{ flex: 1, minHeight: 0 }}>
         {activeKey === "business" && <SettingsBusinessContent />}
         {activeKey === "subscription" && <SubscriptionContent />}
         {activeKey === "billing" && <BillingHistoryContent />}

@@ -8,6 +8,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { twStyle } from "@/lib/twStyle";
 
 interface ReceiptSettings {
   receipt_header: string | null;
@@ -91,55 +92,55 @@ export default function ReceiptTemplateScreen() {
       <ScreenHeader title="Receipt Template" showBack subtitle="Customize your receipts" />
 
       {settings?.isUsingPlatformDefault && (
-        <View className="mb-4 flex-row rounded-xl border border-amber-100 bg-amber-50 p-3">
+        <View style={twStyle("mb-4 flex-row rounded-xl border border-amber-100 bg-amber-50 p-3")}>
           <Ionicons name="information-circle" size={16} color="#f59e0b" style={{ marginTop: 1 }} />
-          <Text className="ml-2 flex-1 text-xs leading-4 text-amber-700">
+          <Text style={twStyle("ml-2 flex-1 text-xs leading-4 text-amber-700")}>
             Using platform defaults. Save to customize your receipts.
           </Text>
         </View>
       )}
 
       {/* Receipt Preview */}
-      <View className="mb-4 rounded-2xl border border-gray-200 bg-white p-5">
-        <View className="items-center border-b border-dashed border-gray-200 pb-3">
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-200 bg-white p-5")}>
+        <View style={twStyle("items-center border-b border-dashed border-gray-200 pb-3")}>
           {header ? (
-            <Text className="text-center text-xs text-gray-600">{header}</Text>
+            <Text style={twStyle("text-center text-xs text-gray-600")}>{header}</Text>
           ) : (
-            <Text className="text-center text-xs italic text-gray-300">Receipt header text</Text>
+            <Text style={twStyle("text-center text-xs italic text-gray-300")}>Receipt header text</Text>
           )}
         </View>
-        <View className="items-center py-4">
-          <Text className="text-lg font-bold text-gray-900">RECEIPT</Text>
-          <Text className="mt-1 text-sm font-mono text-gray-600">{previewNumber}</Text>
-          <Text className="mt-1 text-xs text-gray-400">
+        <View style={twStyle("items-center py-4")}>
+          <Text style={twStyle("text-lg font-bold text-gray-900")}>RECEIPT</Text>
+          <Text style={twStyle("mt-1 text-sm font-mono text-gray-600")}>{previewNumber}</Text>
+          <Text style={twStyle("mt-1 text-xs text-gray-400")}>
             {new Date().toLocaleDateString()}
           </Text>
         </View>
-        <View className="border-t border-dashed border-gray-200 pt-3">
-          <View className="flex-row justify-between mb-1">
-            <Text className="text-xs text-gray-500">Service Example</Text>
-            <Text className="text-xs text-gray-700">R 250.00</Text>
+        <View style={twStyle("border-t border-dashed border-gray-200 pt-3")}>
+          <View style={twStyle("flex-row justify-between mb-1")}>
+            <Text style={twStyle("text-xs text-gray-500")}>Service Example</Text>
+            <Text style={twStyle("text-xs text-gray-700")}>R 250.00</Text>
           </View>
-          <View className="flex-row justify-between border-t border-gray-100 pt-1 mt-1">
-            <Text className="text-xs font-medium text-gray-700">Total</Text>
-            <Text className="text-xs font-bold text-gray-900">R 250.00</Text>
+          <View style={twStyle("flex-row justify-between border-t border-gray-100 pt-1 mt-1")}>
+            <Text style={twStyle("text-xs font-medium text-gray-700")}>Total</Text>
+            <Text style={twStyle("text-xs font-bold text-gray-900")}>R 250.00</Text>
           </View>
         </View>
-        <View className="mt-3 items-center border-t border-dashed border-gray-200 pt-3">
+        <View style={twStyle("mt-3 items-center border-t border-dashed border-gray-200 pt-3")}>
           {footer ? (
-            <Text className="text-center text-xs text-gray-600">{footer}</Text>
+            <Text style={twStyle("text-center text-xs text-gray-600")}>{footer}</Text>
           ) : (
-            <Text className="text-center text-xs italic text-gray-300">Receipt footer text</Text>
+            <Text style={twStyle("text-center text-xs italic text-gray-300")}>Receipt footer text</Text>
           )}
         </View>
       </View>
 
       {/* Header & Footer */}
       <SectionHeader title="Header & Footer" />
-      <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-        <Text className="mb-1 text-sm font-medium text-gray-700">Header Text</Text>
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Header Text</Text>
         <TextInput
-          className="mb-1 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-1 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={header}
           onChangeText={update(setHeader)}
           placeholder="Business name, address, registration details..."
@@ -147,11 +148,11 @@ export default function ReceiptTemplateScreen() {
           multiline
           textAlignVertical="top"
         />
-        <Text className="mb-4 text-xs text-gray-400">{header.length}/2000 characters</Text>
+        <Text style={twStyle("mb-4 text-xs text-gray-400")}>{header.length}/2000 characters</Text>
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">Footer Text</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Footer Text</Text>
         <TextInput
-          className="mb-1 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-1 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={footer}
           onChangeText={update(setFooter)}
           placeholder="Thank you message, return policy, terms..."
@@ -159,15 +160,15 @@ export default function ReceiptTemplateScreen() {
           multiline
           textAlignVertical="top"
         />
-        <Text className="text-xs text-gray-400">{footer.length}/2000 characters</Text>
+        <Text style={twStyle("text-xs text-gray-400")}>{footer.length}/2000 characters</Text>
       </View>
 
       {/* Numbering */}
       <SectionHeader title="Receipt Numbering" />
-      <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-        <Text className="mb-1 text-sm font-medium text-gray-700">Prefix</Text>
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Prefix</Text>
         <TextInput
-          className="mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={prefix}
           onChangeText={update(setPrefix)}
           placeholder="REC"
@@ -175,24 +176,24 @@ export default function ReceiptTemplateScreen() {
           autoCapitalize="characters"
           maxLength={20}
         />
-        <Text className="mb-4 text-xs text-gray-400">Up to 20 characters</Text>
+        <Text style={twStyle("mb-4 text-xs text-gray-400")}>Up to 20 characters</Text>
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">Next Number</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Next Number</Text>
         <TextInput
-          className="mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={nextNumber}
           onChangeText={update(setNextNumber)}
           placeholder="1"
           placeholderTextColor="#9ca3af"
           keyboardType="number-pad"
         />
-        <Text className="text-xs text-gray-400">
+        <Text style={twStyle("text-xs text-gray-400")}>
           Next receipt will be numbered: {previewNumber}
         </Text>
       </View>
 
       <ActionButton label="Save Receipt Settings" onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

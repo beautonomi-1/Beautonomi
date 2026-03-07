@@ -78,7 +78,7 @@ export default function ProviderLocationTracker({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <MapPin className="w-5 h-5 text-[#FF0077]" />
+          <MapPin className="w-5 h-5 text-primary" />
           <h3 className="font-semibold">Location Tracking</h3>
         </div>
         <div className="flex items-center gap-2">
@@ -95,7 +95,7 @@ export default function ProviderLocationTracker({
             <Button
               size="sm"
               onClick={startTracking}
-              className="bg-[#FF0077] hover:bg-[#D60565]"
+              className="bg-primary hover:bg-primary-hover"
             >
               <Navigation className="w-4 h-4 mr-2" />
               Start Tracking
@@ -171,7 +171,7 @@ export default function ProviderLocationTracker({
 
       {isTracking && !location && (
         <div className="flex items-center justify-center py-4">
-          <Loader2 className="w-5 h-5 animate-spin text-[#FF0077]" />
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
           <span className="ml-2 text-sm text-gray-600">Getting location...</span>
         </div>
       )}

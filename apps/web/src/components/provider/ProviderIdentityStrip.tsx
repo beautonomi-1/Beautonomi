@@ -48,7 +48,7 @@ export function ProviderIdentityStrip({
       <button
         type="button"
         onClick={() => router.push("/provider/reviews")}
-        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-[#FF0077]/30"
+        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/30"
         aria-label={`Rating: ${averageRating.toFixed(1)} from ${totalReviews} reviews. View reviews.`}
       >
         <Star className="h-5 w-5 fill-amber-400 text-amber-400" aria-hidden />
@@ -66,7 +66,7 @@ export function ProviderIdentityStrip({
       <button
         type="button"
         onClick={() => router.push("/provider/gamification")}
-        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-[#FF0077]/30"
+        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/30"
         aria-label={badgeName ? `Current level: ${badgeName}. View rewards.` : "View rewards and level."}
       >
         <Trophy className="h-5 w-5 text-amber-600" aria-hidden />
@@ -106,7 +106,7 @@ export function ProviderIdentityStrip({
           <button
             type="button"
             onClick={() => router.push("/provider/settings/distance")}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-[#FF0077]/30"
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/30"
             aria-label={`You accept at-home bookings within ${max_service_distance_km} km. Open distance settings to change.`}
           >
             <MapPin className="h-4 w-4 text-indigo-600" aria-hidden />

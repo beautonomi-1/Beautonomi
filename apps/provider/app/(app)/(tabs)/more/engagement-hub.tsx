@@ -7,6 +7,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 type Review = {
   id: string;
@@ -38,7 +39,7 @@ export default function EngagementHubScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Engagement" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -49,7 +50,7 @@ export default function EngagementHubScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Engagement" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -64,41 +65,41 @@ export default function EngagementHubScreen() {
         onBack={() => router.back()}
       />
       <ScrollView
-        className="flex-1"
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
         {reviews.length === 0 ? (
-          <View className="py-12 px-4 items-center">
+          <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="chatbubbles-outline" size={48} color="#9ca3af" />
-            <Text className="mt-4 text-center text-gray-600">No reviews yet</Text>
-            <Text className="mt-2 text-center text-sm text-gray-500">
+            <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>No reviews yet</Text>
+            <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
               Customer reviews will appear here
             </Text>
           </View>
         ) : (
-          <View className="pb-4">
+          <View style={{ paddingBottom: 16 }}>
             {reviews.map((r) => (
               <View
                 key={r.id}
-                className="mb-3 rounded-xl border border-gray-200 bg-white p-4"
+                style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               >
-                <View className="flex-row items-center justify-between">
-                  <Text className="font-semibold text-gray-900">
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>
                     {r.customer?.full_name ?? "Customer"}
                   </Text>
-                  <View className="flex-row items-center gap-1">
-                    <Ionicons name="star" size={14} color="#eab308" />
-                    <Text className="text-sm font-medium text-gray-700">{r.rating}</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Ionicons name="star" size={14} color="#eab308" style={{ marginRight: 4 }} />
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{r.rating}</Text>
                   </View>
                 </View>
                 {r.comment ? (
-                  <Text className="mt-2 text-sm text-gray-600" numberOfLines={3}>
+                  <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }} numberOfLines={3}>
                     {r.comment}
                   </Text>
                 ) : null}
-                <Text className="mt-2 text-xs text-gray-400">
+                <Text style={{ marginTop: 8, fontSize: 12, color: Colors.gray[400] }}>
                   {new Date(r.created_at).toLocaleDateString()}
                 </Text>
               </View>

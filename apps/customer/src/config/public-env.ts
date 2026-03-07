@@ -22,7 +22,8 @@ function getEnv(key: string): string {
   return val;
 }
 
-function requireEnv(key: string): string {
+/** Use for native or when you need to enforce env; throws if missing. */
+export function requireEnv(key: string): string {
   const val = getEnv(key);
   const failReason = !val ? "falsy" : val.trim() === "" ? "empty" : val === "YOUR_SUPABASE_URL" ? "placeholderUrl" : val === "YOUR_SUPABASE_ANON_KEY" ? "placeholderKey" : "ok";
   if (failReason !== "ok") {
@@ -33,8 +34,10 @@ function requireEnv(key: string): string {
   return val;
 }
 
-export const SUPABASE_URL = requireEnv("EXPO_PUBLIC_SUPABASE_URL");
-export const SUPABASE_ANON_KEY = requireEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY");
+/** Supabase URL – may be empty on web if .env not loaded (avoids throw at bundle load). */
+export const SUPABASE_URL = getEnv("EXPO_PUBLIC_SUPABASE_URL") ?? "";
+/** Supabase anon key – may be empty on web if .env not loaded. */
+export const SUPABASE_ANON_KEY = getEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY") ?? "";
 
 /** Backend (Next.js) URL. Optional for local web dev (Expo at :8081/:8082 uses http://localhost:3000). */
 export const APP_URL = getEnv("EXPO_PUBLIC_APP_URL") ?? "";

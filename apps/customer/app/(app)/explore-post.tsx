@@ -21,6 +21,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { haptic } from "@/lib/haptics";
 import { APP_URL } from "@/config/public-env";
@@ -42,6 +43,7 @@ function formatTime(iso: string) {
 export default function ExplorePostScreen() {
   useScreenTracking("Explore Post");
   const router = useRouter();
+  const { contentPadding } = useResponsive();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
@@ -190,7 +192,7 @@ export default function ExplorePostScreen() {
     return (
       <>
         <Stack.Screen options={{ headerShown: false }} />
-        <View style={{ flex: 1, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <View style={{ flex: 1, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", padding: contentPadding }}>
           <Ionicons name="image-outline" size={48} color="#D1D5DB" />
           <Text style={{ color: "#6B7280", fontSize: 16, marginTop: 12 }}>Post not found</Text>
           <TouchableOpacity
@@ -305,11 +307,11 @@ export default function ExplorePostScreen() {
           ) : null}
 
           {/* Content */}
-          <View style={{ padding: 16 }}>
+          <View style={{ padding: contentPadding }}>
             {/* Provider row */}
             <Pressable
               onPress={goToProvider}
-              style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 }}
+              style={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}
             >
               <View
                 style={{
@@ -319,6 +321,7 @@ export default function ExplorePostScreen() {
                   backgroundColor: Colors.primary,
                   alignItems: "center",
                   justifyContent: "center",
+                  marginRight: 10,
                 }}
               >
                 <Text style={{ color: "#fff", fontSize: 17, fontWeight: "700" }}>{providerInitial}</Text>
@@ -348,16 +351,17 @@ export default function ExplorePostScreen() {
             </Pressable>
 
             {/* Action bar */}
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 20, marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderColor: "#F3F4F6" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderColor: "#F3F4F6" }}>
               <TouchableOpacity
                 onPress={toggleLike}
                 disabled={liking}
-                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                style={{ flexDirection: "row", alignItems: "center", marginRight: 20 }}
               >
                 <Ionicons
                   name={post.is_liked ? "heart" : "heart-outline"}
                   size={26}
                   color={post.is_liked ? Colors.primary : "#374151"}
+                  style={{ marginRight: 6 }}
                 />
                 <Text style={{ fontSize: 15, fontWeight: "600", color: post.is_liked ? Colors.primary : "#374151" }}>
                   {post.like_count > 0 ? post.like_count : "Like"}
@@ -365,9 +369,9 @@ export default function ExplorePostScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                style={{ flexDirection: "row", alignItems: "center", marginRight: 20 }}
               >
-                <Ionicons name="chatbubble-outline" size={24} color="#374151" />
+                <Ionicons name="chatbubble-outline" size={24} color="#374151" style={{ marginRight: 6 }} />
                 <Text style={{ fontSize: 15, fontWeight: "600", color: "#374151" }}>
                   {comments.length > 0 ? comments.length : "Comment"}
                 </Text>
@@ -376,12 +380,13 @@ export default function ExplorePostScreen() {
               <TouchableOpacity
                 onPress={toggleSave}
                 disabled={saving}
-                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                style={{ flexDirection: "row", alignItems: "center", marginRight: 20 }}
               >
                 <Ionicons
                   name={post.is_saved ? "bookmark" : "bookmark-outline"}
                   size={24}
                   color={post.is_saved ? Colors.primary : "#374151"}
+                  style={{ marginRight: 6 }}
                 />
                 <Text style={{ fontSize: 15, fontWeight: "600", color: post.is_saved ? Colors.primary : "#374151" }}>
                   Save
@@ -417,11 +422,11 @@ export default function ExplorePostScreen() {
               comments.map((c) => {
                 const initial = (c.author?.full_name || "U").charAt(0).toUpperCase();
                 return (
-                  <View key={c.id} style={{ flexDirection: "row", gap: 10, paddingVertical: 10, borderBottomWidth: 1, borderColor: "#F9FAFB" }}>
+                  <View key={c.id} style={{ flexDirection: "row", paddingVertical: 10, borderBottomWidth: 1, borderColor: "#F9FAFB" }}>
                     {c.author?.avatar_url ? (
                       <Image
                         source={{ uri: c.author.avatar_url }}
-                        style={{ width: 32, height: 32, borderRadius: 16 }}
+                        style={{ width: 32, height: 32, borderRadius: 16, marginRight: 10 }}
                         contentFit="cover"
                       />
                     ) : (
@@ -433,14 +438,15 @@ export default function ExplorePostScreen() {
                           backgroundColor: "#F3F4F6",
                           alignItems: "center",
                           justifyContent: "center",
+                          marginRight: 10,
                         }}
                       >
                         <Text style={{ color: "#6B7280", fontWeight: "600", fontSize: 13 }}>{initial}</Text>
                       </View>
                     )}
                     <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827", marginRight: 6 }}>
                           {c.author?.full_name || "User"}
                         </Text>
                         <Text style={{ fontSize: 11, color: "#9CA3AF" }}>{formatTime(c.created_at)}</Text>
@@ -462,13 +468,12 @@ export default function ExplorePostScreen() {
             style={{
               flexDirection: "row",
               alignItems: "center",
-              paddingHorizontal: 16,
+              paddingHorizontal: contentPadding,
               paddingVertical: 10,
               paddingBottom: Platform.OS === "ios" ? 30 : 10,
               borderTopWidth: 1,
               borderColor: "#F3F4F6",
               backgroundColor: "#fff",
-              gap: 10,
             }}
           >
             <View
@@ -479,6 +484,7 @@ export default function ExplorePostScreen() {
                 backgroundColor: Colors.primaryLight,
                 alignItems: "center",
                 justifyContent: "center",
+                marginRight: 10,
               }}
             >
               <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 13 }}>
@@ -490,7 +496,7 @@ export default function ExplorePostScreen() {
                 flex: 1,
                 backgroundColor: "#F3F4F6",
                 borderRadius: 999,
-                paddingHorizontal: 16,
+                paddingHorizontal: contentPadding,
                 paddingVertical: Platform.OS === "ios" ? 10 : 8,
                 fontSize: 14,
                 color: "#111827",
@@ -518,7 +524,7 @@ export default function ExplorePostScreen() {
           <Pressable
             onPress={() => router.replace("/(auth)/login")}
             style={{
-              paddingHorizontal: 16,
+              paddingHorizontal: contentPadding,
               paddingVertical: 14,
               paddingBottom: Platform.OS === "ios" ? 30 : 14,
               borderTopWidth: 1,

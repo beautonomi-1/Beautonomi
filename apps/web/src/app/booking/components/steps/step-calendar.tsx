@@ -204,7 +204,7 @@ export default function StepCalendar({
                 disabled={isPast}
                 className={`flex-shrink-0 w-20 p-3 rounded-lg border-2 transition-all touch-target ${
                   isSelected
-                    ? "border-[#FF0077] bg-pink-50"
+                    ? "border-primary bg-pink-50"
                     : isPast
                     ? "border-gray-100 bg-gray-50 opacity-50"
                     : "border-gray-200 bg-white hover:border-gray-300"
@@ -216,7 +216,7 @@ export default function StepCalendar({
                 </div>
                 <div
                   className={`text-lg font-semibold ${
-                    isSelected ? "text-[#FF0077]" : "text-gray-900"
+                    isSelected ? "text-primary" : "text-gray-900"
                   }`}
                 >
                   {date.getDate()}
@@ -259,7 +259,7 @@ export default function StepCalendar({
                     disabled={isUnavailable}
                     className={`p-3 rounded-lg border-2 text-sm font-medium transition-all touch-target ${
                       isSelected
-                        ? "border-[#FF0077] bg-pink-50 text-[#FF0077]"
+                        ? "border-primary bg-pink-50 text-primary"
                         : isUnavailable
                         ? "border-gray-100 bg-gray-50 text-gray-400 opacity-50"
                         : "border-gray-200 bg-white text-gray-900 hover:border-gray-300"

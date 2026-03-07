@@ -94,7 +94,7 @@ export default function ProviderExplorePage() {
                 href="/explore"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="ml-auto flex items-center gap-2 text-[#FF0077] text-sm font-medium hover:underline"
+                className="ml-auto flex items-center gap-2 text-primary text-sm font-medium hover:underline"
               >
                 <ExternalLink className="w-4 h-4" />
                 View on Explore
@@ -103,7 +103,7 @@ export default function ProviderExplorePage() {
           )}
           <div className="flex justify-end mb-6">
             <Link href="/provider/explore/new">
-              <Button className="bg-[#FF0077] hover:bg-[#D60565] text-white">
+              <Button className="bg-primary hover:bg-primary-hover text-white">
                 <Plus className="w-4 h-4 mr-2" />
                 Create Post
               </Button>
@@ -111,7 +111,7 @@ export default function ProviderExplorePage() {
           </div>
           {isLoading ? (
             <div className="flex justify-center py-12">
-              <Loader2 className="w-10 h-10 animate-spin text-[#FF0077]" />
+              <Loader2 className="w-10 h-10 animate-spin text-primary" />
             </div>
           ) : posts.length === 0 ? (
             <div className="border-2 border-dashed border-gray-200 rounded-xl p-12 text-center">
@@ -121,7 +121,7 @@ export default function ProviderExplorePage() {
                 Create your first post to appear in the explore feed and earn reward points.
               </p>
               <Link href="/provider/explore/new">
-                <Button className="bg-[#FF0077] hover:bg-[#D60565] text-white">
+                <Button className="bg-primary hover:bg-primary-hover text-white">
                   <Plus className="w-4 h-4 mr-2" />
                   Create Post
                 </Button>
@@ -188,7 +188,7 @@ export default function ProviderExplorePage() {
                           href="/explore"
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="ml-auto flex items-center gap-1 text-[#FF0077] hover:underline"
+                          className="ml-auto flex items-center gap-1 text-primary hover:underline"
                         >
                           <ExternalLink className="w-3 h-3" />
                           View on Explore

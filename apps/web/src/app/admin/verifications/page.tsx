@@ -187,7 +187,7 @@ export default function AdminVerifications() {
               <TabsList className="mb-4 sm:mb-6 grid w-full grid-cols-4 h-auto backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-1 shadow-lg">
                 <TabsTrigger
                   value="pending"
-                  className="text-xs sm:text-sm data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white rounded-lg transition-all"
+                  className="text-xs sm:text-sm data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white rounded-lg transition-all"
                 >
                   <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">Pending</span>
@@ -195,7 +195,7 @@ export default function AdminVerifications() {
                 </TabsTrigger>
                 <TabsTrigger
                   value="approved"
-                  className="text-xs sm:text-sm data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white rounded-lg transition-all"
+                  className="text-xs sm:text-sm data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white rounded-lg transition-all"
                 >
                   <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">Approved</span>
@@ -203,7 +203,7 @@ export default function AdminVerifications() {
                 </TabsTrigger>
                 <TabsTrigger
                   value="rejected"
-                  className="text-xs sm:text-sm data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white rounded-lg transition-all"
+                  className="text-xs sm:text-sm data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white rounded-lg transition-all"
                 >
                   <XCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">Rejected</span>
@@ -211,7 +211,7 @@ export default function AdminVerifications() {
                 </TabsTrigger>
                 <TabsTrigger
                   value="all"
-                  className="text-xs sm:text-sm data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white rounded-lg transition-all"
+                  className="text-xs sm:text-sm data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white rounded-lg transition-all"
                 >
                   <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   <span className="hidden sm:inline">All</span>
@@ -573,7 +573,7 @@ function DocumentViewer({ verificationId, documentUrl }: { verificationId: strin
         href={signedUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-2 text-sm sm:text-base text-[#FF0077] hover:text-[#FF0077]/80 font-medium underline"
+        className="inline-flex items-center gap-2 text-sm sm:text-base text-primary hover:text-primary/80 font-medium underline"
       >
         <Eye className="w-4 h-4" />
         View PDF Document

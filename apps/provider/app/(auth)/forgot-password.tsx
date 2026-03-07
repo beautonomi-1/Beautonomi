@@ -24,6 +24,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "@/lib/supabase/client";
 import { APP_URL } from "@/config/public-env";
+import { useResponsive } from "@/hooks/useResponsive";
+import { Colors } from "@/constants/colors";
 
 function getRedirectUrl(): string {
   if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -35,6 +37,7 @@ function getRedirectUrl(): string {
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
+  const { screenPadding } = useResponsive();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -67,53 +70,53 @@ export default function ForgotPasswordScreen() {
   }, [email]);
 
   return (
-    <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
-      <View className="flex-row items-center border-b border-gray-200 px-4 py-3">
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={["top"]}>
+      <View style={{ flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], paddingHorizontal: 16, paddingVertical: 12 }}>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mr-3 p-2"
+          style={{ marginRight: 12, padding: 8 }}
           accessibilityLabel="Back"
           accessibilityRole="button"
         >
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+          <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text className="text-lg font-semibold text-gray-900">Reset password</Text>
+        <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>Reset password</Text>
       </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        className="flex-1"
+        style={{ flex: 1 }}
       >
         <ScrollView
-          className="flex-1"
-          contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 40 }}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: screenPadding, paddingTop: 24, paddingBottom: 40 }}
           keyboardShouldPersistTaps="handled"
         >
           {sent ? (
-            <View className="rounded-xl border border-green-200 bg-green-50 p-4">
-              <Text className="text-base font-medium text-green-800">Check your email</Text>
-              <Text className="mt-2 text-sm text-green-700">
+            <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#bbf7d0", backgroundColor: "#f0fdf4", padding: 16 }}>
+              <Text style={{ fontSize: 16, fontWeight: "500", color: "#166534" }}>Check your email</Text>
+              <Text style={{ marginTop: 8, fontSize: 14, color: "#15803d" }}>
                 We sent a password reset link to {email.trim()}. Open the link in your browser to set a new password.
               </Text>
               <TouchableOpacity
                 onPress={() => router.replace("/(auth)/login" as never)}
-                className="mt-4 rounded-xl bg-green-700 py-3"
+                style={{ marginTop: 16, borderRadius: 12, backgroundColor: "#15803d", paddingVertical: 12 }}
                 accessibilityLabel="Back to login"
                 accessibilityRole="button"
               >
-                <Text className="text-center font-medium text-white">Back to login</Text>
+                <Text style={{ textAlign: "center", fontWeight: "500", color: Colors.white }}>Back to login</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <>
-              <Text className="text-sm text-gray-600">
+              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
                 Enter the email address for your account and we&apos;ll send you a link to reset your password.
               </Text>
-              <Text className="mt-4 text-sm font-medium text-gray-700">Email</Text>
+              <Text style={{ marginTop: 16, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Email</Text>
               <TextInput
-                className="mt-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={{ marginTop: 4, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 placeholder="you@example.com"
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={Colors.gray[400]}
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -125,23 +128,23 @@ export default function ForgotPasswordScreen() {
               <TouchableOpacity
                 onPress={handleSubmit}
                 disabled={loading}
-                className="mt-6 rounded-xl bg-indigo-600 py-4"
+                style={{ marginTop: 24, borderRadius: 12, backgroundColor: Colors.primary, paddingVertical: 16 }}
                 accessibilityLabel={loading ? "Sending reset link" : "Send reset link"}
                 accessibilityRole="button"
               >
                 {loading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text className="text-center font-semibold text-white">Send reset link</Text>
+                  <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.white }}>Send reset link</Text>
                 )}
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => router.back()}
-                className="mt-4 py-2"
+                style={{ marginTop: 16, paddingVertical: 8 }}
                 accessibilityLabel="Back to login"
                 accessibilityRole="button"
               >
-                <Text className="text-center text-sm font-medium text-gray-600">Back to login</Text>
+                <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>Back to login</Text>
               </TouchableOpacity>
             </>
           )}

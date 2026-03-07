@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { Image, View, ActivityIndicator } from "react-native";
+import { Colors } from "@/constants/colors";
 import { getMapboxConfig } from "@/lib/third-party-config";
 
 interface StaticMapImageProps {
@@ -60,7 +61,7 @@ export function StaticMapImage({
   if (loading) {
     return (
       <View style={[{ width, height, justifyContent: "center", alignItems: "center" }, style]}>
-        <ActivityIndicator size="small" color="#FF0077" />
+        <ActivityIndicator size="small" color={Colors.primary} />
       </View>
     );
   }

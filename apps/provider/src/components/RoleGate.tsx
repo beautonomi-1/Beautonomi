@@ -76,16 +76,16 @@ export function RoleGate({ children }: RoleGateProps) {
   if (!user) return null;
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-white">
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text className="mt-4 text-gray-600">Checking access…</Text>
+        <Text style={{ marginTop: 16, color: Colors.gray[600] }}>Checking access…</Text>
       </View>
     );
   }
   if (blocked) {
     const isNetwork = blockReason === "network";
     return (
-      <View className="flex-1 items-center justify-center bg-white p-6">
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white, padding: 24 }}>
         <View
           style={{
             width: 64,
@@ -103,33 +103,33 @@ export function RoleGate({ children }: RoleGateProps) {
             color={isNetwork ? "#2563eb" : Colors.primary}
           />
         </View>
-        <Text className="text-center text-lg font-semibold text-gray-900">
+        <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>
           {isNetwork ? "Can't reach server" : "Provider access only"}
         </Text>
-        <Text className="mt-2 text-center text-gray-500 max-w-sm">
+        <Text style={{ marginTop: 8, textAlign: "center", color: Colors.gray[500], maxWidth: 320 }}>
           {isNetwork
             ? "Start the backend (e.g. pnpm dev in apps/web). Set EXPO_PUBLIC_APP_URL in .env.local (e.g. http://localhost:3000 for emulator, or your machine IP for a device). Then tap Retry."
             : "Your account is not set up for the provider app. Please use the customer app or contact support."}
         </Text>
-        <View className="mt-8 flex-row gap-3">
+        <View style={{ marginTop: 32, flexDirection: "row" }}>
           {isNetwork && (
             <TouchableOpacity
-              style={{ backgroundColor: "#2563eb", borderRadius: 12, paddingHorizontal: 24, paddingVertical: 14 }}
+              style={{ backgroundColor: "#2563eb", borderRadius: 12, paddingHorizontal: 24, paddingVertical: 14, marginRight: 12 }}
               onPress={() => checkRole()}
             >
-              <Text className="font-semibold text-white text-base">Retry</Text>
+              <Text style={{ fontWeight: "600", color: Colors.white, fontSize: 16 }}>Retry</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
             style={{
-              backgroundColor: isNetwork ? "#E5E7EB" : Colors.primary,
+              backgroundColor: isNetwork ? Colors.gray[200] : Colors.primary,
               borderRadius: 12,
               paddingHorizontal: 32,
               paddingVertical: 14,
             }}
             onPress={() => handleSignOut()}
           >
-            <Text className={`font-semibold text-base ${isNetwork ? "text-gray-700" : "text-white"}`}>
+            <Text style={{ fontWeight: "600", fontSize: 16, color: isNetwork ? Colors.gray[700] : Colors.white }}>
               Sign out
             </Text>
           </TouchableOpacity>

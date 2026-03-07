@@ -6,7 +6,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import Pagination from "@/components/ui/pagination";
 import FilterBar from "@/components/ui/filter-bar";
-import ProviderCard from "@/app/home/components/provider-card";
+import ProviderCard from "@/app/home/components/provider-card-dynamic";
 import type { SearchResult, Category } from "@/types/beautonomi";
 import { Map, List } from "lucide-react";
 import { Button } from "@/components/ui/button";

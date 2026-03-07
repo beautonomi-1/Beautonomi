@@ -11,25 +11,30 @@ export function FilterChipGroup({ options, selected, onSelect }: FilterChipGroup
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+      contentContainerStyle={{ paddingVertical: 4, flexDirection: "row" }}
     >
       {options.map((opt) => {
         const isActive = selected === opt.value;
         return (
           <TouchableOpacity
             key={opt.value}
-            className={`min-h-[40px] items-center justify-center rounded-full px-5 py-2.5 ${
-              isActive ? "bg-gray-900" : "border border-gray-200 bg-white"
-            }`}
+            style={{
+              minHeight: 40,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 9999,
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              marginRight: 8,
+              ...(isActive ? { backgroundColor: "#111827" } : { borderWidth: 1, borderColor: "#e5e7eb", backgroundColor: "#fff" }),
+            }}
             onPress={() => onSelect(opt.value)}
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityState={{ selected: isActive }}
             accessibilityLabel={opt.label}
           >
-            <Text
-              className={`text-sm font-medium ${isActive ? "text-white" : "text-gray-600"}`}
-            >
+            <Text style={{ fontSize: 14, fontWeight: "500", color: isActive ? "#fff" : "#4b5563" }}>
               {opt.label}
             </Text>
           </TouchableOpacity>

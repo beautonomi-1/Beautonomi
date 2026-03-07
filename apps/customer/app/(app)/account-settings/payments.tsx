@@ -83,31 +83,31 @@ export default function PaymentsScreen() {
 
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load}>
-      <View className="gap-6">
+      <View>
         <View>
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="font-semibold text-gray-900">Payment methods</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Payment methods</Text>
             <TouchableOpacity
               onPress={() => Alert.alert("Save card", SAVE_CARD_INFO)}
               accessibilityLabel="Info about saving card"
-              className="p-1"
+              style={{ padding: 4 }}
             >
               <Ionicons name="information-circle-outline" size={22} color={Colors.primary} />
             </TouchableOpacity>
           </View>
-          <View className="bg-gray-50 rounded-xl p-3 mb-3">
-            <Text className="text-xs text-gray-600">
+          <View style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 12, marginBottom: 12 }}>
+            <Text style={{ fontSize: 12, color: Colors.gray[600] }}>
               We&apos;ll save your card securely when you pay. To verify your card, Paystack may place a small temporary charge (e.g. R1) and reverse it—this confirms your card for future use.
             </Text>
           </View>
           {methods.length === 0 ? (
-            <Text className="text-gray-500 py-4">No payment methods saved</Text>
+            <Text style={{ color: Colors.gray[500], paddingVertical: 16 }}>No payment methods saved</Text>
           ) : (
             methods.map((m) => (
-              <View key={m.id} className="bg-gray-50 rounded-xl p-4 mb-2 flex-row justify-between items-center">
-                <Text className="font-medium text-gray-900">{m.last4 ? `•••• ${m.last4}` : m.type || "Card"}</Text>
+              <View key={m.id} style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{m.last4 ? `•••• ${m.last4}` : m.type || "Card"}</Text>
                 <TouchableOpacity onPress={() => removeMethod(m.id)}>
-                  <Text className="text-red-600 text-sm">Remove</Text>
+                  <Text style={{ color: "#B91C1C", fontSize: 14 }}>Remove</Text>
                 </TouchableOpacity>
               </View>
             ))
@@ -115,34 +115,34 @@ export default function PaymentsScreen() {
           <TouchableOpacity
             onPress={addCard}
             disabled={addingCard}
-            className="flex-row items-center justify-center gap-2 py-3 rounded-xl border border-gray-200 border-dashed mt-2"
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], marginTop: 8 }}
           >
             {addingCard ? (
               <ActivityIndicator size="small" color={Colors.primary} />
             ) : (
               <>
-                <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
-                <Text className="font-medium text-primary">Add card</Text>
+                <Ionicons name="add-circle-outline" size={20} color={Colors.primary} style={{ marginRight: 8 }} />
+                <Text style={{ fontWeight: "500", color: Colors.primary }}>Add card</Text>
               </>
             )}
           </TouchableOpacity>
         </View>
-        <View>
-          <View className="flex-row justify-between items-center mb-2">
-            <Text className="font-semibold text-gray-900">Gift cards</Text>
+        <View style={{ marginTop: 24 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Gift cards</Text>
             <TouchableOpacity onPress={() => router.push("/(app)/gift-card-purchase")}>
-              <Text className="text-primary font-medium">Buy gift card</Text>
+              <Text style={{ color: Colors.primary, fontWeight: "500" }}>Buy gift card</Text>
             </TouchableOpacity>
           </View>
           {giftCards.length === 0 ? (
-            <Text className="text-gray-500 py-4">No gift cards yet</Text>
+            <Text style={{ color: Colors.gray[500], paddingVertical: 16 }}>No gift cards yet</Text>
           ) : (
             giftCards.map((g) => (
-              <View key={g.id} className="bg-gray-50 rounded-xl p-4 mb-2">
-                <Text className="font-medium text-gray-900">
+              <View key={g.id} style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 8 }}>
+                <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
                   {g.code ? `•••• ${String(g.code).slice(-6)}` : "Gift card"}
                 </Text>
-                <Text className="text-sm text-gray-500">
+                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
                   Balance: {g.currency} {(g.balance ?? 0).toFixed(2)}
                   {g.expires_at ? ` · Expires ${new Date(g.expires_at).toLocaleDateString()}` : ""}
                 </Text>

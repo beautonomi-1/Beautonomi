@@ -398,7 +398,7 @@ export function ExplorePostForm({
           </div>
         </div>
         {isUploading && (
-          <div className="mt-3 flex items-center gap-2 text-[#FF0077] text-sm">
+          <div className="mt-3 flex items-center gap-2 text-primary text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
             Uploading...
           </div>
@@ -504,7 +504,7 @@ export function ExplorePostForm({
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             className={`rounded-2xl border-2 border-dashed overflow-hidden ${
-              isDragging ? "border-[#FF0077] bg-[#FF0077]/5" : "border-gray-300 bg-gray-50"
+              isDragging ? "border-primary bg-primary/5" : "border-gray-300 bg-gray-50"
             }`}
           >
             <div className="flex flex-col sm:flex-row">
@@ -514,8 +514,8 @@ export function ExplorePostForm({
                 disabled={isUploading}
                 className="flex-1 aspect-[4/5] sm:aspect-square max-h-[280px] sm:max-h-none flex flex-col items-center justify-center gap-3 hover:bg-gray-100 transition-colors active:scale-[0.99] border-b sm:border-b-0 sm:border-r border-gray-200"
               >
-                <div className="w-16 h-16 rounded-full bg-[#FF0077]/10 flex items-center justify-center">
-                  <Camera className="w-8 h-8 text-[#FF0077]" />
+                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Camera className="w-8 h-8 text-primary" />
                 </div>
                 <span className="text-gray-700 font-medium">Camera</span>
                 <span className="text-xs text-gray-500">Take photo or video</span>
@@ -527,7 +527,7 @@ export function ExplorePostForm({
                 className="flex-1 aspect-[4/5] sm:aspect-square max-h-[280px] sm:max-h-none flex flex-col items-center justify-center gap-3 hover:bg-gray-100 transition-colors active:scale-[0.99]"
               >
                 {isUploading ? (
-                  <Loader2 className="w-16 h-16 text-[#FF0077] animate-spin" />
+                  <Loader2 className="w-16 h-16 text-primary animate-spin" />
                 ) : (
                   <>
                     <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
@@ -559,7 +559,7 @@ export function ExplorePostForm({
               setCaptureMode("camera");
             }}
             disabled={isUploading}
-            className="mt-3 flex items-center gap-2 text-[#FF0077] text-sm font-medium hover:underline disabled:opacity-50"
+            className="mt-3 flex items-center gap-2 text-primary text-sm font-medium hover:underline disabled:opacity-50"
           >
             <Camera className="w-4 h-4" />
             Take photo or video
@@ -594,7 +594,7 @@ export function ExplorePostForm({
         <textarea
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
-          className="w-full min-h-[100px] max-h-[160px] resize-none rounded-xl border border-gray-200 px-4 py-3 text-[15px] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FF0077]/30 focus:border-[#FF0077] bg-white"
+          className="w-full min-h-[100px] max-h-[160px] resize-none rounded-xl border border-gray-200 px-4 py-3 text-[15px] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary bg-white"
           placeholder="Write a caption..."
           rows={3}
         />
@@ -609,13 +609,13 @@ export function ExplorePostForm({
           {tags.map((tag) => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#FF0077]/10 text-[#FF0077] text-sm font-medium"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium"
             >
               #{tag}
               <button
                 type="button"
                 onClick={() => setTags((prev) => prev.filter((t) => t !== tag))}
-                className="ml-0.5 hover:text-[#FF0077]/70"
+                className="ml-0.5 hover:text-primary/70"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -638,7 +638,7 @@ export function ExplorePostForm({
               }
             }}
             placeholder="e.g. hair, braids, balayage..."
-            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FF0077]/30 focus:border-[#FF0077]"
+            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             maxLength={30}
           />
           <button
@@ -668,7 +668,7 @@ export function ExplorePostForm({
                 onClick={() => {
                   if (tags.length < 10) setTags((prev) => [...prev, suggestion]);
                 }}
-                className="px-2.5 py-1 rounded-full border border-gray-200 text-xs text-gray-500 hover:border-[#FF0077] hover:text-[#FF0077] transition-colors"
+                className="px-2.5 py-1 rounded-full border border-gray-200 text-xs text-gray-500 hover:border-primary hover:text-primary transition-colors"
               >
                 +{suggestion}
               </button>
@@ -683,7 +683,7 @@ export function ExplorePostForm({
         <Button
           type="submit"
           disabled={isSubmitting || !mediaPaths.length}
-          className="flex-1 h-12 rounded-xl bg-[#FF0077] hover:bg-[#D60565] text-white font-semibold text-base"
+          className="flex-1 h-12 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold text-base"
         >
           {isSubmitting ? (
             <Loader2 className="w-5 h-5 animate-spin" />

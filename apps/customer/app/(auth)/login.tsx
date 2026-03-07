@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { APP_URL } from "@/config/public-env";
@@ -206,20 +207,34 @@ export default function LoginScreen() {
     setLoading(false);
   }
 
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const formNarrow = isTablet || Platform.OS === "web";
+  const formStyle = {
+    width: "100%" as const,
+    ...(formNarrow ? { maxWidth: Math.min(420, contentMaxWidth), alignSelf: "center" as const } : {}),
+  };
+  const scrollContentStyle = {
+    flexGrow: 1,
+    justifyContent: "center" as const,
+    paddingHorizontal: contentPadding,
+    paddingVertical: 48,
+    ...(formNarrow ? { alignItems: "center" as const } : {}),
+  };
+
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-white"
+      style={{ flex: 1, backgroundColor: "#fff" }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
     >
       <ScrollView
-        className="flex-1"
-        contentContainerClassName="grow justify-center px-6 py-12"
-        contentContainerStyle={Platform.OS === "web" ? { alignItems: "center" } : undefined}
+        style={{ flex: 1 }}
+        contentContainerClassName="grow justify-center"
+        contentContainerStyle={scrollContentStyle}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={Platform.OS === "web" ? { width: "100%", maxWidth: 420, alignSelf: "center" } as any : undefined}>
+        <View style={formStyle}>
         {/* Logo accent */}
         <View style={{ alignItems: "center", marginBottom: 8 }}>
           <View
@@ -491,13 +506,12 @@ export default function LoginScreen() {
                   paddingHorizontal: 12,
                   borderRightWidth: 1,
                   borderRightColor: "#E5E7EB",
-                  gap: 4,
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Country code: ${selectedCountry?.label ?? countryCode}`}
               >
-                <Text style={{ fontSize: 18 }}>{selectedCountry?.flag ?? "🌍"}</Text>
-                <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827" }}>{countryCode}</Text>
+                <Text style={{ fontSize: 18, marginRight: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
+                <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginRight: 4 }}>{countryCode}</Text>
                 <Ionicons name="chevron-down" size={14} color="#6B7280" />
               </TouchableOpacity>
               <TextInput
@@ -556,7 +570,7 @@ export default function LoginScreen() {
             {/* Separator */}
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 24 }}>
               <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
-              <Text style={{ marginHorizontal: 16, fontSize: 13, color: "#9CA3AF" }}>or</Text>
+              <Text style={{ marginHorizontal: contentPadding, fontSize: 13, color: "#9CA3AF" }}>or</Text>
               <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
             </View>
 
@@ -568,7 +582,6 @@ export default function LoginScreen() {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 10,
                 borderWidth: 1.5,
                 borderColor: "#E5E7EB",
                 borderRadius: 12,
@@ -579,7 +592,7 @@ export default function LoginScreen() {
               accessibilityRole="button"
               accessibilityLabel="Continue with Google"
             >
-              <Ionicons name="logo-google" size={20} color="#4285F4" />
+              <Ionicons name="logo-google" size={20} color="#4285F4" style={{ marginRight: 10 }} />
               <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
             </TouchableOpacity>
 
@@ -590,7 +603,6 @@ export default function LoginScreen() {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 10,
                 borderWidth: 1.5,
                 borderColor: "#E5E7EB",
                 borderRadius: 12,
@@ -612,7 +624,6 @@ export default function LoginScreen() {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 10,
                 borderWidth: 1.5,
                 borderColor: "#E5E7EB",
                 borderRadius: 12,
@@ -623,7 +634,7 @@ export default function LoginScreen() {
               accessibilityRole="button"
               accessibilityLabel="Continue with email"
             >
-              <Ionicons name="mail-outline" size={20} color="#6B7280" />
+              <Ionicons name="mail-outline" size={20} color="#6B7280" style={{ marginRight: 10 }} />
               <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with email</Text>
             </TouchableOpacity>
 
@@ -634,7 +645,6 @@ export default function LoginScreen() {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 10,
                 borderWidth: 1.5,
                 borderColor: "#E5E7EB",
                 borderRadius: 12,
@@ -645,7 +655,7 @@ export default function LoginScreen() {
               accessibilityRole="button"
               accessibilityLabel="Continue with Facebook"
             >
-              <Ionicons name="logo-facebook" size={20} color="#1877F2" />
+              <Ionicons name="logo-facebook" size={20} color="#1877F2" style={{ marginRight: 10 }} />
               <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Facebook</Text>
             </TouchableOpacity>
 
@@ -684,7 +694,7 @@ export default function LoginScreen() {
             <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 4 }}>
               <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB" }} />
             </View>
-            <View style={{ paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderColor: "#F3F4F6" }}>
+            <View style={{ paddingHorizontal: contentPadding, paddingVertical: 12, borderBottomWidth: 1, borderColor: "#F3F4F6" }}>
               <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12 }}>
                 Select Country
               </Text>
@@ -724,7 +734,7 @@ export default function LoginScreen() {
                     flexDirection: "row",
                     alignItems: "center",
                     paddingVertical: 14,
-                    paddingHorizontal: 16,
+                    paddingHorizontal: contentPadding,
                     borderBottomWidth: 1,
                     borderColor: "#F9FAFB",
                   }}

@@ -19,6 +19,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
+import { twStyle } from "@/lib/twStyle";
 
 interface ReferralSource {
   id: string;
@@ -164,7 +165,7 @@ export default function ReferralSourcesScreen() {
         subtitle="Track how clients find you"
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-900"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
             onPress={openCreate}
           >
             <Ionicons name="add" size={20} color="#fff" />
@@ -172,27 +173,27 @@ export default function ReferralSourcesScreen() {
         }
       />
 
-      <View className="mb-3 rounded-xl border border-blue-200 bg-blue-50/80 p-3">
-        <Text className="text-xs text-blue-800">
-          <Text className="font-semibold">Provider attribution only.</Text> These sources (e.g. Instagram, Friend) track where your clients come from. Separate from the platform referral program (invite friends → wallet reward), which is in Admin → Settings → Referrals. Assign a source on a booking to trigger the &quot;Referral received&quot; automation.
+      <View style={twStyle("mb-3 rounded-xl border border-blue-200 bg-blue-50/80 p-3")}>
+        <Text style={twStyle("text-xs text-blue-800")}>
+          <Text style={twStyle("font-semibold")}>Provider attribution only.</Text> These sources (e.g. Instagram, Friend) track where your clients come from. Separate from the platform referral program (invite friends → wallet reward), which is in Admin → Settings → Referrals. Assign a source on a booking to trigger the &quot;Referral received&quot; automation.
         </Text>
       </View>
 
-      <View className="mb-3 flex-row gap-2">
-        <View className="flex-1">
+      <View style={twStyle("mb-3 flex-row")}>
+        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
           <StatCard title="Total" value={String(stats.total)} icon="git-network-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
           <StatCard title="Active" value={String(stats.active)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard title="Clients" value={String(stats.totalClients)} icon="people-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
         </View>
       </View>
 
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search sources..." />
 
-      <View className="mt-3" />
+      <View style={twStyle("mt-3")} />
 
       {loading && !sources ? (
         <SkeletonList rows={5} />
@@ -209,51 +210,51 @@ export default function ReferralSourcesScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: source }: { item: ReferralSource }) => {
             const si = getSourceIcon(source.name);
             return (
               <TouchableOpacity
-                className={`rounded-xl border bg-white p-4 ${
+                style={twStyle(`rounded-xl border bg-white p-4 ${
                   source.is_active ? "border-gray-100" : "border-gray-100 opacity-60"
-                }`}
+                }`)}
                 onPress={() => openEdit(source)}
                 activeOpacity={0.7}
               >
-                <View className="flex-row items-center">
+                <View style={twStyle("flex-row items-center")}>
                   <View
-                    className="h-10 w-10 items-center justify-center rounded-xl"
-                    style={{ backgroundColor: si.color + "15" }}
+                    style={[twStyle("h-10 w-10 items-center justify-center rounded-xl"), { backgroundColor: si.color + "15" }]}
                   >
                     <Ionicons name={si.icon} size={18} color={si.color} />
                   </View>
-                  <View className="ml-3 flex-1">
-                    <View className="flex-row items-center gap-2">
-                      <Text className="text-sm font-semibold text-gray-900">{source.name}</Text>
+                  <View style={twStyle("ml-3 flex-1")}>
+                    <View style={twStyle("flex-row items-center")}>
+                      <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>{source.name}</Text>
                       {!source.is_active && (
-                        <View className="rounded-full bg-gray-100 px-2 py-0.5">
-                          <Text className="text-[10px] text-gray-500">Inactive</Text>
+                        <View style={twStyle("rounded-full bg-gray-100 px-2 py-0.5")}>
+                          <Text style={twStyle("text-[10px] text-gray-500")}>Inactive</Text>
                         </View>
                       )}
                     </View>
                     {source.description && (
-                      <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={1}>
+                      <Text style={twStyle("mt-0.5 text-xs text-gray-500")} numberOfLines={1}>
                         {source.description}
                       </Text>
                     )}
                     {source.client_count != null && source.client_count > 0 && (
-                      <Text className="mt-0.5 text-xs text-indigo-600">
+                      <Text style={twStyle("mt-0.5 text-xs text-indigo-600")}>
                         {source.client_count} client{source.client_count !== 1 ? "s" : ""}
                       </Text>
                     )}
                   </View>
-                  <View className="flex-row items-center gap-2">
+                  <View style={twStyle("flex-row items-center")}>
                     <Switch
                       value={source.is_active}
                       onValueChange={() => handleToggleActive(source)}
                       trackColor={{ false: "#d1d5db", true: "#818cf8" }}
                       thumbColor={source.is_active ? "#6366f1" : "#f4f4f5"}
-                      style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                      style={{ marginRight: 8, transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
                     />
                     <TouchableOpacity onPress={() => handleDelete(source)} hitSlop={8}>
                       <Ionicons name="trash-outline" size={16} color="#ef4444" />
@@ -273,26 +274,26 @@ export default function ReferralSourcesScreen() {
         title={editing ? "Edit Referral Source" : "New Referral Source"}
       >
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">Name *</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Name *</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
             placeholder="e.g. Instagram, Google, Friend"
             placeholderTextColor="#9ca3af"
           />
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Description</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Description</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
             onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
             placeholder="Optional details..."
             placeholderTextColor="#9ca3af"
           />
 
-          <View className="mb-4 flex-row items-center justify-between">
-            <Text className="text-sm font-medium text-gray-700">Active</Text>
+          <View style={twStyle("mb-4 flex-row items-center justify-between")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
             <Switch
               value={form.isActive}
               onValueChange={(v) => setForm((p) => ({ ...p, isActive: v }))}

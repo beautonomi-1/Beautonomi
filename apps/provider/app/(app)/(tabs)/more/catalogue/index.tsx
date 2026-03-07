@@ -23,6 +23,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { formatCurrency, formatDuration } from "@/lib/format";
+import { Colors } from "@/constants/colors";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -326,25 +327,20 @@ export default function CatalogueScreen() {
         rightAction={
           <TouchableOpacity
             onPress={openAddSheet}
-            className="flex-row items-center rounded-xl bg-gray-900 px-4 py-2"
+            style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: Colors.gray[900], paddingHorizontal: 16, paddingVertical: 8 }}
             accessibilityLabel="Add service"
             accessibilityRole="button"
           >
             <Ionicons name="add" size={18} color="#fff" />
-            <Text className="ml-1 text-sm font-semibold text-white">Add</Text>
+            <Text style={{ marginLeft: 4, fontSize: 14, fontWeight: "600", color: Colors.white }}>Add</Text>
           </TouchableOpacity>
         }
       />
 
-      {/* ── Search & Filter ── */}
-      <View className="mb-3">
-        <SearchBar
-          placeholder="Search services..."
-          value={search}
-          onChangeText={setSearch}
-        />
+      <View style={{ marginBottom: 12 }}>
+        <SearchBar placeholder="Search services..." value={search} onChangeText={setSearch} />
       </View>
-      <View className="mb-3 flex-row items-center justify-between">
+      <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <FilterChipGroup
           options={[
             { label: "All", value: "all" },
@@ -370,63 +366,59 @@ export default function CatalogueScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* ── Category Chips (quick manage) ── */}
       {categories.length > 0 && (
-        <View className="mb-3 flex-row flex-wrap items-center gap-2">
+        <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
           {categories.map((cat) => (
             <TouchableOpacity
               key={cat.id}
-              className="flex-row items-center rounded-full border border-gray-200 bg-white px-3 py-1.5"
+              style={{ flexDirection: "row", alignItems: "center", borderRadius: 9999, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 12, paddingVertical: 6, marginRight: 8, marginBottom: 8 }}
               onPress={() => openEditCategory(cat)}
               onLongPress={() => handleDeleteCategory(cat)}
               accessibilityLabel={`Edit category ${cat.name}`}
             >
               {cat.color && (
-                <View className="mr-1.5 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />
+                <View style={{ marginRight: 6, height: 10, width: 10, borderRadius: 9999, backgroundColor: cat.color }} />
               )}
-              <Text className="text-xs font-medium text-gray-700">{cat.name}</Text>
+              <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700] }}>{cat.name}</Text>
             </TouchableOpacity>
           ))}
           <TouchableOpacity
-            className="flex-row items-center rounded-full border border-dashed border-gray-300 px-3 py-1.5"
+            style={{ flexDirection: "row", alignItems: "center", borderRadius: 9999, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[300], paddingHorizontal: 12, paddingVertical: 6, marginRight: 8, marginBottom: 8 }}
             onPress={openAddCategory}
             accessibilityLabel="Add category"
           >
             <Ionicons name="add" size={14} color="#6b7280" />
-            <Text className="ml-1 text-xs font-medium text-gray-500">Category</Text>
+            <Text style={{ marginLeft: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Category</Text>
           </TouchableOpacity>
         </View>
       )}
       {categories.length === 0 && (
         <TouchableOpacity
-          className="mb-3 flex-row items-center rounded-xl border border-dashed border-gray-300 p-3"
+          style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[300], padding: 12 }}
           onPress={openAddCategory}
           accessibilityLabel="Add first category"
         >
           <Ionicons name="folder-open-outline" size={18} color="#6b7280" />
-          <Text className="ml-2 text-sm text-gray-500">Add your first category to organize services</Text>
+          <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[500] }}>Add your first category to organize services</Text>
         </TouchableOpacity>
       )}
 
-      {/* ── Bulk Actions Bar ── */}
       {bulkMode && selectedIds.size > 0 && (
-        <View className="mb-3 flex-row items-center gap-3 rounded-xl bg-gray-50 p-3">
-          <Text className="flex-1 text-sm text-gray-700">
-            {selectedIds.size} selected
-          </Text>
+        <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
+          <Text style={{ flex: 1, fontSize: 14, color: Colors.gray[700] }}>{selectedIds.size} selected</Text>
           <TouchableOpacity
-            className="rounded-lg bg-green-500 px-3 py-1.5"
+            style={{ borderRadius: 8, backgroundColor: "#22c55e", paddingHorizontal: 12, paddingVertical: 6, marginRight: 12 }}
             onPress={() => handleBulkToggle(true)}
             accessibilityLabel="Bulk activate"
           >
-            <Text className="text-xs font-medium text-white">Activate</Text>
+            <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.white }}>Activate</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            className="rounded-lg bg-gray-400 px-3 py-1.5"
+            style={{ borderRadius: 8, backgroundColor: Colors.gray[400], paddingHorizontal: 12, paddingVertical: 6 }}
             onPress={() => handleBulkToggle(false)}
             accessibilityLabel="Bulk deactivate"
           >
-            <Text className="text-xs font-medium text-white">Deactivate</Text>
+            <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.white }}>Deactivate</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -453,161 +445,90 @@ export default function CatalogueScreen() {
           renderItem={({ item: [category, items] }: { item: [string, ServiceItem[]] }) => {
             const isCollapsed = collapsedCategories.has(category);
             return (
-              <View className="mb-4">
-                {/* Category header */}
+              <View style={{ marginBottom: 16 }}>
                 <TouchableOpacity
-                  className="mb-2 flex-row items-center justify-between"
+                  style={{ marginBottom: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
                   onPress={() => toggleCollapse(category)}
                   accessibilityLabel={`${isCollapsed ? "Expand" : "Collapse"} ${category}`}
                 >
-                  <Text className="text-sm font-semibold uppercase tracking-wider text-gray-400">
+                  <Text style={{ fontSize: 14, fontWeight: "600", letterSpacing: 1, textTransform: "uppercase", color: Colors.gray[400] }}>
                     {category} ({items.length})
                   </Text>
-                  <Ionicons
-                    name={isCollapsed ? "chevron-down" : "chevron-up"}
-                    size={16}
-                    color="#9ca3af"
-                  />
+                  <Ionicons name={isCollapsed ? "chevron-down" : "chevron-up"} size={16} color="#9ca3af" />
                 </TouchableOpacity>
 
                 {!isCollapsed && (
-                  <View className={isTablet ? "flex-row flex-wrap gap-3" : "gap-2"}>
-                    {items.map((service: ServiceItem, svcIdx: number) => (
+                  <View style={[isTablet ? { flexDirection: "row", flexWrap: "wrap" } : {}]}>
+                    {items.map((service: ServiceItem) => (
                       <View
                         key={service.id}
-                        className={`rounded-xl border border-gray-100 bg-white p-4 ${isTablet ? "w-[48.5%]" : ""} ${!service.is_active ? "opacity-60" : ""}`}
+                        style={[
+                          { borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 },
+                          isTablet ? { width: "48.5%", marginRight: 12, marginBottom: 12 } : { marginBottom: 8 },
+                          !service.is_active && { opacity: 0.6 },
+                        ]}
                       >
                         <TouchableOpacity
-                          className="flex-row items-start"
+                          style={{ flexDirection: "row", alignItems: "flex-start" }}
                           onPress={() => {
-                            if (bulkMode) {
-                              toggleSelected(service.id);
-                            } else {
-                              router.push(
-                                `/(app)/(tabs)/more/catalogue/${service.id}` as any,
-                              );
-                            }
+                            if (bulkMode) toggleSelected(service.id);
+                            else router.push(`/(app)/(tabs)/more/catalogue/${service.id}` as any);
                           }}
                           accessibilityLabel={`${bulkMode ? "Select" : "View"} ${service.title}`}
                         >
                           {bulkMode && (
                             <Ionicons
-                              name={
-                                selectedIds.has(service.id)
-                                  ? "checkbox"
-                                  : "square-outline"
-                              }
+                              name={selectedIds.has(service.id) ? "checkbox" : "square-outline"}
                               size={20}
-                              color={
-                                selectedIds.has(service.id) ? "#6366f1" : "#9ca3af"
-                              }
+                              color={selectedIds.has(service.id) ? "#6366f1" : "#9ca3af"}
                               style={{ marginRight: 8, marginTop: 2 }}
                             />
                           )}
-                          <View className="flex-1">
-                            <Text
-                              className="text-base font-semibold text-gray-900"
-                              numberOfLines={1}
-                            >
-                              {service.title}
-                            </Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>{service.title}</Text>
                             {service.description ? (
-                              <Text
-                                className="mt-0.5 text-xs text-gray-500"
-                                numberOfLines={2}
-                              >
-                                {service.description}
-                              </Text>
+                              <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>{service.description}</Text>
                             ) : null}
                           </View>
-                          <Text className="ml-2 text-base font-bold text-gray-900">
+                          <Text style={{ marginLeft: 8, fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
                             {formatCurrency(service.price, service.currency)}
                           </Text>
                         </TouchableOpacity>
 
-                        {/* Meta row */}
-                        <View className="mt-2 flex-row items-center justify-between">
-                          <View className="flex-row items-center gap-3">
-                            <View className="flex-row items-center">
-                              <Ionicons
-                                name="time-outline"
-                                size={12}
-                                color="#9ca3af"
-                              />
-                              <Text className="ml-1 text-xs text-gray-500">
-                                {formatDuration(service.duration_minutes)}
-                              </Text>
+                        <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                          <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", marginRight: 12 }}>
+                              <Ionicons name="time-outline" size={12} color="#9ca3af" />
+                              <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[500] }}>{formatDuration(service.duration_minutes)}</Text>
                             </View>
                             {service.supports_at_home && (
-                              <View className="flex-row items-center">
-                                <Ionicons
-                                  name="home-outline"
-                                  size={12}
-                                  color="#9ca3af"
-                                />
-                                <Text className="ml-1 text-xs text-gray-500">
-                                  Home
-                                </Text>
+                              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                <Ionicons name="home-outline" size={12} color="#9ca3af" />
+                                <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[500] }}>Home</Text>
                               </View>
                             )}
                             {service.supports_at_salon && (
-                              <View className="flex-row items-center">
-                                <Ionicons
-                                  name="business-outline"
-                                  size={12}
-                                  color="#9ca3af"
-                                />
-                                <Text className="ml-1 text-xs text-gray-500">
-                                  Salon
-                                </Text>
+                              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                <Ionicons name="business-outline" size={12} color="#9ca3af" />
+                                <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[500] }}>Salon</Text>
                               </View>
                             )}
                           </View>
 
-                          <View className="flex-row items-center gap-2">
-                            {/* Reorder buttons */}
+                          <View style={{ flexDirection: "row", alignItems: "center" }}>
                             {!bulkMode && (
                               <>
-                                <TouchableOpacity
-                                  hitSlop={6}
-                                  onPress={() =>
-                                    handleReorder(service.id, "up")
-                                  }
-                                  accessibilityLabel={`Move ${service.title} up`}
-                                >
-                                  <Ionicons
-                                    name="arrow-up-circle-outline"
-                                    size={20}
-                                    color="#9ca3af"
-                                  />
+                                <TouchableOpacity hitSlop={6} onPress={() => handleReorder(service.id, "up")} accessibilityLabel={`Move ${service.title} up`} style={{ marginRight: 8 }}>
+                                  <Ionicons name="arrow-up-circle-outline" size={20} color="#9ca3af" />
                                 </TouchableOpacity>
-                                <TouchableOpacity
-                                  hitSlop={6}
-                                  onPress={() =>
-                                    handleReorder(service.id, "down")
-                                  }
-                                  accessibilityLabel={`Move ${service.title} down`}
-                                >
-                                  <Ionicons
-                                    name="arrow-down-circle-outline"
-                                    size={20}
-                                    color="#9ca3af"
-                                  />
+                                <TouchableOpacity hitSlop={6} onPress={() => handleReorder(service.id, "down")} accessibilityLabel={`Move ${service.title} down`} style={{ marginRight: 8 }}>
+                                  <Ionicons name="arrow-down-circle-outline" size={20} color="#9ca3af" />
                                 </TouchableOpacity>
                               </>
                             )}
-                            {/* Active toggle */}
-                            <TouchableOpacity
-                              hitSlop={8}
-                              onPress={() => handleToggleActive(service)}
-                              accessibilityLabel={`Toggle ${service.title} active`}
-                            >
-                              <View
-                                className={`h-6 w-10 rounded-full ${service.is_active ? "bg-green-500" : "bg-gray-300"} justify-center px-0.5`}
-                              >
-                                <View
-                                  className={`h-5 w-5 rounded-full bg-white ${service.is_active ? "self-end" : "self-start"}`}
-                                />
+                            <TouchableOpacity hitSlop={8} onPress={() => handleToggleActive(service)} accessibilityLabel={`Toggle ${service.title} active`}>
+                              <View style={{ height: 24, width: 40, borderRadius: 9999, backgroundColor: service.is_active ? "#22c55e" : Colors.gray[300], justifyContent: "center", paddingHorizontal: 2 }}>
+                                <View style={{ height: 20, width: 20, borderRadius: 9999, backgroundColor: Colors.white, alignSelf: service.is_active ? "flex-end" : "flex-start" }} />
                               </View>
                             </TouchableOpacity>
                           </View>
@@ -645,8 +566,8 @@ export default function CatalogueScreen() {
           multiline
         />
 
-        <View className="mb-3 flex-row gap-3">
-          <View className="flex-1">
+        <View style={{ marginBottom: 12, flexDirection: "row" }}>
+          <View style={{ flex: 1, marginRight: 12 }}>
             <FormField
               label="Duration (min)"
               value={form.duration_minutes}
@@ -657,7 +578,7 @@ export default function CatalogueScreen() {
               keyboardType="numeric"
             />
           </View>
-          <View className="flex-1">
+          <View style={{ flex: 1 }}>
             <FormField
               label="Price (R) *"
               value={form.price}
@@ -668,59 +589,43 @@ export default function CatalogueScreen() {
           </View>
         </View>
 
-        {/* Currency */}
-        <Text className="mb-1 text-sm font-medium text-gray-700">Currency</Text>
-        <View className="mb-3 flex-row gap-2">
+        <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Currency</Text>
+        <View style={{ marginBottom: 12, flexDirection: "row" }}>
           {["ZAR", "USD", "GBP", "EUR"].map((c) => (
             <TouchableOpacity
               key={c}
-              className={`rounded-full px-4 py-2 ${form.currency === c ? "bg-gray-900" : "border border-gray-200 bg-white"}`}
+              style={{ borderRadius: 9999, paddingHorizontal: 16, paddingVertical: 8, marginRight: 8, backgroundColor: form.currency === c ? Colors.gray[900] : Colors.white, borderWidth: form.currency === c ? 0 : 1, borderColor: Colors.gray[200] }}
               onPress={() => setForm((p) => ({ ...p, currency: c }))}
               accessibilityLabel={`Select currency ${c}`}
             >
-              <Text
-                className={`text-sm font-medium ${form.currency === c ? "text-white" : "text-gray-600"}`}
-              >
-                {c}
-              </Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: form.currency === c ? Colors.white : Colors.gray[600] }}>{c}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Category Selector */}
         {categories && categories.length > 0 && (
           <>
-            <Text className="mb-1 text-sm font-medium text-gray-700">Category</Text>
-            <View className="mb-3 flex-row flex-wrap gap-2">
+            <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Category</Text>
+            <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap" }}>
               {categories.map((cat) => (
                 <TouchableOpacity
                   key={cat.id}
-                  className={`rounded-full px-4 py-2 ${form.category_id === cat.id ? "bg-gray-900" : "border border-gray-200 bg-white"}`}
-                  onPress={() =>
-                    setForm((p) => ({
-                      ...p,
-                      category_id: p.category_id === cat.id ? "" : cat.id,
-                    }))
-                  }
+                  style={{ borderRadius: 9999, paddingHorizontal: 16, paddingVertical: 8, marginRight: 8, marginBottom: 8, backgroundColor: form.category_id === cat.id ? Colors.gray[900] : Colors.white, borderWidth: form.category_id === cat.id ? 0 : 1, borderColor: Colors.gray[200] }}
+                  onPress={() => setForm((p) => ({ ...p, category_id: p.category_id === cat.id ? "" : cat.id }))}
                   accessibilityLabel={`Select category ${cat.name}`}
                 >
-                  <Text
-                    className={`text-sm font-medium ${form.category_id === cat.id ? "text-white" : "text-gray-600"}`}
-                  >
-                    {cat.name}
-                  </Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: form.category_id === cat.id ? Colors.white : Colors.gray[600] }}>{cat.name}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </>
         )}
 
-        {/* Toggles */}
-        <View className="mb-3 gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center">
+        <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 16 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Ionicons name="home-outline" size={18} color="#6b7280" />
-              <Text className="ml-2 text-sm text-gray-900">At Home</Text>
+              <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[900] }}>At Home</Text>
             </View>
             <Switch
               value={form.supports_at_home}
@@ -732,10 +637,10 @@ export default function CatalogueScreen() {
               accessibilityLabel="Toggle at home"
             />
           </View>
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center">
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Ionicons name="business-outline" size={18} color="#6b7280" />
-              <Text className="ml-2 text-sm text-gray-900">At Salon</Text>
+              <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[900] }}>At Salon</Text>
             </View>
             <Switch
               value={form.supports_at_salon}
@@ -747,10 +652,10 @@ export default function CatalogueScreen() {
               accessibilityLabel="Toggle at salon"
             />
           </View>
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center">
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Ionicons name="checkmark-circle-outline" size={18} color="#6b7280" />
-              <Text className="ml-2 text-sm text-gray-900">Active</Text>
+              <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[900] }}>Active</Text>
             </View>
             <Switch
               value={form.is_active}
@@ -762,7 +667,7 @@ export default function CatalogueScreen() {
           </View>
         </View>
 
-        <View className="mt-2">
+        <View style={{ marginTop: 8 }}>
           <ActionButton
             label="Add Service"
             onPress={handleSubmitService}
@@ -794,26 +699,34 @@ export default function CatalogueScreen() {
           multiline
         />
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">Color</Text>
-        <View className="mb-4 flex-row flex-wrap gap-2">
+        <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Color</Text>
+        <View style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap" }}>
           {["#6366f1", "#ef4444", "#22c55e", "#f59e0b", "#ec4899", "#06b6d4", "#8b5cf6", "#f97316"].map((c) => (
             <TouchableOpacity
               key={c}
-              className={`h-9 w-9 items-center justify-center rounded-full ${catForm.color === c ? "border-2 border-gray-900" : "border border-gray-200"}`}
-              style={{ backgroundColor: c }}
+              style={{
+                height: 36,
+                width: 36,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 9999,
+                borderWidth: catForm.color === c ? 2 : 1,
+                borderColor: catForm.color === c ? Colors.gray[900] : Colors.gray[200],
+                backgroundColor: c,
+                marginRight: 8,
+                marginBottom: 8,
+              }}
               onPress={() => setCatForm((p) => ({ ...p, color: c }))}
               accessibilityLabel={`Color ${c}`}
             >
-              {catForm.color === c && (
-                <Ionicons name="checkmark" size={18} color="#fff" />
-              )}
+              {catForm.color === c && <Ionicons name="checkmark" size={18} color="#fff" />}
             </TouchableOpacity>
           ))}
         </View>
 
-        <View className="flex-row gap-3">
+        <View style={{ flexDirection: "row" }}>
           {editingCatId && (
-            <View className="flex-1">
+            <View style={{ flex: 1, marginRight: 12 }}>
               <ActionButton
                 label="Delete"
                 variant="danger"
@@ -825,7 +738,7 @@ export default function CatalogueScreen() {
               />
             </View>
           )}
-          <View className="flex-1">
+          <View style={{ flex: 1 }}>
             <ActionButton
               label={editingCatId ? "Save" : "Create"}
               onPress={handleSaveCategory}
@@ -859,10 +772,13 @@ function FormField({
   multiline?: boolean;
 }) {
   return (
-    <View className="mb-3">
-      <Text className="mb-1 text-sm font-medium text-gray-700">{label}</Text>
+    <View style={{ marginBottom: 12 }}>
+      <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{label}</Text>
       <TextInput
-        className={`rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 ${multiline ? "min-h-[80px]" : ""}`}
+        style={[
+          { borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] },
+          multiline && { minHeight: 80 },
+        ]}
         placeholder={placeholder}
         placeholderTextColor="#9ca3af"
         value={value}

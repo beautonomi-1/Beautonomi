@@ -209,57 +209,57 @@ const PageContent = () => {
             <div className="flex overflow-x-auto scrollbar-hide px-4 md:px-10 w-full" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
               <TabsTrigger
                 value="services"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent data-[state=active]:text-[#FF0077] rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
+                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
               >
                 Services
               </TabsTrigger>
               <TabsTrigger
                 value="shop"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent data-[state=active]:text-[#FF0077] rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
+                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
               >
                 Shop
               </TabsTrigger>
               <TabsTrigger
                 value="photos"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent data-[state=active]:text-[#FF0077] rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
+                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
               >
                 Photos
               </TabsTrigger>
               {provider.business_type === "salon" && provider.staff_count && provider.staff_count > 0 && (
                 <TabsTrigger
                   value="team"
-                  className="data-[state=active]:border-b-2 data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent data-[state=active]:text-[#FF0077] rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
+                  className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
                 >
                   Team
                 </TabsTrigger>
               )}
               <TabsTrigger
                 value="reviews"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent data-[state=active]:text-[#FF0077] rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
+                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
               >
                 Reviews
               </TabsTrigger>
               <TabsTrigger
                 value="memberships"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent data-[state=active]:text-[#FF0077] rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
+                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
               >
                 Memberships
               </TabsTrigger>
               <TabsTrigger
                 value="giftcard"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent data-[state=active]:text-[#FF0077] rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
+                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
               >
                 Giftcard
               </TabsTrigger>
               <TabsTrigger
                 value="custom-service"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent data-[state=active]:text-[#FF0077] rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
+                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
               >
                 Request Custom Service
               </TabsTrigger>
               <TabsTrigger
                 value="about"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent data-[state=active]:text-[#FF0077] rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
+                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
               >
                 About
               </TabsTrigger>

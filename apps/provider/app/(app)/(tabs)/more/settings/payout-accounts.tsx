@@ -17,6 +17,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatCard } from "@/components/ui/StatCard";
+import { twStyle } from "@/lib/twStyle";
 
 interface PayoutAccount {
   id: string;
@@ -246,7 +247,7 @@ export default function PayoutAccountsScreen() {
         subtitle="Bank accounts for payouts"
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-900"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
 onPress={() => {
               setForm((p) => ({
                 ...p,
@@ -265,8 +266,8 @@ onPress={() => {
       />
 
       {accounts && accounts.length > 0 && (
-        <View className="mb-3 flex-row gap-3">
-          <View className="flex-1">
+        <View style={twStyle("mb-3 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <StatCard
               title="Total"
               value={String(accounts.length)}
@@ -276,7 +277,7 @@ onPress={() => {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <StatCard
               title="Active"
               value={String(activeCount)}
@@ -291,10 +292,10 @@ onPress={() => {
 
       {/* Primary account banner */}
       {primaryAccount && (
-        <View className="mb-3 rounded-xl border border-indigo-100 bg-indigo-50 p-3">
-          <View className="flex-row items-center gap-2">
-            <Ionicons name="star" size={14} color="#6366f1" />
-            <Text className="text-xs font-medium text-indigo-700">
+        <View style={twStyle("mb-3 rounded-xl border border-indigo-100 bg-indigo-50 p-3")}>
+          <View style={twStyle("flex-row items-center")}>
+            <Ionicons name="star" size={14} color="#6366f1" style={{ marginRight: 8 }} />
+            <Text style={twStyle("text-xs font-medium text-indigo-700")}>
               Primary: {primaryAccount.account_name} (
               {primaryAccount.bank_name ?? "Bank"} ····{" "}
               {primaryAccount.account_number_last4})
@@ -316,14 +317,15 @@ onPress={() => {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: account }: { item: PayoutAccount }) => (
             <TouchableOpacity
-              className={`rounded-xl border bg-white p-4 ${
+              style={twStyle(`rounded-xl border bg-white p-4 ${
                 account.is_primary
                   ? "border-indigo-200"
                   : "border-gray-100"
-              }`}
+              }`)}
               onPress={() => handleSetPrimary(account)}
               onLongPress={() =>
                 Alert.alert(account.account_name, undefined, [
@@ -345,11 +347,11 @@ onPress={() => {
               }
               activeOpacity={0.7}
             >
-              <View className="flex-row items-center">
+              <View style={twStyle("flex-row items-center")}>
                 <View
-                  className={`h-10 w-10 items-center justify-center rounded-lg ${
+                  style={twStyle(`h-10 w-10 items-center justify-center rounded-lg ${
                     account.is_primary ? "bg-indigo-100" : "bg-gray-100"
-                  }`}
+                  }`)}
                 >
                   <Ionicons
                     name="business-outline"
@@ -357,34 +359,34 @@ onPress={() => {
                     color={account.is_primary ? "#6366f1" : "#6b7280"}
                   />
                 </View>
-                <View className="ml-3 flex-1">
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-sm font-semibold text-gray-900">
+                <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("flex-row items-center")}>
+                    <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>
                       {account.account_name}
                     </Text>
                     {account.is_primary && (
-                      <View className="rounded-full bg-indigo-100 px-2 py-0.5">
-                        <Text className="text-[9px] font-bold text-indigo-700">
+                      <View style={[twStyle("rounded-full bg-indigo-100 px-2 py-0.5"), { marginRight: 8 }]}>
+                        <Text style={twStyle("text-[9px] font-bold text-indigo-700")}>
                           PRIMARY
                         </Text>
                       </View>
                     )}
                   </View>
-                  <Text className="text-xs text-gray-500">
+                  <Text style={twStyle("text-xs text-gray-500")}>
                     {account.bank_name ?? "Bank"} ····{" "}
                     {account.account_number_last4}
                   </Text>
                 </View>
-                <View className="flex-row items-center gap-2">
+                <View style={twStyle("flex-row items-center")}>
                   <View
-                    className={`rounded-full px-2 py-0.5 ${
+                    style={[twStyle(`rounded-full px-2 py-0.5 ${
                       account.active ? "bg-green-50" : "bg-gray-100"
-                    }`}
+                    }`), { marginRight: 8 }]}
                   >
                     <Text
-                      className={`text-[10px] font-medium ${
+                      style={twStyle(`text-[10px] font-medium ${
                         account.active ? "text-green-700" : "text-gray-500"
-                      }`}
+                      }`)}
                     >
                       {account.active ? "Active" : "Inactive"}
                     </Text>
@@ -410,24 +412,24 @@ onPress={() => {
         title="Add Bank Account"
       >
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Country *
           </Text>
-          <View className="mb-3 flex-row flex-wrap gap-2">
+          <View style={twStyle("mb-3 flex-row flex-wrap")}>
             {SUPPORTED_COUNTRIES.map((c) => (
               <TouchableOpacity
                 key={c.code}
-                className={`rounded-xl border px-4 py-2.5 ${
+                style={[twStyle(`rounded-xl border px-4 py-2.5 ${
                   form.country === c.code
                     ? "border-indigo-300 bg-indigo-50"
                     : "border-gray-200 bg-white"
-                }`}
+                }`), { marginRight: 8, marginBottom: 8 }]}
                 onPress={() => selectCountry(c.code)}
               >
                 <Text
-                  className={`text-sm font-medium ${
+                  style={twStyle(`text-sm font-medium ${
                     form.country === c.code ? "text-indigo-700" : "text-gray-600"
-                  }`}
+                  }`)}
                 >
                   {c.label}
                 </Text>
@@ -435,18 +437,18 @@ onPress={() => {
             ))}
           </View>
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Bank * (Paystack)
           </Text>
           <TouchableOpacity
-            className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+            style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
             onPress={() => setShowBankPicker(true)}
             disabled={banksLoading}
           >
             <Text
-              className={`text-base ${
+              style={twStyle(`text-base ${
                 form.bank_name ? "text-gray-900" : "text-gray-400"
-              }`}
+              }`)}
             >
               {banksLoading
                 ? "Loading banks…"
@@ -456,10 +458,10 @@ onPress={() => {
           </TouchableOpacity>
 
           {showBankPicker && (
-            <View className="mb-3 max-h-48 overflow-hidden rounded-xl border border-gray-200 bg-white">
+            <View style={twStyle("mb-3 max-h-48 overflow-hidden rounded-xl border border-gray-200 bg-white")}>
               {banks.length === 0 && !banksLoading ? (
-                <View className="p-4">
-                  <Text className="text-sm text-gray-500">
+                <View style={twStyle("p-4")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>
                     No banks returned for this country. Check your Paystack setup.
                   </Text>
                 </View>
@@ -467,12 +469,12 @@ onPress={() => {
                 banks.map((bank) => (
                   <TouchableOpacity
                     key={`${bank.code}-${bank.id}`}
-                    className={`flex-row items-center justify-between border-b border-gray-50 px-4 py-3 ${
+                    style={twStyle(`flex-row items-center justify-between border-b border-gray-50 px-4 py-3 ${
                       form.bank_code === bank.code ? "bg-indigo-50" : ""
-                    }`}
+                    }`)}
                     onPress={() => selectBank(bank)}
                   >
-                    <Text className="text-sm text-gray-900">{bank.name}</Text>
+                    <Text style={twStyle("text-sm text-gray-900")}>{bank.name}</Text>
                     {form.bank_code === bank.code && (
                       <Ionicons name="checkmark" size={16} color="#6366f1" />
                     )}
@@ -482,11 +484,11 @@ onPress={() => {
             </View>
           )}
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Account Number * (8–15 digits)
           </Text>
           <TextInput
-            className="mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.account_number}
             onChangeText={(t) => {
               setForm((p) => ({ ...p, account_number: t.replace(/\D/g, "").slice(0, 15) }));
@@ -497,7 +499,7 @@ onPress={() => {
             keyboardType="number-pad"
           />
           <TouchableOpacity
-            className="mb-3 flex-row items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 py-2.5"
+            style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 py-2.5")}
             onPress={handleVerify}
             disabled={
               form.account_number.trim().length < 8 ||
@@ -506,33 +508,33 @@ onPress={() => {
             }
           >
             {verifying ? (
-              <Text className="text-sm font-medium text-indigo-700">Verifying…</Text>
+              <Text style={twStyle("text-sm font-medium text-indigo-700")}>Verifying…</Text>
             ) : (
               <>
                 <Ionicons name="shield-checkmark-outline" size={18} color="#6366f1" />
-                <Text className="ml-2 text-sm font-medium text-indigo-700">
+                <Text style={twStyle("ml-2 text-sm font-medium text-indigo-700")}>
                   Verify with Paystack (auto-fill name)
                 </Text>
               </>
             )}
           </TouchableOpacity>
           {verifiedName && (
-            <View className="mb-3 rounded-xl border border-green-200 bg-green-50 p-3">
-              <Text className="text-xs font-medium text-green-800">Verified account name</Text>
-              <Text className="text-sm font-medium text-green-900">{verifiedName}</Text>
+            <View style={twStyle("mb-3 rounded-xl border border-green-200 bg-green-50 p-3")}>
+              <Text style={twStyle("text-xs font-medium text-green-800")}>Verified account name</Text>
+              <Text style={twStyle("text-sm font-medium text-green-900")}>{verifiedName}</Text>
             </View>
           )}
           {verifyError && (
-            <View className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3">
-              <Text className="text-sm text-red-700">{verifyError}</Text>
+            <View style={twStyle("mb-3 rounded-xl border border-red-200 bg-red-50 p-3")}>
+              <Text style={twStyle("text-sm text-red-700")}>{verifyError}</Text>
             </View>
           )}
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Account Holder Name *
           </Text>
           <TextInput
-            className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.account_name}
             onChangeText={(t) => setForm((p) => ({ ...p, account_name: t }))}
             placeholder="Full name as on account"
@@ -546,7 +548,7 @@ onPress={() => {
             fullWidth
           />
 
-          <Text className="mt-3 text-center text-xs text-gray-400">
+          <Text style={twStyle("mt-3 text-center text-xs text-gray-400")}>
             Uses Paystack: verify then create transfer recipient. Stored securely.
           </Text>
         </View>

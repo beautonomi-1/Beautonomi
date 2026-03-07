@@ -178,7 +178,7 @@ export default function ShareModal({
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                   <Button 
                     variant="outline" 
-                    className="w-full flex items-center justify-start px-4 gap-3 font-medium hover:bg-pink-50 hover:border-[#FF0077] hover:text-[#FF0077] rounded-xl h-12 transition-all"
+                    className="w-full flex items-center justify-start px-4 gap-3 font-medium hover:bg-pink-50 hover:border-primary hover:text-primary rounded-xl h-12 transition-all"
                     onClick={handleCopyLink}
                   >
                     <span className="text-xl"><IoCopy/></span>
@@ -188,7 +188,7 @@ export default function ShareModal({
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                   <Button 
                     variant="outline" 
-                    className="w-full flex items-center justify-start px-4 gap-3 font-medium hover:bg-pink-50 hover:border-[#FF0077] hover:text-[#FF0077] rounded-xl h-12 transition-all"
+                    className="w-full flex items-center justify-start px-4 gap-3 font-medium hover:bg-pink-50 hover:border-primary hover:text-primary rounded-xl h-12 transition-all"
                     onClick={handleEmailShare}
                   >
                     <span className="text-xl"><MdEmail/></span>
@@ -198,7 +198,7 @@ export default function ShareModal({
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                   <Button 
                     variant="outline" 
-                    className="w-full flex items-center justify-start px-4 gap-3 font-medium hover:bg-pink-50 hover:border-[#FF0077] hover:text-[#FF0077] rounded-xl h-12 transition-all"
+                    className="w-full flex items-center justify-start px-4 gap-3 font-medium hover:bg-pink-50 hover:border-primary hover:text-primary rounded-xl h-12 transition-all"
                     onClick={handleWhatsAppShare}
                   >
                     <span className="text-xl text-green-600"><FaWhatsappSquare/></span>
@@ -208,7 +208,7 @@ export default function ShareModal({
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                   <Button 
                     variant="outline" 
-                    className="w-full flex items-center justify-start px-4 gap-3 font-medium hover:bg-pink-50 hover:border-[#FF0077] hover:text-[#FF0077] rounded-xl h-12 transition-all"
+                    className="w-full flex items-center justify-start px-4 gap-3 font-medium hover:bg-pink-50 hover:border-primary hover:text-primary rounded-xl h-12 transition-all"
                     onClick={handleFacebookShare}
                   >
                     <span className="text-xl text-blue-600"><FaFacebookSquare/></span>
@@ -218,7 +218,7 @@ export default function ShareModal({
                 <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                   <Button 
                     variant="outline" 
-                    className="w-full flex items-center justify-start px-4 gap-3 font-medium hover:bg-pink-50 hover:border-[#FF0077] hover:text-[#FF0077] rounded-xl h-12 transition-all"
+                    className="w-full flex items-center justify-start px-4 gap-3 font-medium hover:bg-pink-50 hover:border-primary hover:text-primary rounded-xl h-12 transition-all"
                     onClick={handleTwitterShare}
                   >
                     <span className="text-xl"><FaSquareXTwitter/></span>
@@ -237,7 +237,7 @@ export default function ShareModal({
                   <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
                     <Button
                       variant="outline"
-                      className="w-full flex items-center justify-center gap-2 h-12 font-medium hover:bg-pink-50 hover:border-[#FF0077] hover:text-[#FF0077] rounded-xl transition-all"
+                      className="w-full flex items-center justify-center gap-2 h-12 font-medium hover:bg-pink-50 hover:border-primary hover:text-primary rounded-xl transition-all"
                       onClick={handleNativeShare}
                     >
                       <BiSolidMessageSquareDetail className="text-lg" />

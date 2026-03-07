@@ -118,7 +118,7 @@ export default function ServiceZonesControlPlanePage() {
         <div className="flex-none px-4 py-3 border-b bg-white">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Layers className="w-6 h-6 text-[#FF0077]" />
+              <Layers className="w-6 h-6 text-primary" />
               <div>
                 <h1 className="text-xl font-semibold">Service Zones Control Plane</h1>
                 <p className="text-sm text-gray-500">

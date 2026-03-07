@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
+import { Colors } from "@/constants/colors";
 
 interface PackageItem {
   id: string;
@@ -95,41 +96,44 @@ export default function PackagesListScreen() {
     return (
       <View
         key={pkg.id}
-        className={`mb-3 rounded-xl border border-gray-100 bg-white p-4 ${!pkg.is_active ? "opacity-60" : ""}`}
+        style={[
+          { marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 },
+          !pkg.is_active && { opacity: 0.6 },
+        ]}
       >
-        <View className="flex-row items-start justify-between">
-          <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
             {pkg.name}
           </Text>
           {!pkg.is_active && (
-            <View className="rounded bg-gray-200 px-2 py-0.5">
-              <Text className="text-xs font-medium text-gray-600">Inactive</Text>
+            <View style={{ borderRadius: 4, backgroundColor: Colors.gray[200], paddingHorizontal: 8, paddingVertical: 2 }}>
+              <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[600] }}>Inactive</Text>
             </View>
           )}
         </View>
         {pkg.description ? (
-          <Text className="mt-1 text-sm text-gray-500" numberOfLines={2}>
+          <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[500] }} numberOfLines={2}>
             {pkg.description}
           </Text>
         ) : null}
-        <Text className="mt-2 text-lg font-bold text-indigo-600">
+        <Text style={{ marginTop: 8, fontSize: 18, fontWeight: "700", color: "#4f46e6" }}>
           {formatCurrency(pkg.price, pkg.currency)}
         </Text>
         {pkg.discount_percentage != null && pkg.discount_percentage > 0 && (
-          <Text className="mt-0.5 text-sm text-green-600">
+          <Text style={{ marginTop: 2, fontSize: 14, color: "#16a34a" }}>
             {pkg.discount_percentage}% discount
           </Text>
         )}
-        <View className="mt-2 border-t border-gray-100 pt-2">
-          <Text className="text-xs font-medium text-gray-500">Includes</Text>
+        <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingTop: 8 }}>
+          <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Includes</Text>
           {pkg.items.slice(0, 3).map((item) => (
-            <Text key={item.id} className="mt-0.5 text-sm text-gray-600" numberOfLines={1}>
+            <Text key={item.id} style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }} numberOfLines={1}>
               • {itemLabel(item)}
               {item.quantity > 1 ? ` (x${item.quantity})` : ""}
             </Text>
           ))}
           {pkg.items.length > 3 && (
-            <Text className="mt-0.5 text-xs text-gray-400">
+            <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[400] }}>
               +{pkg.items.length - 3} more
             </Text>
           )}
@@ -165,7 +169,7 @@ export default function PackagesListScreen() {
         rightAction={
           <TouchableOpacity
             onPress={handleCreatePackage}
-            className="h-10 min-w-[44px] flex-row items-center justify-center rounded-full bg-indigo-600 px-3"
+            style={{ height: 40, minWidth: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#4f46e6", paddingHorizontal: 12 }}
             accessibilityLabel="Create package"
             accessibilityRole="button"
           >

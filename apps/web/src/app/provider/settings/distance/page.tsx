@@ -155,8 +155,8 @@ export default function DistanceSettingsPage() {
                     max_service_distance_km: parseFloat(e.target.value) || 1,
                   })
                 }
-                className="distance-slider h-3 w-full cursor-pointer appearance-none rounded-full bg-gray-200 focus:outline-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#FF0077] [&::-webkit-slider-thumb]:shadow [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-[#FF0077] [&::-moz-range-thumb]:shadow"
-                style={{ accentColor: "#FF0077" }}
+                className="distance-slider h-3 w-full cursor-pointer appearance-none rounded-full bg-gray-200 focus:outline-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110 [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:shadow"
+                style={{ accentColor: "var(--primary)" }}
                 aria-valuemin={1}
                 aria-valuemax={100}
                 aria-valuenow={settings.max_service_distance_km}
@@ -205,7 +205,7 @@ export default function DistanceSettingsPage() {
         <Button
           onClick={handleSave}
           disabled={isSaving || (settings.is_distance_filter_enabled && (!settings.max_service_distance_km || settings.max_service_distance_km < 1))}
-          className="w-full sm:w-auto touch-target bg-[#FF0077] hover:bg-[#D60565]"
+          className="w-full sm:w-auto touch-target bg-primary hover:bg-primary-hover"
         >
           {isSaving ? (
             <>

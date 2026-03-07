@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert } fro
 import * as WebBrowser from "expo-web-browser";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
+import { Colors } from "@/constants/colors";
 
 const PRESET_AMOUNTS = [100, 200, 500, 1000];
 
@@ -69,22 +70,22 @@ export default function WalletScreen() {
 
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load}>
-      <View className="gap-6">
-        <View className="bg-pink-50 rounded-2xl p-6 items-center">
-          <Text className="text-sm text-gray-600">Wallet balance</Text>
-          <Text className="text-3xl font-bold text-gray-900 mt-1">{currency} {Number(balance).toFixed(2)}</Text>
+      <View>
+        <View style={{ backgroundColor: "#FDF2F8", borderRadius: 16, padding: 24, alignItems: "center" }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Wallet balance</Text>
+          <Text style={{ fontSize: 30, fontWeight: "700", color: Colors.gray[900], marginTop: 4 }}>{currency} {Number(balance).toFixed(2)}</Text>
         </View>
 
-        <View>
-          <Text className="font-semibold text-gray-900 mb-2">Top up</Text>
-          <View className="flex-row flex-wrap gap-2 mb-2">
+        <View style={{ marginTop: 24 }}>
+          <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Top up</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 8 }}>
             {PRESET_AMOUNTS.map((a) => (
               <TouchableOpacity
                 key={a}
                 onPress={() => setTopupAmount(String(a))}
-                className="bg-white border border-gray-200 rounded-xl px-4 py-2"
+                style={{ backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 8, marginRight: 8, marginBottom: 8 }}
               >
-                <Text className="text-gray-900 font-medium">{currency} {a}</Text>
+                <Text style={{ color: Colors.gray[900], fontWeight: "500" }}>{currency} {a}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -93,31 +94,31 @@ export default function WalletScreen() {
             onChangeText={setTopupAmount}
             placeholder={`Amount (${currency})`}
             keyboardType="decimal-pad"
-            className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 mb-2"
-            placeholderTextColor="#9CA3AF"
+            style={{ backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900], marginBottom: 8 }}
+            placeholderTextColor={Colors.gray[400]}
           />
           <TouchableOpacity
             onPress={startTopup}
             disabled={toppingUp || !topupAmount.trim()}
-            className="bg-[#FF0077] rounded-xl py-3 items-center"
+            style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 12, alignItems: "center" }}
           >
             {toppingUp ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text className="text-white font-semibold">Top up with Paystack</Text>
+              <Text style={{ color: Colors.white, fontWeight: "600" }}>Top up with Paystack</Text>
             )}
           </TouchableOpacity>
         </View>
 
         <View>
-          <Text className="font-semibold text-gray-900 mb-2">Recent transactions</Text>
+          <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Recent transactions</Text>
           {txs.length === 0 ? (
-            <Text className="text-gray-500 py-4">No transactions yet</Text>
+            <Text style={{ color: Colors.gray[500], paddingVertical: 16 }}>No transactions yet</Text>
           ) : (
             txs.slice(0, 10).map((t) => (
-              <View key={t.id} className="bg-gray-50 rounded-xl p-4 mb-2 flex-row justify-between">
-                <Text className="text-gray-900">{t.description || t.type || "Transaction"}</Text>
-                <Text className={Number(t.amount) >= 0 ? "text-green-600" : "text-red-600"}>
+              <View key={t.id} style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 8, flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ color: Colors.gray[900] }}>{t.description || t.type || "Transaction"}</Text>
+                <Text style={{ color: Number(t.amount) >= 0 ? "#16a34a" : "#B91C1C" }}>
                   {Number(t.amount) >= 0 ? "+" : ""}{currency} {Math.abs(Number(t.amount)).toFixed(2)}
                 </Text>
               </View>

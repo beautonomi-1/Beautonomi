@@ -386,11 +386,11 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           
           <p className="text-xs text-gray-600 mb-6">
             {"We'll"} call or text you to confirm your number. Standard message and data rates apply.{" "}
-            <Link href="/privacy-policy" className="font-semibold underline hover:text-[#FF0077]">Privacy Policy</Link>
+            <Link href="/privacy-policy" className="font-semibold underline hover:text-primary">Privacy Policy</Link>
           </p>
           
           <Button 
-            className="w-full bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white h-12 text-base font-medium mb-6"
+            className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium mb-6"
             onClick={handlePhoneAuth}
             disabled={isLoading}
           >
@@ -429,7 +429,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                 />
               </div>
               <Button 
-                className="w-full bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white h-12 text-base font-medium mb-6"
+                className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium mb-6"
                 onClick={handleEmailContinue}
                 disabled={isLoading || !email?.trim() || !fullName?.trim()}
               >
@@ -527,7 +527,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 rounded p-1 focus:outline-none focus:ring-2 focus:ring-[#FF0077]/30"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 rounded p-1 focus:outline-none focus:ring-2 focus:ring-primary/30"
                     aria-label={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -562,17 +562,17 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                 />
                 <label htmlFor="signup-agree-terms" id="signup-terms-text" className="text-sm text-gray-600 cursor-pointer">
                   I agree to the{" "}
-                  <Link href="/terms-and-condition" className="text-[#FF0077] font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
+                  <Link href="/terms-and-condition" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
                     Terms of Service
                   </Link>{" "}
                   and{" "}
-                  <Link href="/privacy-policy" className="text-[#FF0077] font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
+                  <Link href="/privacy-policy" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
                     Privacy Policy
                   </Link>
                 </label>
               </div>
               <Button 
-                className="w-full bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white h-12 text-base font-medium mb-4"
+                className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium mb-4"
                 onClick={handleEmailAuth}
                 disabled={isLoading || !password || !agreeTerms}
               >

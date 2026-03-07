@@ -122,7 +122,7 @@ export default function LoginPage() {
         </Link>
         <div className="rounded-2xl p-6 mb-2 bg-[rgba(255,0,119,0.06)]">
           <div className="w-14 h-14 rounded-full mx-auto flex items-center justify-center mb-2 bg-white/90">
-            <span className="text-2xl text-[#FF0077]" aria-hidden>◆</span>
+            <span className="text-2xl text-primary" aria-hidden>◆</span>
           </div>
         </div>
         <h1 className="text-center text-[28px] font-extrabold text-gray-900 mb-1" id="login-heading">
@@ -180,7 +180,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
-                className="p-1 rounded text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#FF0077]/30"
+                className="p-1 rounded text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -189,14 +189,14 @@ export default function LoginPage() {
           </div>
           <Link
             href={nextUrl ? `/forgot-password?next=${encodeURIComponent(nextUrl)}` : "/forgot-password"}
-            className="block text-sm text-gray-500 hover:text-[#FF0077] text-center mt-1"
+            className="block text-sm text-gray-500 hover:text-primary text-center mt-1"
           >
-            {t("auth.forgotPassword")} <span className="font-semibold text-[#FF0077]">Reset it</span>
+            {t("auth.forgotPassword")} <span className="font-semibold text-primary">Reset it</span>
           </Link>
           <Button
             type="submit"
             disabled={loading}
-            className="w-full h-12 rounded-xl text-base font-bold bg-[#FF0077] hover:bg-[#E6006A] text-white"
+            className="w-full h-12 rounded-xl text-base font-bold bg-primary hover:bg-primary-hover text-white"
           >
             {loading ? (
               <span className="inline-block h-5 w-5 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden />
@@ -237,7 +237,7 @@ export default function LoginPage() {
           {t("auth.dontHaveAccount")}{" "}
           <Link
             href={nextUrl ? `/signup?next=${encodeURIComponent(nextUrl)}` : "/signup"}
-            className="font-bold text-[#FF0077]"
+            className="font-bold text-primary"
           >
             {t("auth.signup")}
           </Link>

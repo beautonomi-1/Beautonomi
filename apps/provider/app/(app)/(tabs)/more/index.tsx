@@ -9,6 +9,7 @@ import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTranslation } from "@beautonomi/i18n";
 import { useApi } from "@/hooks/useApi";
+import { Colors } from "@/constants/colors";
 import { NotificationsDropdown } from "./_components/NotificationsDropdown";
 
 /** Profile completion API response (GET /api/provider/profile-completion) */
@@ -54,39 +55,39 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
   {
     title: "Operations",
     items: [
-      { icon: "book-outline", label: "Bookings & calendar", subtitle: "Appointments, waitlist & schedule", route: "/(app)/(tabs)/more/bookings-calendar-hub", color: "#6366f1", bg: "bg-indigo-50" },
-      { icon: "construct-outline", label: "Resources & forms", subtitle: "Resources, intake & consent forms", route: "/(app)/(tabs)/more/resources-forms-hub", color: "#0d9488", bg: "bg-teal-50" },
-      { icon: "chatbox-ellipses-outline", label: "Custom Requests", subtitle: "Client quotes & offers", route: "/(app)/(tabs)/more/custom-requests", color: "#f97316", bg: "bg-orange-50" },
-      { icon: "navigate-outline", label: "Routes", subtitle: "Optimize at-home trips", route: "/(app)/(tabs)/more/routes", color: "#3b82f6", bg: "bg-blue-50" },
+      { icon: "book-outline", label: "Bookings & calendar", subtitle: "Appointments, waitlist & schedule", route: "/(app)/(tabs)/more/bookings-calendar-hub", color: "#6366f1", bg: "#eef2ff" },
+      { icon: "construct-outline", label: "Resources & forms", subtitle: "Resources, intake & consent forms", route: "/(app)/(tabs)/more/resources-forms-hub", color: "#0d9488", bg: "#ccfbf1" },
+      { icon: "chatbox-ellipses-outline", label: "Custom Requests", subtitle: "Client quotes & offers", route: "/(app)/(tabs)/more/custom-requests", color: "#f97316", bg: "#fff7ed" },
+      { icon: "navigate-outline", label: "Routes", subtitle: "Optimize at-home trips", route: "/(app)/(tabs)/more/routes", color: "#3b82f6", bg: "#eff6ff" },
     ],
   },
   {
     title: "E-Commerce & Products",
     items: [
-      { icon: "cube-outline", label: "Products & e-commerce", subtitle: "Inventory, orders & sales", route: "/(app)/(tabs)/more/products-ecommerce-hub", color: "#8b5cf6", bg: "bg-violet-50" },
+      { icon: "cube-outline", label: "Products & e-commerce", subtitle: "Inventory, orders & sales", route: "/(app)/(tabs)/more/products-ecommerce-hub", color: "#8b5cf6", bg: "#ede9fe" },
     ],
   },
   {
     title: "Business",
     items: [
-      { icon: "layers-outline", label: "Catalogue & offerings", subtitle: "Services, products & packages", route: "/(app)/(tabs)/more/catalogue-offerings-hub", color: "#ec4899", bg: "bg-pink-50" },
-      { icon: "people-circle-outline", label: "Team & scheduling", subtitle: "Staff, shifts & time clock", route: "/(app)/(tabs)/more/team-hub", color: "#14b8a6", bg: "bg-teal-50" },
-      { icon: "cash-outline", label: "Finance & billing", subtitle: "Earnings, payroll, invoices & gift cards", route: "/(app)/(tabs)/more/finance-billing-hub", color: "#22c55e", bg: "bg-green-50" },
-      { icon: "swap-horizontal-outline", label: "Transactions & history", subtitle: "Payments, fees & sales", route: "/(app)/(tabs)/more/transactions-hub", color: "#0d9488", bg: "bg-teal-50" },
-      { icon: "bar-chart-outline", label: "Reports", subtitle: "Analytics, activity & insights", route: "/(app)/(tabs)/more/reports", color: "#3b82f6", bg: "bg-blue-50" },
-      { icon: "images-outline", label: "Gallery", subtitle: "Portfolio & photos", route: "/(app)/(tabs)/more/gallery", color: "#f43f5e", bg: "bg-rose-50" },
+      { icon: "layers-outline", label: "Catalogue & offerings", subtitle: "Services, products & packages", route: "/(app)/(tabs)/more/catalogue-offerings-hub", color: "#ec4899", bg: "#fdf2f8" },
+      { icon: "people-circle-outline", label: "Team & scheduling", subtitle: "Staff, shifts & time clock", route: "/(app)/(tabs)/more/team-hub", color: "#14b8a6", bg: "#ccfbf1" },
+      { icon: "cash-outline", label: "Finance & billing", subtitle: "Earnings, payroll, invoices & gift cards", route: "/(app)/(tabs)/more/finance-billing-hub", color: "#22c55e", bg: "#f0fdf4" },
+      { icon: "swap-horizontal-outline", label: "Transactions & history", subtitle: "Payments, fees & sales", route: "/(app)/(tabs)/more/transactions-hub", color: "#0d9488", bg: "#ccfbf1" },
+      { icon: "bar-chart-outline", label: "Reports", subtitle: "Analytics, activity & insights", route: "/(app)/(tabs)/more/reports", color: "#3b82f6", bg: "#eff6ff" },
+      { icon: "images-outline", label: "Gallery", subtitle: "Portfolio & photos", route: "/(app)/(tabs)/more/gallery", color: "#f43f5e", bg: "#fff1f2" },
     ],
   },
   {
     title: "Engagement",
     items: [
-      { icon: "chatbubbles-outline", label: "Engagement", subtitle: "Reviews, messaging & marketing", route: "/(app)/(tabs)/more/engagement-hub", color: "#6366f1", bg: "bg-indigo-50" },
+      { icon: "chatbubbles-outline", label: "Engagement", subtitle: "Reviews, messaging & marketing", route: "/(app)/(tabs)/more/engagement-hub", color: "#6366f1", bg: "#eef2ff" },
     ],
   },
   {
     title: "Settings",
     items: [
-      { icon: "settings-outline", label: "Settings & account", subtitle: "Business settings & rewards", route: "/(app)/(tabs)/more/settings-account-hub", color: "#6b7280", bg: "bg-gray-100" },
+      { icon: "settings-outline", label: "Settings & account", subtitle: "Business settings & rewards", route: "/(app)/(tabs)/more/settings-account-hub", color: "#6b7280", bg: Colors.gray[100] },
     ],
   },
 ];
@@ -160,9 +161,9 @@ export default function MoreScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={["top"]}>
       <ScrollView
-        className="flex-1"
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: pad, paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -171,7 +172,7 @@ export default function MoreScreen() {
       >
         {/* Profile header - tappable to My Profile */}
         <TouchableOpacity
-          className="mb-5 flex-row items-center pt-4"
+          style={{ marginBottom: 20, flexDirection: "row", alignItems: "center", paddingTop: 16 }}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             router.push("/(app)/(tabs)/more/profile" as never);
@@ -180,19 +181,19 @@ export default function MoreScreen() {
           accessibilityLabel="My profile"
           accessibilityRole="button"
         >
-          <View className="h-14 w-14 items-center justify-center rounded-full bg-gray-900">
+          <View style={{ width: 56, height: 56, alignItems: "center", justifyContent: "center", borderRadius: 28, backgroundColor: Colors.gray[900] }}>
             <Ionicons name="person" size={24} color="#fff" />
           </View>
-          <View className="ml-3.5 flex-1">
-            <Text className="text-xl font-bold tracking-tight text-gray-900">
+          <View style={{ marginLeft: 14, flex: 1 }}>
+            <Text style={{ fontSize: 20, fontWeight: "700", letterSpacing: -0.5, color: Colors.gray[900] }}>
               My profile
             </Text>
-            <Text className="mt-0.5 text-sm text-gray-500">
+            <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }}>
               {user?.phone ?? user?.email ?? ""}
             </Text>
           </View>
           <TouchableOpacity
-            className="min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-gray-50"
+            style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: Colors.gray[50] }}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setNotificationsOpen(true);
@@ -203,8 +204,8 @@ export default function MoreScreen() {
             <View>
               <Ionicons name="notifications-outline" size={20} color="#374151" />
               {totalUnread > 0 && (
-                <View className="absolute -right-1 -top-1 h-4 min-w-[16px] items-center justify-center rounded-full bg-[#FF0077] px-1">
-                  <Text className="text-[10px] font-semibold text-white" numberOfLines={1}>
+                <View style={{ position: "absolute", right: -4, top: -4, height: 16, minWidth: 16, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: Colors.primary, paddingHorizontal: 4 }}>
+                  <Text style={{ fontSize: 10, fontWeight: "600", color: Colors.white }} numberOfLines={1}>
                     {totalUnread > 99 ? "99+" : totalUnread}
                   </Text>
                 </View>
@@ -214,31 +215,30 @@ export default function MoreScreen() {
         </TouchableOpacity>
 
         {/* Quick actions - customer-style 2x2 grid (shortens perceived page length) */}
-        <View className="mb-5 flex-row flex-wrap gap-3">
+        <View style={{ marginBottom: 20, flexDirection: "row", flexWrap: "wrap" }}>
           {QUICK_ACTIONS.map((action) => (
             <TouchableOpacity
               key={action.route}
               onPress={() => handleMenuPress(action.route)}
               activeOpacity={0.7}
-              className="flex-1 min-w-[45%] bg-white rounded-2xl border border-gray-100 items-center py-4"
+              style={{ flex: 1, minWidth: "45%", marginRight: 12, marginBottom: 12, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], alignItems: "center", paddingVertical: 16 }}
               accessibilityRole="button"
               accessibilityLabel={action.label}
             >
               <View
-                className="h-10 w-10 items-center justify-center rounded-xl mb-2"
-                style={{ backgroundColor: `${action.color}20` }}
+                style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, marginBottom: 8, backgroundColor: `${action.color}20` }}
               >
                 <Ionicons name={action.icon} size={20} color={action.color} />
               </View>
-              <Text className="text-xs font-medium text-gray-700">{action.label}</Text>
+              <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700] }}>{action.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
         {/* Profile completion load error - non-blocking message with retry */}
         {showCompletionError && (
-          <View className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-            <Text className="text-sm text-amber-800">
+          <View style={{ marginBottom: 20, borderRadius: 16, borderWidth: 1, borderColor: "#fcd34d", backgroundColor: "#fffbeb", padding: 16 }}>
+            <Text style={{ fontSize: 14, color: "#92400e" }}>
               {t("provider.profileCompletionLoadError")}
             </Text>
             <TouchableOpacity
@@ -246,12 +246,12 @@ export default function MoreScreen() {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 refreshCompletion();
               }}
-              className="mt-3 self-start rounded-lg bg-amber-200 px-4 py-2"
+              style={{ marginTop: 12, alignSelf: "flex-start", borderRadius: 8, backgroundColor: "#fcd34d", paddingHorizontal: 16, paddingVertical: 8 }}
               activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityLabel={t("common.retry")}
             >
-              <Text className="text-sm font-semibold text-amber-900">
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "#78350f" }}>
                 {t("common.retry")}
               </Text>
             </TouchableOpacity>
@@ -260,7 +260,7 @@ export default function MoreScreen() {
 
         {/* Profile completion card - show when < 100% and items exist */}
         {!completionLoading && showCompletionCard && (
-          <View className="mb-5">
+          <View style={{ marginBottom: 20 }}>
             <TouchableOpacity
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -268,37 +268,36 @@ export default function MoreScreen() {
                 router.push(route as never);
               }}
               activeOpacity={0.8}
-              className="bg-white rounded-2xl border border-gray-100 p-4"
+              style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], padding: 16 }}
               accessibilityRole="button"
               accessibilityLabel={t("provider.profileCompletionTitle")}
             >
-              <View className="flex-row items-start">
+              <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
                 <View
-                  className="w-11 h-11 rounded-full bg-indigo-50 items-center justify-center mr-3"
+                  style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#eef2ff", alignItems: "center", justifyContent: "center", marginRight: 12 }}
                 >
                   <Ionicons name="sparkles" size={22} color="#6366f1" />
                 </View>
-                <View className="flex-1">
-                  <Text className="text-base font-semibold text-gray-900">
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
                     {t("provider.profileCompletionTitle")}
                   </Text>
-                  <Text className="text-sm text-gray-500 mt-1">
+                  <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
                     {t("provider.profileCompletionSubtitle")}
                   </Text>
-                  <View className="mt-3 flex-row items-center">
-                    <View className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden mr-2.5">
+                  <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center" }}>
+                    <View style={{ flex: 1, height: 6, backgroundColor: Colors.gray[100], borderRadius: 9999, overflow: "hidden", marginRight: 10 }}>
                       <View
-                        className="h-full bg-indigo-600 rounded-full"
-                        style={{ width: `${completionPct}%` }}
+                        style={{ height: "100%", backgroundColor: "#4f46e5", borderRadius: 9999, width: `${completionPct}%` }}
                       />
                     </View>
-                    <Text className="text-xs font-semibold text-gray-600">
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[600] }}>
                       {completionPct}%
                     </Text>
                   </View>
                   {completionItems.length > 0 && (
-                    <View className="mt-3 gap-2">
-                      {completionItems.slice(0, 6).map((item) => {
+                    <View style={{ marginTop: 12 }}>
+                      {completionItems.slice(0, 6).map((item, idx) => {
                         const done = item.completed;
                         const mandatoryMissing = !done && item.required;
                         const iconName = done
@@ -316,7 +315,7 @@ export default function MoreScreen() {
                               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                               router.push(route as never);
                             }}
-                            className="flex-row items-center"
+                            style={{ flexDirection: "row", alignItems: "center", marginTop: idx === 0 ? 0 : 8 }}
                             accessibilityRole="button"
                             accessibilityLabel={`${item.label}${item.required ? ", required" : ""}`}
                           >
@@ -327,10 +326,7 @@ export default function MoreScreen() {
                               style={{ marginRight: 8 }}
                             />
                             <Text
-                              className="flex-1 text-sm"
-                              style={{
-                                color: done ? "#16A34A" : mandatoryMissing ? "#b91c1c" : "#6b7280",
-                              }}
+                              style={{ flex: 1, fontSize: 14, color: done ? "#16A34A" : mandatoryMissing ? "#b91c1c" : "#6b7280" }}
                             >
                               {item.label}
                             </Text>
@@ -346,23 +342,37 @@ export default function MoreScreen() {
         )}
 
         {/* Collapsible menu sections - short by default (customer: fewer items on main screen) */}
-        <View className="mb-2 ml-1">
-          <Text className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+        <View style={{ marginBottom: 8, marginLeft: 4 }}>
+          <Text style={{ fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 1, color: Colors.gray[400] }}>
             All features
           </Text>
         </View>
         {MENU_SECTIONS.map((section) => {
           const isExpanded = expandedSections[section.title] ?? false;
           return (
-            <View key={section.title} className="mb-2">
+            <View key={section.title} style={{ marginBottom: 8 }}>
               <TouchableOpacity
                 onPress={() => toggleSection(section.title)}
-                className={`flex-row items-center justify-between border border-gray-100 bg-white px-4 py-3.5 ${isExpanded ? "rounded-t-2xl border-b-0" : "rounded-2xl"}`}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  borderWidth: 1,
+                  borderColor: Colors.gray[100],
+                  backgroundColor: Colors.white,
+                  paddingHorizontal: 16,
+                  paddingVertical: 14,
+                  borderTopLeftRadius: isExpanded ? 16 : 16,
+                  borderTopRightRadius: isExpanded ? 16 : 16,
+                  borderBottomLeftRadius: isExpanded ? 0 : 16,
+                  borderBottomRightRadius: isExpanded ? 0 : 16,
+                  borderBottomWidth: isExpanded ? 0 : 1,
+                }}
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel={`${section.title}, ${isExpanded ? "collapse" : "expand"}`}
               >
-                <Text className="text-[15px] font-medium text-gray-900">{section.title}</Text>
+                <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.gray[900] }}>{section.title}</Text>
                 <Ionicons
                   name={isExpanded ? "chevron-up" : "chevron-down"}
                   size={18}
@@ -370,28 +380,34 @@ export default function MoreScreen() {
                 />
               </TouchableOpacity>
               {isExpanded && (
-                <View className="overflow-hidden rounded-b-2xl border border-gray-100 border-t-0 bg-white">
+                <View style={{ overflow: "hidden", borderBottomLeftRadius: 16, borderBottomRightRadius: 16, borderWidth: 1, borderTopWidth: 0, borderColor: Colors.gray[100], backgroundColor: Colors.white }}>
                   {section.items.map((item, idx) => (
                     <TouchableOpacity
                       key={item.route}
-                      className={`min-h-[52px] flex-row items-center px-4 py-2.5 ${
-                        idx < section.items.length - 1 ? "border-b border-gray-50" : ""
-                      }`}
+                      style={{
+                        minHeight: 52,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        paddingHorizontal: 16,
+                        paddingVertical: 10,
+                        borderBottomWidth: idx < section.items.length - 1 ? 1 : 0,
+                        borderBottomColor: Colors.gray[50],
+                      }}
                       onPress={() => handleMenuPress(item.route)}
                       activeOpacity={0.6}
                       accessibilityRole="button"
                       accessibilityLabel={`${item.label}: ${item.subtitle}`}
                     >
                       <View
-                        className={`${item.bg} min-h-[32px] min-w-[32px] items-center justify-center rounded-lg`}
+                        style={{ minHeight: 32, minWidth: 32, backgroundColor: item.bg, alignItems: "center", justifyContent: "center", borderRadius: 8 }}
                       >
                         <Ionicons name={item.icon} size={16} color={item.color} />
                       </View>
-                      <View className="ml-3 flex-1">
-                        <Text className="text-[14px] font-medium text-gray-900">
+                      <View style={{ marginLeft: 12, flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
                           {item.label}
                         </Text>
-                        <Text className="mt-0.5 text-xs text-gray-500">
+                        <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
                           {item.subtitle}
                         </Text>
                       </View>
@@ -412,13 +428,13 @@ export default function MoreScreen() {
 
         {/* Sign Out - Revolut minimal style */}
         <TouchableOpacity
-          className="mb-8 min-h-[48px] items-center justify-center rounded-xl border border-gray-200"
+          style={{ marginBottom: 32, minHeight: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
           onPress={handleSignOut}
           activeOpacity={0.6}
           accessibilityLabel="Sign out"
           accessibilityRole="button"
         >
-          <Text className="text-[15px] font-medium text-red-600">
+          <Text style={{ fontSize: 15, fontWeight: "500", color: "#dc2626" }}>
             {t("auth.logout")}
           </Text>
         </TouchableOpacity>

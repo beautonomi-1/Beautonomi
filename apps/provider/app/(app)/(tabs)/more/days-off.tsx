@@ -22,6 +22,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { twStyle } from "@/lib/twStyle";
 
 interface StaffMember {
   id: string;
@@ -149,14 +150,14 @@ export function DaysOffContent() {
 
   if (loadingStaff && !staff) {
     return (
-      <View className="flex-1 items-center justify-center py-12">
+      <View style={twStyle("flex-1 items-center justify-center py-12")}>
         <LoadingState />
       </View>
     );
   }
   if (staffError && !staff) {
     return (
-      <View className="flex-1 justify-center px-4">
+      <View style={twStyle("flex-1 justify-center px-4")}>
         <ErrorState message={staffError} onRetry={refreshStaff} />
       </View>
     );
@@ -165,7 +166,7 @@ export function DaysOffContent() {
   return (
     <>
       <ScrollView
-        className="flex-1"
+        style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={loadingStaff || loadingDaysOff} onRefresh={onRefresh} tintColor="#1a1f3c" />
@@ -178,28 +179,28 @@ export function DaysOffContent() {
             description="Add staff in Team settings to manage days off"
           />
         ) : loadingDaysOff && daysOff.length === 0 ? (
-          <View className="py-12">
+          <View style={twStyle("py-12")}>
             <LoadingState />
           </View>
         ) : daysOff.length === 0 ? (
-          <View className="flex-1 items-center justify-center py-16 px-6">
-            <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-amber-50">
+          <View style={twStyle("flex-1 items-center justify-center py-16 px-6")}>
+            <View style={twStyle("mb-4 h-16 w-16 items-center justify-center rounded-full bg-amber-50")}>
               <Ionicons name="sunny-outline" size={32} color="#f59e0b" />
             </View>
-            <Text className="text-center text-lg font-semibold text-gray-900">Staff time off</Text>
-            <Text className="mt-2 text-center text-sm text-gray-500">
+            <Text style={twStyle("text-center text-lg font-semibold text-gray-900")}>Staff time off</Text>
+            <Text style={twStyle("mt-2 text-center text-sm text-gray-500")}>
               No days off scheduled. Tap &quot;Set Day Off&quot; to add one.
             </Text>
             <TouchableOpacity
               onPress={() => setAddModalOpen(true)}
-              className="mt-6 flex-row items-center justify-center rounded-xl bg-amber-500 px-6 py-3"
+              style={twStyle("mt-6 flex-row items-center justify-center rounded-xl bg-amber-500 px-6 py-3")}
             >
               <Ionicons name="add" size={20} color="#fff" />
-              <Text className="ml-2 font-medium text-white">Set Day Off</Text>
+              <Text style={twStyle("ml-2 font-medium text-white")}>Set Day Off</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <View className="px-4">
+          <View style={twStyle("px-4")}>
             <TouchableOpacity
               onPress={() => {
                 setSelectedStaffIds([]);
@@ -207,13 +208,13 @@ export function DaysOffContent() {
                 setReason("");
                 setAddModalOpen(true);
               }}
-              className="mb-3 flex-row items-center justify-center rounded-xl border border-amber-200 bg-amber-50 py-3"
+              style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-amber-200 bg-amber-50 py-3")}
             >
               <Ionicons name="add" size={18} color="#f59e0b" />
-              <Text className="ml-2 font-medium text-amber-800">Set Day Off</Text>
+              <Text style={twStyle("ml-2 font-medium text-amber-800")}>Set Day Off</Text>
             </TouchableOpacity>
-            <View className="mb-3 flex-row items-center justify-between">
-              <Text className="text-sm text-gray-500">
+            <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+              <Text style={twStyle("text-sm text-gray-500")}>
                 {daysOff.length} day{daysOff.length !== 1 ? "s" : ""} off
               </Text>
             </View>
@@ -222,22 +223,22 @@ export function DaysOffContent() {
               return (
                 <View
                   key={dayOff.id}
-                  className="mb-3 flex-row items-center rounded-xl border border-gray-100 bg-white p-4"
+                  style={twStyle("mb-3 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
                 >
                   <Avatar name={dayOff.team_member_name} size="sm" />
-                  <View className="ml-3 flex-1">
-                    <Text className="font-medium text-gray-900">{dayOff.team_member_name}</Text>
-                    <Text className="text-sm text-gray-600">
+                  <View style={twStyle("ml-3 flex-1")}>
+                    <Text style={twStyle("font-medium text-gray-900")}>{dayOff.team_member_name}</Text>
+                    <Text style={twStyle("text-sm text-gray-600")}>
                       {format(new Date(dayOff.date), "EEE, MMM d, yyyy")}
                       {dayOff.reason ? ` · ${dayOff.reason}` : ""}
                     </Text>
                     {isPast && (
-                      <Text className="mt-0.5 text-xs text-gray-400">Past</Text>
+                      <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>Past</Text>
                     )}
                   </View>
                   <TouchableOpacity
                     onPress={() => handleRemoveDayOff(dayOff)}
-                    className="h-9 w-9 items-center justify-center rounded-lg bg-red-50"
+                    style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-red-50")}
                   >
                     <Ionicons name="trash-outline" size={18} color="#ef4444" />
                   </TouchableOpacity>
@@ -250,35 +251,35 @@ export function DaysOffContent() {
 
       {/* Add Day Off Modal */}
       <Modal visible={addModalOpen} transparent animationType="slide">
-        <Pressable className="flex-1 justify-end bg-black/40" onPress={() => setAddModalOpen(false)}>
-          <Pressable className="max-h-[90%] rounded-t-2xl bg-white p-6" onPress={() => {}}>
-            <Text className="mb-4 text-lg font-semibold text-gray-900">Set Day Off</Text>
+        <Pressable style={twStyle("flex-1 justify-end bg-black/40")} onPress={() => setAddModalOpen(false)}>
+          <Pressable style={twStyle("max-h-[90%] rounded-t-2xl bg-white p-6")} onPress={() => {}}>
+            <Text style={twStyle("mb-4 text-lg font-semibold text-gray-900")}>Set Day Off</Text>
 
-            <Text className="mb-2 text-sm font-medium text-gray-700">Team members</Text>
-            <ScrollView className="mb-4 max-h-40 rounded-xl border border-gray-200 bg-gray-50" nestedScrollEnabled>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Team members</Text>
+            <ScrollView style={twStyle("mb-4 max-h-40 rounded-xl border border-gray-200 bg-gray-50")} nestedScrollEnabled>
               {activeStaff.map((member) => {
                 const selected = selectedStaffIds.includes(member.id);
                 return (
                   <TouchableOpacity
                     key={member.id}
                     onPress={() => toggleStaff(member.id)}
-                    className="flex-row items-center border-b border-gray-100 px-4 py-3 last:border-b-0"
+                    style={twStyle("flex-row items-center border-b border-gray-100 px-4 py-3 last:border-b-0")}
                   >
                     <Avatar name={member.name} size="sm" />
-                    <Text className="ml-3 flex-1 font-medium text-gray-900">{member.name}</Text>
+                    <Text style={twStyle("ml-3 flex-1 font-medium text-gray-900")}>{member.name}</Text>
                     {selected && <Ionicons name="checkmark-circle" size={22} color="#f59e0b" />}
                   </TouchableOpacity>
                 );
               })}
             </ScrollView>
 
-            <Text className="mb-2 text-sm font-medium text-gray-700">Date</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Date</Text>
             <TouchableOpacity
               onPress={() => setShowDatePicker(true)}
-              className="mb-4 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+              style={twStyle("mb-4 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
             >
               <Ionicons name="calendar-outline" size={20} color="#6366f1" />
-              <Text className="ml-2 text-base text-gray-900">{format(selectedDate, "PPP")}</Text>
+              <Text style={twStyle("ml-2 text-base text-gray-900")}>{format(selectedDate, "PPP")}</Text>
             </TouchableOpacity>
             {showDatePicker && (
               <DateTimePicker
@@ -293,27 +294,27 @@ export function DaysOffContent() {
               />
             )}
 
-            <Text className="mb-2 text-sm font-medium text-gray-700">Reason (optional)</Text>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Reason (optional)</Text>
             <TextInput
               value={reason}
               onChangeText={setReason}
               placeholder="e.g. Vacation, Sick leave"
               placeholderTextColor="#9ca3af"
-              className="mb-6 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-6 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             />
 
-            <View className="flex-row gap-3">
+            <View style={twStyle("flex-row")}>
               <TouchableOpacity
                 onPress={() => setAddModalOpen(false)}
-                className="flex-1 items-center rounded-xl border border-gray-200 py-3"
+                style={[twStyle("flex-1 items-center rounded-xl border border-gray-200 py-3"), { marginRight: 12 }]}
               >
-                <Text className="font-medium text-gray-600">Cancel</Text>
+                <Text style={twStyle("font-medium text-gray-600")}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleSaveDayOff}
-                className="flex-1 items-center rounded-xl bg-amber-500 py-3"
+                style={twStyle("flex-1 items-center rounded-xl bg-amber-500 py-3")}
               >
-                <Text className="font-medium text-white">Set Day Off</Text>
+                <Text style={twStyle("font-medium text-white")}>Set Day Off</Text>
               </TouchableOpacity>
             </View>
           </Pressable>

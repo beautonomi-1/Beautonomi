@@ -8,6 +8,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { twStyle } from "@/lib/twStyle";
 
 type OnDemandRequest = {
   id: string;
@@ -99,7 +100,7 @@ export default function OnDemandIncomingScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Incoming request" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -110,7 +111,7 @@ export default function OnDemandIncomingScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Incoming request" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState
             message={error ?? "Request not found"}
             onRetry={refresh}
@@ -127,65 +128,65 @@ export default function OnDemandIncomingScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader title="Incoming request" onBack={() => router.back()} />
-      <View className="px-2 pt-4">
-        <View className="rounded-xl border border-gray-200 bg-white p-4 mb-4">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="font-semibold text-gray-900 capitalize">
+      <View style={twStyle("px-2 pt-4")}>
+        <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-4")}>
+          <View style={twStyle("flex-row items-center justify-between mb-3")}>
+            <Text style={twStyle("font-semibold text-gray-900 capitalize")}>
               {request.status}
             </Text>
             {expired && (
-              <View className="rounded-full bg-gray-200 px-2 py-0.5">
-                <Text className="text-xs text-gray-600">Expired</Text>
+              <View style={twStyle("rounded-full bg-gray-200 px-2 py-0.5")}>
+                <Text style={twStyle("text-xs text-gray-600")}>Expired</Text>
               </View>
             )}
           </View>
-          <Text className="text-sm text-gray-500">
+          <Text style={twStyle("text-sm text-gray-500")}>
             Requested {request.requested_at ? new Date(request.requested_at).toLocaleString() : "—"}
           </Text>
           {request.expires_at && (
-            <Text className="mt-1 text-xs text-gray-400">
+            <Text style={twStyle("mt-1 text-xs text-gray-400")}>
               Expires {new Date(request.expires_at).toLocaleString()}
             </Text>
           )}
         </View>
 
         {services.length > 0 && (
-          <View className="rounded-xl border border-gray-200 bg-gray-50 p-4 mb-4">
-            <Text className="text-sm font-medium text-gray-700 mb-2">Services</Text>
+          <View style={twStyle("rounded-xl border border-gray-200 bg-gray-50 p-4 mb-4")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Services</Text>
             {services.map((s: { title?: string; duration_minutes?: number }, i: number) => (
-              <Text key={i} className="text-sm text-gray-600">
+              <Text key={i} style={twStyle("text-sm text-gray-600")}>
                 {s.title ?? "Service"} {s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}
               </Text>
             ))}
           </View>
         )}
         {scheduledAt && (
-          <Text className="text-sm text-gray-600 mb-4">
+          <Text style={twStyle("text-sm text-gray-600 mb-4")}>
             Preferred time: {new Date(scheduledAt).toLocaleString()}
           </Text>
         )}
 
         {canRespond && (
-          <View className="flex-row gap-3 mt-4">
+          <View style={twStyle("flex-row mt-4")}>
             <TouchableOpacity
               onPress={handleDecline}
               disabled={declining}
-              className="flex-1 rounded-xl border border-gray-200 py-3 items-center"
+              style={[twStyle("flex-1 rounded-xl border border-gray-200 py-3 items-center"), { marginRight: 12 }]}
               accessibilityLabel={declining ? "Declining request" : "Decline on-demand request"}
               accessibilityRole="button"
             >
-              <Text className="font-medium text-gray-700">
+              <Text style={twStyle("font-medium text-gray-700")}>
                 {declining ? "Declining…" : "Decline"}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleAccept}
               disabled={accepting}
-              className="flex-1 rounded-xl bg-gray-900 py-3 items-center"
+              style={twStyle("flex-1 rounded-xl bg-gray-900 py-3 items-center")}
               accessibilityLabel={accepting ? "Accepting request" : "Accept on-demand request"}
               accessibilityRole="button"
             >
-              <Text className="font-medium text-white">
+              <Text style={twStyle("font-medium text-white")}>
                 {accepting ? "Accepting…" : "Accept"}
               </Text>
             </TouchableOpacity>

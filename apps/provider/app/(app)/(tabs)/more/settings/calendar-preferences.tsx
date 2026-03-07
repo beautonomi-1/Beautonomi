@@ -11,6 +11,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { twStyle } from "@/lib/twStyle";
 
 interface CalendarPreferences {
   highContrast?: boolean;
@@ -79,41 +80,41 @@ export default function CalendarPreferencesScreen() {
       <ScreenHeader title="Calendar preferences" showBack subtitle="Display options" />
 
       <SectionHeader title="Display" />
-      <View className="mb-4 rounded-2xl border border-gray-100 bg-white">
-        <View className="flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5">
-          <Text className="text-sm text-gray-700">Show canceled appointments</Text>
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white")}>
+        <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5")}>
+          <Text style={twStyle("text-sm text-gray-700")}>Show canceled appointments</Text>
           <Switch
             value={local.showCanceled ?? true}
             onValueChange={(v) => set("showCanceled", v)}
             trackColor={{ false: "#d1d5db", true: "#6366f1" }}
           />
         </View>
-        <View className="flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5">
-          <Text className="text-sm text-gray-700">High contrast mode</Text>
+        <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5")}>
+          <Text style={twStyle("text-sm text-gray-700")}>High contrast mode</Text>
           <Switch
             value={local.highContrast ?? false}
             onValueChange={(v) => set("highContrast", v)}
             trackColor={{ false: "#d1d5db", true: "#6366f1" }}
           />
         </View>
-        <View className="flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5">
-          <Text className="text-sm text-gray-700">Scroll to current time</Text>
+        <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5")}>
+          <Text style={twStyle("text-sm text-gray-700")}>Scroll to current time</Text>
           <Switch
             value={local.scrollToNow ?? true}
             onValueChange={(v) => set("scrollToNow", v)}
             trackColor={{ false: "#d1d5db", true: "#6366f1" }}
           />
         </View>
-        <View className="flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5">
-          <Text className="text-sm text-gray-700">Show appointment icons</Text>
+        <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5")}>
+          <Text style={twStyle("text-sm text-gray-700")}>Show appointment icons</Text>
           <Switch
             value={local.showAppointmentIcons ?? true}
             onValueChange={(v) => set("showAppointmentIcons", v)}
             trackColor={{ false: "#d1d5db", true: "#6366f1" }}
           />
         </View>
-        <View className="flex-row items-center justify-between px-4 py-3.5">
-          <Text className="text-sm text-gray-700">Show prices on blocks</Text>
+        <View style={twStyle("flex-row items-center justify-between px-4 py-3.5")}>
+          <Text style={twStyle("text-sm text-gray-700")}>Show prices on blocks</Text>
           <Switch
             value={local.showPrices ?? false}
             onValueChange={(v) => set("showPrices", v)}
@@ -123,21 +124,21 @@ export default function CalendarPreferencesScreen() {
       </View>
 
       <SectionHeader title="Time grid (minutes)" />
-      <View className="mb-4 flex-row gap-2">
+      <View style={twStyle("mb-4 flex-row")}>
         {TIME_INCREMENTS.map((m) => (
           <TouchableOpacity
             key={m}
-            className={`flex-1 items-center rounded-xl border py-3 ${
+            style={[twStyle(`flex-1 items-center rounded-xl border py-3 ${
               (local.timeIncrementMinutes ?? 15) === m
                 ? "border-indigo-300 bg-indigo-50"
                 : "border-gray-200 bg-white"
-            }`}
+            }`)]}
             onPress={() => set("timeIncrementMinutes", m)}
           >
             <Text
-              className={`text-sm font-medium ${
+              style={twStyle(`text-sm font-medium ${
                 (local.timeIncrementMinutes ?? 15) === m ? "text-indigo-700" : "text-gray-600"
-              }`}
+              }`)}
             >
               {m} min
             </Text>
@@ -146,21 +147,21 @@ export default function CalendarPreferencesScreen() {
       </View>
 
       <SectionHeader title="Color appointments by" />
-      <View className="mb-4 flex-row flex-wrap gap-2">
+      <View style={twStyle("mb-4 flex-row flex-wrap")}>
         {COLOR_BY_OPTIONS.map((opt) => (
           <TouchableOpacity
             key={opt.value}
-            className={`rounded-xl border px-4 py-2.5 ${
+            style={[twStyle(`rounded-xl border px-4 py-2.5 ${
               (local.colorBy ?? "status") === opt.value
                 ? "border-indigo-300 bg-indigo-50"
                 : "border-gray-200 bg-white"
-            }`}
+            }`), { marginRight: 8, marginBottom: 8 }]}
             onPress={() => set("colorBy", opt.value)}
           >
             <Text
-              className={`text-sm font-medium ${
+              style={twStyle(`text-sm font-medium ${
                 (local.colorBy ?? "status") === opt.value ? "text-indigo-700" : "text-gray-600"
-              }`}
+              }`)}
             >
               {opt.label}
             </Text>
@@ -174,7 +175,7 @@ export default function CalendarPreferencesScreen() {
         loading={saving}
         fullWidth
       />
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

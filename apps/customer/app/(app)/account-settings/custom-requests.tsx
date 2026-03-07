@@ -8,11 +8,13 @@ import {
   ActivityIndicator,
   Linking,
   Alert,
+  Platform,
 } from "react-native";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { api } from "@/lib/api-client";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import * as Haptics from "expo-haptics";
 
@@ -128,75 +130,42 @@ function RequestCard({
   const hasPendingOffer = item.offers?.some(canAcceptOffer);
   const statusLabel = hasPaidOffer ? "Paid" : hasPendingOffer ? "Offer to accept" : item.status ?? "Pending";
 
+  const statusBg = hasPaidOffer ? "#DCFCE7" : hasPendingOffer ? "#FEF3C7" : Colors.gray[100];
+  const statusText = hasPaidOffer ? "#166534" : hasPendingOffer ? "#92400E" : Colors.gray[600];
+
   return (
-    <View className="bg-white rounded-xl p-4 mb-3 border border-gray-100">
-      {/* Header row: provider info + status */}
-      <View className="flex-row items-center justify-between mb-2">
-        <TouchableOpacity
-          onPress={onPressProvider}
-          activeOpacity={0.7}
-          className="flex-row items-center flex-1 mr-3"
-        >
+    <View style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.gray[100] }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <TouchableOpacity onPress={onPressProvider} activeOpacity={0.7} style={{ flexDirection: "row", alignItems: "center", flex: 1, marginRight: 12 }}>
           {item.provider?.avatar_url ? (
-            <Image
-              source={{ uri: item.provider.avatar_url }}
-              style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              transition={200}
-            />
+            <Image source={{ uri: item.provider.avatar_url }} style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
           ) : (
-            <View
-              className="items-center justify-center bg-primary-light mr-2.5"
-              style={{ width: 36, height: 36, borderRadius: 18 }}
-            >
-              <Text className="text-primary font-bold text-sm">
-                {(item.provider?.business_name ?? "P").charAt(0).toUpperCase()}
-              </Text>
+            <View style={{ alignItems: "center", justifyContent: "center", backgroundColor: Colors.primaryLight, marginRight: 10, width: 36, height: 36, borderRadius: 18 }}>
+              <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 14 }}>{(item.provider?.business_name ?? "P").charAt(0).toUpperCase()}</Text>
             </View>
           )}
-          <Text className="font-semibold text-gray-900 flex-1" numberOfLines={1}>
-            {item.provider?.business_name ?? "Provider"}
-          </Text>
+          <Text style={{ fontWeight: "600", color: Colors.gray[900], flex: 1 }} numberOfLines={1}>{item.provider?.business_name ?? "Provider"}</Text>
         </TouchableOpacity>
-        <View
-          className={`px-2.5 py-0.5 rounded-full ${
-            hasPaidOffer ? "bg-green-100" : hasPendingOffer ? "bg-amber-100" : "bg-gray-100"
-          }`}
-        >
-          <Text
-            className={`text-xs font-semibold ${
-              hasPaidOffer ? "text-green-800" : hasPendingOffer ? "text-amber-800" : "text-gray-600"
-            }`}
-          >
-            {statusLabel}
-          </Text>
+        <View style={{ paddingHorizontal: 10, paddingVertical: 2, borderRadius: 9999, backgroundColor: statusBg }}>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: statusText }}>{statusLabel}</Text>
         </View>
       </View>
-
-      {/* Description */}
-      <Text className="text-gray-700 text-sm mb-2">
-        {truncate(item.description || "No description", 120)}
-      </Text>
-
-      {/* Meta row */}
-      <View className="flex-row flex-wrap gap-3 mb-1">
-        {budget && <Text className="text-xs text-gray-500">{budget}</Text>}
+      <Text style={{ color: Colors.gray[700], fontSize: 14, marginBottom: 8 }}>{truncate(item.description || "No description", 120)}</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 4 }}>
+        {budget && <Text style={{ fontSize: 12, color: Colors.gray[500], marginRight: 12 }}>{budget}</Text>}
         {locationLabel && (
-          <View className="flex-row items-center">
-            <View className="w-1 h-1 rounded-full bg-gray-300 mr-2" />
-            <Text className="text-xs text-gray-500">{locationLabel}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", marginRight: 12 }}>
+            <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.gray[300], marginRight: 8 }} />
+            <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{locationLabel}</Text>
           </View>
         )}
-        <View className="flex-row items-center">
-          <View className="w-1 h-1 rounded-full bg-gray-300 mr-2" />
-          <Text className="text-xs text-gray-400">{formatDate(item.created_at)}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: Colors.gray[300], marginRight: 8 }} />
+          <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{formatDate(item.created_at)}</Text>
         </View>
       </View>
-
-      {/* Offers list */}
       {item.offers && item.offers.length > 0 && (
-        <View className="mt-3 border-t border-gray-100 pt-3">
+        <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingTop: 12 }}>
           {item.offers.map((o) => {
             const expired = o.expiration_at && new Date(o.expiration_at).getTime() < Date.now();
             const canAccept = canAcceptOffer(o);
@@ -204,43 +173,31 @@ function RequestCard({
             return (
               <View
                 key={o.id}
-                className={`rounded-lg p-3 mb-2 ${
-                  o.status === "paid" ? "bg-green-50 border border-green-100" : "bg-gray-50 border border-gray-100"
-                }`}
+                style={{
+                  borderRadius: 8,
+                  padding: 12,
+                  marginBottom: 8,
+                  backgroundColor: o.status === "paid" ? "#F0FDF4" : Colors.gray[50],
+                  borderWidth: 1,
+                  borderColor: o.status === "paid" ? "#BBF7D0" : Colors.gray[100],
+                }}
               >
-                <View className="flex-row items-center justify-between flex-wrap gap-2">
-                  <View>
-                    <Text className="text-sm font-semibold text-gray-900">
-                      {o.currency} {o.price?.toFixed(2)} · {o.duration_minutes} min
-                    </Text>
-                    <Text className="text-xs text-gray-500 mt-0.5">
-                      Expires {formatDateTime(o.expiration_at)}
-                      {o.travel_fee != null && o.travel_fee > 0 && ` · Travel ${o.currency} ${o.travel_fee}`}
-                    </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                  <View style={{ marginRight: 8 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{o.currency} {o.price?.toFixed(2)} · {o.duration_minutes} min</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>Expires {formatDateTime(o.expiration_at)}{o.travel_fee != null && o.travel_fee > 0 ? ` · Travel ${o.currency} ${o.travel_fee}` : ""}</Text>
                   </View>
                   {o.status === "paid" ? (
-                    <Text className="text-sm font-medium text-green-700">Paid</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: "#15803d" }}>Paid</Text>
                   ) : expired ? (
-                    <Text className="text-sm text-gray-500">Expired</Text>
+                    <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Expired</Text>
                   ) : canAccept ? (
-                    <TouchableOpacity
-                      onPress={() => onAcceptPay(o.id)}
-                      disabled={isRefreshing}
-                      className="bg-primary px-4 py-2 rounded-xl"
-                    >
-                      {isRefreshing ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Text className="text-sm font-semibold text-white">
-                          Accept & Pay
-                        </Text>
-                      )}
+                    <TouchableOpacity onPress={() => onAcceptPay(o.id)} disabled={isRefreshing} style={{ backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}>
+                      {isRefreshing ? <ActivityIndicator size="small" color={Colors.white} /> : <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Accept & Pay</Text>}
                     </TouchableOpacity>
                   ) : null}
                 </View>
-                {o.notes ? (
-                  <Text className="text-xs text-gray-600 mt-2">{o.notes}</Text>
-                ) : null}
+                {o.notes ? <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 8 }}>{o.notes}</Text> : null}
               </View>
             );
           })}
@@ -256,6 +213,8 @@ function RequestCard({
 
 export default function CustomRequestsScreen() {
   useScreenTracking("Custom Requests");
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
 
   const [data, setData] = useState<CustomRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -377,51 +336,38 @@ export default function CustomRequestsScreen() {
 
   if (loading && data.length === 0) {
     return (
-      <View className="flex-1 bg-white items-center justify-center">
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text className="text-gray-600 mt-4">Loading…</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>Loading…</Text>
       </View>
     );
   }
 
   if (error && data.length === 0) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-6">
-        <Text className="text-center text-gray-700 mb-4">{error}</Text>
-        <TouchableOpacity onPress={() => load()} className="bg-primary px-6 py-3 rounded-xl">
-          <Text className="text-white font-semibold">Retry</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Text style={{ textAlign: "center", color: Colors.gray[700], marginBottom: 16 }}>{error}</Text>
+        <TouchableOpacity onPress={() => load()} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-gray-50">
+    <View style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
       <FlatList
         data={data}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <RequestCard
-            item={item}
-            onAcceptPay={handleAcceptPay}
-            onPressProvider={() => handlePressProvider(item)}
-            refreshingOfferId={refreshingOfferId}
-          />
+          <RequestCard item={item} onAcceptPay={handleAcceptPay} onPressProvider={() => handlePressProvider(item)} refreshingOfferId={refreshingOfferId} />
         )}
-        contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => load(true)}
-            tintColor={Colors.primary}
-          />
-        }
+        contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />}
         ListEmptyComponent={
-          <View className="items-center justify-center py-16">
-            <Text className="text-lg font-semibold text-gray-900 mb-2">No custom requests</Text>
-            <Text className="text-center text-gray-500 px-8">
-              Create a custom service request from any provider profile
-            </Text>
+          <View style={{ alignItems: "center", justifyContent: "center", paddingVertical: 64 }}>
+            <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>No custom requests</Text>
+            <Text style={{ textAlign: "center", color: Colors.gray[500], paddingHorizontal: 32 }}>Create a custom service request from any provider profile</Text>
           </View>
         }
       />

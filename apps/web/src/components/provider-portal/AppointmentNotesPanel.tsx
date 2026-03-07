@@ -132,7 +132,7 @@ export function AppointmentNotesPanel({ appointmentId }: AppointmentNotesPanelPr
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Notes & History</h3>
-        <Button onClick={handleAddNote} size="sm" className="bg-[#FF0077] hover:bg-[#D60565]">
+        <Button onClick={handleAddNote} size="sm" className="bg-primary hover:bg-primary-hover">
           <Plus className="w-4 h-4 mr-2" />
           Add Note
         </Button>
@@ -436,7 +436,7 @@ function NoteDialog({
             <Button
               type="submit"
               disabled={isLoading}
-              className="bg-[#FF0077] hover:bg-[#D60565]"
+              className="bg-primary hover:bg-primary-hover"
             >
               {isLoading ? "Saving..." : note ? "Update" : "Add Note"}
             </Button>

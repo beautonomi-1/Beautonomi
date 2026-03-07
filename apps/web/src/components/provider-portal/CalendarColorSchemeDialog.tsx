@@ -305,7 +305,7 @@ export function CalendarColorSchemeDialog({
             <Button
               type="submit"
               disabled={isLoading}
-              className="bg-[#FF0077] hover:bg-[#D60565] w-full sm:w-auto"
+              className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
             >
               {isLoading ? "Saving..." : scheme ? "Update" : "Create"}
             </Button>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useAuth } from "@/providers/AuthProvider";
+import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import type { UserRole } from "@beautonomi/types";
 
@@ -45,26 +46,19 @@ export function RoleGate({ children }: RoleGateProps) {
   if (!user) return <>{children}</>;
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-white">
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
         <ActivityIndicator size="large" />
-        <Text className="mt-4 text-gray-600">Checking access…</Text>
+        <Text style={{ marginTop: 16, color: Colors.gray[600] }}>Checking access…</Text>
       </View>
     );
   }
   if (blocked) {
     return (
-      <View className="flex-1 items-center justify-center bg-white p-6">
-        <Text className="text-center text-lg font-semibold text-gray-900">
-          This app is for customers only
-        </Text>
-        <Text className="mt-2 text-center text-gray-500">
-          Your account is not set up for the customer app. Please use the provider app or contact support.
-        </Text>
-        <TouchableOpacity
-          className="mt-8 rounded-lg bg-gray-900 px-6 py-3"
-          onPress={() => signOut()}
-        >
-          <Text className="font-medium text-white">Sign out</Text>
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white, padding: 24 }}>
+        <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>This app is for customers only</Text>
+        <Text style={{ marginTop: 8, textAlign: "center", color: Colors.gray[500] }}>Your account is not set up for the customer app. Please use the provider app or contact support.</Text>
+        <TouchableOpacity style={{ marginTop: 32, borderRadius: 8, backgroundColor: Colors.gray[900], paddingHorizontal: 24, paddingVertical: 12 }} onPress={() => signOut()}>
+          <Text style={{ fontWeight: "500", color: Colors.white }}>Sign out</Text>
         </TouchableOpacity>
       </View>
     );

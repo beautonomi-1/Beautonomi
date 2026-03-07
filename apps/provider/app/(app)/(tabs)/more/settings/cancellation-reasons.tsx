@@ -20,6 +20,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
+import { twStyle } from "@/lib/twStyle";
 
 interface CancellationReason {
   id: string;
@@ -176,7 +177,7 @@ export default function CancellationReasonsScreen() {
         subtitle={`${reasons?.length ?? 0} reasons`}
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-900"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
             onPress={openCreate}
           >
             <Ionicons name="add" size={20} color="#fff" />
@@ -185,9 +186,9 @@ export default function CancellationReasonsScreen() {
       />
 
       {reasons && reasons.length > 0 && (
-        <View className="mb-3">
-          <View className="flex-row gap-3">
-            <View className="flex-1">
+        <View style={twStyle("mb-3")}>
+          <View style={twStyle("flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
               <StatCard
                 title="Active"
                 value={String(activeCount)}
@@ -197,7 +198,7 @@ export default function CancellationReasonsScreen() {
                 compact
               />
             </View>
-            <View className="flex-1">
+            <View style={twStyle("flex-1")}>
               <StatCard
                 title="Total Used"
                 value={String(totalUsage)}
@@ -209,9 +210,9 @@ export default function CancellationReasonsScreen() {
             </View>
           </View>
           {topReason && (topReason.usage_count ?? 0) > 0 && (
-            <View className="mt-2 rounded-xl bg-amber-50 p-3">
-              <Text className="text-xs text-amber-700">
-                Most common: <Text className="font-semibold">{topReason.name}</Text> ({topReason.usage_count} times)
+            <View style={twStyle("mt-2 rounded-xl bg-amber-50 p-3")}>
+              <Text style={twStyle("text-xs text-amber-700")}>
+                Most common: <Text style={twStyle("font-semibold")}>{topReason.name}</Text> ({topReason.usage_count} times)
               </Text>
             </View>
           )}
@@ -219,13 +220,13 @@ export default function CancellationReasonsScreen() {
       )}
 
       {reasons && reasons.length > 2 && (
-        <View className="mb-3">
+        <View style={twStyle("mb-3")}>
           <SearchBar
             value={search}
             onChangeText={setSearch}
             placeholder="Search reasons..."
           />
-          <View className="mt-2">
+          <View style={twStyle("mt-2")}>
             <FilterChipGroup
               options={[
                 { label: "All", value: "all" },
@@ -258,40 +259,41 @@ export default function CancellationReasonsScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: reason }: { item: CancellationReason }) => (
             <TouchableOpacity
-              className={`rounded-xl border bg-white p-4 ${
+              style={twStyle(`rounded-xl border bg-white p-4 ${
                 reason.is_active
                   ? "border-gray-100"
                   : "border-gray-100 opacity-60"
-              }`}
+              }`)}
               onPress={() => openEdit(reason)}
               activeOpacity={0.7}
             >
-              <View className="flex-row items-center">
-                <View className="h-10 w-10 items-center justify-center rounded-xl bg-red-50">
+              <View style={twStyle("flex-row items-center")}>
+                <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-red-50")}>
                   <Ionicons
                     name="close-circle-outline"
                     size={20}
                     color="#ef4444"
                   />
                 </View>
-                <View className="ml-3 flex-1">
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-sm font-semibold text-gray-900">
+                <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("flex-row items-center")}>
+                    <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>
                       {reason.name}
                     </Text>
                     {!reason.is_active && (
-                      <View className="rounded-full bg-gray-100 px-2 py-0.5">
-                        <Text className="text-[10px] font-medium text-gray-500">
+                      <View style={[twStyle("rounded-full bg-gray-100 px-2 py-0.5"), { marginRight: 8 }]}>
+                        <Text style={twStyle("text-[10px] font-medium text-gray-500")}>
                           Inactive
                         </Text>
                       </View>
                     )}
                     {reason.requires_note && (
-                      <View className="rounded-full bg-amber-50 px-2 py-0.5">
-                        <Text className="text-[10px] font-medium text-amber-700">
+                      <View style={[twStyle("rounded-full bg-amber-50 px-2 py-0.5"), { marginRight: 8 }]}>
+                        <Text style={twStyle("text-[10px] font-medium text-amber-700")}>
                           Note Required
                         </Text>
                       </View>
@@ -299,21 +301,22 @@ export default function CancellationReasonsScreen() {
                   </View>
                   {reason.description && (
                     <Text
-                      className="mt-0.5 text-xs text-gray-500"
+                      style={twStyle("mt-0.5 text-xs text-gray-500")}
                       numberOfLines={1}
                     >
                       {reason.description}
                     </Text>
                   )}
                   {reason.usage_count !== undefined && (
-                    <Text className="mt-0.5 text-xs text-gray-400">
+                    <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>
                       Used {reason.usage_count} time{reason.usage_count !== 1 ? "s" : ""}
                     </Text>
                   )}
                 </View>
-                <View className="flex-row items-center gap-2">
+                <View style={twStyle("flex-row items-center")}>
                   <TouchableOpacity
                     onPress={() => handleToggleActive(reason)}
+                    style={{ marginRight: 8 }}
                   >
                     <Ionicons
                       name={
@@ -345,33 +348,33 @@ export default function CancellationReasonsScreen() {
         title={editing ? "Edit Reason" : "New Cancellation Reason"}
       >
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Reason *
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
             placeholder="e.g. Schedule conflict"
             placeholderTextColor="#9ca3af"
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Description
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
             onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
             placeholder="Optional details..."
             placeholderTextColor="#9ca3af"
             multiline
           />
-          <View className="mb-3 flex-row items-center justify-between">
-            <View className="flex-1">
-              <Text className="text-sm font-medium text-gray-700">
+          <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>
                 Require Note
               </Text>
-              <Text className="text-xs text-gray-400">
+              <Text style={twStyle("text-xs text-gray-400")}>
                 Clients must add a note when selecting this reason
               </Text>
             </View>
@@ -384,8 +387,8 @@ export default function CancellationReasonsScreen() {
               thumbColor={form.requiresNote ? "#d97706" : "#f4f4f5"}
             />
           </View>
-          <View className="mb-4 flex-row items-center justify-between">
-            <Text className="text-sm font-medium text-gray-700">Active</Text>
+          <View style={twStyle("mb-4 flex-row items-center justify-between")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
             <Switch
               value={form.isActive}
               onValueChange={(v) => setForm((p) => ({ ...p, isActive: v }))}

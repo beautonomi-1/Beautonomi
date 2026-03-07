@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Colors } from "@/constants/colors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { trackReturnRequested } from "@/lib/analytics";
 
@@ -30,6 +31,7 @@ const REASONS = [
 
 export default function RequestReturnScreen() {
   const router = useRouter();
+  const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
   const { order_id, order_item_id } = useLocalSearchParams<{
     order_id: string;
     order_item_id?: string;
@@ -75,7 +77,7 @@ export default function RequestReturnScreen() {
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 16,
+          paddingHorizontal: contentPadding,
           paddingVertical: 14,
           backgroundColor: "#fff",
           borderBottomWidth: 1,
@@ -92,13 +94,12 @@ export default function RequestReturnScreen() {
 
       <ScrollView
         contentContainerStyle={{
+          paddingHorizontal: contentPadding,
           paddingBottom: 40,
-          ...(Platform.OS === "web"
-            ? ({ maxWidth: 500, alignSelf: "center", width: "100%" } as any)
-            : {}),
+          ...((isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {}),
         }}
       >
-        <View style={{ backgroundColor: "#fff", padding: 20, marginBottom: 12 }}>
+        <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 4 }}>
             Why are you returning this item?
           </Text>
@@ -115,7 +116,7 @@ export default function RequestReturnScreen() {
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  padding: 16,
+                  padding: contentPadding,
                   borderRadius: 14,
                   borderWidth: 1.5,
                   borderColor: active ? PRIMARY : "#E5E7EB",
@@ -166,7 +167,7 @@ export default function RequestReturnScreen() {
           })}
         </View>
 
-        <View style={{ backgroundColor: "#fff", padding: 20, marginBottom: 12 }}>
+        <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
             Additional Details (optional)
           </Text>
@@ -190,7 +191,7 @@ export default function RequestReturnScreen() {
           />
         </View>
 
-        <View style={{ backgroundColor: "#FFF7ED", marginHorizontal: 16, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+        <View style={{ backgroundColor: "#FFF7ED", borderRadius: 12, padding: contentPadding, marginBottom: 20 }}>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
             <Ionicons name="information-circle-outline" size={18} color="#F59E0B" />
             <Text style={{ fontSize: 14, fontWeight: "600", color: "#92400E", marginLeft: 8 }}>
@@ -204,7 +205,7 @@ export default function RequestReturnScreen() {
           </Text>
         </View>
 
-        <View style={{ paddingHorizontal: 20 }}>
+        <View style={{ paddingHorizontal: contentPadding }}>
           <TouchableOpacity
             onPress={handleSubmit}
             disabled={!reason || submitting}

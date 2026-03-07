@@ -127,7 +127,7 @@ export function FooterSettingsModal({
           <Button
             onClick={handleSave}
             disabled={isSaving || !value.trim()}
-            className="bg-[#FF0077] hover:bg-[#D60565] text-white"
+            className="bg-primary hover:bg-primary-hover text-white"
           >
             {isSaving ? "Saving..." : "Save Changes"}
           </Button>

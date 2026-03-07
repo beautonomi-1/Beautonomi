@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Colors, Shadows } from "@/constants/colors";
+import { useResponsive } from "@/hooks/useResponsive";
 import {
   useProductCatalog,
   type CatalogProduct,
@@ -119,11 +120,13 @@ function ProductCard({
 
 export default function ShopScreen() {
   const router = useRouter();
+  const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
   const catalog = useProductCatalog();
   const cart = useCart();
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<CatalogFilters["sort"]>("newest");
+  const shopConstraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(800, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
 
   useEffect(() => {
     catalog.initialLoad();
@@ -191,7 +194,7 @@ export default function ShopScreen() {
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 16,
+          paddingHorizontal: contentPadding,
           paddingVertical: 12,
           backgroundColor: "#fff",
           borderBottomWidth: 1,
@@ -235,7 +238,7 @@ export default function ShopScreen() {
       </View>
 
       {/* Search Bar */}
-      <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8, backgroundColor: "#fff" }}>
+      <View style={{ paddingHorizontal: contentPadding, paddingTop: 12, paddingBottom: 8, backgroundColor: "#fff" }}>
         <View
           style={{
             flexDirection: "row",
@@ -273,7 +276,7 @@ export default function ShopScreen() {
         <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 16 }}
+          contentContainerStyle={{ paddingHorizontal: contentPadding }}
           data={[null, ...catalog.categories]}
           keyExtractor={(c) => c ?? "all"}
           renderItem={({ item: cat }) => {
@@ -282,7 +285,7 @@ export default function ShopScreen() {
               <TouchableOpacity
                 onPress={() => handleCategoryPress(cat)}
                 style={{
-                  paddingHorizontal: 16,
+                  paddingHorizontal: contentPadding,
                   paddingVertical: 8,
                   borderRadius: 20,
                   marginRight: 8,
@@ -307,7 +310,7 @@ export default function ShopScreen() {
         <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 16, marginTop: 8 }}
+          contentContainerStyle={{ paddingHorizontal: contentPadding, marginTop: 8 }}
           data={SORT_OPTIONS}
           keyExtractor={(s) => s.value}
           renderItem={({ item: s }) => {
@@ -346,7 +349,7 @@ export default function ShopScreen() {
           <ActivityIndicator size="large" color={PRIMARY} />
         </View>
       ) : catalog.error ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: contentPadding }}>
           <Ionicons name="alert-circle-outline" size={48} color="#D1D5DB" />
           <Text style={{ fontSize: 15, color: "#6B7280", marginTop: 12, textAlign: "center" }}>
             {catalog.error}
@@ -359,7 +362,7 @@ export default function ShopScreen() {
           </TouchableOpacity>
         </View>
       ) : catalog.products.length === 0 ? (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: contentPadding }}>
           <Ionicons name="cube-outline" size={48} color="#D1D5DB" />
           <Text style={{ fontSize: 15, color: "#6B7280", marginTop: 12 }}>No products found</Text>
         </View>
@@ -370,7 +373,7 @@ export default function ShopScreen() {
           numColumns={2}
           contentContainerStyle={{
             padding: 10,
-            ...(Platform.OS === "web" ? { maxWidth: 800, alignSelf: "center", width: "100%" } as any : {}),
+            ...shopConstraint,
           }}
           renderItem={renderItem}
           onEndReached={catalog.loadMore}

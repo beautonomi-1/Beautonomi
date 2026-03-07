@@ -122,11 +122,11 @@ export default function ServiceZonesTab() {
           <p className="text-xs text-gray-500 mt-1">
             Platform zones define where the platform is available. Providers can then select these zones and set their own pricing.
           </p>
-          <Link href="/admin/service-zones" className="text-xs text-[#FF0077] hover:underline mt-1 inline-block">
+          <Link href="/admin/service-zones" className="text-xs text-primary hover:underline mt-1 inline-block">
             Open Service Zones Control Plane (hierarchy, map, publish) →
           </Link>
         </div>
-        <Button onClick={handleCreate} className="bg-[#FF0077] hover:bg-[#D60565]">
+        <Button onClick={handleCreate} className="bg-primary hover:bg-primary-hover">
           <Plus className="w-4 h-4 mr-2" />
           Add Platform Zone
         </Button>

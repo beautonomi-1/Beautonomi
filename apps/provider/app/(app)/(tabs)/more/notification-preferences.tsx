@@ -5,9 +5,11 @@ import { useCallback, useEffect, useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, Switch, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { Colors } from "@/constants/colors";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { twStyle } from "@/lib/twStyle";
 
 type ChannelPrefs = { email?: boolean; sms?: boolean; push?: boolean };
 type Preferences = Record<string, ChannelPrefs | boolean>;
@@ -66,9 +68,9 @@ export default function NotificationPreferencesScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Notification preferences" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#FF0077" />
-          <Text className="mt-3 text-gray-500">Loading…</Text>
+        <View style={twStyle("flex-1 items-center justify-center")}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={twStyle("mt-3 text-gray-500")}>Loading…</Text>
         </View>
       </ScreenContainer>
     );
@@ -78,10 +80,10 @@ export default function NotificationPreferencesScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Notification preferences" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center px-6">
-          <Text className="text-center text-gray-600">{(error as any)?.message || "Failed to load"}</Text>
-          <TouchableOpacity onPress={() => refresh()} className="mt-4 rounded-xl bg-gray-900 px-6 py-3">
-            <Text className="font-medium text-white">Retry</Text>
+        <View style={twStyle("flex-1 items-center justify-center px-6")}>
+          <Text style={twStyle("text-center text-gray-600")}>{(error as any)?.message || "Failed to load"}</Text>
+          <TouchableOpacity onPress={() => refresh()} style={twStyle("mt-4 rounded-xl bg-gray-900 px-6 py-3")}>
+            <Text style={twStyle("font-medium text-white")}>Retry</Text>
           </TouchableOpacity>
         </View>
       </ScreenContainer>
@@ -91,35 +93,35 @@ export default function NotificationPreferencesScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Notification preferences" subtitle="How you receive notifications" onBack={() => router.back()} />
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
-        <View className="px-2 pt-4">
+      <ScrollView style={twStyle("flex-1")} contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+        <View style={twStyle("px-2 pt-4")}>
           {SECTIONS.map((section) => {
             const isMarketing = section.id === "marketing";
             const channelPrefs = (prefs[section.id] as ChannelPrefs) || { email: true, sms: true, push: true };
             return (
-              <View key={section.id} className="mb-4 rounded-2xl border border-gray-200 bg-white p-4">
-                <Text className="font-semibold text-gray-900">{section.title}</Text>
-                <Text className="mt-0.5 text-sm text-gray-500">{section.description}</Text>
+              <View key={section.id} style={twStyle("mb-4 rounded-2xl border border-gray-200 bg-white p-4")}>
+                <Text style={twStyle("font-semibold text-gray-900")}>{section.title}</Text>
+                <Text style={twStyle("mt-0.5 text-sm text-gray-500")}>{section.description}</Text>
                 {isMarketing ? (
-                  <View className="mt-3 flex-row items-center justify-between">
-                    <Text className="text-sm text-gray-700">Email & push</Text>
+                  <View style={twStyle("mt-3 flex-row items-center justify-between")}>
+                    <Text style={twStyle("text-sm text-gray-700")}>Email & push</Text>
                     <Switch
                       value={!prefs.unsubscribe_marketing}
                       onValueChange={toggleMarketing}
-                      trackColor={{ false: "#d1d5db", true: "#FF0077" }}
+                      trackColor={{ false: "#d1d5db", true: Colors.primary }}
                       thumbColor="#fff"
                       disabled={saving}
                     />
                   </View>
                 ) : (
-                  <View className="mt-3 gap-2">
-                    {(["email", "sms", "push"] as const).map((ch) => (
-                      <View key={ch} className="flex-row items-center justify-between">
-                        <Text className="capitalize text-sm text-gray-700">{ch}</Text>
+                  <View style={twStyle("mt-3")}>
+                    {(["email", "sms", "push"] as const).map((ch, idx) => (
+                      <View key={ch} style={[twStyle("flex-row items-center justify-between"), idx > 0 ? { marginTop: 8 } : undefined]}>
+                        <Text style={twStyle("capitalize text-sm text-gray-700")}>{ch}</Text>
                         <Switch
                           value={!!channelPrefs[ch]}
                           onValueChange={() => toggleChannel(section.id, ch)}
-                          trackColor={{ false: "#d1d5db", true: "#FF0077" }}
+                          trackColor={{ false: "#d1d5db", true: Colors.primary }}
                           thumbColor="#fff"
                           disabled={saving}
                         />
