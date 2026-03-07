@@ -66,9 +66,11 @@ eas credentials --platform ios
 
 1. Choose the **production** (or the profile you build with) build profile when prompted.
 2. Select **Set up a new Distribution Certificate** (or **Use existing**, then validate).
-3. Complete the flow: EAS will use your Apple ID and create/register the certificate so **remote** (non-interactive) builds can use it.
-
-Then re-run the build (e.g. from CI or `eas build --profile production --platform ios --non-interactive`). Do the same for the other app (`apps/provider`) if you build both.
+3. Complete the flow for **each target** EAS lists. With OneSignal you will see two targets, e.g.:
+   - **Beautonomi** (e.g. `com.beautonomi`) — main app
+   - **OneSignalNotificationServiceExtension** (e.g. `com.beautonomi.OneSignalNotificationServiceExtension`) — push extension  
+   They can share the same Distribution Certificate but need separate Provisioning Profiles. Follow the prompts for both so credentials are valid for non-interactive builds.
+4. Re-run the build from CI or `eas build --profile production --platform ios --non-interactive`. Do the same for the other app (`apps/provider`) if you build both.
 
 In each app's `eas.json`, update the `submit.production.ios` section:
 
