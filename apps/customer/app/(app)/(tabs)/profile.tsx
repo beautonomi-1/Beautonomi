@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import Constants from "expo-constants";
 import { useAuth } from "@/providers/AuthProvider";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -19,6 +19,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { Colors, shadow } from "@/constants/colors";
 import { APP_URL } from "@/config/public-env";
 import { api } from "@/lib/api-client";
+import { haptic } from "@/lib/haptics";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -55,11 +56,18 @@ export default function ProfileScreen() {
       const verify =
         verifyRes.status === "fulfilled" ? verifyRes.value.data : null;
 
+      const rawLoyalty = loyalty && typeof loyalty === "object" ? loyalty : null;
+      const points =
+        rawLoyalty?.points_balance ??
+        rawLoyalty?.balance?.available ??
+        rawLoyalty?.points ??
+        0;
+
       setProfileData({
         completion: comp?.percentage ?? 0,
         topItems: comp?.topItems ?? [],
         checklistItems: comp?.checklistItems ?? [],
-        loyaltyPoints: loyalty?.points_balance ?? 0,
+        loyaltyPoints: Number(points) || 0,
         verified: verify?.verified ?? false,
       });
     } catch {}
@@ -68,6 +76,12 @@ export default function ProfileScreen() {
   useEffect(() => {
     fetchProfileData();
   }, [fetchProfileData]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (user) fetchProfileData();
+    }, [user, fetchProfileData])
+  );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -102,13 +116,38 @@ export default function ProfileScreen() {
       })
     : null;
 
+  const getCompletionItemRoute = (id: string): string | null => {
+    switch (id) {
+      case "photo":
+      case "preferred_name":
+        return "/(app)/account-settings/personal-info";
+      case "email":
+      case "phone":
+        return "/(app)/account-settings/login-and-security";
+      case "address":
+        return "/(app)/account-settings/addresses";
+      case "identity":
+        return "/(app)/account-settings/identity-verification";
+      case "bio":
+      case "emergency_contact":
+      case "profile_questions":
+      case "interests":
+      case "beauty_preferences":
+        return "/(app)/account-settings";
+      default:
+        return null;
+    }
+  };
+
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
+    <View style={{ flex: 1, backgroundColor: Colors.gray[50] }} accessibilityLabel="Profile screen" accessibilityRole="none">
       <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.gray[50] }} />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 120, ...contentContainerStyle }}
         contentInsetAdjustmentBehavior="automatic"
+        accessibilityLabel="Profile content"
+        accessibilityRole="none"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -129,6 +168,8 @@ export default function ProfileScreen() {
           }
           activeOpacity={0.7}
           style={{ paddingHorizontal: contentPadding }}
+          accessibilityLabel="Show profile, opens personal info"
+          accessibilityRole="button"
         >
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             {/* Avatar */}
@@ -211,14 +252,12 @@ export default function ProfileScreen() {
       {/* ── Profile completion card ── */}
       {(completionPct < 100 || checklistItems.length > 0) && (
         <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
-          <TouchableOpacity
-            onPress={() =>
-              router.push("/(app)/account-settings/personal-info")
-            }
-            activeOpacity={0.8}
-            style={{ backgroundColor: Colors.white, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.gray[100] }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+          <View style={{ backgroundColor: Colors.white, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.gray[100] }}>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/account-settings/personal-info")}
+              activeOpacity={0.8}
+              style={{ flexDirection: "row", alignItems: "flex-start" }}
+            >
               <View
                 style={{
                   width: 44,
@@ -264,43 +303,72 @@ export default function ProfileScreen() {
                     {completionPct}%
                   </Text>
                 </View>
-                {/* Checklist */}
-                {checklistItems.length > 0 && (
-                  <View style={{ marginTop: 12 }}>
-                    {checklistItems.slice(0, 5).map((item, index) => {
-                      const done = item.completed;
-                      const mandatoryMissing = !item.completed && item.required;
-                      const iconName = done
-                        ? "checkmark-circle"
-                        : mandatoryMissing
-                          ? "close-circle"
-                          : "ellipse-outline";
-                      const iconColor = done ? "#16A34A" : mandatoryMissing ? "#ef4444" : "#9ca3af";
-                      return (
-                        <View key={item.id} style={{ flexDirection: "row", alignItems: "center", marginTop: index === 0 ? 0 : 8 }}>
-                          <Ionicons
-                            name={iconName as keyof typeof Ionicons.glyphMap}
-                            size={18}
-                            color={iconColor}
-                            style={{ marginRight: 8 }}
-                          />
-                          <Text
-                            style={{
-                              flex: 1,
-                              fontSize: 14,
-                              color: done ? "#16A34A" : mandatoryMissing ? "#b91c1c" : Colors.gray[600],
-                            }}
-                          >
-                            {item.label}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
               </View>
-            </View>
-          </TouchableOpacity>
+            </TouchableOpacity>
+            {/* Checklist: incomplete items are tappable and deep-link to the right screen */}
+            {checklistItems.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                {checklistItems.slice(0, 5).map((item, index) => {
+                  const done = item.completed;
+                  const mandatoryMissing = !item.completed && item.required;
+                  const iconName = done
+                    ? "checkmark-circle"
+                    : mandatoryMissing
+                      ? "close-circle"
+                      : "ellipse-outline";
+                  const iconColor = done ? "#16A34A" : mandatoryMissing ? "#ef4444" : "#9ca3af";
+                  const route = getCompletionItemRoute(item.id);
+                  const rowContent = (
+                    <>
+                      <Ionicons
+                        name={iconName as keyof typeof Ionicons.glyphMap}
+                        size={18}
+                        color={iconColor}
+                        style={{ marginRight: 8 }}
+                      />
+                      <Text
+                        style={{
+                          flex: 1,
+                          fontSize: 14,
+                          color: done ? "#16A34A" : mandatoryMissing ? "#b91c1c" : Colors.gray[600],
+                        }}
+                      >
+                        {item.label}
+                      </Text>
+                    </>
+                  );
+                  if (!done && route) {
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        onPress={() => { haptic.light(); router.push(route as any); }}
+                        style={{ flexDirection: "row", alignItems: "center", marginTop: index === 0 ? 0 : 8, paddingVertical: 4 }}
+                        activeOpacity={0.7}
+                        accessibilityLabel={`Complete: ${item.label}`}
+                        accessibilityRole="button"
+                      >
+                        {rowContent}
+                      </TouchableOpacity>
+                    );
+                  }
+                  return (
+                    <View key={item.id} style={{ flexDirection: "row", alignItems: "center", marginTop: index === 0 ? 0 : 8 }}>
+                      {rowContent}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/account-settings")}
+              style={{ marginTop: 12, alignSelf: "flex-start", paddingVertical: 4 }}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>
+                Account settings →
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 

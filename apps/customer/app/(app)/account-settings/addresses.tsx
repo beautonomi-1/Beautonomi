@@ -8,8 +8,11 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { AddressPicker, type AddressPickerSelection } from "@/components/AddressPicker";
 import { useAuth } from "@/providers/AuthProvider";
@@ -49,7 +52,7 @@ export default function AddressesScreen() {
     try {
       const res = await api.get<any>("/api/me/addresses");
       if (res.error) {
-        setError(res.error.message || "Failed to load");
+        setError(getApiErrorMessage(res.error, "Failed to load"));
         setAddresses([]);
       } else {
         const raw = res.data;
@@ -57,7 +60,7 @@ export default function AddressesScreen() {
         setAddresses(Array.isArray(list) ? list : []);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(getApiErrorMessage(e, "Failed to load"));
       setAddresses([]);
     } finally {
       setLoading(false);
@@ -95,7 +98,7 @@ export default function AddressesScreen() {
         is_default: addresses.length === 0,
       });
       if (res.error) {
-        Alert.alert("Error", res.error.message ?? "Failed to save address");
+        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to save address"));
       } else {
         setAddModalVisible(false);
         setPendingAddress(null);
@@ -103,7 +106,7 @@ export default function AddressesScreen() {
         await load();
       }
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Failed to save address");
+      Alert.alert("Error", getApiErrorMessage(e, "Failed to save address"));
     } finally {
       setSaving(false);
     }
@@ -116,12 +119,12 @@ export default function AddressesScreen() {
         is_default: true,
       });
       if (res.error) {
-        Alert.alert("Error", res.error.message ?? "Failed to set default");
+        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to set default"));
       } else {
         await load();
       }
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Failed to set default");
+      Alert.alert("Error", getApiErrorMessage(e, "Failed to set default"));
     } finally {
       setSettingDefaultId(null);
     }
@@ -146,7 +149,7 @@ export default function AddressesScreen() {
                 await load();
               }
             } catch (e) {
-              Alert.alert("Error", e instanceof Error ? e.message : "Failed to delete");
+              Alert.alert("Error", getApiErrorMessage(e, "Failed to delete"));
             } finally {
               setDeletingId(null);
             }
@@ -248,7 +251,11 @@ export default function AddressesScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setAddModalVisible(false)}
       >
-        <View style={{ flex: 1, backgroundColor: Colors.white }}>
+        <KeyboardAvoidingView
+          style={{ flex: 1, backgroundColor: Colors.white }}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+        >
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], paddingHorizontal: 16, paddingVertical: 12 }}>
             <TouchableOpacity
               onPress={() => {
@@ -274,7 +281,13 @@ export default function AddressesScreen() {
               )}
             </TouchableOpacity>
           </View>
-          <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 16 }} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16, paddingBottom: 220 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+          >
             <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Label (e.g. Home, Work)</Text>
             <TextInput
               style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
@@ -313,7 +326,7 @@ export default function AddressesScreen() {
               </View>
             )}
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScreenFrame>
   );

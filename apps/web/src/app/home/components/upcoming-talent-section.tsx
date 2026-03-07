@@ -7,21 +7,29 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import ProviderCard from "./provider-card-dynamic";
+import { useUserLocation } from "@/hooks/useUserLocation";
 
 const UpcomingTalentSection = () => {
   const [providers, setProviders] = useState<PublicProviderCard[]>([]);
   const [isLoading, setIsLoading] = useState(false); // Start false to render immediately
   const [error, setError] = useState<string | null>(null);
+  const { location: userLocation } = useUserLocation();
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setIsLoading(true);
         setError(null);
+        const params = new URLSearchParams();
+        if (userLocation?.latitude != null && userLocation?.longitude != null) {
+          params.set("lat", String(userLocation.latitude));
+          params.set("lng", String(userLocation.longitude));
+        }
+        const query = params.toString();
         const response = await fetcher.get<{
           data: { upcoming: PublicProviderCard[] };
           error: null;
-        }>("/api/public/home", { timeoutMs: 10000 });
+        }>(`/api/public/home${query ? `?${query}` : ""}`, { timeoutMs: 10000 });
         setProviders(response.data.upcoming || []);
       } catch (err) {
         // Only set error for actual failures, not empty data
@@ -43,7 +51,7 @@ const UpcomingTalentSection = () => {
     };
 
     loadData();
-  }, []);
+  }, [userLocation?.latitude, userLocation?.longitude]);
 
   const handleRetry = () => {
     setError(null);

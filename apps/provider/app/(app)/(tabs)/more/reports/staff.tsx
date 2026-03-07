@@ -10,6 +10,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -59,12 +60,12 @@ function getDateParams(range: DateRange) {
 }
 
 export default function StaffReport() {
+  const { selectedLocationId } = useProvider();
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
   const { from, to } = getDateParams(dateRange);
-  const { data, loading } = useApi<StaffData>(
-    `/api/provider/reports/staff?from=${from}&to=${to}`
-  );
+  const staffReportUrl = `/api/provider/reports/staff?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
+  const { data, loading } = useApi<StaffData>(staffReportUrl);
 
   const selected = data?.staff.find((s) => s.name === selectedStaff) || null;
 

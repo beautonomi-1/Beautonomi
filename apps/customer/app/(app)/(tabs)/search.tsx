@@ -7,10 +7,14 @@ import {
   ActivityIndicator,
   RefreshControl,
   TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
-import { router } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
@@ -20,14 +24,21 @@ import type { SearchResult, Category } from "@/types/api";
 export default function SearchScreen() {
   useScreenTracking("Search");
   const { contentPadding } = useResponsive();
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<string>("");
+  const params = useLocalSearchParams<{ q?: string; category?: string }>();
+  const [query, setQuery] = useState(params.q ?? "");
+  const [category, setCategory] = useState<string>(params.category ?? "");
   const [results, setResults] = useState<SearchResult | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
+
+  // Sync from nav params when they change (e.g. coming from InlineSearch)
+  useEffect(() => {
+    if (params.q != null) setQuery(String(params.q));
+    if (params.category != null) setCategory(String(params.category));
+  }, [params.q, params.category]);
 
   const loadCategories = useCallback(async () => {
     try {
@@ -57,14 +68,14 @@ export default function SearchScreen() {
         const res = await api.get<SearchResult>(`/api/public/search?${params.toString()}`);
 
         if (res.error) {
-          setError(res.error.message || "Search failed");
+          setError(getApiErrorMessage(res.error, "Search failed"));
           setResults(null);
         } else {
           const data = res.data as SearchResult;
           setResults(data || { providers: [], total: 0, page: 1, limit: 20, has_more: false });
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Search failed");
+        setError(getApiErrorMessage(e, "Search failed"));
         setResults(null);
       } finally {
         setLoading(false);
@@ -81,31 +92,36 @@ export default function SearchScreen() {
   const onRefresh = () => search(true);
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.white }}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, marginLeft: -4 }}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          accessibilityHint="Navigate to the previous screen"
-        >
-          <Ionicons name="arrow-back" size={24} color={Colors.gray[700]} />
-          <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[700], marginLeft: 8 }}>Back</Text>
-        </TouchableOpacity>
-        <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 16 }}>Search</Text>
-        <TextInput
-          style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-          placeholder="Search providers..."
-          placeholderTextColor={Colors.gray[400]}
-          value={query}
-          onChangeText={setQuery}
-          onSubmitEditing={() => search()}
-          returnKeyType="search"
-          accessibilityLabel="Search providers"
-          accessibilityHint="Type a provider name or service to search"
-        />
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={["top"]}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+      >
+        <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, marginLeft: -4 }}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            accessibilityHint="Navigate to the previous screen"
+          >
+            <Ionicons name="arrow-back" size={24} color={Colors.gray[700]} />
+            <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[700], marginLeft: 8 }}>Back</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 16 }}>Search</Text>
+          <TextInput
+            style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
+            placeholder="Search providers..."
+            placeholderTextColor={Colors.gray[400]}
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={() => search()}
+            returnKeyType="search"
+            accessibilityLabel="Search providers"
+            accessibilityHint="Type a provider name or service to search"
+          />
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -153,17 +169,19 @@ export default function SearchScreen() {
             <Text style={{ fontWeight: "600", color: Colors.white }}>Search</Text>
           )}
         </TouchableOpacity>
-      </View>
+        </View>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ padding: contentPadding, paddingBottom: 100 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
-        }
-        accessibilityRole="list"
-        accessibilityLabel="Search results"
-      >
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: contentPadding, paddingBottom: 220 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+          }
+          accessibilityRole="list"
+          accessibilityLabel="Search results"
+        >
         {error && (
           <View style={{ backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", borderRadius: 12, padding: 16, marginBottom: 16 }}>
             <Text style={{ color: "#B91C1C" }}>{error}</Text>
@@ -175,9 +193,22 @@ export default function SearchScreen() {
             <Text style={{ color: Colors.gray[600] }}>No results. Try different filters.</Text>
           </View>
         ) : results && results.providers.length === 0 ? (
-          <View style={{ paddingVertical: 48, alignItems: "center" }}>
-            <Text style={{ color: Colors.gray[600], marginBottom: 8 }}>No providers found</Text>
-            <Text style={{ color: Colors.gray[500], fontSize: 14, textAlign: "center" }}>Try a different search term or category</Text>
+          <View style={{ paddingVertical: 48, alignItems: "center", paddingHorizontal: 24 }}>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+              <Ionicons name="search-outline" size={32} color={Colors.gray[400]} />
+            </View>
+            <Text style={{ color: Colors.gray[700], fontSize: 16, fontWeight: "600", marginBottom: 8, textAlign: "center" }}>No providers found</Text>
+            <Text style={{ color: Colors.gray[500], fontSize: 14, textAlign: "center", marginBottom: 20 }}>Try a different search term or category</Text>
+            {(query.trim() || category) ? (
+              <TouchableOpacity
+                onPress={() => { setQuery(""); setCategory(""); setError(null); search(); }}
+                style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, backgroundColor: Colors.gray[100] }}
+                accessibilityLabel="Clear filters and search again"
+                accessibilityRole="button"
+              >
+                <Text style={{ color: Colors.gray[700], fontWeight: "600", fontSize: 14 }}>Clear filters</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : results ? (
           <>
@@ -199,7 +230,8 @@ export default function SearchScreen() {
             </Text>
           </View>
         )}
-      </ScrollView>
-    </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }

@@ -17,36 +17,29 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from("providers")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error("Provider profile not found."),
-        "NOT_FOUND",
-        404,
-      );
-    }
     const searchParams = request.nextUrl.searchParams;
     const limit = Math.min(parseInt(searchParams.get("limit") ?? "5", 10), 20);
+    const locationId = searchParams.get("location_id");
 
-    const { data: bookingServices, error: bsError } = await supabaseAdmin
+    let bookingServicesQuery = supabaseAdmin
       .from("booking_services")
       .select(
         `
         id,
         price,
         offering_id,
-        bookings!inner (id, provider_id, status),
+        bookings!inner (id, provider_id, status, location_id),
         offerings:offering_id (title)
       `,
       )
       .eq("bookings.provider_id", providerId)
       .not("bookings.status", "in", "(cancelled,no_show)");
+
+    if (locationId) {
+      bookingServicesQuery = bookingServicesQuery.eq("bookings.location_id", locationId);
+    }
+
+    const { data: bookingServices, error: bsError } = await bookingServicesQuery;
 
     if (bsError) {
       console.error("Error fetching booking services:", bsError);

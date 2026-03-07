@@ -85,9 +85,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(newSession?.user ?? null);
   }, []);
 
+  const AUTH_SESSION_TIMEOUT_MS = 12 * 1000; // avoid infinite loading if getSession hangs
+
   useEffect(() => {
     let mounted = true;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const done = () => {
+      if (mounted) setLoading(false);
+    };
+
+    timeoutId = setTimeout(done, AUTH_SESSION_TIMEOUT_MS);
+
     supabase.auth.getSession().then(({ data: { session: s } }) => {
+      if (!mounted) return;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
       const data = { hasSession: !!s, userId: s?.user?.id ?? null, mounted };
       console.log("[AUTH] getSession resolved", data);
       // #region agent log
@@ -103,10 +118,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }),
       }).catch(() => {});
       // #endregion
-      if (mounted) {
-        updateSession(s);
-        setLoading(false);
+      updateSession(s);
+      setLoading(false);
+    }).catch((err) => {
+      console.warn("[AUTH] getSession failed", err);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
       }
+      done();
     });
 
     const {
@@ -132,6 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       mounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
   }, [updateSession]);

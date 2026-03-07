@@ -10,6 +10,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { Colors } from "@/constants/colors";
@@ -40,14 +41,14 @@ export default function OnDemandWaitingScreen() {
     try {
       const res = await api.get<OnDemandRequest>(`/api/me/on-demand/requests/${requestId}`);
       if (res.error) {
-        setError(res.error.message ?? "Failed to load");
+        setError(getApiErrorMessage(res.error, "Failed to load"));
         setRequest(null);
       } else {
         setError(null);
         setRequest(res.data ?? null);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
+      setError(getApiErrorMessage(e, "Failed to load"));
       setRequest(null);
     } finally {
       setLoading(false);
@@ -148,7 +149,7 @@ export default function OnDemandWaitingScreen() {
             setCancelling(true);
             try {
               const res = await api.post(`/api/me/on-demand/requests/${requestId}/cancel`, {});
-              if (res.error) Alert.alert("Error", res.error.message ?? "Failed to cancel");
+              if (res.error) Alert.alert("Error", getApiErrorMessage(res.error, "Failed to cancel"));
               else load();
             } finally {
               setCancelling(false);

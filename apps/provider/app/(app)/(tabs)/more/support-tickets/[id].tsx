@@ -156,13 +156,15 @@ export default function SupportTicketDetailScreen() {
     <ScreenContainer>
       <ScreenHeader title={ticket.ticket_number} onBack={() => router.back()} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
         style={twStyle("flex-1")}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
       >
         <ScrollView
           style={twStyle("flex-1")}
-          contentContainerStyle={{ paddingBottom: 120 }}
+          contentContainerStyle={{ paddingBottom: 220 }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
           <View style={twStyle("px-2 pt-2")}>

@@ -244,11 +244,16 @@ export default function BusinessScreen() {
   const showEmailError = emailTouched && email.length > 0 && !validEmail;
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "padding"}
+      style={{ flex: 1, backgroundColor: Colors.gray[50] }}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 20}
+    >
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ padding: contentPadding, paddingBottom: STACK_CONTENT_PADDING_BOTTOM, ...constraint }}
+        contentContainerStyle={{ padding: contentPadding, paddingBottom: Math.max(STACK_CONTENT_PADDING_BOTTOM, 220), ...constraint }}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {isEnabled && (
           <View style={{ backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#BBF7D0", borderRadius: 12, padding: 12, marginBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "center" }}>

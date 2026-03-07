@@ -16,16 +16,19 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
     const sp = request.nextUrl.searchParams;
+    const locationId = sp.get("location_id") || null;
     const fromDate = sp.get("from") ? new Date(sp.get("from")!) : subDays(new Date(), 30);
     const toDate = sp.get("to") ? new Date(sp.get("to")!) : new Date();
 
-    const { data: bookings } = await supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id, customer_id, created_at, total_amount, status")
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", new Date(toDate.getTime() + 86400000).toISOString())
       .not("status", "in", "(cancelled,no_show)");
+    if (locationId) bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    const { data: bookings } = await bookingsQuery;
 
     const all = bookings || [];
     const customerIds = new Set(all.map((b: any) => b.customer_id).filter(Boolean));

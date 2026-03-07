@@ -5,6 +5,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import ProviderCard from "./provider-card-dynamic";
+import { useUserLocation } from "@/hooks/useUserLocation";
 
 /**
  * Initial Service Listings Section
@@ -14,6 +15,7 @@ import ProviderCard from "./provider-card-dynamic";
  */
 const InitialListingsSection = () => {
   const searchParams = useSearchParams();
+  const { location: userLocation } = useUserLocation();
   const [providers, setProviders] = useState<PublicProviderCard[]>([]);
   const [isLoading, setIsLoading] = useState(false); // Start as false so page renders immediately
   const [_error, setError] = useState<string | null>(null);
@@ -26,10 +28,14 @@ const InitialListingsSection = () => {
       try {
         setIsLoading(true);
         setError(null);
-        // Build URL with category parameter
-        const url = categorySlug && categorySlug !== "all" 
-          ? `/api/public/home?category=${encodeURIComponent(categorySlug)}`
-          : "/api/public/home";
+        const params = new URLSearchParams();
+        if (categorySlug && categorySlug !== "all") params.set("category", categorySlug);
+        if (userLocation?.latitude != null && userLocation?.longitude != null) {
+          params.set("lat", String(userLocation.latitude));
+          params.set("lng", String(userLocation.longitude));
+        }
+        const query = params.toString();
+        const url = `/api/public/home${query ? `?${query}` : ""}`;
         
         const response = await fetcher.get<{
           data: { all: PublicProviderCard[] };
@@ -56,7 +62,7 @@ const InitialListingsSection = () => {
     };
 
     loadData();
-  }, [categorySlug]);
+  }, [categorySlug, userLocation?.latitude, userLocation?.longitude]);
 
   if (isLoading) {
     return (

@@ -331,8 +331,8 @@ export default function ChatScreen() {
 
       <KeyboardAvoidingView
         style={[twStyle("flex-1"), { flex: 1 }]}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 20}
       >
         {loading && !conversation ? (
           <View style={twStyle("flex-1 justify-center py-8")}>
@@ -349,7 +349,7 @@ export default function ChatScreen() {
                 flexGrow: 1,
                 paddingHorizontal: screenPadding,
                 paddingTop: 12,
-                paddingBottom: 8,
+                paddingBottom: 220,
               }}
               ListEmptyComponent={
                 <View style={twStyle("py-12 items-center")}>

@@ -33,16 +33,17 @@ export function KeyboardScreen({
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
+      behavior={Platform.OS === "ios" ? "padding" : "padding"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 20}
     >
       <ScrollView
         style={{ flex: 1, backgroundColor: Colors.white }}
         contentContainerStyle={[
-          { padding: contentPadding, paddingBottom },
+          { padding: contentPadding, paddingBottom: Math.max(paddingBottom, 220) },
           contentContainerStyle,
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={showsVerticalScrollIndicator}
       >
         {children}

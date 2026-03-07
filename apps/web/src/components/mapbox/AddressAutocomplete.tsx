@@ -58,6 +58,7 @@ export default function AddressAutocomplete({
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const didSelectRef = useRef(false);
 
   useEffect(() => {
     setQuery(value);
@@ -157,30 +158,30 @@ export default function AddressAutocomplete({
   // Handle manual address entry when user finishes typing (on blur)
   // This allows the form to work even if Mapbox autocomplete isn't available
   const handleBlur = () => {
+    // If user just selected a suggestion, don't overwrite with partial manual entry
+    if (didSelectRef.current) {
+      didSelectRef.current = false;
+      setShowSuggestions(false);
+      return;
+    }
     // Only update if user typed something and didn't select a suggestion
-    // This ensures manual entry works even without Mapbox
     if (onChange && query.trim().length > 0) {
-      // Check if this is a manual entry (no suggestions shown or query doesn't match)
       const isManualEntry = !showSuggestions || 
         suggestions.length === 0 ||
         !suggestions.some(s => s.place_name === query);
       
       if (isManualEntry) {
-        // User typed manually - update address_line1
-        // Note: We set city to empty string, but the form will preserve manually entered values
-        // because the parent component's handleAddressSelect merges with existing data
         onChange({
           address_line1: query.trim(),
-          city: '', // User will fill this manually in the city field
+          city: '',
           state: undefined,
           postal_code: undefined,
           country: country || '',
-          latitude: 0, // Optional - can be geocoded later if Mapbox is configured
+          latitude: 0,
           longitude: 0,
         });
       }
     }
-    // If required and empty, the HTML5 validation will handle it via the required attribute
     setShowSuggestions(false);
   };
 
@@ -259,8 +260,8 @@ export default function AddressAutocomplete({
   };
 
   const handleSelectSuggestion = (suggestion: AddressSuggestion) => {
+    didSelectRef.current = true;
     const address = parseAddress(suggestion);
-    // Use the full place_name for display, but the parsed address_line1 for the actual address
     setQuery(suggestion.place_name);
     setShowSuggestions(false);
     setSuggestions([]);
@@ -327,11 +328,15 @@ export default function AddressAutocomplete({
       </div>
 
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+        <div className="absolute z-[100] w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
           {suggestions.map((suggestion, index) => (
             <button
               key={suggestion.id}
               type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                handleSelectSuggestion(suggestion);
+              }}
               onClick={() => handleSelectSuggestion(suggestion)}
               onMouseEnter={() => setSelectedIndex(index)}
               className={`w-full text-left px-4 py-3 hover:bg-[#FF0077]/5 transition-colors border-b border-gray-100 last:border-b-0 ${

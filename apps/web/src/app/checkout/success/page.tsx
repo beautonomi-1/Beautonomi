@@ -14,6 +14,13 @@ const TEXT_SECONDARY = "#6B7280";
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 15;
 
+/** Deep link scheme for customer mobile app (opens app to a specific screen when installed) */
+const CUSTOMER_APP_SCHEME = "customer";
+function appDeepLink(path: string, params?: Record<string, string>): string {
+  const q = params ? new URLSearchParams(params).toString() : "";
+  return `${CUSTOMER_APP_SCHEME}://${path}${q ? `?${q}` : ""}`;
+}
+
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
   const bookingId = searchParams?.get("booking_id");
@@ -52,6 +59,16 @@ function CheckoutSuccessContent() {
 
   const resolvedBookingId = bookingId ?? customOfferBookingId;
   const showBookingLink = !!(resolvedBookingId || bookingNumber);
+  const paymentType = searchParams?.get("payment_type");
+
+  const openInAppUrl =
+    resolvedBookingId
+      ? appDeepLink("booking-detail", { id: resolvedBookingId })
+      : isCustomOffer
+        ? appDeepLink("account-settings/custom-requests")
+        : paymentType === "wallet_topup"
+          ? appDeepLink("profile")
+          : appDeepLink("bookings");
 
   return (
     <div
@@ -150,6 +167,13 @@ function CheckoutSuccessContent() {
               View custom requests
             </Link>
           )}
+          <a
+            href={openInAppUrl}
+            className="inline-flex items-center justify-center min-h-[44px] px-5 py-3 rounded-2xl font-medium border transition-transform active:scale-[0.98]"
+            style={{ color: TEXT_SECONDARY, borderColor: "#E5E7EB", fontSize: "0.875rem" }}
+          >
+            Open in app
+          </a>
         </div>
       </div>
     </div>

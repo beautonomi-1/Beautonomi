@@ -204,14 +204,16 @@ export default function EditLocationScreen() {
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Edit location" onBack={() => router.back()} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
         style={twStyle("flex-1")}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
       >
         <ScrollView
           style={twStyle("flex-1")}
-          contentContainerStyle={{ paddingBottom: 120 }}
+          contentContainerStyle={{ paddingBottom: 220 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           <View style={twStyle("px-4")}>
             <View style={twStyle("mb-4")}>
@@ -237,7 +239,7 @@ export default function EditLocationScreen() {
             <View style={twStyle("mb-4")}>
               <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Address *</Text>
               <Text style={twStyle("mb-2 text-xs text-gray-500")}>
-                Search to fill address and coordinates automatically.
+                Search for an address to fill city, state, postal code and coordinates automatically, or type manually.
               </Text>
               <AddressAutocomplete
                 value={address_line1}
@@ -253,22 +255,10 @@ export default function EditLocationScreen() {
                   if (errors.city) setErrors((e) => ({ ...e, city: "" }));
                   if (errors.country) setErrors((e) => ({ ...e, country: "" }));
                 }}
-                placeholder="Search address…"
+                onBlur={(text) => setAddressLine1(text)}
+                placeholder="Street address or search…"
                 label={undefined}
                 countryCode={country ? (country.length === 2 ? country : "ZA") : "ZA"}
-              />
-            </View>
-            <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Address line 1 *</Text>
-              <TextInput
-                style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.address_line1 ? "border-red-500" : "border-gray-200"}`)}
-                value={address_line1}
-                onChangeText={(t) => {
-                  setAddressLine1(t);
-                  if (errors.address_line1) setErrors((e) => ({ ...e, address_line1: "" }));
-                }}
-                placeholder="Street address"
-                placeholderTextColor="#9ca3af"
               />
               {errors.address_line1 ? (
                 <Text style={twStyle("mt-1 text-sm text-red-500")}>

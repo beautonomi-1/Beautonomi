@@ -120,21 +120,36 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare access_codes as JSONB
-    const accessCodesJson = validationResult.data.access_codes 
+    const accessCodesJson = validationResult.data.access_codes
       ? JSON.stringify(validationResult.data.access_codes)
       : null;
 
+    const d = validationResult.data;
+    const insertPayload: Record<string, unknown> = {
+      user_id: user.id,
+      label: d.label ?? null,
+      address_line1: d.address_line1,
+      address_line2: d.address_line2 ?? null,
+      city: d.city,
+      state: d.state ?? null,
+      postal_code: d.postal_code ?? null,
+      country: d.country,
+      latitude: latitude ?? null,
+      longitude: longitude ?? null,
+      is_default: d.is_default ?? false,
+      access_codes: accessCodesJson,
+      apartment_unit: d.apartment_unit ?? null,
+      building_name: d.building_name ?? null,
+      floor_number: d.floor_number ?? null,
+      parking_instructions: d.parking_instructions ?? null,
+      location_landmarks: d.location_landmarks ?? null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
     const { data: address, error } = await (supabase
       .from("user_addresses") as any)
-      .insert({
-        user_id: user.id,
-        ...validationResult.data,
-        access_codes: accessCodesJson,
-        latitude,
-        longitude,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      .insert(insertPayload)
       .select()
       .single();
 

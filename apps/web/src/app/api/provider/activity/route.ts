@@ -20,26 +20,41 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
     const searchParams = request.nextUrl.searchParams;
     const limit = Math.min(parseInt(searchParams.get("limit") ?? "10", 10), 50);
+    const locationId = searchParams.get("location_id");
     const since = subDays(new Date(), 14);
 
-    const [bookingsResult, paymentsResult, reviewsResult] = await Promise.all([
-      supabaseAdmin
-        .from("bookings")
-        .select("id, status, created_at, scheduled_at, customers(full_name)")
-        .eq("provider_id", providerId)
-        .gte("created_at", since.toISOString())
-        .order("created_at", { ascending: false })
-        .limit(limit * 2),
+    let bookingsQuery = supabaseAdmin
+      .from("bookings")
+      .select("id, status, created_at, scheduled_at, location_id, customers(full_name)")
+      .eq("provider_id", providerId)
+      .gte("created_at", since.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(limit * 2);
+    if (locationId) {
+      bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    }
+    const bookingsResult = await bookingsQuery;
 
-      supabaseAdmin
-        .from("finance_transactions")
-        .select("id, transaction_type, amount, net, created_at, booking_id")
-        .eq("provider_id", providerId)
-        .in("transaction_type", ["provider_earnings", "payout"])
-        .gte("created_at", since.toISOString())
-        .order("created_at", { ascending: false })
-        .limit(limit),
+    const { data: paymentsData } = await supabaseAdmin
+      .from("finance_transactions")
+      .select("id, transaction_type, amount, net, created_at, booking_id")
+      .eq("provider_id", providerId)
+      .in("transaction_type", ["provider_earnings", "payout"])
+      .gte("created_at", since.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(limit * 2);
 
+    const paymentsResult = { data: paymentsData, error: null as any };
+    if (locationId && paymentsData && paymentsData.length > 0) {
+      const bookingIds = new Set((bookingsResult.data || []).map((b: { id: string }) => b.id));
+      const filtered = paymentsData.filter((p: { booking_id?: string | null; transaction_type?: string }) => {
+        if (p.transaction_type === "payout") return true;
+        return p.booking_id && bookingIds.has(p.booking_id);
+      });
+      paymentsResult.data = filtered.slice(0, limit);
+    }
+
+    const [reviewsResult] = await Promise.all([
       supabaseAdmin
         .from("reviews")
         .select("id, rating, comment, created_at, customers(full_name)")

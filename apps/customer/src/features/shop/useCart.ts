@@ -1,6 +1,10 @@
 import { useState, useCallback, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useAuth } from "@/providers/AuthProvider";
+
+const CART_CACHE_KEY = "beautonomi_cart";
 
 export interface CartItem {
   id: string;
@@ -34,15 +38,19 @@ export function useCart() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [fromCache, setFromCache] = useState(false);
+
   const fetchCart = useCallback(async () => {
     if (authLoading || !user) {
       setItems([]);
       setLoading(false);
       setError(null);
+      setFromCache(false);
       return;
     }
     setLoading(true);
     setError(null);
+    setFromCache(false);
     const res = await api.get<{ items: CartItem[] }>("/api/me/cart");
     const status = (res.error as { status?: number } | undefined)?.status;
     if (res.error) {
@@ -50,10 +58,24 @@ export function useCart() {
         setItems([]);
         setError(null);
       } else {
-        setError(res.error.message);
+        setError(getApiErrorMessage(res.error, "Failed to load cart"));
+        try {
+          const raw = await AsyncStorage.getItem(CART_CACHE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw) as CartItem[];
+            if (Array.isArray(parsed)) {
+              setItems(parsed);
+              setFromCache(true);
+            }
+          }
+        } catch {}
       }
     } else {
-      setItems(res.data?.items ?? []);
+      const list = res.data?.items ?? [];
+      setItems(list);
+      try {
+        await AsyncStorage.setItem(CART_CACHE_KEY, JSON.stringify(list));
+      } catch {}
     }
     setLoading(false);
   }, [user, authLoading]);
@@ -77,7 +99,7 @@ export function useCart() {
         product_id: productId,
         quantity,
       });
-      if (res.error) return { error: res.error.message };
+      if (res.error) return { error: getApiErrorMessage(res.error, "Could not add to cart") };
       await fetchCart();
       return { error: null };
     },
@@ -89,7 +111,7 @@ export function useCart() {
       const res = await api.patch<{ item: CartItem }>(`/api/me/cart/${itemId}`, {
         quantity,
       });
-      if (res.error) return { error: res.error.message };
+      if (res.error) return { error: getApiErrorMessage(res.error, "Could not update quantity") };
       await fetchCart();
       return { error: null };
     },
@@ -99,7 +121,7 @@ export function useCart() {
   const removeItem = useCallback(
     async (itemId: string) => {
       const res = await api.delete(`/api/me/cart/${itemId}`);
-      if (res.error) return { error: res.error.message };
+      if (res.error) return { error: getApiErrorMessage(res.error, "Could not remove item") };
       await fetchCart();
       return { error: null };
     },
@@ -108,7 +130,7 @@ export function useCart() {
 
   const clearCart = useCallback(async () => {
     const res = await api.delete("/api/me/cart");
-    if (res.error) return { error: res.error.message };
+    if (res.error) return { error: getApiErrorMessage(res.error, "Could not clear cart") };
     setItems([]);
     return { error: null };
   }, []);
@@ -140,6 +162,7 @@ export function useCart() {
     items,
     loading,
     error,
+    fromCache,
     itemCount,
     subtotal,
     groupedByProvider,

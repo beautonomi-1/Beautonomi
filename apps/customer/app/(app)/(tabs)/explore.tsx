@@ -124,20 +124,21 @@ function PinCard({
 
   return (
     <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-      <Pressable
-        onPress={handlePress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        accessibilityRole="button"
-        accessibilityLabel={`Post by ${post.provider?.business_name || "Provider"}${post.caption ? `, ${post.caption}` : ""}`}
+      <View
+        style={{
+          borderRadius: 16,
+          overflow: "hidden",
+          backgroundColor: "#F3F4F6",
+          ...Shadows.cardSubtle,
+        }}
       >
-        <View
-          style={{
-            borderRadius: 16,
-            overflow: "hidden",
-            backgroundColor: "#F3F4F6",
-            ...Shadows.cardSubtle,
-          }}
+        <Pressable
+          onPress={handlePress}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          accessibilityRole="button"
+          accessibilityLabel={`Post by ${post.provider?.business_name || "Provider"}${post.caption ? `, ${post.caption}` : ""}`}
+          style={{ width: cardWidth }}
         >
           {/* Image */}
           <View style={{ width: cardWidth, height: imgHeight }}>
@@ -179,30 +180,6 @@ function PinCard({
               }}
             />
 
-            {/* Save button (top-right) */}
-            <TouchableOpacity
-              onPress={() => { haptic.light(); onSave(post); }}
-              style={{
-                position: "absolute",
-                top: 8,
-                right: 8,
-                width: 32,
-                height: 32,
-                borderRadius: 16,
-                backgroundColor: post.is_saved ? Colors.primary : "rgba(0,0,0,0.35)",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={post.is_saved ? "bookmark" : "bookmark-outline"}
-                size={16}
-                color="#fff"
-              />
-            </TouchableOpacity>
-
             {/* Provider badge (bottom-left on image) */}
             <View
               style={{
@@ -212,6 +189,7 @@ function PinCard({
                 flexDirection: "row",
                 alignItems: "center",
               }}
+              pointerEvents="none"
             >
               <View
                 style={{
@@ -282,8 +260,35 @@ function PinCard({
               ) : null}
             </View>
           </View>
-        </View>
-      </Pressable>
+        </Pressable>
+
+        {/* Save button outside Pressable so tap doesn't trigger card navigation */}
+        <TouchableOpacity
+          onPress={() => { haptic.light(); onSave(post); }}
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            backgroundColor: post.is_saved ? Colors.primary : "rgba(0,0,0,0.35)",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10,
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          activeOpacity={0.7}
+          accessibilityLabel={post.is_saved ? "Unsave post" : "Save post"}
+          accessibilityRole="button"
+        >
+          <Ionicons
+            name={post.is_saved ? "bookmark" : "bookmark-outline"}
+            size={16}
+            color="#fff"
+          />
+        </TouchableOpacity>
+      </View>
     </Animated.View>
   );
 }
@@ -313,6 +318,9 @@ function CategoryChip({
         backgroundColor: active ? "#111827" : "#F3F4F6",
         marginRight: 8,
       }}
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
     >
       <Ionicons name={icon} size={14} color={active ? "#fff" : "#6B7280"} style={{ marginRight: 5 }} />
       <Text style={{ fontSize: 13, fontWeight: "600", color: active ? "#fff" : "#374151" }}>
@@ -360,6 +368,8 @@ function ExploreSearchBar({
         onChangeText={onChangeQuery}
         onSubmitEditing={onSubmit}
         returnKeyType="search"
+        accessibilityLabel="Search looks, styles and treatments"
+        accessibilityRole="search"
       />
       {query.length > 0 ? (
         <TouchableOpacity onPress={onClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -588,7 +598,7 @@ export default function ExploreScreen() {
   if (loading && posts.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor: "#fff" }}>
-        <SafeAreaView edges={["top"]} style={[contentContainerStyle, { backgroundColor: "#fff" }]}>
+        <SafeAreaView edges={["top"]} style={[contentContainerStyle, { backgroundColor: "#fff" }]} accessibilityLabel="Explore feed" accessibilityRole="none">
           <View style={{ paddingHorizontal: contentPadding, paddingTop: 8 }}>
             <Text style={{ fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 16 }}>
               Explore

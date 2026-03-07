@@ -10,6 +10,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -63,11 +64,11 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function BookingsReport() {
+  const { selectedLocationId } = useProvider();
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const { from, to } = getDateParams(dateRange);
-  const { data, loading } = useApi<BookingsData>(
-    `/api/provider/reports/bookings?from=${from}&to=${to}`
-  );
+  const bookingsReportUrl = `/api/provider/reports/bookings?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
+  const { data, loading } = useApi<BookingsData>(bookingsReportUrl);
 
   const handleExport = useCallback(async () => {
     if (!data) return;

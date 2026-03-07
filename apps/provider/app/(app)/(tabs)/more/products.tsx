@@ -422,8 +422,9 @@ export function ProductsContent() {
       {/* Single consolidated Add/Edit form – everything on one screen, no leaving */}
       <Modal visible={formOpen} animationType="slide" presentationStyle="pageSheet">
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
           style={{ flex: 1, backgroundColor: Colors.white }}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
         >
           <View style={{ borderBottomWidth: 1, borderBottomColor: Colors.gray[100], paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>
@@ -433,7 +434,12 @@ export function ProductsContent() {
               <Ionicons name="close" size={24} color="#374151" />
             </TouchableOpacity>
           </View>
-          <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 16 }} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 16 }}
+            contentContainerStyle={{ paddingBottom: 220 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             {loadingProduct ? (
               <View style={{ paddingVertical: 32, alignItems: "center" }}>
                 <LoadingState />

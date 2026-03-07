@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, Alert, ScrollView, Platform } from "react-native";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
@@ -18,10 +19,10 @@ export default function MembershipScreen() {
     setError(null);
     try {
       const res = await api.get<any>("/api/me/membership");
-      if (res.error) setError(res.error.message || "Failed to load");
+      if (res.error) setError(getApiErrorMessage(res.error, "Failed to load"));
       else setData(res.data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(getApiErrorMessage(e as Error, "Failed to load"));
     } finally {
       setLoading(false);
     }
@@ -45,12 +46,12 @@ export default function MembershipScreen() {
             try {
               const res = await api.post("/api/me/membership/cancel", {});
               if (res.error) {
-                Alert.alert("Error", res.error.message || "Failed to cancel");
+                Alert.alert("Error", getApiErrorMessage(res.error, "Failed to cancel"));
               } else {
                 await load();
               }
             } catch (e) {
-              Alert.alert("Error", e instanceof Error ? e.message : "Failed to cancel");
+              Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to cancel"));
             } finally {
               setCancelling(false);
             }

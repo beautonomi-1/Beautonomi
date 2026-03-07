@@ -57,10 +57,13 @@ If EAS Build fails with:
 - **"Distribution Certificate is not validated for non-interactive builds"**
 - **"Credentials are not set up. Run this command again in interactive mode."**
 
-you must set up or validate iOS credentials **once** from your machine (interactive mode):
+you must set up or validate iOS credentials **once** from your machine (interactive mode), **for each app** that fails:
+
+- **Customer app** (Beautonomi, `com.beautonomi`): run from `apps/customer`.
+- **Provider app** (Beautonomi Provider, `com.beautonomi.partner`): run from `apps/provider`.
 
 ```bash
-cd apps/customer   # or apps/provider
+cd apps/customer   # for customer iOS; use apps/provider for provider iOS
 eas credentials --platform ios
 ```
 
@@ -71,6 +74,44 @@ eas credentials --platform ios
    - **OneSignalNotificationServiceExtension** (e.g. `com.beautonomi.OneSignalNotificationServiceExtension`) — push extension  
    They can share the same Distribution Certificate but need separate Provisioning Profiles. Follow the prompts for both so credentials are valid for non-interactive builds.
 4. Re-run the build from CI or `eas build --profile production --platform ios --non-interactive`. Do the same for the other app (`apps/provider`) if you build both.
+
+### Fixing OneSignal extension: "Provisioning profile doesn't support the App Group" (iOS)
+
+If the **Xcode build** fails with:
+
+- *Provisioning profile "... OneSignalNotificationServiceExtension ..." doesn't support the **group.com.beautonomi.onesignal** App Group*
+- *Provisioning profile doesn't match the entitlements file's value for the **com.apple.security.application-groups** entitlement*
+
+the **OneSignalNotificationServiceExtension** provisioning profile was created without the App Group capability. The main app and the extension both use `group.com.beautonomi.onesignal` (in `app.json` → `ios.entitlements`); the extension’s App ID and profile must include that capability.
+
+**1. Apple Developer Portal**
+
+1. Go to [developer.apple.com](https://developer.apple.com) → **Certificates, Identifiers & Profiles** → **Identifiers**.
+2. Open the App ID for the **extension** (e.g. `com.beautonomi.OneSignalNotificationServiceExtension` for customer; provider will use `com.beautonomi.partner.OneSignalNotificationServiceExtension`).
+3. Ensure **App Groups** is enabled. Click **Configure** and add/select the group used by the app:
+   - Customer: `group.com.beautonomi.onesignal`
+   - Provider: `group.com.beautonomi.partner.onesignal`
+4. Save the App ID.
+5. **Provisioning Profiles**: Open **Profiles**, find the **Distribution** profile for the extension (e.g. the one named like "*[expo] com.beautonomi.OneSignalNotificationServiceExtension AppStore ..."). Either:
+   - **Edit** the profile (if your portal allows editing capabilities) and ensure App Groups is included, then **Regenerate**, or
+   - **Delete** that profile so EAS can create a new one that includes the App Group in the next step.
+
+**2. EAS: refresh the extension’s provisioning profile**
+
+From the app directory (e.g. `apps/customer`):
+
+```bash
+eas credentials --platform ios
+```
+
+1. Choose the **production** build profile.
+2. When asked which target to manage, select **OneSignalNotificationServiceExtension**.
+3. Under **Build Credentials**, choose to **Set up a new Provisioning Profile** (or remove the existing one and create new). EAS will create/fetch a profile that includes the capabilities of the App ID (including App Groups).
+4. Finish the flow, then re-run the build:
+
+   ```bash
+   eas build --profile production --platform ios --non-interactive
+   ```
 
 In each app's `eas.json`, update the `submit.production.ios` section:
 
@@ -94,6 +135,27 @@ In each app's `eas.json`, update the `submit.production.ios` section:
 
 3. The `serviceAccountKeyPath` in `eas.json` points to `./google-services-key.json`
 
+### Fixing "Generating a new Keystore is not supported in --non-interactive mode" (Android)
+
+If EAS Build fails with:
+
+- **"Generating a new Keystore is not supported in --non-interactive mode"**
+
+then Android credentials are not set up yet. EAS cannot create a keystore when running from CI/GitHub. You must set up the Android keystore **once** from your machine (interactive mode):
+
+```bash
+cd apps/customer   # or apps/provider
+eas credentials --platform android
+```
+
+1. Choose the **production** (or the profile you build with) build profile when prompted.
+2. When asked about the keystore, either:
+   - **Generate a new keystore** — EAS will create one and store it on Expo’s servers (use this for new apps), or
+   - **Use an existing keystore** — if you already have an upload keystore (e.g. from Play or from `generate-upload-keystore.ps1`), provide the path and passwords.
+3. Complete the flow. After that, EAS will use the stored credentials for all future builds (including non-interactive/CI).
+
+Do the same for the other app (`apps/provider`) if you build both. Then re-run the build from GitHub or `eas build --profile production --platform android --non-interactive`.
+
 ## Amplitude Guides & Surveys (optional)
 
 The provider and customer apps use `@amplitude/plugin-engagement-react-native` when `guides_enabled` or `surveys_enabled` is set in `/api/public/analytics-config`. This plugin includes **native code**:
@@ -104,7 +166,7 @@ The provider and customer apps use `@amplitude/plugin-engagement-react-native` w
 
 ## Step 4: Build
 
-**Run all EAS commands from the app directory** (e.g. `apps/customer` or `apps/provider`), not from the monorepo root. Otherwise you get `Command "expo" not found` because the root `package.json` does not depend on Expo.
+**Run all EAS commands from the app directory** (e.g. `apps/customer` or `apps/provider`), not from the monorepo root. Otherwise you get `Command "expo" not found` because the root `package.json` does not depend on Expo, or **"Experience with id '...' does not exist"** if a root-level config pointed EAS at the wrong project.
 
 ```bash
 cd apps/customer   # or apps/provider
@@ -128,6 +190,31 @@ From the app directory (`apps/customer` or `apps/provider`):
 # Submit to App Store and Google Play
 eas submit --profile production --platform all
 ```
+
+## Android: Aligning with existing Play Store apps (Flutter → Expo)
+
+The customer and provider apps already exist on Google Play (Beautonomi, Beautonomi Partner). To ship Expo builds as **updates** to those same listings:
+
+- **Package names** match: `com.beautonomi`, `com.beautonomi.partner` (in each app’s `app.json` → `expo.android.package`).
+- **Version codes** are set so the next upload is accepted:
+  - **Customer (Beautonomi):** `expo.android.versionCode: 4` (Play Production is at 3).
+  - **Provider (Beautonomi Partner):** `expo.android.versionCode: 3` (Open testing is at 2).
+- **Signing:** To update the existing apps, the Expo AAB must be signed with the **same** Android keystore used for the current Flutter builds. Configure EAS to use that keystore (e.g. `eas credentials --platform android` and supply the existing keystore path and passwords). Without the same key, Play will reject the upload as a different app.
+
+**If you lost the Flutter upload keystore:** Google Play App Signing allows an "upload key reset". For **Beautonomi (customer)** you can generate a new upload keystore and PEM, then request the reset in Play Console:
+
+1. Install Java JDK if needed (e.g. [Adoptium](https://adoptium.net)); ensure `keytool` is in PATH or set `JAVA_HOME`.
+2. From repo root or `apps/customer`, run:
+   ```powershell
+   .\apps\customer\scripts\generate-upload-keystore.ps1
+   ```
+   This creates `apps/customer/upload-keystore.jks`, `upload_certificate.pem`, and `upload-keystore-credentials.txt` (password; gitignored).
+3. In Play Console → Beautonomi → **Release** → **Setup** → **App signing** → **Request upload key reset** → choose "I lost my upload key" → upload the generated **upload_certificate.pem**.
+4. After Google approves, run `eas credentials --platform android` in `apps/customer`, choose "Use existing keystore", and point to `upload-keystore.jks` using the password from `upload-keystore-credentials.txt`.
+
+Repeat the same process for **Beautonomi Partner (provider)** in its own App signing page; use a separate keystore (run a similar script from `apps/provider` or generate a second keystore with a different output path).
+
+Bump `versionCode` in each app’s `app.json` whenever you need a higher code than what’s currently on the store.
 
 ## Environment Variables
 

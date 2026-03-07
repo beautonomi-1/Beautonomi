@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, Switch } from "react-native";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 
@@ -15,10 +16,10 @@ export default function NotificationsScreen() {
     setError(null);
     try {
       const res = await api.get<any>("/api/me/notification-preferences");
-      if (res.error) setError(res.error.message || "Failed to load");
+      if (res.error) setError(getApiErrorMessage(res.error, "Failed to load"));
       else setPrefs(res.data ?? {});
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(getApiErrorMessage(e, "Failed to load"));
     } finally {
       setLoading(false);
     }

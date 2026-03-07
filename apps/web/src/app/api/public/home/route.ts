@@ -1647,6 +1647,15 @@ export async function GET(request: Request) {
       }
     }
 
+    // Sort by distance (closest first) when user location is available
+    if (latitude && longitude) {
+      const sortByDistance = (a: PublicProviderCard, b: PublicProviderCard) =>
+        (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity);
+      topRated.sort(sortByDistance);
+      hottest.sort(sortByDistance);
+      upcoming.sort(sortByDistance);
+    }
+
     return {
       data: {
         all: allProviders,
@@ -1731,9 +1740,62 @@ export async function GET(request: Request) {
             };
             sponsored.push(card);
           }
+          // Compute distance for sponsored when user location is available (cards from allMap may already have distance_km)
+          const lat = new URL(request.url).searchParams.get("lat");
+          const lng = new URL(request.url).searchParams.get("lng");
+          if (lat && lng && sponsored.length > 0) {
+            try {
+              const mapbox = await getMapboxService();
+              const userCoords = { latitude: parseFloat(lat), longitude: parseFloat(lng) };
+              const idsNeedingDistance = sponsored.filter((c) => c.distance_km == null).map((c) => c.id);
+              if (idsNeedingDistance.length > 0) {
+                const { data: sponsoredLocs } = await supabaseAdmin
+                  .from("provider_locations")
+                  .select("provider_id, latitude, longitude")
+                  .in("provider_id", idsNeedingDistance)
+                  .eq("is_active", true)
+                  .not("latitude", "is", null)
+                  .not("longitude", "is", null);
+                const distMap = new Map<string, number>();
+                if (sponsoredLocs) {
+                  for (const loc of sponsoredLocs as { provider_id: string; latitude: number; longitude: number }[]) {
+                    try {
+                      const d = mapbox.calculateDistance(userCoords, { latitude: loc.latitude, longitude: loc.longitude });
+                      if (!distMap.has(loc.provider_id) || d < distMap.get(loc.provider_id)!) distMap.set(loc.provider_id, d);
+                    } catch {
+                      // skip
+                    }
+                  }
+                }
+                sponsored.forEach((c) => {
+                  if (c.distance_km == null && distMap.has(c.id)) c.distance_km = distMap.get(c.id)!;
+                });
+              }
+              sponsored.sort((a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity));
+            } catch (err) {
+              console.warn("Home: sponsored distance calculation failed:", err);
+            }
+          }
         }
       }
       data = { ...data, sponsored } as typeof data & { sponsored: PublicProviderCard[] };
+    }
+
+    // Default order: closest to furthest for every section when user location is available
+    const latParam = new URL(request.url).searchParams.get("lat");
+    const lngParam = new URL(request.url).searchParams.get("lng");
+    if (latParam && lngParam) {
+      const sortByDistance = (a: PublicProviderCard, b: PublicProviderCard) =>
+        (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity);
+      const dataWithSponsored = data as typeof data & { sponsored?: PublicProviderCard[] };
+      data = {
+        ...data,
+        topRated: [...(data.topRated ?? [])].sort(sortByDistance),
+        hottest: [...(data.hottest ?? [])].sort(sortByDistance),
+        upcoming: [...(data.upcoming ?? [])].sort(sortByDistance),
+        nearest: [...(data.nearest ?? [])].sort(sortByDistance),
+        sponsored: [...(dataWithSponsored.sponsored ?? [])].sort(sortByDistance),
+      };
     }
 
     const response = NextResponse.json({ ...result, data });

@@ -14,18 +14,21 @@ export async function GET(request: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       { auth: { autoRefreshToken: false, persistSession: false } },
     );    const sp = request.nextUrl.searchParams;
+    const locationId = sp.get("location_id") || null;
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
 
     const fromDate = sp.get("from") ? new Date(sp.get("from")!) : subDays(new Date(), 30);
     const toDate = sp.get("to") ? new Date(sp.get("to")!) : new Date();
 
-    const { data: bookings } = await supabaseAdmin
+    let bookingsQuery = supabaseAdmin
       .from("bookings")
       .select("id, status, scheduled_at, cancellation_reason")
       .eq("provider_id", providerId)
       .gte("scheduled_at", fromDate.toISOString())
       .lte("scheduled_at", new Date(toDate.getTime() + 86400000).toISOString());
+    if (locationId) bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    const { data: bookings } = await bookingsQuery;
 
     const all = bookings || [];
     const total = all.length;

@@ -145,7 +145,7 @@ export default function WaitlistScreen() {
             onPress: async () => {
               setRemovingId(entry.id);
               try {
-                const res = await api.delete(`/api/me/waitlist/${entry.id}`);
+                const res = await api.delete(`/api/me/waitlist?id=${encodeURIComponent(entry.id)}`);
                 if (res.error) {
                   Alert.alert(
                     "Error",

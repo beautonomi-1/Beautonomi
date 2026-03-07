@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
         *,
         provider:providers(id, business_name, slug, user_id),
         attachments:custom_request_attachments(id, url, created_at),
-        offers:custom_offers(id, price, currency, duration_minutes, expiration_at, notes, status, payment_url, payment_reference, paid_at, created_at, staff_id, location_id, scheduled_at, staff:provider_staff(id, name), location:provider_locations(id, name))
+        offers:custom_offers(id, price, currency, duration_minutes, expiration_at, notes, status, payment_url, payment_reference, paid_at, created_at, staff_id, location_id, scheduled_at, travel_fee, staff:provider_staff(id, name), location:provider_locations(id, name))
       `
       )
       .eq("customer_id", user.id)
@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let conversationId: string | null = null;
     // Also send via messages: create/get a customer<->provider conversation and post a message (best-effort)
     try {
       const { data: existingConv } = await supabase
@@ -131,6 +132,7 @@ export async function POST(request: NextRequest) {
           convId = (newConv as any)?.id;
         }
       }
+      if (convId) conversationId = convId;
 
       if (convId) {
         const preview = body.description.length > 200 ? body.description.slice(0, 200) + "…" : body.description;
@@ -271,7 +273,9 @@ export async function POST(request: NextRequest) {
       // Continue even if notification fails
     }
 
-    return successResponse(created);
+    const response = created as Record<string, unknown>;
+    if (conversationId) response.conversation_id = conversationId;
+    return successResponse(response);
   } catch (error) {
     return handleApiError(error, "Failed to create custom request");
   }

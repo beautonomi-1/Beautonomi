@@ -16,6 +16,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { Colors, Shadows } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useCart } from "@/features/shop/useCart";
 import { useProductOrders } from "@/features/shop/useProductOrders";
 import { useAuth } from "@/providers/AuthProvider";
@@ -193,7 +194,7 @@ export default function ProductCheckoutScreen() {
 
     if (result.error) {
       setPlacing(false);
-      Alert.alert("Order Failed", result.error);
+      Alert.alert("Order Failed", getApiErrorMessage(result.error, "Your order could not be placed. Please try again."));
       return;
     }
 
@@ -685,7 +686,9 @@ export default function ProductCheckoutScreen() {
             opacity: placing ? 0.7 : 1,
             ...constraintStyle,
           }}
+          accessibilityRole="button"
           accessibilityLabel="Place order"
+          accessibilityHint="Double tap to submit your order"
         >
           {placing ? (
             <ActivityIndicator color="#fff" />

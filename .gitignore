@@ -35,6 +35,7 @@ apps/**/.env.local
 *.p12
 *.jks
 *.keystore
+**/upload-keystore-credentials.txt
 credentials.json
 secrets.*
 **/secrets/**

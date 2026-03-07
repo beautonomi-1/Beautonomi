@@ -9,6 +9,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
@@ -49,13 +50,15 @@ const PERIOD_FILTERS = [
 ];
 
 export default function GiftCardReportScreen() {
+  const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState("month");
 
+  const giftCardsUrl = `/api/provider/reports/gift-cards?period=${period}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
   const { data: reportData, loading, refresh } = useApi<{
     stats: GiftCardStats;
     cards: GiftCardReport[];
-  }>(`/api/provider/reports/gift-cards?period=${period}`);
+  }>(giftCardsUrl);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);

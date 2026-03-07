@@ -60,7 +60,15 @@ export async function GET(request: NextRequest) {
 
     preferences = profileData?.notification_preferences || defaultPreferences;
 
-    return successResponse(preferences);
+    // Expose flat keys for mobile app (email_notifications, sms_notifications, booking_reminders)
+    const withFlatKeys = {
+      ...preferences,
+      email_notifications: (preferences as any).email_notifications ?? (preferences as any).reminders?.email !== false,
+      sms_notifications: (preferences as any).sms_notifications === true,
+      booking_reminders: (preferences as any).booking_reminders ?? (preferences as any).reminders?.email !== false,
+    };
+
+    return successResponse(withFlatKeys);
   } catch (error) {
     return handleApiError(error, "Failed to fetch notification preferences");
   }
@@ -127,7 +135,7 @@ export async function PATCH(request: NextRequest) {
     
     for (const [key, value] of Object.entries(body)) {
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        updatedPreferences[key] = { ...updatedPreferences[key], ...value };
+        updatedPreferences[key] = { ...(updatedPreferences[key] as object), ...value };
       } else {
         updatedPreferences[key] = value;
       }

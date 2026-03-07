@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { View, Text, TouchableOpacity, Image } from "react-native";
 import { router } from "expo-router";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 
@@ -15,13 +16,13 @@ export default function MessagesScreen() {
     setError(null);
     try {
       const res = await api.get<any>("/api/me/conversations");
-      if (res.error) setError(res.error.message || "Failed to load");
+      if (res.error) setError(getApiErrorMessage(res.error, "Failed to load"));
       else {
         const raw = res.data;
         setData(Array.isArray(raw) ? raw : raw?.data ?? raw?.conversations ?? []);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(getApiErrorMessage(e, "Failed to load"));
     } finally {
       setLoading(false);
     }

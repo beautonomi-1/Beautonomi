@@ -13,6 +13,7 @@ import { useLocalSearchParams, Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors, Shadows } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { haptic } from "@/lib/haptics";
@@ -87,7 +88,7 @@ export default function ProductDetailScreen() {
     try {
       const res = await api.get<ProductDetailResponse>(`/api/public/products/${encodeURIComponent(id)}`);
       if (res.error) {
-        setError(res.error.message ?? "Product not found");
+        setError(getApiErrorMessage(res.error, "Product not found"));
         setData(null);
       } else {
         setData(res.data as ProductDetailResponse);
@@ -100,7 +101,7 @@ export default function ProductDetailScreen() {
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load product");
+      setError(getApiErrorMessage(e, "Failed to load product"));
       setData(null);
     } finally {
       setLoading(false);
@@ -134,7 +135,7 @@ export default function ProductDetailScreen() {
       });
       if (res.error) {
         haptic.error();
-        Alert.alert("Error", res.error.message ?? "Could not add to cart.");
+        Alert.alert("Error", getApiErrorMessage(res.error, "Could not add to cart."));
       } else {
         haptic.success();
         emitCartUpdated();

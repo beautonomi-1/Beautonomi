@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Animated,
   Keyboard,
+  Dimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -142,10 +143,21 @@ export function InlineSearch({ onSearch }: InlineSearchProps) {
     );
   }
 
+  const screenWidth = Dimensions.get("window").width;
   return (
-    <View style={{ position: "relative", zIndex: 100 }}>
+    <View
+      style={{
+        position: "absolute",
+        right: 0,
+        left: -(screenWidth * 0.65),
+        top: 0,
+        minHeight: 44,
+        zIndex: 100,
+      }}
+    >
       <View
         style={{
+          flex: 1,
           flexDirection: "row",
           alignItems: "center",
           backgroundColor: "#F3F4F6",

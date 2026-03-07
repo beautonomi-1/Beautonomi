@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useFocusEffect } from "expo-router";
 import {
   View,
   Text,
@@ -12,6 +13,7 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
@@ -55,7 +57,7 @@ export default function ChatsScreen() {
     try {
       const res = await api.get<Conversation[] | { data?: Conversation[] }>("/api/me/conversations");
       if (res.error) {
-        setError(res.error.message || "Failed to load conversations");
+        setError(getApiErrorMessage(res.error, "Failed to load conversations"));
         setConversations([]);
       } else {
         const data = res.data;
@@ -65,7 +67,7 @@ export default function ChatsScreen() {
         setConversations(list);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(getApiErrorMessage(e, "Failed to load"));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -75,6 +77,12 @@ export default function ChatsScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (user) load(true);
+    }, [user, load])
+  );
 
   // Re-sync session when opening chats (e.g. after tab switch or navigation) so we don't show "Log in" if session exists
   useEffect(() => {

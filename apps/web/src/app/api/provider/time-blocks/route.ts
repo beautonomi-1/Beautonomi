@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const searchParams = request.nextUrl.searchParams;
     const staffId = searchParams.get('staff_id');
+    const locationId = searchParams.get('location_id');
     const dateFrom = searchParams.get('date_from');
     const dateTo = searchParams.get('date_to');
 
@@ -35,6 +36,20 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+
+    // When location_id is provided, restrict to staff assigned to that location
+    let staffIdsAtLocation: string[] | null = null;
+    if (locationId) {
+      const { data: assignments, error: assignmentError } = await supabase
+        .from("provider_staff_locations")
+        .select("staff_id")
+        .eq("location_id", locationId);
+      if (assignmentError) throw assignmentError;
+      staffIdsAtLocation = assignments?.map((a) => a.staff_id) ?? [];
+      if (staffIdsAtLocation.length === 0) {
+        return successResponse([]);
+      }
     }
 
     let query = supabase
@@ -59,6 +74,8 @@ export async function GET(request: NextRequest) {
 
     if (staffId) {
       query = query.eq("staff_id", staffId);
+    } else if (staffIdsAtLocation && staffIdsAtLocation.length > 0) {
+      query = query.in("staff_id", staffIdsAtLocation);
     }
 
     if (dateFrom) {

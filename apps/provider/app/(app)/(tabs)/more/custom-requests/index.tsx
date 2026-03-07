@@ -3,6 +3,7 @@ import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -25,9 +26,13 @@ type CustomRequest = {
 
 export default function CustomRequestsListScreen() {
   const router = useRouter();
+  const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
+  const customRequestsUrl = selectedLocationId
+    ? `/api/provider/custom-requests?location_id=${encodeURIComponent(selectedLocationId)}`
+    : "/api/provider/custom-requests";
   const { data, loading, error, refresh } = useApi<CustomRequest[] | { data?: CustomRequest[] }>(
-    "/api/provider/custom-requests"
+    customRequestsUrl
   );
 
   const requests: CustomRequest[] = Array.isArray(data) ? data : (data as { data?: CustomRequest[] })?.data ?? [];

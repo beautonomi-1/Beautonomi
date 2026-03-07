@@ -446,139 +446,143 @@ function LocationModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-        <h2 className="text-2xl font-semibold mb-4">
-          {location ? "Edit Location" : "Add Location"}
-        </h2>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="flex-shrink-0 px-6 pt-6 pb-2 border-b border-gray-100">
+          <h2 className="text-xl font-semibold text-gray-900">
+            {location ? "Edit Location" : "Add Location"}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Type an address and select a suggestion to fill city, state, postal code and coordinates.
+          </p>
+        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label htmlFor="name">Location Name *</Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Main Salon, Branch Location, etc."
-              required
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="address">Address *</Label>
-            <p className="text-sm text-gray-600 mb-2">
-              Start typing an address and select from suggestions. Address will be automatically geocoded with coordinates.
-            </p>
-            <AddressAutocomplete
-              value={formData.address_line1}
-              onChange={handleAddressSelect}
-              placeholder="Start typing an address..."
-              country={formData.country}
-              required
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="address_line2">Apt/Suite (optional)</Label>
-            <Input
-              id="address_line2"
-              value={formData.address_line2}
-              onChange={(e) =>
-                setFormData({ ...formData, address_line2: e.target.value })
-              }
-              placeholder="Apt 4B, Suite 201, etc."
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
             <div>
-              <Label htmlFor="city">City *</Label>
+              <Label htmlFor="name">Location name *</Label>
               <Input
-                id="city"
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Main Salon, Branch Location, etc."
+                className="mt-1.5"
                 required
               />
             </div>
-            <div>
-              <Label htmlFor="state">State/Province</Label>
-              <Input
-                id="state"
-                value={formData.state}
-                onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-              />
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="postal_code">Postal Code</Label>
-              <Input
-                id="postal_code"
-                value={formData.postal_code}
-                onChange={(e) =>
-                  setFormData({ ...formData, postal_code: e.target.value })
-                }
-              />
-            </div>
-            <div>
-              <Label htmlFor="country">Country *</Label>
-              <Input
-                id="country"
-                value={formData.country}
-                onChange={(e) =>
-                  setFormData({ ...formData, country: e.target.value })
-                }
+              <Label htmlFor="address">Address *</Label>
+              <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
+                Select a suggestion to autofill city, state, postal code and coordinates.
+              </p>
+              <AddressAutocomplete
+                value={formData.address_line1}
+                onChange={handleAddressSelect}
+                placeholder="Start typing an address..."
+                country={formData.country || "ZA"}
+                className="relative z-[1]"
                 required
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="phone">Phone</Label>
+              <Label htmlFor="address_line2">Apt/Suite (optional)</Label>
               <Input
-                id="phone"
-                type="tel"
-                value={formData.phone}
-                onChange={(e) =>
-                  setFormData({ ...formData, phone: e.target.value })
-                }
+                id="address_line2"
+                value={formData.address_line2}
+                onChange={(e) => setFormData({ ...formData, address_line2: e.target.value })}
+                placeholder="Apt 4B, Suite 201, etc."
+                className="mt-1.5"
               />
             </div>
-            <div>
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="city">City *</Label>
+                <Input
+                  id="city"
+                  value={formData.city}
+                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                  className="mt-1.5"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="state">State/Province</Label>
+                <Input
+                  id="state"
+                  value={formData.state}
+                  onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                  className="mt-1.5"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="postal_code">Postal code</Label>
+                <Input
+                  id="postal_code"
+                  value={formData.postal_code}
+                  onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })}
+                  className="mt-1.5"
+                />
+              </div>
+              <div>
+                <Label htmlFor="country">Country *</Label>
+                <Input
+                  id="country"
+                  value={formData.country}
+                  onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                  className="mt-1.5"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  className="mt-1.5"
+                />
+              </div>
+              <div>
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="mt-1.5"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="checkbox"
+                id="is_active"
+                checked={formData.is_active}
+                onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                className="rounded border-gray-300 text-primary focus:ring-primary"
               />
+              <Label htmlFor="is_active" className="font-normal">Active (visible to customers)</Label>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="is_active"
-              checked={formData.is_active}
-              onChange={(e) =>
-                setFormData({ ...formData, is_active: e.target.checked })
-              }
-            />
-            <Label htmlFor="is_active">Active (visible to customers)</Label>
-          </div>
-
-          <div className="flex gap-2 pt-4">
-            <Button type="button" variant="outline" onClick={onClose} className="flex-1">
+          <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex gap-3 justify-end">
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button 
-              type="submit" 
-              disabled={isSaving || !formData.name?.trim() || !formData.address_line1?.trim() || !formData.city?.trim() || !formData.country?.trim()} 
-              className="flex-1"
+            <Button
+              type="submit"
+              disabled={isSaving || !formData.name?.trim() || !formData.address_line1?.trim() || !formData.city?.trim() || !formData.country?.trim()}
             >
               {isSaving ? "Saving..." : location ? "Update" : "Add"}
             </Button>

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { Redirect } from "expo-router";
-import { View, Text, ActivityIndicator } from "react-native";
+import { View, Text, ActivityIndicator, TouchableOpacity } from "react-native";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
@@ -10,6 +10,8 @@ import { APP_URL } from "@/config/public-env";
 const PORTAL_CACHE_MS = 10 * 60 * 1000; // 10 minutes
 const PROFILE_CHECK_DELAY_MS = 400;
 const AUTH_RETRY_DELAY_MS = 600;
+const PORTAL_TIMEOUT_MS = 12 * 1000; // 12s – avoid infinite loading
+const PROFILE_TIMEOUT_MS = 12 * 1000; // 12s – avoid infinite loading
 
 let portalCache: { portal: string; ts: number } | null = null;
 
@@ -31,14 +33,16 @@ export default function Index() {
   const [wrongPortal, setWrongPortal] = useState<string | null>(null);
   const [checkingProfile, setCheckingProfile] = useState(false);
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
+  const [profileLoadError, setProfileLoadError] = useState(false); // timeout or network
   const retryCountRef = useRef(0);
 
   // Phase 1: portal check (is this user a provider?)
   useEffect(() => {
-    if (loading || !session || !APP_URL?.trim()) {
-      if (!loading && session && !APP_URL?.trim()) {
-        setPortalState("ok");
-      }
+    if (loading) return;
+    if (!session) return;
+    // When APP_URL is missing, proceed as "ok" so profile check can use relative API
+    if (!APP_URL?.trim()) {
+      setPortalState("ok");
       return;
     }
 
@@ -55,6 +59,11 @@ export default function Index() {
 
     let cancelled = false;
     setPortalState("loading");
+
+    const timeoutId = setTimeout(() => {
+      if (cancelled) return;
+      setPortalState("ok"); // assume provider so user isn't stuck
+    }, PORTAL_TIMEOUT_MS);
 
     const t = setTimeout(() => {
       api
@@ -78,63 +87,74 @@ export default function Index() {
     return () => {
       cancelled = true;
       clearTimeout(t);
+      clearTimeout(timeoutId);
     };
   }, [session, loading]);
 
   // Phase 2: profile check (only when portal is ok)
+  const runProfileCheck = (isRetry: boolean) => {
+    setProfileLoadError(false);
+    setCheckingProfile(true);
+    api.get<{ id: string }>("/api/provider/profile").then((res) => {
+      if (res.data?.id) {
+        setHasProfile(true);
+        setCheckingProfile(false);
+        setProfileLoadError(false);
+        return;
+      }
+
+      const err = (res as { error?: { status?: number; code?: string } }).error;
+      const status = err?.status;
+      const code = err?.code;
+      const isNotFound = status === 404 || code === "NOT_FOUND";
+      const isAuthError = status === 401 || status === 403;
+
+      if (isNotFound) {
+        setHasProfile(false);
+        setCheckingProfile(false);
+        setProfileLoadError(false);
+        return;
+      }
+
+      if (isAuthError && !isRetry && retryCountRef.current < 1) {
+        retryCountRef.current += 1;
+        setTimeout(() => runProfileCheck(true), AUTH_RETRY_DELAY_MS);
+        return;
+      }
+
+      setHasProfile(false);
+      setCheckingProfile(false);
+    }).catch(() => {
+      setHasProfile(false);
+      setCheckingProfile(false);
+      setProfileLoadError(true);
+    });
+  };
+
   useEffect(() => {
     if (portalState !== "ok" || !session) return;
 
     let cancelled = false;
     setCheckingProfile(true);
+    setProfileLoadError(false);
     retryCountRef.current = 0;
 
-    function checkProfile(isRetry: boolean) {
-      api.get<{ id: string }>("/api/provider/profile").then((res) => {
-        if (cancelled) return;
-
-        if (res.data?.id) {
-          setHasProfile(true);
-          setCheckingProfile(false);
-          return;
-        }
-
-        const err = (res as { error?: { status?: number; code?: string } }).error;
-        const status = err?.status;
-        const code = err?.code;
-        const isNotFound = status === 404 || code === "NOT_FOUND";
-        const isAuthError = status === 401 || status === 403;
-
-        if (isNotFound) {
-          setHasProfile(false);
-          setCheckingProfile(false);
-          return;
-        }
-
-        if (isAuthError && !isRetry && retryCountRef.current < 1) {
-          retryCountRef.current += 1;
-          setTimeout(() => {
-            if (!cancelled) checkProfile(true);
-          }, AUTH_RETRY_DELAY_MS);
-          return;
-        }
-
-        setHasProfile(false);
-        setCheckingProfile(false);
-      }).catch(() => {
-        if (cancelled) return;
-        setHasProfile(false);
-        setCheckingProfile(false);
-      });
-    }
+    const timeoutId = setTimeout(() => {
+      if (cancelled) return;
+      setCheckingProfile(false);
+      setHasProfile(null);
+      setProfileLoadError(true); // show retry UI
+    }, PROFILE_TIMEOUT_MS);
 
     const t = setTimeout(() => {
-      if (!cancelled) checkProfile(false);
+      if (cancelled) return;
+      runProfileCheck(false);
     }, PROFILE_CHECK_DELAY_MS);
 
     return () => {
       cancelled = true;
       clearTimeout(t);
+      clearTimeout(timeoutId);
     };
   }, [portalState, session]);
 
@@ -160,6 +180,28 @@ export default function Index() {
           signOut();
         }}
       />
+    );
+  }
+
+  if (profileLoadError && hasProfile === null) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white, padding: 24 }}>
+        <Text style={{ fontSize: 16, color: Colors.gray[700], textAlign: "center", marginBottom: 8 }}>
+          {"Couldn't load your profile"}
+        </Text>
+        <Text style={{ fontSize: 14, color: Colors.gray[500], textAlign: "center", marginBottom: 24 }}>
+          Check your connection and try again.
+        </Text>
+        <TouchableOpacity
+          onPress={() => {
+            setProfileLoadError(false);
+            runProfileCheck(false);
+          }}
+          style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
+        >
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
+        </TouchableOpacity>
+      </View>
     );
   }
 
