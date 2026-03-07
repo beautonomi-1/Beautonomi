@@ -507,12 +507,15 @@ export default function CalendarScreen() {
     `/api/provider/bookings?start_date=${startDate}&end_date=${endDate}&limit=500${locationParam}`,
   );
 
-  const { data: staff } = useApi<StaffMember[]>("/api/provider/team");
+  const teamUrl = locationFilter !== "all" ? `/api/provider/team?location_id=${encodeURIComponent(locationFilter)}` : "/api/provider/team";
+  const { data: staff } = useApi<StaffMember[]>(teamUrl);
+  const timeBlocksLocationParam = locationFilter !== "all" ? `&location_id=${encodeURIComponent(locationFilter)}` : "";
   const { data: timeBlocks, refresh: refreshTimeBlocks } = useApi<TimeBlock[]>(
-    `/api/provider/time-blocks?date_from=${startDate}&date_to=${endDate}`,
+    `/api/provider/time-blocks?date_from=${startDate}&date_to=${endDate}${timeBlocksLocationParam}`,
   );
   const { data: locations } = useApi<ProviderLocation[]>("/api/provider/locations");
-  const { data: waitingRoom } = useApi<{ count: number }>("/api/provider/waiting-room/count");
+  const waitingRoomUrl = locationFilter !== "all" ? `/api/provider/waiting-room/count?location_id=${encodeURIComponent(locationFilter)}` : "/api/provider/waiting-room/count";
+  const { data: waitingRoom } = useApi<{ count: number }>(waitingRoomUrl);
   const { execute: patchBooking } = useApiMutation("patch");
   const { execute: createTimeBlock, loading: creatingBlock } = useApiMutation("post");
 

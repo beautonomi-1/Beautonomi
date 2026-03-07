@@ -24,6 +24,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { Skeleton } from "@/components/Skeleton";
 import type {
   PublicProviderDetail,
@@ -165,10 +166,11 @@ export default function BookScreen() {
   useScreenTracking("Book");
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
-  const { slug, service_id, duration_minutes } = useLocalSearchParams<{
+  const { slug, service_id, duration_minutes, reschedule_booking_id } = useLocalSearchParams<{
     slug: string;
     service_id?: string;
     duration_minutes?: string;
+    reschedule_booking_id?: string;
   }>();
   const { user } = useAuth();
   const { coords } = useLocation();
@@ -241,7 +243,7 @@ export default function BookScreen() {
       setStaff(staffList);
       if (staffList.length === 1) setSelectedStaff(staffList[0]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(getApiErrorMessage(e, "Failed to load"));
     } finally {
       setLoading(false);
     }
@@ -314,26 +316,25 @@ export default function BookScreen() {
       const holdData = (res.data ?? {}) as { hold_id?: string; id?: string };
       const holdId = holdData.hold_id ?? holdData.id;
       if (res.error || !holdId) {
-        setError(res.error?.message || "Failed to reserve slot");
+        setError(getApiErrorMessage(res.error, "Failed to reserve slot"));
         return;
       }
 
       haptic.success();
-      router.replace({
-        pathname: "/(app)/book-checkout",
-        params: {
-          hold_id: holdId,
-          service_name: selectedVariant?.title ?? selectedService.title,
-          provider_name: provider.business_name,
-          provider_thumbnail: provider.thumbnail_url ?? "",
-        },
-      });
+      const params: Record<string, string> = {
+        hold_id: holdId,
+        service_name: selectedVariant?.title ?? selectedService.title,
+        provider_name: provider.business_name,
+        provider_thumbnail: provider.thumbnail_url ?? "",
+      };
+      if (reschedule_booking_id) params.reschedule_booking_id = reschedule_booking_id;
+      router.replace({ pathname: "/(app)/book-checkout", params });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create booking");
+      setError(getApiErrorMessage(e as Error, "Failed to create booking"));
     } finally {
       setCreatingHold(false);
     }
-  }, [provider, selectedService, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, coords, effectiveOfferingId, selectedLocation, selectedVariant]);
+  }, [provider, selectedService, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, coords, effectiveOfferingId, selectedLocation, selectedVariant, reschedule_booking_id]);
 
   const goBack = useCallback(() => {
     haptic.light();
@@ -412,7 +413,7 @@ export default function BookScreen() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={{ flex: 1, backgroundColor: "#fff" }}>
+      <View style={{ flex: 1, backgroundColor: "#fff" }} accessibilityLabel="Book appointment" accessibilityRole="none">
         {/* ═══ Custom Header ═══ */}
         <View style={{
           flexDirection: "row", alignItems: "center", paddingTop: 52, paddingHorizontal: contentPadding, paddingBottom: 8,
@@ -437,14 +438,17 @@ export default function BookScreen() {
 
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={0}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
         >
           <ScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
+            contentContainerStyle={{ padding: contentPadding, paddingBottom: 220, ...constraint }}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
+            accessibilityLabel="Booking steps and options"
+            accessibilityRole="none"
           >
             {/* Step Indicator */}
             <StepIndicator steps={visibleSteps} current={step} />
@@ -546,12 +550,79 @@ export default function BookScreen() {
             {step === "venue" && selectedService && (
               <View>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Where would you like your service?</Text>
-                {provider.supports_salon && (
+                {provider.supports_salon && (provider.locations?.length ? (
+                  (provider.locations.length === 1 ? (
+                    <Pressable
+                      onPress={() => {
+                        haptic.light();
+                        setLocationType("at_salon");
+                        setSelectedLocation(provider.locations![0]);
+                        setStep(staff.length ? "staff" : "date");
+                      }}
+                      style={{
+                        flexDirection: "row", alignItems: "center",
+                        padding: contentPadding, borderRadius: 16, marginBottom: 10,
+                        borderWidth: 1.5, borderColor: locationType === "at_salon" ? Colors.primary : "#E5E7EB",
+                        backgroundColor: locationType === "at_salon" ? Colors.primaryLight : "#fff",
+                      }}
+                      accessibilityRole="button" accessibilityLabel="At salon"
+                    >
+                      <View style={{
+                        width: 48, height: 48, borderRadius: 12, backgroundColor: "#EDE9FE",
+                        alignItems: "center", justifyContent: "center", marginRight: 14,
+                      }}>
+                        <Ionicons name="business-outline" size={24} color="#7C3AED" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontWeight: "600", color: "#111827", fontSize: 15 }}>At Salon</Text>
+                        <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{provider.locations[0].name}</Text>
+                      </View>
+                      {locationType === "at_salon" && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
+                    </Pressable>
+                  ) : (
+                    provider.locations.map((loc) => {
+                      const isSelected = locationType === "at_salon" && selectedLocation?.id === loc.id;
+                      return (
+                        <Pressable
+                          key={loc.id}
+                          onPress={() => {
+                            haptic.light();
+                            setLocationType("at_salon");
+                            setSelectedLocation(loc);
+                            setStep(staff.length ? "staff" : "date");
+                          }}
+                          style={{
+                            flexDirection: "row", alignItems: "center",
+                            padding: contentPadding, borderRadius: 16, marginBottom: 10,
+                            borderWidth: 1.5, borderColor: isSelected ? Colors.primary : "#E5E7EB",
+                            backgroundColor: isSelected ? Colors.primaryLight : "#fff",
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`At salon ${loc.name}`}
+                        >
+                          <View style={{
+                            width: 48, height: 48, borderRadius: 12, backgroundColor: "#EDE9FE",
+                            alignItems: "center", justifyContent: "center", marginRight: 14,
+                          }}>
+                            <Ionicons name="business-outline" size={24} color="#7C3AED" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontWeight: "600", color: "#111827", fontSize: 15 }}>{loc.name}</Text>
+                            {loc.address_line1 && (
+                              <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }} numberOfLines={1}>{loc.address_line1}</Text>
+                            )}
+                          </View>
+                          {isSelected && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
+                        </Pressable>
+                      );
+                    })
+                  ))
+                ) : (
                   <Pressable
                     onPress={() => {
                       haptic.light();
                       setLocationType("at_salon");
-                      setSelectedLocation(provider.locations?.[0] || null);
+                      setSelectedLocation(null);
                       setStep(staff.length ? "staff" : "date");
                     }}
                     style={{
@@ -570,13 +641,10 @@ export default function BookScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontWeight: "600", color: "#111827", fontSize: 15 }}>At Salon</Text>
-                      {provider.locations?.[0] && (
-                        <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{provider.locations[0].name}</Text>
-                      )}
                     </View>
                     {locationType === "at_salon" && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
                   </Pressable>
-                )}
+                ))}
                 {provider.supports_house_calls && selectedService.supports_at_home && (
                   <Pressable
                     onPress={() => {

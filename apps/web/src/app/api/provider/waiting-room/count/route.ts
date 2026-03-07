@@ -21,12 +21,17 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    const { count, error } = await supabase
+    const locationId = request.nextUrl.searchParams.get("location_id");
+    let query = supabase
       .from("bookings")
       .select("id", { count: "exact", head: true })
       .eq("provider_id", providerId)
       .in("status", ["waiting", "checked_in", "confirmed"])
       .not("checked_in_time", "is", null);
+    if (locationId) {
+      query = query.eq("location_id", locationId);
+    }
+    const { count, error } = await query;
 
     if (error) {
       // If column or enum not yet migrated (e.g. missing checked_in_time), return 0 so app does not 500

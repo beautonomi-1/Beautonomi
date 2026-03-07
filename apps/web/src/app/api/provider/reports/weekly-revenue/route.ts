@@ -18,21 +18,8 @@ export async function GET(request: NextRequest) {
 
     if (!providerId) return notFoundResponse("Provider not found");
 
-
-    const { data: providerData, error: providerError } = await supabaseAdmin
-      .from("providers")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (providerError || !providerData?.id) {
-      return handleApiError(
-        new Error("Provider profile not found."),
-        "NOT_FOUND",
-        404,
-      );
-    }
     const searchParams = request.nextUrl.searchParams;
+    const locationId = searchParams.get("location_id");
     const startDate = searchParams.get("start_date")
       ? new Date(searchParams.get("start_date")!)
       : subDays(new Date(), 6);
@@ -42,17 +29,30 @@ export async function GET(request: NextRequest) {
 
     const { data: rows } = await supabaseAdmin
       .from("finance_transactions")
-      .select("net, amount, created_at")
+      .select("net, amount, created_at, booking_id")
       .eq("provider_id", providerId)
       .eq("transaction_type", "provider_earnings")
       .gte("created_at", startDate.toISOString())
       .lte("created_at", new Date(endDate.getTime() + 86400000).toISOString());
 
+    let filteredRows = rows || [];
+    if (locationId && filteredRows.length > 0) {
+      const { data: locationBookings } = await supabaseAdmin
+        .from("bookings")
+        .select("id")
+        .eq("provider_id", providerId)
+        .eq("location_id", locationId);
+      const bookingIds = new Set((locationBookings || []).map((b: { id: string }) => b.id));
+      filteredRows = filteredRows.filter(
+        (r: { booking_id?: string | null }) => r.booking_id && bookingIds.has(r.booking_id)
+      );
+    }
+
     const revenueMap = new Map<string, number>();
     const days = eachDayOfInterval({ start: startDate, end: endDate });
     days.forEach((d) => revenueMap.set(format(d, "yyyy-MM-dd"), 0));
 
-    (rows || []).forEach((r: any) => {
+    filteredRows.forEach((r: { created_at: string; net?: number; amount?: number }) => {
       const day = format(new Date(r.created_at), "yyyy-MM-dd");
       const val = Number(r.net ?? r.amount ?? 0);
       revenueMap.set(day, (revenueMap.get(day) ?? 0) + val);

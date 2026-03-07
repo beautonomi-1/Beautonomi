@@ -8,12 +8,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 
@@ -60,12 +62,77 @@ const PERIOD_FILTERS = [
   { label: "This Year", value: "year" },
 ];
 
+/** Overview API response shape (business/overview) */
+type OverviewResponse = {
+  period?: string;
+  totalRevenue?: number;
+  netRevenue?: number;
+  totalBookings?: number;
+  completedBookings?: number;
+  cancelledBookings?: number;
+  noShows?: number;
+  uniqueClients?: number;
+  totalStaff?: number;
+  totalPayments?: number;
+  successfulPayments?: number;
+  totalRefunded?: number;
+  averageBookingValue?: number;
+  completionRate?: number;
+  cancellationRate?: number;
+  noShowRate?: number;
+  revenueGrowth?: number;
+};
+
+function mapOverviewToBusinessReport(overview: OverviewResponse | null): BusinessReport | null {
+  if (!overview) return null;
+  const days = overview.period === "year" ? 365 : overview.period === "quarter" ? 92 : overview.period === "week" ? 7 : 30;
+  return {
+    revenue: {
+      total: overview.totalRevenue ?? 0,
+      previous_period: 0,
+      growth_percentage: overview.revenueGrowth ?? 0,
+      by_service: [],
+      by_staff: [],
+    },
+    bookings: {
+      total: overview.totalBookings ?? 0,
+      completed: overview.completedBookings ?? 0,
+      cancelled: overview.cancelledBookings ?? 0,
+      no_show: overview.noShows ?? 0,
+      completion_rate: overview.completionRate ?? 0,
+      avg_per_day: (overview.totalBookings ?? 0) / Math.max(days, 1),
+    },
+    clients: {
+      total: overview.uniqueClients ?? 0,
+      new_this_period: 0,
+      returning: overview.uniqueClients ?? 0,
+      retention_rate: 0,
+      avg_lifetime_value: overview.averageBookingValue ?? 0,
+    },
+    staff: {
+      total: overview.totalStaff ?? 0,
+      avg_bookings_per_staff: (overview.totalStaff ?? 0) > 0 ? (overview.totalBookings ?? 0) / (overview.totalStaff ?? 0) : 0,
+      top_performer: null,
+      total_hours: 0,
+    },
+    products: {
+      total_sold: 0,
+      product_revenue: 0,
+      top_product: null,
+    },
+  };
+}
+
 export default function BusinessReportScreen() {
+  const { selectedLocationId } = useProvider();
   const [period, setPeriod] = useState("month");
 
-  const { data: report, loading } = useApi<BusinessReport>(
-    `/api/provider/reports/business?period=${period}`
+  const businessUrl = `/api/provider/reports/business/overview?period=${period}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
+  const { data: overview, loading, error, timedOut, refresh } = useApi<OverviewResponse>(
+    businessUrl,
+    { timeoutMs: 15000 }
   );
+  const report = mapOverviewToBusinessReport(overview);
 
   async function handleExport() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -86,6 +153,28 @@ export default function BusinessReportScreen() {
     try {
       await Share.share({ message: lines.join("\n"), title: "Business Report" });
     } catch {}
+  }
+
+  if (timedOut && !report) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Business Overview" showBack />
+        <ErrorState
+          message="Request is taking longer than usual. Check your connection and try again."
+          onRetry={refresh}
+          retryLabel="Retry"
+        />
+      </ScreenContainer>
+    );
+  }
+
+  if (error && !report) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Business Overview" showBack />
+        <ErrorState message={error} onRetry={refresh} />
+      </ScreenContainer>
+    );
   }
 
   if (loading && !report) {

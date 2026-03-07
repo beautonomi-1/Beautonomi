@@ -3,24 +3,32 @@
  */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
+
+const DEFAULT_LOADING_TIMEOUT_MS = 15000;
 
 interface UseApiOptions {
   enabled?: boolean;
+  /** After this many ms while loading, timedOut becomes true so UI can show "Retry" */
+  timeoutMs?: number;
 }
 
 interface UseApiResult<T> {
   data: T | null;
   loading: boolean;
   error: string | null;
+  /** True when loading has exceeded timeoutMs; show "Taking too long? Retry" and call refresh */
+  timedOut: boolean;
   refresh: () => Promise<void>;
   mutate: (newData: T) => void;
 }
 
 export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResult<T> {
-  const { enabled = true } = options;
+  const { enabled = true, timeoutMs = DEFAULT_LOADING_TIMEOUT_MS } = options;
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
+  const [timedOut, setTimedOut] = useState(false);
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
 
@@ -33,17 +41,18 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
     try {
       setLoading(true);
       setError(null);
+      setTimedOut(false);
       const result = await api.get<T>(path);
       if (!mountedRef.current || id !== requestIdRef.current) return;
       if (result.error) {
-        setError(result.error.message);
+        setError(getApiErrorMessage(result.error, "Request failed"));
         setData(null);
       } else {
         setData(result.data);
       }
     } catch (err) {
       if (!mountedRef.current || id !== requestIdRef.current) return;
-      setError(err instanceof Error ? err.message : "Request failed");
+      setError(getApiErrorMessage(err, "Request failed"));
     } finally {
       if (mountedRef.current && id === requestIdRef.current) setLoading(false);
     }
@@ -57,6 +66,17 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
     };
   }, [fetchData]);
 
+  useEffect(() => {
+    if (!loading || !timeoutMs) {
+      setTimedOut(false);
+      return () => {};
+    }
+    const t = setTimeout(() => {
+      setTimedOut(true);
+    }, timeoutMs);
+    return () => clearTimeout(t);
+  }, [loading, timeoutMs]);
+
   const refresh = useCallback(async () => {
     await fetchData();
   }, [fetchData]);
@@ -65,7 +85,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
     setData(newData);
   }, []);
 
-  return { data, loading, error, refresh, mutate };
+  return { data, loading, error, timedOut, refresh, mutate };
 }
 
 export function useApiPost<TReq, TRes>(path: string) {
@@ -85,12 +105,13 @@ export function useApiPost<TReq, TRes>(path: string) {
         setError(null);
         const result = await api.post<TRes>(path, body as Record<string, unknown>);
         if (result.error) {
-          if (mountedRef.current) setError(result.error.message);
-          return { data: null, error: result.error.message };
+          const msg = getApiErrorMessage(result.error, "Request failed");
+          if (mountedRef.current) setError(msg);
+          return { data: null, error: msg };
         }
         return { data: result.data, error: null };
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Request failed";
+        const msg = getApiErrorMessage(err, "Request failed");
         if (mountedRef.current) setError(msg);
         return { data: null, error: msg };
       } finally {
@@ -129,12 +150,13 @@ export function useApiMutation<TRes>(method: "put" | "patch" | "post" | "delete"
           result = await api.put<TRes>(path, body as Record<string, unknown>);
         }
         if (result.error) {
-          if (mountedRef.current) setError(result.error.message);
-          return { data: null, error: result.error.message };
+          const msg = getApiErrorMessage(result.error, "Request failed");
+          if (mountedRef.current) setError(msg);
+          return { data: null, error: msg };
         }
         return { data: result.data, error: null };
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Request failed";
+        const msg = getApiErrorMessage(err, "Request failed");
         if (mountedRef.current) setError(msg);
         return { data: null, error: msg };
       } finally {

@@ -7,10 +7,13 @@ import {
   TouchableOpacity,
   Linking,
   Share,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as FileSystem from "expo-file-system/legacy";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { supabase } from "@/lib/supabase/client";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -23,6 +26,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { APP_URL } from "@/config/public-env";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -121,6 +125,41 @@ export default function BillingScreen() {
     await refresh();
     setRefreshing(false);
   }, [refresh]);
+
+  const handleDownloadInvoice = useCallback(
+    async (inv: Invoice) => {
+      const base = (APP_URL || "").replace(/\/$/, "");
+      const url = base ? `${base}/api/provider/invoices/${inv.id}/download` : "";
+      if (!url) {
+        Alert.alert("Error", "App URL not configured");
+        return;
+      }
+      if (Platform.OS === "web") {
+        Linking.openURL(url).catch(() => {});
+        return;
+      }
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) {
+          Alert.alert("Sign in required", "Please sign in to download invoices.");
+          return;
+        }
+        const fileUri = `${FileSystem.cacheDirectory}invoice_${inv.invoice_number || inv.id}.pdf`;
+        await FileSystem.downloadAsync(url, fileUri, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        await Share.share({
+          url: fileUri,
+          message: `Invoice ${inv.invoice_number} - ${formatCurrency(inv.total_amount)}`,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Download failed";
+        Alert.alert("Download failed", msg);
+      }
+    },
+    []
+  );
 
   async function handleSave() {
     const { error: err } = await updateBilling(
@@ -396,14 +435,9 @@ export default function BillingScreen() {
             <View>
               <TouchableOpacity
                 style={[twStyle("flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3"), { marginBottom: 8 }]}
-                onPress={async () => {
-                  try {
-                    await Share.share({
-                      url: `/api/provider/invoices/${selectedInvoice.id}/download`,
-                      message: `Invoice ${selectedInvoice.invoice_number} - ${formatCurrency(selectedInvoice.total_amount)}`,
-                    });
-                  } catch {}
-                }}
+                onPress={() => selectedInvoice && handleDownloadInvoice(selectedInvoice)}
+                accessibilityLabel="Share invoice"
+                accessibilityRole="button"
               >
                 <Ionicons name="share-outline" size={18} color="#6366f1" />
                 <Text style={twStyle("ml-2 text-sm font-medium text-indigo-600")}>Share Invoice</Text>
@@ -411,9 +445,9 @@ export default function BillingScreen() {
 
               <TouchableOpacity
                 style={twStyle("flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3")}
-                onPress={() =>
-                  Linking.openURL(`/api/provider/invoices/${selectedInvoice.id}/download`).catch(() => {})
-                }
+                onPress={() => selectedInvoice && handleDownloadInvoice(selectedInvoice)}
+                accessibilityLabel="Download invoice"
+                accessibilityRole="button"
               >
                 <Ionicons name="download-outline" size={18} color="#6b7280" />
                 <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>Download</Text>

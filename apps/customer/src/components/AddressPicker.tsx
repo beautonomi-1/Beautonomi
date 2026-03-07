@@ -13,7 +13,11 @@ import {
   ActivityIndicator,
   Pressable,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
 } from "react-native";
+import * as Location from "expo-location";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/providers/AuthProvider";
@@ -25,6 +29,7 @@ import {
 } from "@/hooks/useAddresses";
 import { haptic } from "@/lib/haptics";
 import { useResponsive } from "@/hooks/useResponsive";
+import { APP_URL } from "@/config/public-env";
 
 export interface AddressPickerSelection {
   label: string;
@@ -61,6 +66,7 @@ export function AddressPicker({
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
+  const [gettingLocation, setGettingLocation] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -141,27 +147,106 @@ export function AddressPicker({
     [onSelect, onClose],
   );
 
+  const handleUseCurrentLocation = useCallback(async () => {
+    if (gettingLocation) return;
+    haptic.light();
+    Keyboard.dismiss();
+    setGettingLocation(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Location access", "Allow location access to use your current position.");
+        return;
+      }
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const lat = loc.coords.latitude;
+      const lng = loc.coords.longitude;
+
+      let structured: AddressPickerSelection["structured"] | undefined;
+      let displayName = "Current location";
+
+      if (APP_URL?.trim()) {
+        try {
+          const res = await fetch(`${APP_URL}/api/mapbox/reverse-geocode`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ latitude: lat, longitude: lng }),
+          });
+          const json = await res.json().catch(() => ({}));
+          const feature = json?.data;
+          if (feature?.place_name && feature?.center) {
+            displayName = feature.place_name;
+            const context = feature.context ?? [];
+            const find = (prefix: string) => context.find((c: { id: string }) => c.id?.startsWith(prefix))?.text ?? "";
+            const place = find("place.") || find("locality.") || find("district.");
+            const country = find("country.");
+            const parts = (feature.place_name || "").split(",").map((p: string) => p.trim()).filter(Boolean);
+            structured = {
+              address_line1: parts[0] || feature.text || "Current location",
+              city: place || parts[1] || "—",
+              state: find("region.") || undefined,
+              postal_code: find("postcode.") || undefined,
+              country: country || "South Africa",
+            };
+          }
+        } catch {
+          structured = {
+            address_line1: "Current location",
+            city: "—",
+            country: "South Africa",
+          };
+        }
+      } else {
+        structured = {
+          address_line1: "Current location",
+          city: "—",
+          country: "South Africa",
+        };
+      }
+
+      onSelect({
+        label: "Current location",
+        latitude: lat,
+        longitude: lng,
+        displayName,
+        structured,
+      });
+      onClose();
+    } catch (e) {
+      Alert.alert("Location error", e instanceof Error ? e.message : "Could not get your location.");
+    } finally {
+      setGettingLocation(false);
+    }
+  }, [onSelect, onClose, gettingLocation]);
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable
         style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}
         onPress={onClose}
       >
-        <Pressable
-          style={{
-            backgroundColor: "#fff",
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
-            maxHeight: "80%",
-            paddingBottom: 34,
-          }}
-          onPress={(e) => e.stopPropagation()}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
+          style={{ width: "100%" }}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 20}
         >
-          <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 8 }}>
-            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB" }} />
-          </View>
+          <Pressable
+            style={{
+              backgroundColor: "#fff",
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              maxHeight: "80%",
+              paddingBottom: 34,
+            }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 8 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB" }} />
+            </View>
 
-          <View style={{ paddingHorizontal: contentPadding }}>
+            <View style={{ paddingHorizontal: contentPadding }}>
             <Text style={{ fontSize: 20, fontWeight: "700", color: "#111827", marginBottom: 16 }}>
               Select address
             </Text>
@@ -189,7 +274,8 @@ export function AddressPicker({
             </View>
 
             <TouchableOpacity
-              onPress={() => { haptic.light(); onUseCurrentLocation(); onClose(); }}
+              onPress={handleUseCurrentLocation}
+              disabled={gettingLocation}
               style={{
                 flexDirection: "row",
                 alignItems: "center",
@@ -208,10 +294,14 @@ export function AddressPicker({
                   justifyContent: "center",
                 }}
               >
-                <Ionicons name="locate-outline" size={18} color={Colors.primary} />
+                {gettingLocation ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <Ionicons name="locate-outline" size={18} color={Colors.primary} />
+                )}
               </View>
               <Text style={{ fontSize: 15, fontWeight: "500", color: Colors.primary, marginLeft: 10 }}>
-                Use current location
+                {gettingLocation ? "Getting location…" : "Use current location"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -316,7 +406,8 @@ export function AddressPicker({
               </Text>
             </View>
           )}
-        </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Pressable>
     </Modal>
   );

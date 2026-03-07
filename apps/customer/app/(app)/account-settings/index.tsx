@@ -29,6 +29,7 @@ const GROUPS: SettingsGroup[] = [
     items: [
       { id: "personal-info", title: "Personal info", desc: "Name, photo, email and phone", route: "personal-info", icon: "person-outline" },
       { id: "login-and-security", title: "Login & security", desc: "Password and account protection", route: "login-and-security", icon: "lock-closed-outline" },
+      { id: "identity-verification", title: "Identity verification", desc: "Verify your identity with a document", route: "identity-verification", icon: "card-outline" },
       { id: "addresses", title: "Saved addresses", desc: "Home, work and other addresses", route: "addresses", icon: "location-outline" },
       { id: "privacy-and-sharing", title: "Privacy & sharing", desc: "Data preferences and visibility", route: "privacy-and-sharing", icon: "shield-checkmark-outline" },
     ],
@@ -97,6 +98,8 @@ export default function AccountSettingsScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: Colors.gray[50] }}
+      accessibilityLabel="Account settings"
+      accessibilityRole="none"
       contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
     >
       {user && (
@@ -124,6 +127,8 @@ export default function AccountSettingsScreen() {
                   { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14 },
                   idx < group.items.length - 1 ? { borderBottomWidth: 1, borderBottomColor: Colors.gray[100] } : undefined,
                 ]}
+                accessibilityLabel={`${item.title}. ${item.desc}`}
+                accessibilityRole="button"
               >
                 <View
                   style={{
@@ -154,6 +159,8 @@ export default function AccountSettingsScreen() {
         <TouchableOpacity
           onPress={handleShare}
           style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
+          accessibilityLabel="Share Beautonomi. Invite friends and family"
+          accessibilityRole="button"
         >
           <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginRight: 12 }}>
             <Ionicons name="share-social-outline" size={18} color={Colors.primary} />
@@ -167,6 +174,8 @@ export default function AccountSettingsScreen() {
         <TouchableOpacity
           onPress={() => router.push("/(app)/help")}
           style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
+          accessibilityLabel="Help and support. FAQs and contact us"
+          accessibilityRole="button"
         >
           <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginRight: 12 }}>
             <Ionicons name="help-circle-outline" size={18} color={Colors.primary} />
@@ -180,6 +189,8 @@ export default function AccountSettingsScreen() {
         <TouchableOpacity
           onPress={() => router.push("/(app)/about")}
           style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14 }}
+          accessibilityLabel="About Beautonomi. Our mission and story"
+          accessibilityRole="button"
         >
           <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginRight: 12 }}>
             <Ionicons name="information-circle-outline" size={18} color={Colors.primary} />

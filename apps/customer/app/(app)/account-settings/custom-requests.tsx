@@ -9,9 +9,10 @@ import {
   Linking,
   Alert,
   Platform,
+  AppState,
 } from "react-native";
+import { useFocusEffect, router } from "expo-router";
 import { Image } from "expo-image";
-import { router } from "expo-router";
 import { api } from "@/lib/api-client";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -103,10 +104,17 @@ function formatBudget(
 }
 
 function canAcceptOffer(offer: CustomRequestOffer): boolean {
-  if (offer.status === "paid" || offer.status === "expired") return false;
+  if (offer.status === "paid" || offer.status === "expired" || offer.status === "withdrawn") return false;
   const exp = offer.expiration_at ? new Date(offer.expiration_at).getTime() : null;
   if (exp != null && exp < Date.now()) return false;
   return true;
+}
+
+function canCancelRequest(item: CustomRequest): boolean {
+  if (item.status === "cancelled") return false;
+  const hasPaidOffer = item.offers?.some((o) => o.status === "paid");
+  if (hasPaidOffer) return false;
+  return item.status === "pending" || item.status === "offered";
 }
 
 // ---------------------------------------------------------------------------
@@ -117,21 +125,28 @@ function RequestCard({
   item,
   onAcceptPay,
   onPressProvider,
+  onCancel,
   refreshingOfferId,
+  cancellingRequestId,
 }: {
   item: CustomRequest;
   onAcceptPay: (offerId: string) => void;
   onPressProvider: () => void;
+  onCancel: (requestId: string) => void;
   refreshingOfferId: string | null;
+  cancellingRequestId: string | null;
 }) {
   const locationLabel = formatLocationLabel(item.location_type);
   const budget = formatBudget(item.budget_min, item.budget_max, "ZAR");
   const hasPaidOffer = item.offers?.some((o) => o.status === "paid");
   const hasPendingOffer = item.offers?.some(canAcceptOffer);
-  const statusLabel = hasPaidOffer ? "Paid" : hasPendingOffer ? "Offer to accept" : item.status ?? "Pending";
+  const isCancelled = item.status === "cancelled";
+  const statusLabel = isCancelled ? "Cancelled" : hasPaidOffer ? "Paid" : hasPendingOffer ? "Offer to accept" : item.status ?? "Pending";
 
-  const statusBg = hasPaidOffer ? "#DCFCE7" : hasPendingOffer ? "#FEF3C7" : Colors.gray[100];
-  const statusText = hasPaidOffer ? "#166534" : hasPendingOffer ? "#92400E" : Colors.gray[600];
+  const statusBg = isCancelled ? "#FEE2E2" : hasPaidOffer ? "#DCFCE7" : hasPendingOffer ? "#FEF3C7" : Colors.gray[100];
+  const statusText = isCancelled ? "#B91C1C" : hasPaidOffer ? "#166534" : hasPendingOffer ? "#92400E" : Colors.gray[600];
+  const showCancel = canCancelRequest(item);
+  const isCancelling = cancellingRequestId === item.id;
 
   return (
     <View style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.gray[100] }}>
@@ -151,7 +166,7 @@ function RequestCard({
         </View>
       </View>
       <Text style={{ color: Colors.gray[700], fontSize: 14, marginBottom: 8 }}>{truncate(item.description || "No description", 120)}</Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 4 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 4 }}>
         {budget && <Text style={{ fontSize: 12, color: Colors.gray[500], marginRight: 12 }}>{budget}</Text>}
         {locationLabel && (
           <View style={{ flexDirection: "row", alignItems: "center", marginRight: 12 }}>
@@ -164,6 +179,19 @@ function RequestCard({
           <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{formatDate(item.created_at)}</Text>
         </View>
       </View>
+      {showCancel && (
+        <TouchableOpacity
+          onPress={() => onCancel(item.id)}
+          disabled={isCancelling}
+          style={{ alignSelf: "flex-start", marginTop: 8, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "#FEE2E2", borderWidth: 1, borderColor: "#FECACA" }}
+        >
+          {isCancelling ? (
+            <ActivityIndicator size="small" color="#B91C1C" />
+          ) : (
+            <Text style={{ fontSize: 13, fontWeight: "600", color: "#B91C1C" }}>Cancel request</Text>
+          )}
+        </TouchableOpacity>
+      )}
       {item.offers && item.offers.length > 0 && (
         <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingTop: 12 }}>
           {item.offers.map((o) => {
@@ -221,6 +249,7 @@ export default function CustomRequestsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshingOfferId, setRefreshingOfferId] = useState<string | null>(null);
+  const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -251,39 +280,17 @@ export default function CustomRequestsScreen() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const init = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await api.get<CustomRequest[] | { data?: CustomRequest[] }>("/api/me/custom-requests");
-        if (cancelled) return;
-        if (res.error) {
-          setError(res.error.message || "Failed to load custom requests");
-          setData([]);
-        } else {
-          const raw = res.data;
-          if (Array.isArray(raw)) {
-            setData(raw);
-          } else {
-            const obj = raw as unknown as Record<string, unknown>;
-            const items = (obj?.data ?? obj?.requests ?? []) as CustomRequest[];
-            setData(Array.isArray(items) ? items : []);
-          }
-        }
-      } catch (e) {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Failed to load custom requests");
-        setData([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    init();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    load();
+  }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = AppState.addEventListener("change", (state) => {
+        if (state === "active") load(true);
+      });
+      return () => subscription.remove();
+    }, [load])
+  );
 
   const handleAcceptPay = useCallback(
     async (offerId: string) => {
@@ -334,6 +341,26 @@ export default function CustomRequestsScreen() {
     }
   }, []);
 
+  const handleCancelRequest = useCallback(
+    async (requestId: string) => {
+      setCancellingRequestId(requestId);
+      try {
+        const res = await api.post<{ cancelled?: boolean }>(`/api/me/custom-requests/${requestId}/cancel`, {});
+        if (res.error) {
+          Alert.alert("Error", (res.error as { message?: string })?.message ?? "Failed to cancel request");
+          return;
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        await load(true);
+      } catch (e) {
+        Alert.alert("Error", e instanceof Error ? e.message : "Failed to cancel request");
+      } finally {
+        setCancellingRequestId(null);
+      }
+    },
+    [load]
+  );
+
   if (loading && data.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
@@ -360,7 +387,14 @@ export default function CustomRequestsScreen() {
         data={data}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <RequestCard item={item} onAcceptPay={handleAcceptPay} onPressProvider={() => handlePressProvider(item)} refreshingOfferId={refreshingOfferId} />
+          <RequestCard
+            item={item}
+            onAcceptPay={handleAcceptPay}
+            onPressProvider={() => handlePressProvider(item)}
+            onCancel={handleCancelRequest}
+            refreshingOfferId={refreshingOfferId}
+            cancellingRequestId={cancellingRequestId}
+          />
         )}
         contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />}

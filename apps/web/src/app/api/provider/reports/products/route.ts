@@ -14,17 +14,23 @@ export async function GET(request: NextRequest) {
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+    const locationId = request.nextUrl.searchParams.get("location_id") || null;
+
     const { data: products } = await supabaseAdmin
       .from("provider_products")
       .select("id, name, stock_quantity, reorder_point, price")
       .eq("provider_id", providerId)
       .eq("is_active", true);
 
-    const { data: orderItems } = await supabaseAdmin
+    let orderItemsQuery = supabaseAdmin
       .from("product_order_items")
-      .select("product_id, quantity, unit_price, product_orders!inner(provider_id, status)")
+      .select("product_id, quantity, unit_price, product_orders!inner(provider_id, status, collection_location_id)")
       .eq("product_orders.provider_id", providerId)
       .not("product_orders.status", "in", "(cancelled,refunded)");
+    if (locationId) {
+      orderItemsQuery = orderItemsQuery.eq("product_orders.collection_location_id", locationId);
+    }
+    const { data: orderItems } = await orderItemsQuery;
 
     const salesMap = new Map<string, { name: string; units: number; revenue: number; stock: number }>();
 

@@ -9,6 +9,7 @@ export default function LoginAndSecurityScreen() {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [updating, setUpdating] = useState(false);
@@ -34,21 +35,29 @@ export default function LoginAndSecurityScreen() {
   }, []);
 
   const updatePassword = async () => {
-    if (!password || password.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters");
+    if (!currentPassword?.trim()) {
+      Alert.alert("Error", "Enter your current password");
+      return;
+    }
+    if (!password || password.length < 8) {
+      Alert.alert("Error", "New password must be at least 8 characters");
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match");
+      Alert.alert("Error", "New passwords do not match");
       return;
     }
     setUpdating(true);
     try {
-      const res = await api.put<any>("/api/me/password", { password });
+      const res = await api.put<any>("/api/me/password", {
+        currentPassword: currentPassword.trim(),
+        newPassword: password,
+      });
       if (res.error) {
         Alert.alert("Error", res.error.message || "Failed to update password");
       } else {
         Alert.alert("Success", "Password updated.");
+        setCurrentPassword("");
         setPassword("");
         setConfirmPassword("");
       }
@@ -108,18 +117,29 @@ export default function LoginAndSecurityScreen() {
 
           <View style={{ marginTop: 24 }}>
             <View>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>New password</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Current password</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                value={password}
-                onChangeText={setPassword}
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
                 placeholder="••••••••"
                 placeholderTextColor={Colors.gray[400]}
                 secureTextEntry
               />
             </View>
             <View style={{ marginTop: 16 }}>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Confirm password</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>New password</Text>
+              <TextInput
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="At least 8 characters"
+                placeholderTextColor={Colors.gray[400]}
+                secureTextEntry
+              />
+            </View>
+            <View style={{ marginTop: 16 }}>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Confirm new password</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={confirmPassword}

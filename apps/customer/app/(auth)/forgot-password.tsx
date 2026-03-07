@@ -56,16 +56,19 @@ export default function ForgotPasswordScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: Colors.white }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === "ios" ? "padding" : "padding"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
     >
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
           padding: contentPadding,
           paddingTop: 60,
+          paddingBottom: 220,
           ...(formNarrow ? { alignItems: "center" as const } : {}),
         }}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         <View style={containerStyle}>
         <TouchableOpacity

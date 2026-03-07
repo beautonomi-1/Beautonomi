@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -80,7 +81,8 @@ export function FinanceOverviewContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [range, setRange] = useState<"week" | "month" | "year">("month");
   const { screenPadding } = useResponsive();
-  const url = `/api/provider/finance?range=${range}`;
+  const { selectedLocationId } = useProvider();
+  const url = `/api/provider/finance?range=${range}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
   const { data, loading, error, refresh } = useApi<FinanceData>(url);
 
   const onRefresh = useCallback(async () => {

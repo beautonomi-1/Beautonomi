@@ -1,6 +1,8 @@
 import Image from "next/image";
 import React from "react";
-import Mobile from './../../../../public/images/ed2829c4-4ecd-4c4e-b775-00bb3d95900a.jpg'
+
+const COMMUNITY_IMAGE = "/images/ed2829c4-4ecd-4c4e-b775-00bb3d95900a.jpg";
+
 const CommunityCommitment = () => {
   return (
     <div className="container border-b">
@@ -18,8 +20,10 @@ const CommunityCommitment = () => {
       </div>
       <div className="">
         <Image
-          src={Mobile}
-          alt=""
+          src={COMMUNITY_IMAGE}
+          alt="Beautonomi Community Commitment"
+          width={473}
+          height={691}
           className="rounded-md h-[691px] w-[473px] object-cover"
         />
       </div>

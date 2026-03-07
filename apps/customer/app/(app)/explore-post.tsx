@@ -9,6 +9,7 @@ import {
   Share,
   Alert,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   useWindowDimensions,
   Animated,
@@ -23,7 +24,9 @@ import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { haptic } from "@/lib/haptics";
+import * as Clipboard from "expo-clipboard";
 import { APP_URL } from "@/config/public-env";
 import type { ExplorePost, ExploreComment } from "@/types/api";
 
@@ -47,9 +50,12 @@ export default function ExplorePostScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const [post, setPost] = useState<ExplorePost | null>(null);
   const [comments, setComments] = useState<ExploreComment[]>([]);
+  const [relatedPosts, setRelatedPosts] = useState<ExplorePost[]>([]);
+  const [captionExpanded, setCaptionExpanded] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -58,23 +64,32 @@ export default function ExplorePostScreen() {
   const [mediaIndex, setMediaIndex] = useState(0);
 
   const heartAnim = useRef(new Animated.Value(0)).current;
+  const scrollRef = useRef<ScrollView>(null);
+  const commentInputRef = useRef<TextInput>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     try {
-      const [postRes, commentsRes] = await Promise.all([
+      const [postRes, commentsRes, listRes] = await Promise.all([
         api.get<ExplorePost>(`/api/explore/posts/${id}`),
         api.get<ExploreComment[]>(`/api/explore/posts/${id}/comments`),
+        api.get<ExplorePost[] | { data?: ExplorePost[] }>(`/api/explore/posts?limit=13`),
       ]);
       const postData = postRes.data as any;
-      setPost(postData?.data ?? postData ?? null);
+      const loadedPost = postData?.data ?? postData ?? null;
+      setPost(loadedPost);
       const commentsData = commentsRes.data as any;
       const list = Array.isArray(commentsData) ? commentsData : commentsData?.data ?? [];
       setComments(list);
+      const rawList = listRes.data as ExplorePost[] | { data?: ExplorePost[] } | undefined;
+      const items = Array.isArray(rawList) ? rawList : rawList?.data ?? [];
+      const related = items.filter((p) => p.id !== id).slice(0, 12);
+      setRelatedPosts(related);
     } catch {
       setPost(null);
       setComments([]);
+      setRelatedPosts([]);
     } finally {
       setLoading(false);
     }
@@ -83,6 +98,10 @@ export default function ExplorePostScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    setCaptionExpanded(false);
+  }, [id]);
 
   const toggleLike = useCallback(async () => {
     if (!post || liking) return;
@@ -160,16 +179,45 @@ export default function ExplorePostScreen() {
     }
   }, [input, id, sending, user]);
 
+  const postUrl = post?.id ? `${APP_URL}/explore/${post.id}` : "";
+  const shareMessage = post?.caption
+    ? `${post.caption} — ${post.provider?.business_name || "Beautonomi"}`
+    : `Check this out from ${post?.provider?.business_name || "Beautonomi"}`;
+
   const handleShare = useCallback(() => {
-    const message = post?.caption
-      ? `${post.caption} — ${post.provider?.business_name || "Beautonomi"}`
-      : `Check this out from ${post?.provider?.business_name || "Beautonomi"}`;
     Share.share({
-      message,
+      message: shareMessage,
       title: "Beautonomi",
-      url: post?.id ? `${APP_URL}/explore/${post.id}` : undefined,
+      url: postUrl || undefined,
     }).catch(() => {});
-  }, [post]);
+  }, [shareMessage, postUrl]);
+
+  const focusCommentInput = useCallback(() => {
+    if (!user) {
+      router.replace("/(auth)/login");
+      return;
+    }
+    Keyboard.dismiss();
+    scrollRef.current?.scrollToEnd({ animated: true });
+    setTimeout(() => commentInputRef.current?.focus(), 400);
+  }, [user, router]);
+
+  const showMoreOptions = useCallback(() => {
+    haptic.light();
+    Alert.alert("More options", undefined, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Share", onPress: handleShare },
+      {
+        text: "Copy link",
+        onPress: async () => {
+          if (postUrl) {
+            await Clipboard.setStringAsync(postUrl);
+            haptic.light();
+          }
+        },
+      },
+    ]);
+  }, [handleShare, postUrl]);
 
   const goToProvider = useCallback(() => {
     if (post?.provider?.slug) {
@@ -215,12 +263,15 @@ export default function ExplorePostScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: "#fff" }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
       >
         <ScrollView
+          ref={scrollRef}
           style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
           bounces
+          onScrollBeginDrag={() => Keyboard.dismiss()}
+          keyboardDismissMode="on-drag"
         >
           {/* Media */}
           {images.length > 0 ? (
@@ -297,6 +348,24 @@ export default function ExplorePostScreen() {
                 <Ionicons name="share-social-outline" size={20} color="#fff" />
               </TouchableOpacity>
 
+              {/* More options */}
+              <TouchableOpacity
+                onPress={showMoreOptions}
+                style={{
+                  position: "absolute",
+                  top: 52,
+                  right: 62,
+                  width: 38,
+                  height: 38,
+                  borderRadius: 19,
+                  backgroundColor: "rgba(0,0,0,0.35)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
+              </TouchableOpacity>
+
               {/* Photo counter */}
               {images.length > 1 && (
                 <View style={{ position: "absolute", bottom: 12, alignSelf: "center", backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
@@ -369,6 +438,7 @@ export default function ExplorePostScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
+                onPress={focusCommentInput}
                 style={{ flexDirection: "row", alignItems: "center", marginRight: 20 }}
               >
                 <Ionicons name="chatbubble-outline" size={24} color="#374151" style={{ marginRight: 6 }} />
@@ -398,13 +468,30 @@ export default function ExplorePostScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Caption */}
+            {/* Caption (expandable when long) */}
             {post.caption ? (
               <View style={{ marginBottom: 16 }}>
                 <Text style={{ fontSize: 15, color: "#111827", lineHeight: 24 }}>
                   <Text style={{ fontWeight: "700" }}>{post.provider?.business_name} </Text>
-                  {post.caption}
+                  {captionExpanded || post.caption.length <= 120
+                    ? post.caption
+                    : `${post.caption.slice(0, 120)}...`}
                 </Text>
+                {post.caption.length > 120 ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptic.light();
+                      setCaptionExpanded((e) => !e);
+                    }}
+                    style={{ marginTop: 4 }}
+                    accessibilityLabel={captionExpanded ? "Show less" : "Show more"}
+                    accessibilityRole="button"
+                  >
+                    <Text style={{ fontSize: 14, color: "#6B7280", fontWeight: "500" }}>
+                      {captionExpanded ? "less" : "more"}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             ) : null}
 
@@ -458,6 +545,53 @@ export default function ExplorePostScreen() {
               })
             )}
 
+            {/* More like this */}
+            {relatedPosts.length > 0 ? (
+              <View style={{ marginTop: 24, marginBottom: 16 }}>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>
+                  More like this
+                </Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 }}>
+                  {relatedPosts.slice(0, 6).map((p) => {
+                    const img = p.media_urls?.[0];
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        onPress={() => {
+                          haptic.light();
+                          router.push({ pathname: "/(app)/explore-post", params: { id: p.id } });
+                        }}
+                        style={{
+                          width: (screenWidth - contentPadding * 2 - 12) / 2,
+                          marginHorizontal: 6,
+                          marginBottom: 12,
+                        }}
+                        accessibilityLabel={`Post by ${p.provider?.business_name || "Provider"}`}
+                        accessibilityRole="button"
+                      >
+                        <View style={{ borderRadius: 12, overflow: "hidden", backgroundColor: "#F3F4F6" }}>
+                          <Image
+                            source={{ uri: img || "https://placehold.co/400x500/f5f5f5/999?text=Beauty" }}
+                            style={{ width: "100%", aspectRatio: 4 / 5 }}
+                            contentFit="cover"
+                            cachePolicy="memory-disk"
+                          />
+                          {p.caption ? (
+                            <Text
+                              style={{ fontSize: 12, color: "#374151", padding: 8, lineHeight: 16 }}
+                              numberOfLines={2}
+                            >
+                              {p.caption}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
+
             <View style={{ height: 80 }} />
           </View>
         </ScrollView>
@@ -492,6 +626,7 @@ export default function ExplorePostScreen() {
               </Text>
             </View>
             <TextInput
+              ref={commentInputRef}
               style={{
                 flex: 1,
                 backgroundColor: "#F3F4F6",
@@ -507,6 +642,7 @@ export default function ExplorePostScreen() {
               onChangeText={setInput}
               onSubmitEditing={sendComment}
               returnKeyType="send"
+              blurOnSubmit={false}
             />
             <TouchableOpacity
               onPress={sendComment}

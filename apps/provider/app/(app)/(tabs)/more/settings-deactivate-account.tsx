@@ -76,11 +76,16 @@ export default function SettingsDeactivateAccountScreen() {
     <ScreenContainer>
       <ScreenHeader title="Deactivate account" subtitle="Temporarily disable your account" onBack={() => router.back()} />
 
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+      >
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerStyle={{ paddingBottom: 220 }}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
           <View style={{ paddingHorizontal: 8, paddingTop: 8 }}>

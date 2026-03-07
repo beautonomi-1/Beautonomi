@@ -24,6 +24,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { StaticMapImage } from "@/components/StaticMapImage";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import { haptic } from "@/lib/haptics";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
 
 function formatDate(s: string) {
@@ -63,13 +64,13 @@ export default function BookingDetailScreen() {
     try {
       const res = await api.get<any>(`/api/me/bookings/${id}`);
       if (res.error) {
-        setError(res.error.message || "Failed to load");
+        setError(getApiErrorMessage(res.error, "Failed to load"));
         setBooking(null);
       } else {
         setBooking(res.data);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
+      setError(getApiErrorMessage(e as Error, "Failed to load"));
       setBooking(null);
     } finally {
       setLoading(false);
@@ -131,7 +132,7 @@ export default function BookingDetailScreen() {
                 load();
               }
             } catch (e) {
-              Alert.alert("Error", e instanceof Error ? e.message : "Failed to cancel");
+              Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to cancel"));
             } finally {
               setCancelling(false);
             }
@@ -238,7 +239,7 @@ export default function BookingDetailScreen() {
           headerBackTitle: "Back",
         }}
       />
-      <ScrollView style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
+      <ScrollView style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }} accessibilityLabel="Booking details" accessibilityRole="none">
         {/* Acceptance / confirmation strip (for confirmed/pending/started) */}
         {isActive && (
           <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#BBF7D0", padding: 16 }}>
@@ -569,6 +570,7 @@ export default function BookingDetailScreen() {
               style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: "#FECACA" }}
               accessibilityRole="button"
               accessibilityLabel="Cancel booking"
+              accessibilityHint="Double tap to cancel this appointment. Cancellation fees may apply."
             >
               {cancelling ? (
                 <ActivityIndicator size="small" color="#ef4444" />

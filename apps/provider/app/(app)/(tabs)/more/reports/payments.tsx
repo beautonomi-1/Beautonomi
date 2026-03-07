@@ -10,6 +10,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -61,11 +62,11 @@ function getDateParams(range: DateRange) {
 }
 
 export default function PaymentsReport() {
+  const { selectedLocationId } = useProvider();
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const { from, to } = getDateParams(dateRange);
-  const { data, loading } = useApi<PaymentsData>(
-    `/api/provider/reports/payments?from=${from}&to=${to}`
-  );
+  const paymentsReportUrl = `/api/provider/reports/payments?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
+  const { data, loading } = useApi<PaymentsData>(paymentsReportUrl);
 
   const handleExport = useCallback(async () => {
     if (!data) return;

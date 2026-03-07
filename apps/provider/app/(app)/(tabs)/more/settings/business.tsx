@@ -213,14 +213,16 @@ export default function BusinessDetailsScreen() {
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Business details" onBack={() => router.back()} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
         style={twStyle("flex-1")}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
       >
         <ScrollView
           style={twStyle("flex-1")}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerStyle={{ paddingBottom: 220 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           <View style={twStyle("px-4")}>
             {/* Logo */}

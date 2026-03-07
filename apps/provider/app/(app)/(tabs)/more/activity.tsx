@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -45,7 +46,11 @@ function formatCurrency(amount: number): string {
 export default function ActivityScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const { screenPadding } = useResponsive();
-  const { data, loading, error, refresh } = useApi<DashboardData>("/api/provider/dashboard");
+  const { selectedLocationId } = useProvider();
+  const dashboardUrl = selectedLocationId
+    ? `/api/provider/dashboard?location_id=${encodeURIComponent(selectedLocationId)}`
+    : "/api/provider/dashboard";
+  const { data, loading, error, refresh } = useApi<DashboardData>(dashboardUrl);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

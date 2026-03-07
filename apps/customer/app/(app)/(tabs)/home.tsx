@@ -9,6 +9,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Image } from "expo-image";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { haptic } from "@/lib/haptics";
@@ -35,7 +36,6 @@ import { Colors } from "@/constants/colors";
 import { HomeSkeleton } from "@/components/Skeleton";
 
 const GAP = 16;
-const HEADER_PINK_HEIGHT = 56;
 
 const styles = StyleSheet.create({
   root: {
@@ -52,20 +52,34 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   addressBar: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
   },
   addressBarInner: {
-    height: HEADER_PINK_HEIGHT,
-    minHeight: HEADER_PINK_HEIGHT,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
+  addressBarPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: Colors.primary,
+    borderRadius: 9999,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    maxWidth: 400,
+    minWidth: 0,
+    flex: 1,
+  },
   addressBarButton: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
+    minWidth: 0,
   },
   addressBarIconMargin: { marginRight: 8 },
   addressBarText: {
@@ -88,6 +102,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flexShrink: 0,
+    minWidth: 80,
+  },
+  navLogo: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+  },
+  navCenterGroup: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 0,
   },
   navTab: {
     alignItems: "center",
@@ -111,10 +138,15 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   navNewBadgeText: { fontSize: 8, color: Colors.white, fontWeight: "700" },
+  navCenterSpacer: {
+    flex: 1,
+    minWidth: 0,
+  },
   navRightGroup: {
     flexDirection: "row",
     alignItems: "center",
     flexShrink: 0,
+    position: "relative",
   },
   navSearchMargin: { marginRight: 16 },
   categoryRow: {
@@ -334,7 +366,7 @@ function CategoryPill({
 export default function HomeScreen() {
   useScreenTracking("Home");
   useAuth();
-  const { coords } = useLocation();
+  const { coords, loading: locationLoading } = useLocation();
   const { selectedAddress, setSelectedAddress } = useSelectedAddress();
   const { cardWidth, contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const [activeCategory, setActiveCategory] = useState("All");
@@ -366,7 +398,9 @@ export default function HomeScreen() {
     setSelectedAddress(null);
   }, [setSelectedAddress]);
 
-  const addressLabel = selectedAddress?.displayName ?? (coords ? "Current location" : "Select address");
+  const addressLabel =
+    selectedAddress?.displayName ??
+    (locationLoading ? "Detecting location…" : coords ? "Current location" : "Select address");
 
   if (loading && !data) {
     return (
@@ -378,29 +412,41 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
 
       <View style={contentWrapperDynamic}>
         <SafeAreaView edges={["top"]} style={styles.addressBar}>
           <View style={[styles.addressBarInner, { paddingHorizontal: contentPadding }]}>
-            <TouchableOpacity
-              style={styles.addressBarButton}
-              onPress={() => setAddressPickerVisible(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Select address"
-              accessibilityHint="Opens address selector to choose your location"
-            >
-              <Ionicons name="location" size={20} color="white" style={styles.addressBarIconMargin} />
-              <Text style={styles.addressBarText} numberOfLines={1}>
-                {addressLabel}
-              </Text>
-              <Ionicons name="chevron-down" size={16} color="white" style={styles.addressBarChevron} />
-            </TouchableOpacity>
+            <View style={styles.addressBarPill}>
+              <TouchableOpacity
+                style={styles.addressBarButton}
+                onPress={() => setAddressPickerVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Select address"
+                accessibilityHint="Opens address selector to choose your location"
+              >
+                <Ionicons name="location" size={20} color="white" style={styles.addressBarIconMargin} />
+                <Text style={styles.addressBarText} numberOfLines={2} ellipsizeMode="tail">
+                  {addressLabel}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color="white" style={styles.addressBarChevron} />
+              </TouchableOpacity>
+            </View>
           </View>
         </SafeAreaView>
 
         <View style={[styles.navRow, { paddingHorizontal: contentPadding }]}>
           <View style={styles.navLeftGroup}>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/home")}
+              accessibilityRole="image"
+              accessibilityLabel="Beautonomi logo"
+              style={{ padding: 4 }}
+            >
+              <Image source={require("../../../assets/icon.png")} style={styles.navLogo} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.navCenterGroup}>
             <TouchableOpacity
               style={[styles.navTab, styles.navTabActive]}
               accessibilityRole="button"
@@ -443,12 +489,24 @@ export default function HomeScreen() {
               <InlineSearch />
             </View>
             <TouchableOpacity
-              onPress={() => router.push("/(app)/(tabs)/profile")}
+              onPress={() => {
+                haptic.selection();
+                router.push("/(app)/account-settings/wishlists");
+              }}
               accessibilityRole="button"
-              accessibilityLabel="Profile"
-              accessibilityHint="Navigate to your profile"
+              accessibilityLabel="Wishlist"
+              accessibilityHint="Open saved providers and wishlists"
+              style={styles.navSearchMargin}
             >
-              <Ionicons name="person-outline" size={24} color="#333" />
+              <Ionicons name="heart-outline" size={24} color="#333" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/notifications")}
+              accessibilityRole="button"
+              accessibilityLabel="Notifications"
+              accessibilityHint="Open notifications"
+            >
+              <Ionicons name="notifications-outline" size={24} color="#333" />
             </TouchableOpacity>
           </View>
         </View>
@@ -523,6 +581,7 @@ export default function HomeScreen() {
                   badge="sponsored"
                   cardWidth={cardWidth}
                   contentPadding={contentPadding}
+                  onViewMore={() => router.push("/(app)/more-providers/sponsored")}
                 />
                 <ProviderSection
                   title="Nearest Providers"

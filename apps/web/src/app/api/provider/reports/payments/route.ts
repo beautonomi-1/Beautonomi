@@ -16,18 +16,28 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
     const sp = request.nextUrl.searchParams;
+    const locationId = sp.get("location_id") || null;
     const fromDate = sp.get("from") ? new Date(sp.get("from")!) : subDays(new Date(), 30);
     const toDate = sp.get("to") ? new Date(sp.get("to")!) : new Date();
     const endIso = new Date(toDate.getTime() + 86400000).toISOString();
 
     const { data: txns } = await supabaseAdmin
       .from("finance_transactions")
-      .select("transaction_type, amount, net, created_at, metadata")
+      .select("transaction_type, amount, net, created_at, metadata, booking_id")
       .eq("provider_id", providerId)
       .gte("created_at", fromDate.toISOString())
       .lte("created_at", endIso);
 
-    const all = txns || [];
+    let all = txns || [];
+    if (locationId && all.length > 0) {
+      const { data: locBookings } = await supabaseAdmin
+        .from("bookings")
+        .select("id")
+        .eq("provider_id", providerId)
+        .eq("location_id", locationId);
+      const bookingIds = new Set((locBookings || []).map((b: { id: string }) => b.id));
+      all = all.filter((t: { booking_id: string | null }) => !t.booking_id || bookingIds.has(t.booking_id));
+    }
     let totalCollected = 0;
     let totalRefunded = 0;
     const methodMap = new Map<string, { amount: number; count: number }>();

@@ -101,14 +101,16 @@ export default function AddLocationScreen() {
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Add location" onBack={() => router.back()} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "padding"}
         style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
       >
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerStyle={{ paddingBottom: 220 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           <View style={{ paddingHorizontal: 16 }}>
             <View style={{ marginBottom: 16 }}>
@@ -143,7 +145,7 @@ export default function AddLocationScreen() {
             <View style={{ marginBottom: 16 }}>
               <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address *</Text>
               <Text style={{ marginBottom: 8, fontSize: 12, color: Colors.gray[500] }}>
-                Search for an address to fill the form and set coordinates automatically.
+                Search for an address to fill city, state, postal code and coordinates automatically, or type manually.
               </Text>
               <AddressAutocomplete
                 value={address_line1}
@@ -159,31 +161,10 @@ export default function AddLocationScreen() {
                   if (errors.city) setErrors((e) => ({ ...e, city: "" }));
                   if (errors.country) setErrors((e) => ({ ...e, country: "" }));
                 }}
-                placeholder="Search address…"
+                onBlur={(text) => setAddressLine1(text)}
+                placeholder="Street address or search…"
                 label={undefined}
                 countryCode="ZA"
-              />
-            </View>
-            <View style={{ marginBottom: 16 }}>
-              <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address line 1</Text>
-              <TextInput
-                style={{
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: errors.address_line1 ? "#ef4444" : Colors.gray[200],
-                  backgroundColor: Colors.white,
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                  fontSize: 16,
-                  color: Colors.gray[900],
-                }}
-                value={address_line1}
-                onChangeText={(t) => {
-                  setAddressLine1(t);
-                  if (errors.address_line1) setErrors((e) => ({ ...e, address_line1: "" }));
-                }}
-                placeholder="Street address (or use search above)"
-                placeholderTextColor="#9ca3af"
               />
               {errors.address_line1 ? (
                 <Text style={{ marginTop: 4, fontSize: 14, color: "#ef4444" }}>

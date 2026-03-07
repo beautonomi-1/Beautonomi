@@ -10,9 +10,11 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency } from "@/lib/format";
@@ -115,10 +117,13 @@ function HorizontalBar({ label, value, maxValue, color }: { label: string; value
 }
 
 export default function RevenueReport() {
+  const { selectedLocationId } = useProvider();
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const { from, to } = getDateParams(dateRange);
-  const { data, loading } = useApi<RevenueData>(
-    `/api/provider/reports/revenue?from=${from}&to=${to}`
+  const revenueReportUrl = `/api/provider/reports/revenue?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
+  const { data, loading, error, timedOut, refresh } = useApi<RevenueData>(
+    revenueReportUrl,
+    { timeoutMs: 15000 }
   );
 
   const handleExport = useCallback(async () => {
@@ -154,9 +159,19 @@ export default function RevenueReport() {
         ))}
       </ScrollView>
 
-      {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#22c55e" />}
+      {timedOut && !data && (
+        <ErrorState
+          message="Request is taking longer than usual. Check your connection and try again."
+          onRetry={refresh}
+          retryLabel="Retry"
+        />
+      )}
 
-      {!loading && !data && (
+      {error && !data && <ErrorState message={error} onRetry={refresh} />}
+
+      {loading && !data && !timedOut && !error && <ActivityIndicator style={twStyle("my-8")} color="#22c55e" />}
+
+      {!loading && !data && !timedOut && !error && (
         <EmptyState icon="cash-outline" title="No revenue data" description="Revenue data will appear once you have transactions" />
       )}
 

@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status");
+    const locationId = searchParams.get("location_id");
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
@@ -66,6 +67,10 @@ export async function GET(request: NextRequest) {
       .in("status", ["waiting", "checked_in", "confirmed"])
       .not("checked_in_time", "is", null)
       .order("checked_in_time", { ascending: true });
+
+    if (locationId) {
+      query = query.eq("location_id", locationId);
+    }
 
     // Filter by status if provided
     if (status && status !== 'all') {

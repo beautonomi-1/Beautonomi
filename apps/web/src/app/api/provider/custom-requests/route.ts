@@ -13,6 +13,8 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return successResponse([]);
 
+    const locationId = request.nextUrl.searchParams.get("location_id");
+
     const { data, error } = await supabase
       .from("custom_requests")
       .select(
@@ -27,7 +29,17 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false });
     if (error) throw error;
 
-    return successResponse(data || []);
+    let result = data || [];
+    // When location_id is set: show only requests with no offers (unclaimed) or with at least one offer at this location
+    if (locationId) {
+      result = result.filter((req: { offers?: { location_id: string | null }[] }) => {
+        const offers = req.offers || [];
+        if (offers.length === 0) return true;
+        return offers.some((o: { location_id: string | null }) => o.location_id === locationId);
+      });
+    }
+
+    return successResponse(result);
   } catch (error) {
     return handleApiError(error, "Failed to fetch custom requests");
   }

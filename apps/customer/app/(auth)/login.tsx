@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
@@ -237,18 +238,14 @@ export default function LoginScreen() {
         <View style={formStyle}>
         {/* Logo accent */}
         <View style={{ alignItems: "center", marginBottom: 8 }}>
-          <View
+          <Image
+            source={require("../../assets/icon.png")}
             style={{
               width: 56,
               height: 56,
               borderRadius: 28,
-              backgroundColor: PRIMARY_LIGHT,
-              alignItems: "center",
-              justifyContent: "center",
             }}
-          >
-            <Ionicons name="sparkles" size={28} color={PRIMARY} />
-          </View>
+          />
         </View>
 
         <Text

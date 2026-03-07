@@ -3,6 +3,7 @@ import { View, Text, ScrollView, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { playRingtone } from "@/lib/on-demand/ringtone";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -23,12 +24,16 @@ interface WaitingRoomEntry {
 
 export default function WaitingRoomScreen() {
   useRouter();
+  const { selectedLocationId } = useProvider();
   const onDemandConfig = useModuleConfig("on_demand");
   const prevWaitingCountRef = useRef<number | null>(null);
   const ringtoneStopRef = useRef<(() => void) | null>(null);
 
+  const waitingRoomUrl = selectedLocationId
+    ? `/api/provider/waiting-room?location_id=${encodeURIComponent(selectedLocationId)}`
+    : "/api/provider/waiting-room";
   const { data: entries, loading, error, refresh } = useApi<WaitingRoomEntry[]>(
-    "/api/provider/waiting-room"
+    waitingRoomUrl
   );
 
   useEffect(() => {

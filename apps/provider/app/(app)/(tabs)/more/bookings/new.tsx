@@ -136,7 +136,10 @@ export default function NewBookingScreen() {
 
   // --- API data ---
   const { data: services, loading: servicesLoading } = useApi<Service[]>("/api/provider/services");
-  const { data: staffList } = useApi<StaffMember[]>("/api/provider/team");
+  const teamUrl = selectedLocationId
+    ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
+    : "/api/provider/team";
+  const { data: staffList } = useApi<StaffMember[]>(teamUrl);
   const { data: paymentSettings } = useApi<PaymentSettings>("/api/provider/settings/payments");
   const { data: referralSourcesRaw } = useApi<{ id: string; name: string; is_active?: boolean }[]>("/api/provider/referral-sources");
   const referralSources = useMemo(
@@ -447,7 +450,8 @@ export default function NewBookingScreen() {
   return (
     <KeyboardAvoidingView
       style={twStyle("flex-1 bg-white")}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "padding"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
     >
       <ScreenContainer>
         <ScreenHeader title="New Booking" showBack />

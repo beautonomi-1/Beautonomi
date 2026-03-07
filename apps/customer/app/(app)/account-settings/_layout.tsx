@@ -1,4 +1,6 @@
-import { Stack } from "expo-router";
+import { Stack, router } from "expo-router";
+import { TouchableOpacity, Platform } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 
 export default function AccountSettingsLayout() {
@@ -9,11 +11,28 @@ export default function AccountSettingsLayout() {
         headerBackTitle: "Back",
         headerTintColor: Colors.primary,
         headerTitleStyle: { fontWeight: "600" },
+        headerLeft: () => (
+          <TouchableOpacity
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace("/(app)/(tabs)/profile");
+              }
+            }}
+            style={{ marginLeft: Platform.OS === "ios" ? 8 : 0, padding: 8 }}
+            accessibilityLabel="Back"
+            accessibilityRole="button"
+          >
+            <Ionicons name="arrow-back" size={24} color={Colors.primary} />
+          </TouchableOpacity>
+        ),
       }}
     >
       <Stack.Screen name="index" options={{ title: "Account" }} />
       <Stack.Screen name="personal-info" options={{ title: "Personal Info" }} />
       <Stack.Screen name="login-and-security" options={{ title: "Login & Security" }} />
+      <Stack.Screen name="identity-verification" options={{ title: "Identity Verification" }} />
       <Stack.Screen name="payments" options={{ title: "Payments" }} />
       <Stack.Screen name="wallet" options={{ title: "Wallet" }} />
       <Stack.Screen name="taxes" options={{ title: "Tax Documents" }} />

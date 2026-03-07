@@ -6,6 +6,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import ProviderCard from "./provider-card-dynamic";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useUserLocation } from "@/hooks/useUserLocation";
 
 /**
  * Sponsored / boosted listings. Only rendered when ads module is enabled and API returns sponsored.
@@ -13,6 +14,7 @@ import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvide
 export default function SponsoredSection() {
   const adsConfig = useModuleConfig("ads") as { enabled?: boolean } | undefined;
   const sponsoredEnabled = useFeatureFlag("ads.sponsored_slots.enabled");
+  const { location: userLocation } = useUserLocation();
   const [providers, setProviders] = useState<PublicProviderCard[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -24,7 +26,13 @@ export default function SponsoredSection() {
     const load = async () => {
       setIsLoading(true);
       try {
-        const res = await fetcher.get<{ data: { sponsored?: PublicProviderCard[] } }>("/api/public/home");
+        const params = new URLSearchParams();
+        if (userLocation?.latitude != null && userLocation?.longitude != null) {
+          params.set("lat", String(userLocation.latitude));
+          params.set("lng", String(userLocation.longitude));
+        }
+        const query = params.toString();
+        const res = await fetcher.get<{ data: { sponsored?: PublicProviderCard[] } }>(`/api/public/home${query ? `?${query}` : ""}`);
         setProviders(res.data?.sponsored ?? []);
       } catch {
         setProviders([]);
@@ -33,7 +41,7 @@ export default function SponsoredSection() {
       }
     };
     load();
-  }, [enabled]);
+  }, [enabled, userLocation?.latitude, userLocation?.longitude]);
 
   if (isLoading || providers.length === 0) return null;
 

@@ -8,6 +8,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import ProviderCard from "./provider-card-dynamic";
+import { useUserLocation } from "@/hooks/useUserLocation";
 import Stars from '../../../../public/images/Group 1.8f1d86be 1.svg';
 
 // Use static strings to avoid useTranslation() running before i18n is ready (prevents hook-order and .length errors)
@@ -18,6 +19,7 @@ const TopRatedSection = () => {
   const [providers, setProviders] = useState<PublicProviderCard[]>([]);
   const [isLoading, setIsLoading] = useState(false); // Start false to render immediately
   const [error, setError] = useState<string | null>(null);
+  const { location: userLocation } = useUserLocation();
 
   const handleRetry = useCallback(() => {
     setError(null);
@@ -30,10 +32,16 @@ const TopRatedSection = () => {
       try {
         setIsLoading(true);
         setError(null);
+        const params = new URLSearchParams();
+        if (userLocation?.latitude != null && userLocation?.longitude != null) {
+          params.set("lat", String(userLocation.latitude));
+          params.set("lng", String(userLocation.longitude));
+        }
+        const query = params.toString();
         const response = await fetcher.get<{
           data?: { topRated?: PublicProviderCard[] };
           error?: null;
-        }>("/api/public/home", { timeoutMs: 10000 });
+        }>(`/api/public/home${query ? `?${query}` : ""}`, { timeoutMs: 10000 });
         const list = response?.data?.topRated;
         setProviders(Array.isArray(list) ? list : []);
       } catch (err) {
@@ -59,7 +67,7 @@ const TopRatedSection = () => {
     };
 
     loadData();
-  }, []);
+  }, [userLocation?.latitude, userLocation?.longitude]);
 
   const safeProviders = providers ?? [];
 

@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 
 export interface ProductOrder {
   id: string;
@@ -66,7 +67,7 @@ export function useProductOrders() {
     if (status) params.set("status", status);
     const res = await api.get<{ orders: ProductOrder[] }>(`/api/me/orders?${params}`);
     if (res.error) {
-      setError(res.error.message);
+      setError(getApiErrorMessage(res.error, "Failed to load orders"));
     } else {
       setOrders(res.data?.orders ?? []);
     }
@@ -75,7 +76,7 @@ export function useProductOrders() {
 
   const fetchOrderDetail = useCallback(async (orderId: string) => {
     const res = await api.get<{ order: ProductOrder }>(`/api/me/orders/${orderId}`);
-    if (res.error) return { data: null, error: res.error.message };
+      if (res.error) return { data: null, error: getApiErrorMessage(res.error, "Failed to load order") };
     return { data: res.data?.order ?? null, error: null };
   }, []);
 
@@ -90,7 +91,7 @@ export function useProductOrders() {
       use_wallet?: boolean;
     }) => {
       const res = await api.post<{ order: ProductOrder; paid_with_wallet?: boolean; amount_due?: number }>("/api/me/orders", payload as any);
-      if (res.error) return { data: null, paid_with_wallet: false, amount_due: 0, error: res.error.message };
+      if (res.error) return { data: null, paid_with_wallet: false, amount_due: 0, error: getApiErrorMessage(res.error, "Your order could not be placed.") };
       return {
         data: res.data?.order ?? null,
         paid_with_wallet: res.data?.paid_with_wallet ?? false,

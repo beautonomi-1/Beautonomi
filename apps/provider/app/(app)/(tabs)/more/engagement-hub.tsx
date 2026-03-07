@@ -3,6 +3,7 @@ import { View, Text, ScrollView, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -22,10 +23,12 @@ type ReviewsResponse = { reviews?: Review[] };
 
 export default function EngagementHubScreen() {
   const router = useRouter();
+  const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
-  const { data, loading, error, refresh } = useApi<ReviewsResponse>(
-    "/api/provider/reviews?limit=50"
-  );
+  const reviewsUrl = selectedLocationId
+    ? `/api/provider/reviews?limit=50&location_id=${encodeURIComponent(selectedLocationId)}`
+    : "/api/provider/reviews?limit=50";
+  const { data, loading, error, refresh } = useApi<ReviewsResponse>(reviewsUrl);
 
   const reviews: Review[] = (data as ReviewsResponse)?.reviews ?? [];
 

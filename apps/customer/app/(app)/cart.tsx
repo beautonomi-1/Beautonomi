@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors, Shadows } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
 import { APP_URL } from "@/config/public-env";
@@ -80,7 +81,7 @@ export default function CartScreen() {
     try {
       const res = await api.patch<{ item: CartItem }>(`/api/me/cart/${itemId}`, { quantity: newQty });
       if (res.error) {
-        Alert.alert("Error", res.error.message ?? "Could not update quantity.");
+        Alert.alert("Error", getApiErrorMessage(res.error, "Could not update quantity."));
       } else {
         setItems((prev) =>
           prev.map((i) => (i.id === itemId ? { ...i, quantity: newQty } : i)),
@@ -100,7 +101,7 @@ export default function CartScreen() {
     try {
       const res = await api.delete(`/api/me/cart/${itemId}`);
       if (res.error) {
-        Alert.alert("Error", res.error.message ?? "Could not remove item.");
+        Alert.alert("Error", getApiErrorMessage(res.error, "Could not remove item."));
       } else {
         setItems((prev) => prev.filter((i) => i.id !== itemId));
         emitCartUpdated();

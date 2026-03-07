@@ -2,7 +2,7 @@
  * AddressAutocomplete — Mapbox-powered address search.
  * Calls the backend geocoding endpoint to get suggestions.
  */
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -37,6 +37,8 @@ interface ParsedAddress {
 interface AddressAutocompleteProps {
   value: string;
   onSelect: (address: ParsedAddress) => void;
+  /** Called when user leaves the field without selecting; use to persist manual typing as address_line1 */
+  onBlur?: (query: string) => void;
   placeholder?: string;
   label?: string;
   countryCode?: string;
@@ -45,6 +47,7 @@ interface AddressAutocompleteProps {
 export function AddressAutocomplete({
   value,
   onSelect,
+  onBlur,
   placeholder = "Search address…",
   label,
   countryCode = "ZA",
@@ -54,6 +57,11 @@ export function AddressAutocomplete({
   const [loading, setLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync displayed value when parent updates (e.g. after selecting a suggestion or loading edit form)
+  useEffect(() => {
+    setQuery(value);
+  }, [value]);
 
   const search = useCallback(
     async (text: string) => {
@@ -128,6 +136,9 @@ export function AddressAutocomplete({
           style={twStyle("ml-2 min-h-[44px] flex-1 text-sm text-gray-900")}
           value={query}
           onChangeText={handleChangeText}
+          onBlur={() => {
+            if (query.trim() && onBlur) onBlur(query.trim());
+          }}
           placeholder={placeholder}
           placeholderTextColor="#9ca3af"
           autoCapitalize="words"
@@ -137,12 +148,13 @@ export function AddressAutocomplete({
       </View>
 
       {showResults && results.length > 0 && (
-        <View style={twStyle("mt-1 rounded-xl border border-gray-100 bg-white shadow-sm")}>
+        <View style={twStyle("mt-1 rounded-xl border border-gray-100 bg-white shadow-sm max-h-48")}>
           <FlatList
             data={results}
             keyExtractor={(item: GeocodingResult, i: number) => `${item.place_name}-${i}`}
             keyboardShouldPersistTaps="handled"
-            scrollEnabled={false}
+            scrollEnabled={true}
+            nestedScrollEnabled
             renderItem={({ item }: { item: GeocodingResult }) => (
               <TouchableOpacity
                 onPress={() => handleSelect(item)}

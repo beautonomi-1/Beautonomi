@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -18,10 +19,12 @@ type BookingSummary = {
 
 export default function ReportsScreen() {
   const router = useRouter();
+  const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
-  const { data, loading, error, refresh } = useApi<BookingSummary>(
-    "/api/provider/reports/bookings/summary"
-  );
+  const summaryUrl = selectedLocationId
+    ? `/api/provider/reports/bookings/summary?location_id=${encodeURIComponent(selectedLocationId)}`
+    : "/api/provider/reports/bookings/summary";
+  const { data, loading, error, refresh } = useApi<BookingSummary>(summaryUrl);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

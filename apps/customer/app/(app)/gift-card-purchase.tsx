@@ -13,6 +13,7 @@ import {
 import { Stack, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { api } from "@/lib/api-client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
@@ -45,7 +46,7 @@ export default function GiftCardPurchaseScreen() {
         }
       );
       if (res.error) {
-        Alert.alert("Error", res.error.message || "Failed to start purchase");
+        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to start purchase"));
         return;
       }
       const data = res.data as any;
@@ -62,7 +63,7 @@ export default function GiftCardPurchaseScreen() {
         router.back();
       }
     } catch (e) {
-      Alert.alert("Error", e instanceof Error ? e.message : "Failed to purchase");
+      Alert.alert("Error", getApiErrorMessage(e, "Failed to purchase"));
     } finally {
       setLoading(false);
     }

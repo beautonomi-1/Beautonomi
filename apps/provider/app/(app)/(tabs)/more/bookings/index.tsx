@@ -10,6 +10,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { useApi } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -47,11 +48,12 @@ interface Booking {
 export default function BookingsListScreen() {
   const router = useRouter();
   const { screenPadding } = useResponsive();
+  const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
   const now = new Date();
   const start = format(startOfMonth(now), "yyyy-MM-dd");
   const end = format(endOfMonth(now), "yyyy-MM-dd");
-  const url = `/api/provider/bookings?start_date=${start}&end_date=${end}`;
+  const url = `/api/provider/bookings?start_date=${start}&end_date=${end}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
   const { data, loading, error, refresh } = useApi<Booking[]>(url);
 
   const onRefresh = useCallback(async () => {

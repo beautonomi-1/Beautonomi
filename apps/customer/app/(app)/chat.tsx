@@ -10,7 +10,7 @@ import {
   Platform,
 } from "react-native";
 import { Image } from "expo-image";
-import { useLocalSearchParams, Stack } from "expo-router";
+import { useLocalSearchParams, Stack, router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
@@ -27,6 +27,8 @@ interface Message {
   content: string;
   attachments?: { url: string }[] | string[];
   created_at: string;
+  is_read?: boolean;
+  read_at?: string | null;
 }
 
 const PAGE_SIZE = 50;
@@ -34,12 +36,16 @@ const PAGE_SIZE = 50;
 export default function ChatScreen() {
   useScreenTracking("Chat");
   const { contentPadding } = useResponsive();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id?: string; provider_id?: string; provider_name?: string }>();
+  const id = params.id;
+  const providerId = params.provider_id;
+  const providerName = params.provider_name;
   const { user, loading: authLoading, refreshSession } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const didRefreshSession = useRef(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
+  const [resolveError, setResolveError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -51,25 +57,33 @@ export default function ChatScreen() {
 
   const loadMessages = useCallback(
     async (cursor?: string) => {
-      if (!id) return;
+      if (!id) {
+        setLoading(false);
+        return;
+      }
       if (cursor) setLoadingMore(true);
       else setLoading(true);
+      setResolveError(null);
 
       try {
-        const params = new URLSearchParams({
+        const queryParams = new URLSearchParams({
           conversation_id: id,
           limit: String(PAGE_SIZE),
         });
-        if (cursor) params.set("cursor", cursor);
+        if (cursor) queryParams.set("cursor", cursor);
 
-        const res = await api.get<any>(`/api/me/messages?${params}`);
+        const res = await api.get<any>(`/api/me/messages?${queryParams}`);
         if (res.error) {
           setMessages([]);
           return;
         }
 
         const data = res.data;
-        const newMessages: Message[] = data?.messages ?? (Array.isArray(data) ? data : []);
+        const newMessages: Message[] = (data?.messages ?? (Array.isArray(data) ? data : [])).map((m: any) => ({
+          ...m,
+          is_read: m.is_read,
+          read_at: m.read_at ?? null,
+        }));
 
         if (cursor) {
           setMessages((prev) => [...newMessages, ...prev]);
@@ -89,9 +103,43 @@ export default function ChatScreen() {
     [id]
   );
 
+  // Resolve provider_id to conversation id (get-or-create) when opening from provider profile
   useEffect(() => {
-    loadMessages();
-  }, [loadMessages]);
+    if (!user || id || !providerId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.post<{ id: string; created?: boolean }>("/api/me/conversations/create", {
+          provider_id: providerId,
+        });
+        if (cancelled) return;
+        if (res.error || !res.data?.id) {
+          setResolveError(res.error?.message ?? "Could not start conversation");
+          setLoading(false);
+          return;
+        }
+        router.replace({ pathname: "/(app)/chat", params: { id: res.data.id } });
+      } catch (e) {
+        if (!cancelled) {
+          setResolveError(e instanceof Error ? e.message : "Could not start conversation");
+          setLoading(false);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user, id, providerId]);
+
+  useEffect(() => {
+    if (id) loadMessages();
+  }, [id, loadMessages]);
+
+  // No conversation id and no provider to resolve: invalid navigation
+  useEffect(() => {
+    if (user && !id && !providerId) {
+      setLoading(false);
+      setResolveError("Conversation not found");
+    }
+  }, [user, id, providerId]);
 
   // Re-sync session when opening chat (e.g. after navigating from another provider) so we don't show "Log in" if session exists in storage
   useEffect(() => {
@@ -109,6 +157,12 @@ export default function ChatScreen() {
       });
     }
   }, [loading, messages.length]);
+
+  // Mark conversation as read when viewing
+  useEffect(() => {
+    if (!id || !user) return;
+    api.post(`/api/me/conversations/${id}/read`).catch(() => {});
+  }, [id, user?.id]);
 
   // Realtime subscription
   useEffect(() => {
@@ -137,6 +191,8 @@ export default function ChatScreen() {
                 content: newMsg.content ?? "",
                 attachments: newMsg.attachments ?? [],
                 created_at: newMsg.created_at,
+                is_read: newMsg.is_read,
+                read_at: newMsg.read_at ?? null,
               },
             ];
           });
@@ -184,6 +240,8 @@ export default function ChatScreen() {
       content: text || (attachments?.length ? "Photo" : ""),
       attachments: attachments,
       created_at: new Date().toISOString(),
+      is_read: false,
+      read_at: null,
     };
     setMessages((prev) => [...prev, optimisticMsg]);
     requestAnimationFrame(() => {
@@ -269,9 +327,29 @@ export default function ChatScreen() {
     );
   }
 
+  const chatTitle = providerName && !id ? providerName : "Chat";
+
+  if (resolveError && !id) {
+    return (
+      <>
+        <Stack.Screen options={{ title: chatTitle, headerBackTitle: "Back" }} />
+        <View style={{ flex: 1, backgroundColor: Colors.white, justifyContent: "center", alignItems: "center", padding: 24 }}>
+          <Ionicons name="chatbubble-ellipses-outline" size={48} color={Colors.gray[300]} />
+          <Text style={{ color: Colors.gray[600], marginTop: 12, textAlign: "center" }}>{resolveError}</Text>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ marginTop: 24, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: Colors.primary, borderRadius: 12 }}
+          >
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>Go back</Text>
+          </TouchableOpacity>
+        </View>
+      </>
+    );
+  }
+
   return (
     <>
-      <Stack.Screen options={{ title: "Chat", headerBackTitle: "Back" }} />
+      <Stack.Screen options={{ title: chatTitle, headerBackTitle: "Back" }} />
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: Colors.white }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -359,9 +437,16 @@ export default function ChatScreen() {
                           {item.content}
                         </Text>
                       ) : null}
-                      <Text style={{ fontSize: 11, marginTop: 4, color: isMe ? "rgba(255,255,255,0.7)" : Colors.gray[400] }}>
-                        {formatTime(item.created_at)}
-                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4, gap: 4 }}>
+                        <Text style={{ fontSize: 11, color: isMe ? "rgba(255,255,255,0.7)" : Colors.gray[400] }}>
+                          {formatTime(item.created_at)}
+                        </Text>
+                        {isMe && (item.is_read || item.read_at) ? (
+                          <Ionicons name="checkmark-done" size={14} color="rgba(255,255,255,0.8)" />
+                        ) : isMe ? (
+                          <Ionicons name="checkmark" size={14} color="rgba(255,255,255,0.6)" />
+                        ) : null}
+                      </View>
                     </View>
                   </View>
                 );

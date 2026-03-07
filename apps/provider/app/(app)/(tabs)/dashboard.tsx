@@ -220,8 +220,9 @@ export default function DashboardScreen() {
     data: metrics,
     loading: metricsLoading,
     error: metricsError,
+    timedOut: metricsTimedOut,
     refresh: refreshMetrics,
-  } = useApi<DashboardMetrics>(`/api/provider/dashboard${locQFirst}`);
+  } = useApi<DashboardMetrics>(`/api/provider/dashboard${locQFirst}`, { timeoutMs: 15000 });
 
   const today = format(new Date(), "yyyy-MM-dd");
   const { data: todayBookings, error: todayBookingsError, refresh: refreshBookings } = useApi<Booking[]>(
@@ -356,10 +357,22 @@ export default function DashboardScreen() {
       revenue: 0,
     }));
 
-  if (metricsLoading && !metrics) {
+  if (metricsLoading && !metrics && !metricsTimedOut) {
     return (
       <ScreenContainer scrollable={false}>
         <SkeletonDashboard />
+      </ScreenContainer>
+    );
+  }
+
+  if (metricsTimedOut && !metrics) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ErrorState
+          message="Request is taking longer than usual. Check your connection and try again."
+          onRetry={refreshMetrics}
+          retryLabel="Retry"
+        />
       </ScreenContainer>
     );
   }

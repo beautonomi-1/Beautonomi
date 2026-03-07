@@ -75,6 +75,44 @@ eas credentials --platform ios
    They can share the same Distribution Certificate but need separate Provisioning Profiles. Follow the prompts for both so credentials are valid for non-interactive builds.
 4. Re-run the build from CI or `eas build --profile production --platform ios --non-interactive`. Do the same for the other app (`apps/provider`) if you build both.
 
+### Fixing OneSignal extension: "Provisioning profile doesn't support the App Group" (iOS)
+
+If the **Xcode build** fails with:
+
+- *Provisioning profile "... OneSignalNotificationServiceExtension ..." doesn't support the **group.com.beautonomi.onesignal** App Group*
+- *Provisioning profile doesn't match the entitlements file's value for the **com.apple.security.application-groups** entitlement*
+
+the **OneSignalNotificationServiceExtension** provisioning profile was created without the App Group capability. The main app and the extension both use `group.com.beautonomi.onesignal` (in `app.json` → `ios.entitlements`); the extension’s App ID and profile must include that capability.
+
+**1. Apple Developer Portal**
+
+1. Go to [developer.apple.com](https://developer.apple.com) → **Certificates, Identifiers & Profiles** → **Identifiers**.
+2. Open the App ID for the **extension** (e.g. `com.beautonomi.OneSignalNotificationServiceExtension` for customer; provider will use `com.beautonomi.partner.OneSignalNotificationServiceExtension`).
+3. Ensure **App Groups** is enabled. Click **Configure** and add/select the group used by the app:
+   - Customer: `group.com.beautonomi.onesignal`
+   - Provider: `group.com.beautonomi.partner.onesignal`
+4. Save the App ID.
+5. **Provisioning Profiles**: Open **Profiles**, find the **Distribution** profile for the extension (e.g. the one named like "*[expo] com.beautonomi.OneSignalNotificationServiceExtension AppStore ..."). Either:
+   - **Edit** the profile (if your portal allows editing capabilities) and ensure App Groups is included, then **Regenerate**, or
+   - **Delete** that profile so EAS can create a new one that includes the App Group in the next step.
+
+**2. EAS: refresh the extension’s provisioning profile**
+
+From the app directory (e.g. `apps/customer`):
+
+```bash
+eas credentials --platform ios
+```
+
+1. Choose the **production** build profile.
+2. When asked which target to manage, select **OneSignalNotificationServiceExtension**.
+3. Under **Build Credentials**, choose to **Set up a new Provisioning Profile** (or remove the existing one and create new). EAS will create/fetch a profile that includes the capabilities of the App ID (including App Groups).
+4. Finish the flow, then re-run the build:
+
+   ```bash
+   eas build --profile production --platform ios --non-interactive
+   ```
+
 In each app's `eas.json`, update the `submit.production.ios` section:
 
 | Field | Where to Find |
@@ -128,7 +166,7 @@ The provider and customer apps use `@amplitude/plugin-engagement-react-native` w
 
 ## Step 4: Build
 
-**Run all EAS commands from the app directory** (e.g. `apps/customer` or `apps/provider`), not from the monorepo root. Otherwise you get `Command "expo" not found` because the root `package.json` does not depend on Expo.
+**Run all EAS commands from the app directory** (e.g. `apps/customer` or `apps/provider`), not from the monorepo root. Otherwise you get `Command "expo" not found` because the root `package.json` does not depend on Expo, or **"Experience with id '...' does not exist"** if a root-level config pointed EAS at the wrong project.
 
 ```bash
 cd apps/customer   # or apps/provider

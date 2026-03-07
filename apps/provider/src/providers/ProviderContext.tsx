@@ -54,7 +54,10 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const PROFILE_LOAD_TIMEOUT_MS = 15 * 1000; // avoid infinite loading if API/getAccessToken hangs
+
   const fetchProfile = useCallback(async () => {
+    const timeoutId = setTimeout(() => setLoading(false), PROFILE_LOAD_TIMEOUT_MS);
     try {
       const [profileRes, roleRes, storedId] = await Promise.all([
         api.get<ProviderProfile>("/api/provider/profile"),
@@ -84,6 +87,7 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
     } catch {
       // Profile endpoint may not exist yet
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   }, [selectedLocationId]);
