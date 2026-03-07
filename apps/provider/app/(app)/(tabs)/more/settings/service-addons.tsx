@@ -21,6 +21,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 type AddonType = "service" | "product" | "upgrade";
 
@@ -193,14 +194,14 @@ export default function ServiceAddonsScreen() {
         showBack
         subtitle={`${addons?.length ?? 0} addons`}
         rightAction={
-          <TouchableOpacity className="h-10 w-10 items-center justify-center rounded-full bg-gray-900" onPress={openNew}>
+          <TouchableOpacity style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")} onPress={openNew}>
             <Ionicons name="add" size={20} color="#fff" />
           </TouchableOpacity>
         }
       />
 
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search addons..." />
-      <View className="mt-2 mb-3">
+      <View style={twStyle("mt-2 mb-3")}>
         <FilterChipGroup options={TYPE_FILTERS} selected={typeFilter} onSelect={setTypeFilter} />
       </View>
 
@@ -219,48 +220,49 @@ export default function ServiceAddonsScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: addon }: { item: ServiceAddon }) => {
             const ts = typeStyle(addon.type);
             return (
               <TouchableOpacity
-                className={`rounded-xl border bg-white p-4 ${addon.is_active ? "border-gray-100" : "border-gray-100 opacity-60"}`}
+                style={twStyle(`rounded-xl border bg-white p-4 ${addon.is_active ? "border-gray-100" : "border-gray-100 opacity-60"}`)}
                 onPress={() => openEdit(addon)}
                 activeOpacity={0.7}
               >
-                <View className="flex-row items-start">
-                  <View className={`h-10 w-10 items-center justify-center rounded-xl ${ts.bg}`}>
+                <View style={twStyle("flex-row items-start")}>
+                  <View style={twStyle(`h-10 w-10 items-center justify-center rounded-xl ${ts.bg}`)}>
                     <Ionicons name={ts.icon} size={18} color={ts.color} />
                   </View>
-                  <View className="ml-3 flex-1">
-                    <View className="flex-row items-center">
-                      <Text className="text-[15px] font-semibold text-gray-900">{addon.name}</Text>
+                  <View style={twStyle("ml-3 flex-1")}>
+                    <View style={twStyle("flex-row items-center")}>
+                      <Text style={twStyle("text-[15px] font-semibold text-gray-900")}>{addon.name}</Text>
                       {addon.is_recommended && (
-                        <View className="ml-1.5 rounded-full bg-amber-50 px-1.5 py-0.5">
+                        <View style={twStyle("ml-1.5 rounded-full bg-amber-50 px-1.5 py-0.5")}>
                           <Ionicons name="star" size={10} color="#f59e0b" />
                         </View>
                       )}
                     </View>
                     {addon.description && (
-                      <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={1}>{addon.description}</Text>
+                      <Text style={twStyle("mt-0.5 text-xs text-gray-500")} numberOfLines={1}>{addon.description}</Text>
                     )}
-                    <View className="mt-1.5 flex-row items-center gap-2">
-                      <View className={`rounded-full px-2 py-0.5 ${ts.bg}`}>
-                        <Text className={`text-[10px] font-medium capitalize ${ts.text}`}>{addon.type}</Text>
+                    <View style={twStyle("mt-1.5 flex-row items-center")}>
+                      <View style={[twStyle(`rounded-full px-2 py-0.5 ${ts.bg}`), { marginRight: 8 }]}>
+                        <Text style={twStyle(`text-[10px] font-medium capitalize ${ts.text}`)}>{addon.type}</Text>
                       </View>
                       {addon.duration_minutes && (
-                        <Text className="text-[11px] text-gray-400">{addon.duration_minutes} min</Text>
+                        <Text style={[twStyle("text-[11px] text-gray-400"), { marginRight: 8 }]}>{addon.duration_minutes} min</Text>
                       )}
                       {!addon.is_active && (
-                        <View className="rounded-full bg-gray-100 px-2 py-0.5">
-                          <Text className="text-[10px] text-gray-500">Inactive</Text>
+                        <View style={twStyle("rounded-full bg-gray-100 px-2 py-0.5")}>
+                          <Text style={twStyle("text-[10px] text-gray-500")}>Inactive</Text>
                         </View>
                       )}
                     </View>
                   </View>
-                  <View className="items-end ml-2">
-                    <Text className="text-base font-bold text-gray-900">{formatCurrency(addon.price)}</Text>
-                    <TouchableOpacity className="mt-1 rounded-lg bg-red-50 p-1.5" onPress={() => handleDelete(addon)}>
+                  <View style={twStyle("items-end ml-2")}>
+                    <Text style={twStyle("text-base font-bold text-gray-900")}>{formatCurrency(addon.price)}</Text>
+                    <TouchableOpacity style={twStyle("mt-1 rounded-lg bg-red-50 p-1.5")} onPress={() => handleDelete(addon)}>
                       <Ionicons name="trash-outline" size={12} color="#ef4444" />
                     </TouchableOpacity>
                   </View>
@@ -274,17 +276,17 @@ export default function ServiceAddonsScreen() {
       {/* Addon Form */}
       <BottomSheet visible={showForm} onClose={() => setShowForm(false)} title={editingAddon ? "Edit Addon" : "New Addon"}>
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">Name *</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Name *</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
             onChangeText={(t) => updateForm("name", t)}
             placeholder="e.g. Deep Conditioning Treatment"
             placeholderTextColor="#9ca3af"
           />
 
-          <Text className="mb-2 text-sm font-medium text-gray-700">Type *</Text>
-          <View className="mb-3">
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Type *</Text>
+          <View style={twStyle("mb-3")}>
             <FilterChipGroup
               options={TYPE_FILTERS.filter((t) => t.value !== "all")}
               selected={form.type}
@@ -292,9 +294,9 @@ export default function ServiceAddonsScreen() {
             />
           </View>
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Price (ZAR) *</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Price (ZAR) *</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.price}
             onChangeText={(t) => updateForm("price", t)}
             placeholder="0.00"
@@ -302,9 +304,9 @@ export default function ServiceAddonsScreen() {
             keyboardType="decimal-pad"
           />
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Description</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Description</Text>
           <TextInput
-            className="mb-3 min-h-[60px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 min-h-[60px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
             onChangeText={(t) => updateForm("description", t)}
             placeholder="Brief description..."
@@ -315,9 +317,9 @@ export default function ServiceAddonsScreen() {
 
           {form.type === "service" && (
             <>
-              <Text className="mb-1 text-sm font-medium text-gray-700">Extra Duration (minutes)</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Extra Duration (minutes)</Text>
               <TextInput
-                className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={form.duration_minutes}
                 onChangeText={(t) => updateForm("duration_minutes", t)}
                 placeholder="15"
@@ -327,9 +329,9 @@ export default function ServiceAddonsScreen() {
             </>
           )}
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Max Quantity Per Booking</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Max Quantity Per Booking</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.max_quantity}
             onChangeText={(t) => updateForm("max_quantity", t)}
             placeholder="Leave blank for unlimited"
@@ -337,24 +339,24 @@ export default function ServiceAddonsScreen() {
             keyboardType="number-pad"
           />
 
-          <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-3">
-            <View className="flex-1">
-              <Text className="text-sm font-medium text-gray-900">Recommended</Text>
-              <Text className="text-[11px] text-gray-500">Highlight this addon during booking</Text>
+          <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-3")}>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>Recommended</Text>
+              <Text style={twStyle("text-[11px] text-gray-500")}>Highlight this addon during booking</Text>
             </View>
             <Switch value={form.is_recommended} onValueChange={(v) => updateForm("is_recommended", v)} trackColor={{ false: "#e5e7eb", true: "#818cf8" }} thumbColor="#fff" />
           </View>
 
-          <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-3">
-            <View className="flex-1">
-              <Text className="text-sm font-medium text-gray-900">Requires Service</Text>
-              <Text className="text-[11px] text-gray-500">Can only be added with a service</Text>
+          <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-3")}>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>Requires Service</Text>
+              <Text style={twStyle("text-[11px] text-gray-500")}>Can only be added with a service</Text>
             </View>
             <Switch value={form.requires_service} onValueChange={(v) => updateForm("requires_service", v)} trackColor={{ false: "#e5e7eb", true: "#818cf8" }} thumbColor="#fff" />
           </View>
 
-          <View className="mb-4 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-3">
-            <Text className="text-sm font-medium text-gray-900">Active</Text>
+          <View style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-3")}>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>Active</Text>
             <Switch value={form.is_active} onValueChange={(v) => updateForm("is_active", v)} trackColor={{ false: "#e5e7eb", true: "#818cf8" }} thumbColor="#fff" />
           </View>
 

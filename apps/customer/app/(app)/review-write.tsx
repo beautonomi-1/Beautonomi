@@ -16,9 +16,13 @@ import { useLocalSearchParams, Stack, router } from "expo-router";
 import { api } from "@/lib/api-client";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
+import { Colors } from "@/constants/colors";
 
 export default function ReviewWriteScreen() {
   useScreenTracking("Review Write");
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const { bookingId, reviewId, rating: initRating, comment: initComment } = useLocalSearchParams<{
     bookingId: string;
     reviewId?: string;
@@ -92,62 +96,44 @@ export default function ReviewWriteScreen() {
   return (
     <>
       <Stack.Screen options={{ title: isEdit ? "Edit Review" : "Write Review" }} />
-      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
-      <ScrollView className="flex-1 bg-white" contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
-        <Text className="font-semibold text-gray-900 mb-2">Rating</Text>
-        <View className="flex-row gap-2 mb-4">
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
+      <ScrollView style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
+        <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Rating</Text>
+        <View style={{ flexDirection: "row", marginBottom: 16 }}>
           {[1, 2, 3, 4, 5].map((r) => (
-            <TouchableOpacity
-              key={r}
-              onPress={() => setRating(r)}
-              className="w-12 h-12 rounded-full items-center justify-center border"
-              style={{ backgroundColor: rating >= r ? "#FFD700" : "transparent", borderColor: "#FFD700" }}
-            >
-              <Text className="text-xl">★</Text>
+            <TouchableOpacity key={r} onPress={() => setRating(r)} style={{ width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", borderWidth: 1, backgroundColor: rating >= r ? "#FFD700" : "transparent", borderColor: "#FFD700", marginRight: r < 5 ? 8 : 0 }}>
+              <Text style={{ fontSize: 20 }}>★</Text>
             </TouchableOpacity>
           ))}
         </View>
-
-        <Text className="font-semibold text-gray-900 mb-2">Your review</Text>
+        <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Your review</Text>
         <TextInput
-          className="border border-gray-200 rounded-xl px-4 py-3 text-base mb-4 min-h-[100px]"
+          style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, marginBottom: 16, minHeight: 100 }}
           placeholder="Share your experience..."
+          placeholderTextColor={Colors.gray[400]}
           value={comment}
           onChangeText={setComment}
           multiline
           numberOfLines={4}
         />
-
-        <Text className="font-semibold text-gray-900 mb-2">Photos (optional, max 4)</Text>
-        <View className="flex-row flex-wrap gap-2 mb-4">
+        <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Photos (optional, max 4)</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16 }}>
           {photos.map((url, i) => (
-            <View key={i} className="relative">
+            <View key={i} style={{ position: "relative", marginRight: 8, marginBottom: 8 }}>
               <Image source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
-              <Pressable
-                onPress={() => setPhotos((p) => p.filter((_, j) => j !== i))}
-                className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full items-center justify-center"
-              >
-                <Text className="text-white text-xs">×</Text>
+              <Pressable onPress={() => setPhotos((p) => p.filter((_, j) => j !== i))} style={{ position: "absolute", top: -4, right: -4, width: 24, height: 24, backgroundColor: "#EF4444", borderRadius: 12, alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ color: Colors.white, fontSize: 12 }}>×</Text>
               </Pressable>
             </View>
           ))}
           {photos.length < 4 && (
-            <TouchableOpacity
-              onPress={addPhoto}
-              disabled={uploading}
-              className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 items-center justify-center"
-            >
-              {uploading ? <ActivityIndicator size="small" /> : <Text className="text-gray-500 text-2xl">+</Text>}
+            <TouchableOpacity onPress={addPhoto} disabled={uploading} style={{ width: 80, height: 80, borderRadius: 8, borderWidth: 2, borderStyle: "dashed", borderColor: Colors.gray[300], alignItems: "center", justifyContent: "center", marginRight: 8, marginBottom: 8 }}>
+              {uploading ? <ActivityIndicator size="small" /> : <Text style={{ color: Colors.gray[500], fontSize: 24 }}>+</Text>}
             </TouchableOpacity>
           )}
         </View>
-
-        <TouchableOpacity
-          onPress={submit}
-          disabled={loading}
-          className="bg-primary py-4 rounded-xl items-center disabled:opacity-50"
-        >
-          {loading ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold text-lg">Submit</Text>}
+        <TouchableOpacity onPress={submit} disabled={loading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: loading ? 0.5 : 1 }}>
+          {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>Submit</Text>}
         </TouchableOpacity>
       </ScrollView>
       </KeyboardAvoidingView>

@@ -18,6 +18,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface SaleItem {
   id: string;
@@ -123,8 +124,8 @@ export default function SalesHistoryScreen() {
       />
 
       {/* Stats row */}
-      <View className="mb-4 flex-row gap-3">
-        <View className="flex-1">
+      <View style={twStyle("mb-4 flex-row")}>
+        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
           <StatCard
             title="Total Sales"
             value={String(stats.count)}
@@ -134,7 +135,7 @@ export default function SalesHistoryScreen() {
             compact
           />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard
             title="Revenue"
             value={formatCurrency(stats.revenue)}
@@ -148,7 +149,7 @@ export default function SalesHistoryScreen() {
 
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search by ref or client..." />
 
-      <View className="my-3">
+      <View style={twStyle("my-3")}>
         <FilterChipGroup options={DATE_FILTERS} selected={dateFilter} onSelect={setDateFilter} />
       </View>
 
@@ -167,36 +168,37 @@ export default function SalesHistoryScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           onEndReached={() => {
             if (salesData && page < salesData.total_pages) setPage((p) => p + 1);
           }}
           onEndReachedThreshold={0.3}
           renderItem={({ item: sale }: { item: Sale }) => (
             <TouchableOpacity
-              className="rounded-xl border border-gray-100 bg-white p-4"
+              style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
               onPress={() => setSelectedSale(sale)}
               activeOpacity={0.7}
             >
-              <View className="flex-row items-start justify-between">
-                <View className="flex-1">
-                  <Text className="text-sm font-semibold text-gray-900">
+              <View style={twStyle("flex-row items-start justify-between")}>
+                <View style={twStyle("flex-1")}>
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                     {sale.ref_number}
                   </Text>
-                  <Text className="mt-0.5 text-xs text-gray-500">
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                     {sale.client_name ?? "Walk-in"} · {formatDate(sale.date)}
                   </Text>
                   {sale.team_member_name && (
-                    <Text className="text-xs text-gray-400">by {sale.team_member_name}</Text>
+                    <Text style={twStyle("text-xs text-gray-400")}>by {sale.team_member_name}</Text>
                   )}
                 </View>
-                <View className="items-end">
-                  <Text className="text-base font-bold text-gray-900">
+                <View style={twStyle("items-end")}>
+                  <Text style={twStyle("text-base font-bold text-gray-900")}>
                     {formatCurrency(sale.total)}
                   </Text>
-                  <View className="mt-1 flex-row items-center">
+                  <View style={twStyle("mt-1 flex-row items-center")}>
                     <Ionicons name={paymentIcon(sale.payment_method)} size={12} color="#6b7280" />
-                    <Text className="ml-1 text-[10px] capitalize text-gray-500">
+                    <Text style={twStyle("ml-1 text-[10px] capitalize text-gray-500")}>
                       {sale.payment_method}
                     </Text>
                   </View>
@@ -204,14 +206,14 @@ export default function SalesHistoryScreen() {
               </View>
 
               {/* Items preview */}
-              <View className="mt-2">
+              <View style={twStyle("mt-2")}>
                 {sale.items.slice(0, 3).map((item: SaleItem, i: number) => (
-                  <Text key={i} className="text-xs text-gray-500" numberOfLines={1}>
+                  <Text key={i} style={twStyle("text-xs text-gray-500")} numberOfLines={1}>
                     {item.quantity}× {item.name ?? "Item"} — {formatCurrency(item.total)}
                   </Text>
                 ))}
                 {sale.items.length > 3 && (
-                  <Text className="text-xs text-indigo-500">+{sale.items.length - 3} more items</Text>
+                  <Text style={twStyle("text-xs text-indigo-500")}>+{sale.items.length - 3} more items</Text>
                 )}
               </View>
             </TouchableOpacity>
@@ -221,23 +223,23 @@ export default function SalesHistoryScreen() {
 
       {/* Pagination */}
       {salesData && salesData.total_pages > 1 && (
-        <View className="flex-row items-center justify-center gap-4 py-3">
+        <View style={twStyle("flex-row items-center justify-center py-3")}>
           <TouchableOpacity
             disabled={page <= 1}
             onPress={() => setPage((p) => Math.max(1, p - 1))}
-            className={`rounded-lg px-4 py-2 ${page <= 1 ? "bg-gray-100" : "bg-gray-200"}`}
+            style={[twStyle(`rounded-lg px-4 py-2 ${page <= 1 ? "bg-gray-100" : "bg-gray-200"}`), { marginRight: 16 }]}
           >
-            <Text className={`text-sm font-medium ${page <= 1 ? "text-gray-400" : "text-gray-700"}`}>Prev</Text>
+            <Text style={twStyle(`text-sm font-medium ${page <= 1 ? "text-gray-400" : "text-gray-700"}`)}>Prev</Text>
           </TouchableOpacity>
-          <Text className="text-sm text-gray-500">
+          <Text style={[twStyle("text-sm text-gray-500"), { marginRight: 16 }]}>
             Page {page} of {salesData.total_pages}
           </Text>
           <TouchableOpacity
             disabled={page >= salesData.total_pages}
             onPress={() => setPage((p) => p + 1)}
-            className={`rounded-lg px-4 py-2 ${page >= salesData.total_pages ? "bg-gray-100" : "bg-gray-200"}`}
+            style={twStyle(`rounded-lg px-4 py-2 ${page >= salesData.total_pages ? "bg-gray-100" : "bg-gray-200"}`)}
           >
-            <Text className={`text-sm font-medium ${page >= salesData.total_pages ? "text-gray-400" : "text-gray-700"}`}>Next</Text>
+            <Text style={twStyle(`text-sm font-medium ${page >= salesData.total_pages ? "text-gray-400" : "text-gray-700"}`)}>Next</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -250,46 +252,46 @@ export default function SalesHistoryScreen() {
       >
         {selectedSale && (
           <View>
-            <View className="mb-3 flex-row items-center justify-between">
-              <Text className="text-sm text-gray-500">{formatDate(selectedSale.date)}</Text>
-              <View className="flex-row items-center rounded-full bg-gray-100 px-3 py-1">
+            <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+              <Text style={twStyle("text-sm text-gray-500")}>{formatDate(selectedSale.date)}</Text>
+              <View style={twStyle("flex-row items-center rounded-full bg-gray-100 px-3 py-1")}>
                 <Ionicons name={paymentIcon(selectedSale.payment_method)} size={14} color="#6b7280" />
-                <Text className="ml-1 text-xs capitalize text-gray-600">{selectedSale.payment_method}</Text>
+                <Text style={twStyle("ml-1 text-xs capitalize text-gray-600")}>{selectedSale.payment_method}</Text>
               </View>
             </View>
 
             {selectedSale.client_name && (
-              <View className="mb-3 flex-row items-center">
+              <View style={twStyle("mb-3 flex-row items-center")}>
                 <Ionicons name="person-outline" size={16} color="#6b7280" />
-                <Text className="ml-2 text-sm text-gray-700">{selectedSale.client_name}</Text>
+                <Text style={twStyle("ml-2 text-sm text-gray-700")}>{selectedSale.client_name}</Text>
               </View>
             )}
 
             {selectedSale.team_member_name && (
-              <View className="mb-3 flex-row items-center">
+              <View style={twStyle("mb-3 flex-row items-center")}>
                 <Ionicons name="people-outline" size={16} color="#6b7280" />
-                <Text className="ml-2 text-sm text-gray-700">{selectedSale.team_member_name}</Text>
+                <Text style={twStyle("ml-2 text-sm text-gray-700")}>{selectedSale.team_member_name}</Text>
               </View>
             )}
 
             {/* Line items */}
-            <View className="mb-3 rounded-xl border border-gray-200 bg-gray-50">
+            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
               {selectedSale.items.map((item, i) => (
                 <View
                   key={i}
-                  className={`flex-row items-center justify-between px-4 py-3 ${
+                  style={twStyle(`flex-row items-center justify-between px-4 py-3 ${
                     i < selectedSale.items.length - 1 ? "border-b border-gray-200" : ""
-                  }`}
+                  }`)}
                 >
-                  <View className="flex-1">
-                    <Text className="text-sm text-gray-900">
+                  <View style={twStyle("flex-1")}>
+                    <Text style={twStyle("text-sm text-gray-900")}>
                       {item.name ?? "Item"}
                     </Text>
-                    <Text className="text-xs text-gray-500">
+                    <Text style={twStyle("text-xs text-gray-500")}>
                       {item.quantity} × {formatCurrency(item.unit_price)}
                     </Text>
                   </View>
-                  <Text className="text-sm font-semibold text-gray-900">
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                     {formatCurrency(item.total)}
                   </Text>
                 </View>
@@ -297,20 +299,20 @@ export default function SalesHistoryScreen() {
             </View>
 
             {/* Totals */}
-            <View className="rounded-xl border border-gray-200 bg-white p-4">
-              <View className="flex-row justify-between">
-                <Text className="text-sm text-gray-500">Subtotal</Text>
-                <Text className="text-sm text-gray-700">{formatCurrency(selectedSale.subtotal)}</Text>
+            <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4")}>
+              <View style={twStyle("flex-row justify-between")}>
+                <Text style={twStyle("text-sm text-gray-500")}>Subtotal</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(selectedSale.subtotal)}</Text>
               </View>
               {selectedSale.tax > 0 && (
-                <View className="mt-1.5 flex-row justify-between">
-                  <Text className="text-sm text-gray-500">Tax</Text>
-                  <Text className="text-sm text-gray-700">{formatCurrency(selectedSale.tax)}</Text>
+                <View style={twStyle("mt-1.5 flex-row justify-between")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Tax</Text>
+                  <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(selectedSale.tax)}</Text>
                 </View>
               )}
-              <View className="mt-2 border-t border-gray-100 pt-2 flex-row justify-between">
-                <Text className="text-base font-bold text-gray-900">Total</Text>
-                <Text className="text-base font-bold text-gray-900">{formatCurrency(selectedSale.total)}</Text>
+              <View style={twStyle("mt-2 border-t border-gray-100 pt-2 flex-row justify-between")}>
+                <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
+                <Text style={twStyle("text-base font-bold text-gray-900")}>{formatCurrency(selectedSale.total)}</Text>
               </View>
             </View>
           </View>

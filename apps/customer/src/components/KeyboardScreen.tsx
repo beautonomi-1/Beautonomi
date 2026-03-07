@@ -1,6 +1,7 @@
 /**
  * KeyboardScreen – wraps content in KeyboardAvoidingView + ScrollView.
  * Handles iOS/Android keyboard avoidance automatically.
+ * Uses responsive content padding (tablet: 24, phone: 16).
  */
 import {
   KeyboardAvoidingView,
@@ -8,7 +9,9 @@ import {
   ScrollView,
   type ViewStyle,
 } from "react-native";
-import { SCREEN_PADDING, STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { useResponsive } from "@/hooks/useResponsive";
+import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { Colors } from "@/constants/colors";
 
 interface KeyboardScreenProps {
   children: React.ReactNode;
@@ -26,16 +29,17 @@ export function KeyboardScreen({
   contentContainerStyle,
   showsVerticalScrollIndicator = false,
 }: KeyboardScreenProps) {
+  const { contentPadding } = useResponsive();
   return (
     <KeyboardAvoidingView
-      className="flex-1"
+      style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
     >
       <ScrollView
-        className="flex-1 bg-white"
+        style={{ flex: 1, backgroundColor: Colors.white }}
         contentContainerStyle={[
-          { padding: SCREEN_PADDING, paddingBottom },
+          { padding: contentPadding, paddingBottom },
           contentContainerStyle,
         ]}
         keyboardShouldPersistTaps="handled"

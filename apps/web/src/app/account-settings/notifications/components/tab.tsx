@@ -146,7 +146,7 @@ const NotificationModal = ({
                 onCheckedChange={(checked) =>
                   setLocalPrefs({ ...localPrefs, email: checked })
                 }
-                className="data-[state=checked]:bg-[#FF0077]"
+                className="data-[state=checked]:bg-primary"
               />
             </div>
             <div className="flex items-center justify-between">
@@ -159,7 +159,7 @@ const NotificationModal = ({
                 onCheckedChange={(checked) =>
                   setLocalPrefs({ ...localPrefs, sms: checked })
                 }
-                className="data-[state=checked]:bg-[#FF0077]"
+                className="data-[state=checked]:bg-primary"
               />
             </div>
             <div className="space-y-2">
@@ -173,7 +173,7 @@ const NotificationModal = ({
                   onCheckedChange={(checked) =>
                     setLocalPrefs({ ...localPrefs, push: checked })
                   }
-                  className="data-[state=checked]:bg-[#FF0077]"
+                  className="data-[state=checked]:bg-primary"
                 />
               </div>
               <p className="text-sm text-gray-500 font-light">
@@ -191,7 +191,7 @@ const NotificationModal = ({
             <button
               onClick={handleSave}
               disabled={isSaving}
-              className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] rounded-lg disabled:opacity-50"
+              className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary rounded-lg disabled:opacity-50"
             >
               {isSaving ? "Saving..." : "Save"}
             </button>
@@ -336,7 +336,7 @@ const Page = () => {
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="text-sm md:text-base font-medium text-gray-700 data-[state=active]:bg-white data-[state=active]:text-[#FF0077] data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-white/40 data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-gray-200 rounded-lg transition-all duration-200"
+                  className="text-sm md:text-base font-medium text-gray-700 data-[state=active]:bg-white data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=active]:border data-[state=active]:border-white/40 data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-gray-200 rounded-lg transition-all duration-200"
                 >
                   {tab.label}
                 </TabsTrigger>
@@ -365,7 +365,7 @@ const Page = () => {
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
                             <div className="p-2 bg-pink-50 rounded-full border border-pink-100">
-                              <Icon className="w-5 h-5 text-[#FF0077]" />
+                              <Icon className="w-5 h-5 text-primary" />
                             </div>
                             <div>
                               <h3 className="text-base font-semibold text-gray-900">
@@ -379,7 +379,7 @@ const Page = () => {
                         </div>
                         <button
                           onClick={() => openModal(section.id)}
-                          className="text-[#FF0077] hover:text-[#D60565] font-medium text-sm underline transition-colors"
+                          className="text-primary hover:text-primary-hover font-medium text-sm underline transition-colors"
                         >
                           Edit
                         </button>
@@ -412,7 +412,7 @@ const Page = () => {
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
                               <div className="p-2 bg-pink-50 rounded-full border border-pink-100">
-                                <Icon className="w-5 h-5 text-[#FF0077]" />
+                                <Icon className="w-5 h-5 text-primary" />
                               </div>
                               <div>
                                 <h3 className="text-base font-semibold text-gray-900">
@@ -426,7 +426,7 @@ const Page = () => {
                           </div>
                           <button
                             onClick={() => openModal(section.id)}
-                            className="text-[#FF0077] hover:text-[#D60565] font-medium text-sm underline transition-colors"
+                            className="text-primary hover:text-primary-hover font-medium text-sm underline transition-colors"
                           >
                             Edit
                           </button>
@@ -451,7 +451,7 @@ const Page = () => {
                       <Switch
                         checked={unsubscribeMarketing}
                         onCheckedChange={handleUnsubscribeMarketing}
-                        className="data-[state=checked]:bg-[#FF0077]"
+                        className="data-[state=checked]:bg-primary"
                       />
                     </div>
                   </motion.div>
@@ -489,7 +489,7 @@ const Page = () => {
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-2">
                                 <div className="p-2 bg-pink-50 rounded-full border border-pink-100">
-                                  <Icon className="w-5 h-5 text-[#FF0077]" />
+                                  <Icon className="w-5 h-5 text-primary" />
                                 </div>
                                 <div>
                                   <h3 className="text-base font-semibold text-gray-900">
@@ -503,7 +503,7 @@ const Page = () => {
                             </div>
                             <button
                               onClick={() => openModal(section.id)}
-                              className="text-[#FF0077] hover:text-[#D60565] font-medium text-sm underline transition-colors"
+                              className="text-primary hover:text-primary-hover font-medium text-sm underline transition-colors"
                             >
                               Edit
                             </button>
@@ -541,7 +541,7 @@ const Page = () => {
                               <div className="flex-1">
                                 <div className="flex items-center gap-3 mb-2">
                                   <div className="p-2 bg-pink-50 rounded-full border border-pink-100">
-                                    <Icon className="w-5 h-5 text-[#FF0077]" />
+                                    <Icon className="w-5 h-5 text-primary" />
                                   </div>
                                   <div>
                                     <h3 className="text-base font-semibold text-gray-900">
@@ -555,7 +555,7 @@ const Page = () => {
                               </div>
                               <button
                                 onClick={() => openModal(section.id)}
-                                className="text-[#FF0077] hover:text-[#D60565] font-medium text-sm underline transition-colors"
+                                className="text-primary hover:text-primary-hover font-medium text-sm underline transition-colors"
                               >
                                 Edit
                               </button>
@@ -587,7 +587,7 @@ const Page = () => {
                               <div className="flex-1">
                                 <div className="flex items-center gap-3 mb-2">
                                   <div className="p-2 bg-pink-50 rounded-full border border-pink-100">
-                                    <Icon className="w-5 h-5 text-[#FF0077]" />
+                                    <Icon className="w-5 h-5 text-primary" />
                                   </div>
                                   <div>
                                     <h3 className="text-base font-semibold text-gray-900">
@@ -601,7 +601,7 @@ const Page = () => {
                               </div>
                               <button
                                 onClick={() => openModal(section.id)}
-                                className="text-[#FF0077] hover:text-[#D60565] font-medium text-sm underline transition-colors"
+                                className="text-primary hover:text-primary-hover font-medium text-sm underline transition-colors"
                               >
                                 Edit
                               </button>
@@ -621,7 +621,7 @@ const Page = () => {
                 >
                   <div className="flex items-start gap-3">
                     <div className="p-2 bg-pink-50 rounded-full border border-pink-100">
-                      <HelpCircle className="w-5 h-5 text-[#FF0077]" />
+                      <HelpCircle className="w-5 h-5 text-primary" />
                     </div>
                     <div className="flex-1">
                       <h3 className="text-base font-semibold text-gray-900 mb-2">Need help?</h3>
@@ -630,7 +630,7 @@ const Page = () => {
                       </p>
                       <a
                         href="/help-center"
-                        className="text-sm font-medium text-[#FF0077] hover:text-[#D60565] underline transition-colors"
+                        className="text-sm font-medium text-primary hover:text-primary-hover underline transition-colors"
                       >
                         Visit Help Center
                       </a>

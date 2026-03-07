@@ -7,10 +7,12 @@ import {
   RefreshControl,
   Alert,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { api } from "@/lib/api-client";
+import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
-import { SCREEN_PADDING, STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -43,20 +45,16 @@ function formatDate(iso: string): string {
   });
 }
 
-function statusConfig(status: WaitlistStatus): {
-  bg: string;
-  text: string;
-  label: string;
-} {
+function statusConfig(status: WaitlistStatus): { bg: string; text: string; label: string } {
   switch (status) {
     case "waiting":
-      return { bg: "bg-blue-100", text: "text-blue-800", label: "Waiting" };
+      return { bg: "#DBEAFE", text: "#1E40AF", label: "Waiting" };
     case "notified":
-      return { bg: "bg-green-100", text: "text-green-800", label: "Notified" };
+      return { bg: "#DCFCE7", text: "#166534", label: "Notified" };
     case "expired":
-      return { bg: "bg-gray-100", text: "text-gray-600", label: "Expired" };
+      return { bg: Colors.gray[100], text: Colors.gray[600], label: "Expired" };
     default:
-      return { bg: "bg-gray-100", text: "text-gray-600", label: String(status) };
+      return { bg: Colors.gray[100], text: Colors.gray[600], label: String(status) };
   }
 }
 
@@ -65,6 +63,8 @@ function statusConfig(status: WaitlistStatus): {
 /* ------------------------------------------------------------------ */
 
 export default function WaitlistScreen() {
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -176,54 +176,37 @@ export default function WaitlistScreen() {
       const isRemoving = removingId === item.id;
 
       return (
-        <View className="bg-white rounded-xl p-4 mb-3 border border-gray-100">
-          {/* Header: provider + status */}
-          <View className="flex-row justify-between items-start mb-1">
-            <Text className="font-semibold text-gray-900 flex-1 mr-2">
-              {item.provider_name}
-            </Text>
-            <View className={`px-2.5 py-0.5 rounded-full ${badge.bg}`}>
-              <Text className={`text-xs font-medium ${badge.text}`}>
-                {badge.label}
-              </Text>
+        <View style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.gray[100] }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900], flex: 1, marginRight: 8 }}>{item.provider_name}</Text>
+            <View style={{ paddingHorizontal: 10, paddingVertical: 2, borderRadius: 9999, backgroundColor: badge.bg }}>
+              <Text style={{ fontSize: 12, fontWeight: "500", color: badge.text }}>{badge.label}</Text>
             </View>
           </View>
-
-          {/* Service */}
-          <Text className="text-sm text-gray-600 mb-3">{item.service_name}</Text>
-
-          {/* Details row */}
-          <View className="flex-row justify-between items-center">
+          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>{item.service_name}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <View>
-              <Text className="text-xs text-gray-500">Date added</Text>
-              <Text className="text-sm font-medium text-gray-800">
-                {formatDate(item.date_added)}
-              </Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Date added</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{formatDate(item.date_added)}</Text>
             </View>
-            <View className="items-center">
-              <Text className="text-xs text-gray-500">Position</Text>
-              <View className="bg-primary-light rounded-full w-8 h-8 items-center justify-center mt-0.5">
-                <Text className="text-sm font-bold" style={{ color: Colors.primary }}>
-                  {item.position}
-                </Text>
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Position</Text>
+              <View style={{ backgroundColor: Colors.primaryLight, borderRadius: 9999, width: 32, height: 32, alignItems: "center", justifyContent: "center", marginTop: 2 }}>
+                <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.primary }}>{item.position}</Text>
               </View>
             </View>
           </View>
-
-          {/* Leave button */}
           {item.status !== "expired" && (
-            <View className="mt-3 pt-3 border-t border-gray-100">
+            <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.gray[100] }}>
               <TouchableOpacity
                 onPress={() => leaveWaitlist(item)}
                 disabled={isRemoving}
-                className="flex-row items-center justify-center px-4 py-2 rounded-lg border border-red-200 bg-red-50"
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: "#FECACA", backgroundColor: "#FEF2F2" }}
               >
                 {isRemoving ? (
                   <ActivityIndicator size="small" color={Colors.error} />
                 ) : (
-                  <Text className="text-sm font-medium text-red-600">
-                    Leave Waitlist
-                  </Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: "#DC2626" }}>Leave Waitlist</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -234,55 +217,45 @@ export default function WaitlistScreen() {
     [removingId, leaveWaitlist],
   );
 
-  /* ---- Loading state ---- */
   if (loading && entries.length === 0) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-6">
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text className="text-gray-600 mt-4">Loading...</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>Loading...</Text>
       </View>
     );
   }
 
-  /* ---- Error state ---- */
   if (error && entries.length === 0) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-6">
-        <Text className="text-center text-gray-700 mb-4">{error}</Text>
-        <TouchableOpacity
-          onPress={() => load()}
-          className="bg-primary px-6 py-3 rounded-xl"
-        >
-          <Text className="text-white font-semibold">Retry</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Text style={{ textAlign: "center", color: Colors.gray[700], marginBottom: 16 }}>{error}</Text>
+        <TouchableOpacity onPress={() => load()} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  /* ---- Empty state ---- */
   if (entries.length === 0) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-6">
-        <Text className="text-center font-semibold text-gray-900 mb-2">
-          No waitlist entries
-        </Text>
-        <Text className="text-center text-gray-500">
-          Join a waitlist when your preferred time slot is unavailable
-        </Text>
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>No waitlist entries</Text>
+        <Text style={{ textAlign: "center", color: Colors.gray[500] }}>Join a waitlist when your preferred time slot is unavailable</Text>
       </View>
     );
   }
 
-  /* ---- List ---- */
   return (
-    <View className="flex-1 bg-white">
+    <View style={{ flex: 1, backgroundColor: Colors.white }}>
       <FlatList
         data={entries}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={{
-          padding: SCREEN_PADDING,
+          padding: contentPadding,
           paddingBottom: STACK_CONTENT_PADDING_BOTTOM,
+          ...constraint,
         }}
         refreshControl={
           <RefreshControl

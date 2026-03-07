@@ -9,6 +9,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { twStyle } from "@/lib/twStyle";
 
 interface EmailStats {
   total_sent: number;
@@ -128,10 +129,10 @@ export default function EmailIntegrationScreen() {
 
       {/* Connection status */}
       {integration?.connected_date && (
-        <View className="mb-4 rounded-xl bg-green-50 p-3">
-          <View className="flex-row items-center">
+        <View style={twStyle("mb-4 rounded-xl bg-green-50 p-3")}>
+          <View style={twStyle("flex-row items-center")}>
             <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
-            <Text className="ml-1.5 text-sm text-green-700">
+            <Text style={twStyle("ml-1.5 text-sm text-green-700")}>
               Connected since {new Date(integration.connected_date).toLocaleDateString()}
             </Text>
           </View>
@@ -140,14 +141,14 @@ export default function EmailIntegrationScreen() {
 
       {/* Email stats */}
       {stats && (
-        <View className="mb-4 flex-row gap-3">
-          <View className="flex-1">
+        <View style={twStyle("mb-4 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <StatCard title="Sent" value={String(stats.total_sent)} icon="send-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
           </View>
-          <View className="flex-1">
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <StatCard title="Delivered" value={`${(stats.delivery_rate * 100).toFixed(0)}%`} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <StatCard title="Opened" value={String(stats.opened)} icon="mail-open-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
           </View>
         </View>
@@ -155,15 +156,15 @@ export default function EmailIntegrationScreen() {
 
       {/* Provider selection */}
       <SectionHeader title="Email Provider" />
-      <View className="mb-4 flex-row gap-3">
-        {PROVIDERS.map((p) => (
+      <View style={twStyle("mb-4 flex-row")}>
+        {PROVIDERS.map((p, i) => (
           <TouchableOpacity
             key={p.value}
-            className={`flex-1 items-center rounded-xl border-2 p-4 ${
+            style={[twStyle(`flex-1 items-center rounded-xl border-2 p-4 ${
               provider === p.value
                 ? "border-indigo-500 bg-indigo-50"
                 : "border-gray-200 bg-white"
-            }`}
+            }`), i < PROVIDERS.length - 1 ? { marginRight: 12 } : undefined]}
             onPress={() => setProvider(p.value)}
           >
             <Ionicons
@@ -172,9 +173,9 @@ export default function EmailIntegrationScreen() {
               color={provider === p.value ? "#6366f1" : "#9ca3af"}
             />
             <Text
-              className={`mt-1.5 text-sm font-medium ${
+              style={twStyle(`mt-1.5 text-sm font-medium ${
                 provider === p.value ? "text-indigo-700" : "text-gray-600"
-              }`}
+              }`)}
             >
               {p.label}
             </Text>
@@ -184,11 +185,11 @@ export default function EmailIntegrationScreen() {
 
       {/* Configuration */}
       <SectionHeader title="Configuration" />
-      <View className="rounded-2xl border border-gray-100 bg-white p-4">
-        <View className="flex-row items-center justify-between mb-4">
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900">Enabled</Text>
-            <Text className="text-xs text-gray-500">Activate email sending</Text>
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row items-center justify-between mb-4")}>
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>Enabled</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>Activate email sending</Text>
           </View>
           <Switch
             value={isEnabled}
@@ -198,10 +199,10 @@ export default function EmailIntegrationScreen() {
           />
         </View>
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">API Key *</Text>
-        <View className="mb-3 flex-row items-center gap-2">
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>API Key *</Text>
+        <View style={twStyle("mb-3 flex-row items-center")}>
           <TextInput
-            className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"), { marginRight: 8 }]}
             value={showKey ? apiKey : maskedKey(apiKey)}
             onChangeText={setApiKey}
             onFocus={() => setShowKey(true)}
@@ -210,16 +211,16 @@ export default function EmailIntegrationScreen() {
             secureTextEntry={!showKey}
           />
           <TouchableOpacity
-            className="h-12 w-12 items-center justify-center rounded-xl bg-gray-100"
+            style={twStyle("h-12 w-12 items-center justify-center rounded-xl bg-gray-100")}
             onPress={() => setShowKey(!showKey)}
           >
             <Ionicons name={showKey ? "eye-off-outline" : "eye-outline"} size={18} color="#6b7280" />
           </TouchableOpacity>
         </View>
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">From Email *</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>From Email *</Text>
         <TextInput
-          className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={fromEmail}
           onChangeText={setFromEmail}
           placeholder="noreply@yourbusiness.com"
@@ -228,9 +229,9 @@ export default function EmailIntegrationScreen() {
           autoCapitalize="none"
         />
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">From Name</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>From Name</Text>
         <TextInput
-          className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={fromName}
           onChangeText={setFromName}
           placeholder="Your Business Name"
@@ -242,24 +243,24 @@ export default function EmailIntegrationScreen() {
 
       {/* Test connection */}
       <SectionHeader title="Testing" />
-      <View className="rounded-2xl border border-gray-100 bg-white p-4">
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
         {testResult && (
-          <View className={`mb-3 rounded-lg p-3 ${testResult.success ? "bg-green-50" : "bg-red-50"}`}>
-            <View className="flex-row items-center">
+          <View style={twStyle(`mb-3 rounded-lg p-3 ${testResult.success ? "bg-green-50" : "bg-red-50"}`)}>
+            <View style={twStyle("flex-row items-center")}>
               <Ionicons
                 name={testResult.success ? "checkmark-circle" : "alert-circle"}
                 size={16}
                 color={testResult.success ? "#22c55e" : "#ef4444"}
               />
-              <Text className={`ml-1.5 text-sm ${testResult.success ? "text-green-700" : "text-red-700"}`}>
+              <Text style={twStyle(`ml-1.5 text-sm ${testResult.success ? "text-green-700" : "text-red-700"}`)}>
                 {testResult.message}
               </Text>
             </View>
           </View>
         )}
 
-        <View className="flex-row gap-3">
-          <View className="flex-1">
+        <View style={twStyle("flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <ActionButton
               label="Test Connection"
               variant="outline"
@@ -268,7 +269,7 @@ export default function EmailIntegrationScreen() {
               fullWidth
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <ActionButton
               label="Send Test Email"
               variant="outline"
@@ -280,7 +281,7 @@ export default function EmailIntegrationScreen() {
         </View>
       </View>
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

@@ -2110,7 +2110,7 @@ function _VerificationSettings({
                 }}
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 sm:w-14 sm:h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#FF0077]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] sm:after:top-[3px] sm:after:left-[3px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 sm:after:h-6 sm:after:w-6 after:transition-all peer-checked:bg-[#FF0077]"></div>
+              <div className="w-11 h-6 sm:w-14 sm:h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] sm:after:top-[3px] sm:after:left-[3px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 sm:after:h-6 sm:after:w-6 after:transition-all peer-checked:bg-primary"></div>
             </label>
           </div>
         </div>
@@ -2929,7 +2929,7 @@ function ProviderSettings({
               <p className="text-sm text-yellow-800">
                 <strong>Manual Approval Mode:</strong> New provider applications will be set to "pending_approval" status
                 and require manual review in the{" "}
-                <Link href="/admin/providers" className="text-[#FF0077] hover:underline font-medium">
+                <Link href="/admin/providers" className="text-primary hover:underline font-medium">
                   Providers
                 </Link>{" "}
                 section.

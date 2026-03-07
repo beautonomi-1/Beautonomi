@@ -11,12 +11,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { twStyle } from "@/lib/twStyle";
 
 interface Payout {
   id: string;
@@ -37,6 +39,7 @@ interface PayoutAccount {
 
 /** Content-only for use in Finance hub (Payouts tab). */
 export function PayoutsContent() {
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [amount, setAmount] = useState("");
@@ -83,14 +86,14 @@ export function PayoutsContent() {
 
   if (loading && !payoutsList) {
     return (
-      <View className="flex-1 items-center justify-center py-12">
+      <View style={twStyle("flex-1 items-center justify-center py-12")}>
         <LoadingState />
       </View>
     );
   }
   if (error && !payoutsList) {
     return (
-      <View className="flex-1 justify-center px-4">
+      <View style={twStyle("flex-1 justify-center px-4")}>
         <ErrorState message={error} onRetry={refresh} />
       </View>
     );
@@ -99,28 +102,28 @@ export function PayoutsContent() {
   return (
     <>
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={twStyle("flex-1")}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
       >
         {payouts.length === 0 ? (
-          <View className="items-center py-16">
-            <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+          <View style={twStyle("items-center py-16")}>
+            <View style={twStyle("mb-4 h-16 w-16 items-center justify-center rounded-full bg-emerald-100")}>
               <Ionicons name="wallet-outline" size={32} color="#059669" />
             </View>
-            <Text className="text-center font-semibold text-gray-900">No payouts yet</Text>
-            <Text className="mt-1 text-center text-sm text-gray-500">
+            <Text style={twStyle("text-center font-semibold text-gray-900")}>No payouts yet</Text>
+            <Text style={twStyle("mt-1 text-center text-sm text-gray-500")}>
               Request a payout to withdraw your available balance to your bank account.
             </Text>
             <TouchableOpacity
               onPress={() => setRequestOpen(true)}
-              className="mt-6 flex-row items-center justify-center rounded-xl bg-emerald-600 px-6 py-3"
+              style={twStyle("mt-6 flex-row items-center justify-center rounded-xl bg-emerald-600 px-6 py-3")}
             >
               <Ionicons name="cash-outline" size={20} color="#fff" />
-              <Text className="ml-2 font-medium text-white">Request payout</Text>
+              <Text style={twStyle("ml-2 font-medium text-white")}>Request payout</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -132,37 +135,37 @@ export function PayoutsContent() {
                 setBankAccountId(null);
                 setRequestOpen(true);
               }}
-              className="mb-3 flex-row items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 py-3"
+              style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 py-3")}
             >
               <Ionicons name="cash-outline" size={18} color="#059669" />
-              <Text className="ml-2 font-medium text-emerald-700">Request payout</Text>
+              <Text style={twStyle("ml-2 font-medium text-emerald-700")}>Request payout</Text>
             </TouchableOpacity>
             {payouts.map((p) => (
             <View
               key={p.id}
-              className="mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4"
+              style={twStyle("mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4")}
             >
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-emerald-100">
+              <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-emerald-100")}>
                 <Ionicons name="cash-outline" size={20} color="#059669" />
               </View>
-              <View className="ml-3 flex-1">
-                <Text className="font-semibold text-gray-900">
+              <View style={twStyle("ml-3 flex-1")}>
+                <Text style={twStyle("font-semibold text-gray-900")}>
                   {p.currency} {Number(p.amount).toFixed(2)}
                 </Text>
-                <Text className="mt-0.5 text-sm text-gray-600">{p.status}</Text>
-                <Text className="mt-0.5 text-xs text-gray-500">
+                <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>{p.status}</Text>
+                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                   {new Date(p.requested_at ?? p.created_at).toLocaleDateString()}
                 </Text>
               </View>
               <View
-                className={`rounded-full px-2.5 py-1 ${
+                style={twStyle(`rounded-full px-2.5 py-1 ${
                   p.status === "completed" ? "bg-green-100" : p.status === "pending" ? "bg-amber-100" : "bg-gray-100"
-                }`}
+                }`)}
               >
                 <Text
-                  className={`text-xs font-medium ${
+                  style={twStyle(`text-xs font-medium ${
                     p.status === "completed" ? "text-green-800" : p.status === "pending" ? "text-amber-800" : "text-gray-700"
-                  }`}
+                  }`)}
                 >
                   {p.status}
                 </Text>
@@ -179,9 +182,9 @@ export function PayoutsContent() {
         title="Request payout"
         subtitle="Withdraw to your bank account"
       >
-        <Text className="mb-2 text-sm font-medium text-gray-700">Amount (ZAR) *</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Amount (ZAR) *</Text>
         <TextInput
-          className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           placeholder="0.00"
           placeholderTextColor="#9ca3af"
           value={amount}
@@ -190,26 +193,26 @@ export function PayoutsContent() {
         />
         {accounts.length > 0 && (
           <>
-            <Text className="mb-2 text-sm font-medium text-gray-700">Bank account</Text>
-            <ScrollView className="mb-4 max-h-32" nestedScrollEnabled>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Bank account</Text>
+            <ScrollView style={twStyle("mb-4 max-h-32")} nestedScrollEnabled>
               {accounts.map((a) => (
                 <TouchableOpacity
                   key={a.id}
                   onPress={() => setBankAccountId(bankAccountId === a.id ? null : a.id)}
-                  className={`mb-2 rounded-xl border px-4 py-3 ${bankAccountId === a.id ? "border-emerald-500 bg-emerald-50" : "border-gray-200 bg-gray-50"}`}
+                  style={twStyle(`mb-2 rounded-xl border px-4 py-3 ${bankAccountId === a.id ? "border-emerald-500 bg-emerald-50" : "border-gray-200 bg-gray-50"}`)}
                 >
-                  <Text className="font-medium text-gray-900">{a.account_name ?? "Bank account"}</Text>
+                  <Text style={twStyle("font-medium text-gray-900")}>{a.account_name ?? "Bank account"}</Text>
                   {a.account_number && (
-                    <Text className="text-xs text-gray-500">***{String(a.account_number).slice(-4)}</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>***{String(a.account_number).slice(-4)}</Text>
                   )}
                 </TouchableOpacity>
               ))}
             </ScrollView>
           </>
         )}
-        <Text className="mb-2 text-sm font-medium text-gray-700">Notes (optional)</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Notes (optional)</Text>
         <TextInput
-          className="mb-6 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-6 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           placeholder="Reference or note"
           placeholderTextColor="#9ca3af"
           value={notes}

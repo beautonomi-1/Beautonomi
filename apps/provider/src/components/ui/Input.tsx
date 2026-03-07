@@ -73,27 +73,24 @@ export function Input({
     return { borderWidth: 1.5, borderColor };
   });
 
-  const sizeClasses = {
-    sm: "min-h-[40px] px-3 text-sm",
-    md: "min-h-[48px] px-4 text-base",
-    lg: "min-h-[56px] px-4 text-lg",
-  };
-
-  const bgClass = variant === "filled" ? "bg-gray-50" : "bg-white";
+  const sizeStyle = size === "sm" ? { minHeight: 40, paddingHorizontal: 12, fontSize: 14 } : size === "md" ? { minHeight: 48, paddingHorizontal: 16, fontSize: 16 } : { minHeight: 56, paddingHorizontal: 16, fontSize: 18 };
+  const backgroundColor = variant === "filled" ? "#F9FAFB" : "#fff";
 
   return (
-    <View className="mb-4">
+    <View style={{ marginBottom: 16 }}>
       {label && (
-        <Text className="mb-1.5 text-sm font-medium text-gray-700">
+        <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: "#374151" }}>
           {label}
         </Text>
       )}
       <Animated.View
-        className={`flex-row items-center rounded-xl ${bgClass}`}
-        style={borderAnimatedStyle}
+        style={[
+          { flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor },
+          borderAnimatedStyle,
+        ]}
       >
         {leftIcon && (
-          <View className="pl-3">
+          <View style={{ paddingLeft: 12 }}>
             <Ionicons
               name={leftIcon}
               size={18}
@@ -102,7 +99,7 @@ export function Input({
           </View>
         )}
         <TextInput
-          className={`flex-1 ${sizeClasses[size]} text-gray-900`}
+          style={{ flex: 1, ...sizeStyle, color: "#111827" }}
           placeholderTextColor="#9ca3af"
           value={value}
           onFocus={handleFocus}
@@ -113,7 +110,7 @@ export function Input({
         {rightIcon && (
           <TouchableOpacity
             onPress={onRightIconPress}
-            className="min-h-[44px] min-w-[44px] items-center justify-center"
+            style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" }}
             hitSlop={8}
             accessibilityLabel={`${label} action`}
           >
@@ -125,10 +122,8 @@ export function Input({
           </TouchableOpacity>
         )}
       </Animated.View>
-      {error && <Text className="mt-1 text-xs text-red-500">{error}</Text>}
-      {hint && !error && (
-        <Text className="mt-1 text-xs text-gray-400">{hint}</Text>
-      )}
+      {error && <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>{error}</Text>}
+      {hint && !error && <Text style={{ marginTop: 4, fontSize: 12, color: "#9ca3af" }}>{hint}</Text>}
     </View>
   );
 }

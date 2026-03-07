@@ -11,6 +11,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Avatar } from "@/components/ui/Avatar";
+import { twStyle } from "@/lib/twStyle";
 
 interface StaffMember {
   id: string;
@@ -63,7 +64,7 @@ export default function StaffPermissionsListScreen() {
           contentContainerStyle={{ paddingBottom: 120 }}
           renderItem={({ item }: { item: StaffMember }) => (
             <TouchableOpacity
-              className="mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4"
+              style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
               onPress={() =>
                 router.push(
                   `/(app)/(tabs)/more/settings/staff-permissions/${item.id}` as any
@@ -71,9 +72,9 @@ export default function StaffPermissionsListScreen() {
               }
             >
               <Avatar name={item.name} size="md" />
-              <View className="ml-3 flex-1">
-                <Text className="font-medium text-gray-900">{item.name}</Text>
-                <Text className="text-xs text-gray-500">
+              <View style={twStyle("ml-3 flex-1")}>
+                <Text style={twStyle("font-medium text-gray-900")}>{item.name}</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>
                   {item.role ?? "Staff"}
                   {item.is_admin ? " • Admin" : ""}
                 </Text>
@@ -83,7 +84,7 @@ export default function StaffPermissionsListScreen() {
           )}
         />
       )}
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

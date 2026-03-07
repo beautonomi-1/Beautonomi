@@ -548,7 +548,7 @@ export default function ProviderClients() {
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <Avatar>
-                                <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077]">
+                                <AvatarFallback className="bg-primary/10 text-primary">
                                   {client.first_name.charAt(0)}
                                   {client.last_name.charAt(0)}
                                 </AvatarFallback>
@@ -670,7 +670,7 @@ export default function ProviderClients() {
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <Avatar>
-                              <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077]">
+                              <AvatarFallback className="bg-primary/10 text-primary">
                                 {client.first_name.charAt(0)}
                                 {client.last_name.charAt(0)}
                               </AvatarFallback>
@@ -1040,7 +1040,7 @@ function ClientCreateEditDialog({
             <Button
               type="submit"
               disabled={isLoading}
-              className="bg-[#FF0077] hover:bg-[#D60565] w-full sm:w-auto min-h-[44px] touch-manipulation"
+              className="bg-primary hover:bg-primary-hover w-full sm:w-auto min-h-[44px] touch-manipulation"
             >
               {isLoading ? "Saving..." : client ? "Update" : "Add Client"}
             </Button>
@@ -1955,7 +1955,7 @@ function ClientDetailSheet({
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
               <Avatar className="w-16 h-16">
-                <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077] text-2xl">
+                <AvatarFallback className="bg-primary/10 text-primary text-2xl">
                   {client.first_name.charAt(0)}
                   {client.last_name.charAt(0)}
                 </AvatarFallback>

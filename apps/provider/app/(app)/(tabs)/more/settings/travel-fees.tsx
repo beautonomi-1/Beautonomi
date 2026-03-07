@@ -8,6 +8,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { StatCard } from "@/components/ui/StatCard";
 import { formatCurrency } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface TravelFeeSettings {
   enabled: boolean;
@@ -96,8 +97,8 @@ export default function TravelFeesScreen() {
       <ScreenHeader title="Travel Fees" showBack subtitle="Fees for at-home services" />
 
       {stats && (
-        <View className="mb-4 flex-row gap-2">
-          <View className="flex-1">
+        <View style={twStyle("mb-4 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
             <StatCard
               title="This Month"
               value={formatCurrency(stats.total_travel_fees_month)}
@@ -107,7 +108,7 @@ export default function TravelFeesScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
             <StatCard
               title="Avg Fee"
               value={formatCurrency(stats.avg_fee)}
@@ -117,7 +118,7 @@ export default function TravelFeesScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <StatCard
               title="Trips"
               value={String(stats.total_trips)}
@@ -130,11 +131,11 @@ export default function TravelFeesScreen() {
         </View>
       )}
 
-      <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-        <View className="mb-3 flex-row items-center justify-between">
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900">Enable Travel Fees</Text>
-            <Text className="text-xs text-gray-500">Charge for at-home service travel</Text>
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>Enable Travel Fees</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>Charge for at-home service travel</Text>
           </View>
           <Switch
             value={enabled}
@@ -146,11 +147,11 @@ export default function TravelFeesScreen() {
 
         {enabled && (
           <>
-            <View className="my-2 border-t border-gray-100" />
-            <View className="mb-3 flex-row items-center justify-between">
-              <View className="flex-1">
-                <Text className="text-sm font-medium text-gray-900">Use Platform Defaults</Text>
-                <Text className="text-xs text-gray-500">Use standard platform rates</Text>
+            <View style={twStyle("my-2 border-t border-gray-100")} />
+            <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+              <View style={twStyle("flex-1")}>
+                <Text style={twStyle("text-sm font-medium text-gray-900")}>Use Platform Defaults</Text>
+                <Text style={twStyle("text-xs text-gray-500")}>Use standard platform rates</Text>
               </View>
               <Switch
                 value={usePlatformDefault}
@@ -162,10 +163,10 @@ export default function TravelFeesScreen() {
 
             {!usePlatformDefault && (
               <>
-                <View className="my-2 border-t border-gray-100" />
-                <Text className="mb-1 text-sm font-medium text-gray-700">Free Within (km)</Text>
+                <View style={twStyle("my-2 border-t border-gray-100")} />
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Free Within (km)</Text>
                 <TextInput
-                  className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                  style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   value={freeWithin}
                   onChangeText={(t) => update(() => setFreeWithin(t))}
                   placeholder="0 (charge from first km)"
@@ -173,9 +174,9 @@ export default function TravelFeesScreen() {
                   keyboardType="decimal-pad"
                 />
 
-                <Text className="mb-1 text-sm font-medium text-gray-700">Rate per km (R)</Text>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Rate per km (R)</Text>
                 <TextInput
-                  className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                  style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   value={ratePerKm}
                   onChangeText={(t) => update(() => setRatePerKm(t))}
                   placeholder="0.00"
@@ -183,9 +184,9 @@ export default function TravelFeesScreen() {
                   keyboardType="decimal-pad"
                 />
 
-                <Text className="mb-1 text-sm font-medium text-gray-700">Minimum Fee (R)</Text>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Minimum Fee (R)</Text>
                 <TextInput
-                  className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                  style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   value={minimumFee}
                   onChangeText={(t) => update(() => setMinimumFee(t))}
                   placeholder="0.00"
@@ -193,9 +194,9 @@ export default function TravelFeesScreen() {
                   keyboardType="decimal-pad"
                 />
 
-                <Text className="mb-1 text-sm font-medium text-gray-700">Maximum Fee (R, optional)</Text>
+                <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Maximum Fee (R, optional)</Text>
                 <TextInput
-                  className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                  style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   value={maximumFee}
                   onChangeText={(t) => update(() => setMaximumFee(t))}
                   placeholder="No maximum"
@@ -210,27 +211,27 @@ export default function TravelFeesScreen() {
 
       {/* Fee calculator preview */}
       {enabled && !usePlatformDefault && ratePerKm && (
-        <View className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
-          <Text className="mb-2 text-sm font-semibold text-indigo-900">
+        <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4")}>
+          <Text style={twStyle("mb-2 text-sm font-semibold text-indigo-900")}>
             Fee Calculator
           </Text>
-          <View className="flex-row items-center gap-2">
+          <View style={twStyle("flex-row items-center")}>
             <TextInput
-              className="flex-1 rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-base text-gray-900"
+              style={[twStyle("flex-1 rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-base text-gray-900"), { marginRight: 8 }]}
               value={previewKm}
               onChangeText={setPreviewKm}
               keyboardType="decimal-pad"
               placeholder="Distance (km)"
               placeholderTextColor="#9ca3af"
             />
-            <View className="items-center rounded-xl bg-indigo-600 px-4 py-2.5">
-              <Text className="text-base font-bold text-white">
+            <View style={twStyle("items-center rounded-xl bg-indigo-600 px-4 py-2.5")}>
+              <Text style={twStyle("text-base font-bold text-white")}>
                 {previewFee !== null ? `R ${previewFee.toFixed(2)}` : "—"}
               </Text>
             </View>
           </View>
           {freeWithin && parseFloat(freeWithin) > 0 && (
-            <Text className="mt-2 text-xs text-indigo-600">
+            <Text style={twStyle("mt-2 text-xs text-indigo-600")}>
               First {freeWithin} km free
             </Text>
           )}
@@ -238,7 +239,7 @@ export default function TravelFeesScreen() {
       )}
 
       <ActionButton label="Save Settings" onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

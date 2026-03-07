@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
+import { twStyle } from "@/lib/twStyle";
 
 interface Role {
   id: string;
@@ -248,7 +249,7 @@ export default function TeamRolesScreen() {
         subtitle="Manage roles & permissions"
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-900"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
             onPress={openCreate}
           >
             <Ionicons name="add" size={20} color="#fff" />
@@ -257,8 +258,8 @@ export default function TeamRolesScreen() {
       />
 
       {roles && roles.length > 0 && (
-        <View className="mb-3 flex-row gap-2">
-          <View className="flex-1">
+        <View style={twStyle("mb-3 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
             <StatCard
               title="Roles"
               value={String(roles.length)}
@@ -268,7 +269,7 @@ export default function TeamRolesScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
             <StatCard
               title="Members"
               value={String(totalMembers)}
@@ -278,7 +279,7 @@ export default function TeamRolesScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <StatCard
               title="Avg Perms"
               value={String(avgPermissions)}
@@ -292,7 +293,7 @@ export default function TeamRolesScreen() {
       )}
 
       {roles && roles.length > 3 && (
-        <View className="mb-3">
+        <View style={twStyle("mb-3")}>
           <SearchBar
             value={search}
             onChangeText={setSearch}
@@ -320,12 +321,13 @@ export default function TeamRolesScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: role }: { item: Role }) => {
             const permCount = enabledCount(role.permissions);
             return (
               <TouchableOpacity
-                className="rounded-xl border border-gray-100 bg-white p-4"
+                style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
                 onPress={() => openEdit(role)}
                 onLongPress={() =>
                   Alert.alert(role.name, undefined, [
@@ -344,22 +346,22 @@ export default function TeamRolesScreen() {
                 }
                 activeOpacity={0.7}
               >
-                <View className="flex-row items-start justify-between">
-                  <View className="flex-row flex-1 items-center">
-                    <View className="h-10 w-10 items-center justify-center rounded-lg bg-indigo-50">
+                <View style={twStyle("flex-row items-start justify-between")}>
+                  <View style={twStyle("flex-row flex-1 items-center")}>
+                    <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-indigo-50")}>
                       <Ionicons
                         name="shield-checkmark-outline"
                         size={20}
                         color="#6366f1"
                       />
                     </View>
-                    <View className="ml-3 flex-1">
-                      <Text className="text-sm font-semibold text-gray-900">
+                    <View style={twStyle("ml-3 flex-1")}>
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                         {role.name}
                       </Text>
                       {role.description && (
                         <Text
-                          className="mt-0.5 text-xs text-gray-500"
+                          style={twStyle("mt-0.5 text-xs text-gray-500")}
                           numberOfLines={1}
                         >
                           {role.description}
@@ -375,21 +377,21 @@ export default function TeamRolesScreen() {
                     />
                   </TouchableOpacity>
                 </View>
-                <View className="mt-2 flex-row items-center gap-3">
-                  <View className="flex-row items-center gap-1">
+                <View style={twStyle("mt-2 flex-row items-center")}>
+                  <View style={[twStyle("flex-row items-center"), { marginRight: 4 }]}>
                     <Ionicons name="key-outline" size={12} color="#6366f1" />
-                    <Text className="text-xs text-indigo-600">
+                    <Text style={twStyle("text-xs text-indigo-600")}>
                       {permCount}/{ALL_PERMISSIONS.length} permissions
                     </Text>
                   </View>
                   {role.member_count !== undefined && (
-                    <View className="flex-row items-center gap-1">
+                    <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
                       <Ionicons
                         name="people-outline"
                         size={12}
                         color="#6b7280"
                       />
-                      <Text className="text-xs text-gray-500">
+                      <Text style={twStyle("text-xs text-gray-500")}>
                         {role.member_count} member
                         {role.member_count !== 1 ? "s" : ""}
                       </Text>
@@ -397,12 +399,11 @@ export default function TeamRolesScreen() {
                   )}
                 </View>
                 {/* Permission bar */}
-                <View className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                <View style={twStyle("mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100")}>
                   <View
-                    className="h-1.5 rounded-full bg-indigo-500"
-                    style={{
+                    style={[twStyle("h-1.5 rounded-full bg-indigo-500"), {
                       width: `${(permCount / ALL_PERMISSIONS.length) * 100}%`,
-                    }}
+                    }]}
                   />
                 </View>
               </TouchableOpacity>
@@ -417,21 +418,21 @@ export default function TeamRolesScreen() {
         title={editing ? "Edit Role" : "New Role"}
       >
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Role Name *
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
             placeholder="e.g. Senior Stylist"
             placeholderTextColor="#9ca3af"
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Description
           </Text>
           <TextInput
-            className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
             onChangeText={(t) =>
               setForm((p) => ({ ...p, description: t }))
@@ -440,19 +441,19 @@ export default function TeamRolesScreen() {
             placeholderTextColor="#9ca3af"
           />
 
-          <View className="mb-2 flex-row items-center justify-between">
-            <Text className="text-xs font-semibold uppercase text-gray-400">
+          <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+            <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
               Permissions ({formEnabledCount}/{ALL_PERMISSIONS.length})
             </Text>
-            <View className="flex-row gap-2">
-              <TouchableOpacity onPress={selectAllPermissions}>
-                <Text className="text-[10px] font-medium text-indigo-600">
+            <View style={twStyle("flex-row")}>
+              <TouchableOpacity style={{ marginRight: 8 }} onPress={selectAllPermissions}>
+                <Text style={twStyle("text-[10px] font-medium text-indigo-600")}>
                   Select All
                 </Text>
               </TouchableOpacity>
-              <Text className="text-[10px] text-gray-300">|</Text>
+              <Text style={[twStyle("text-[10px] text-gray-300"), { marginRight: 8 }]}>|</Text>
               <TouchableOpacity onPress={clearAllPermissions}>
-                <Text className="text-[10px] font-medium text-gray-400">
+                <Text style={twStyle("text-[10px] font-medium text-gray-400")}>
                   Clear All
                 </Text>
               </TouchableOpacity>
@@ -467,21 +468,21 @@ export default function TeamRolesScreen() {
             return (
               <View
                 key={group.title}
-                className="mb-3 overflow-hidden rounded-xl border border-gray-100 bg-white"
+                style={twStyle("mb-3 overflow-hidden rounded-xl border border-gray-100 bg-white")}
               >
                 <TouchableOpacity
-                  className="flex-row items-center justify-between bg-gray-50 px-4 py-2.5"
+                  style={twStyle("flex-row items-center justify-between bg-gray-50 px-4 py-2.5")}
                   onPress={() => toggleGroupAll(groupKeys)}
                 >
-                  <Text className="text-xs font-semibold text-gray-600">
+                  <Text style={twStyle("text-xs font-semibold text-gray-600")}>
                     {group.title}
                   </Text>
                   <View
-                    className={`h-4 w-4 items-center justify-center rounded ${
+                    style={twStyle(`h-4 w-4 items-center justify-center rounded ${
                       allGroupEnabled
                         ? "bg-indigo-600"
                         : "border border-gray-300"
-                    }`}
+                    }`)}
                   >
                     {allGroupEnabled && (
                       <Ionicons
@@ -495,15 +496,16 @@ export default function TeamRolesScreen() {
                 {group.permissions.map((perm, idx) => (
                   <View
                     key={perm.key}
-                    className={`flex-row items-center justify-between px-4 py-3 ${
+                    style={twStyle(`flex-row items-center justify-between px-4 py-3 ${
                       idx < group.permissions.length - 1
                         ? "border-b border-gray-50"
                         : ""
-                    }`}
+                    }`)}
                   >
-                    <View className="flex-row items-center gap-2">
+                    <View style={twStyle("flex-row items-center")}>
                       <Ionicons
                         name={perm.icon as any}
+                        style={{ marginRight: 8 }}
                         size={14}
                         color={
                           form.permissions[perm.key]
@@ -511,7 +513,7 @@ export default function TeamRolesScreen() {
                             : "#9ca3af"
                         }
                       />
-                      <Text className="text-sm text-gray-700">
+                      <Text style={twStyle("text-sm text-gray-700")}>
                         {perm.label}
                       </Text>
                     </View>
@@ -532,7 +534,7 @@ export default function TeamRolesScreen() {
             );
           })}
 
-          <View className="mt-2">
+          <View style={twStyle("mt-2")}>
             <ActionButton
               label={editing ? "Update Role" : "Create Role"}
               onPress={handleSave}

@@ -20,25 +20,35 @@ if (fs.existsSync(envPath)) {
   }
 }
 
-const appJson = require("./app.json");
-module.exports = {
-  expo: {
-    ...appJson.expo,
-    plugins: [
-      ...(appJson.expo.plugins || []),
-    ],
-    extra: {
-      ...((appJson.expo && appJson.expo.extra) || {}),
-      EXPO_PUBLIC_SUPABASE_URL:
-        envFromFile.EXPO_PUBLIC_SUPABASE_URL ??
-        process.env.EXPO_PUBLIC_SUPABASE_URL,
-      EXPO_PUBLIC_SUPABASE_ANON_KEY:
-        envFromFile.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
-        process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
-      EXPO_PUBLIC_APP_URL:
-        envFromFile.EXPO_PUBLIC_APP_URL ?? process.env.EXPO_PUBLIC_APP_URL,
-      EXPO_PUBLIC_SENTRY_DSN:
-        envFromFile.EXPO_PUBLIC_SENTRY_DSN ?? process.env.EXPO_PUBLIC_SENTRY_DSN,
+const appEnv = process.env.APP_ENV || (process.env.NODE_ENV === "production" ? "production" : "development");
+const oneSignalMode = appEnv === "production" ? "production" : "development";
+
+function resolvePlugins(plugins) {
+  if (!Array.isArray(plugins)) return plugins || [];
+  return plugins.map((p) => {
+    const name = Array.isArray(p) ? p[0] : p;
+    if (name === "onesignal-expo-plugin") {
+      return ["onesignal-expo-plugin", { mode: oneSignalMode }];
+    }
+    return p;
+  });
+}
+
+/** Merge env and plugins into base config. Function form so Expo passes app.json as base (satisfies expo-doctor). */
+module.exports = ({ config }) => {
+  return {
+    ...config,
+    expo: {
+      ...config.expo,
+      plugins: resolvePlugins(config.expo?.plugins),
+      extra: {
+        ...(config?.expo?.extra || {}),
+        EXPO_PUBLIC_SUPABASE_URL: envFromFile.EXPO_PUBLIC_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL,
+        EXPO_PUBLIC_SUPABASE_ANON_KEY: envFromFile.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+        EXPO_PUBLIC_APP_URL: envFromFile.EXPO_PUBLIC_APP_URL ?? process.env.EXPO_PUBLIC_APP_URL,
+        EXPO_PUBLIC_SENTRY_DSN: envFromFile.EXPO_PUBLIC_SENTRY_DSN ?? process.env.EXPO_PUBLIC_SENTRY_DSN,
+        APP_ENV: appEnv,
+      },
     },
-  },
+  };
 };

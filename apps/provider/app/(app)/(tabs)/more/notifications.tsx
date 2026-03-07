@@ -18,6 +18,7 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatTimeAgo } from "@/lib/format";
+import { Colors } from "@/constants/colors";
 
 interface Notification {
   id: string;
@@ -57,37 +58,25 @@ function getNotificationIcon(type: string): {
   switch (type) {
     case "new_booking":
     case "booking_reminder":
-      return { name: "book-outline", color: "#6366f1", bg: "bg-indigo-50" };
+      return { name: "book-outline", color: "#6366f1", bg: "#eef2ff" };
     case "booking_cancelled":
-      return { name: "close-circle-outline", color: "#ef4444", bg: "bg-red-50" };
+      return { name: "close-circle-outline", color: "#ef4444", bg: "#fef2f2" };
     case "booking_completed":
-      return {
-        name: "checkmark-circle-outline",
-        color: "#22c55e",
-        bg: "bg-green-50",
-      };
+      return { name: "checkmark-circle-outline", color: "#22c55e", bg: "#f0fdf4" };
     case "new_review":
-      return { name: "star-outline", color: "#f59e0b", bg: "bg-amber-50" };
+      return { name: "star-outline", color: "#f59e0b", bg: "#fffbeb" };
     case "new_message":
-      return { name: "chatbubble-outline", color: "#3b82f6", bg: "bg-blue-50" };
+      return { name: "chatbubble-outline", color: "#3b82f6", bg: "#eff6ff" };
     case "payment_received":
     case "payout_sent":
-      return { name: "cash-outline", color: "#22c55e", bg: "bg-green-50" };
+      return { name: "cash-outline", color: "#22c55e", bg: "#f0fdf4" };
     case "payment_failed":
-      return { name: "card-outline", color: "#ef4444", bg: "bg-red-50" };
+      return { name: "card-outline", color: "#ef4444", bg: "#fef2f2" };
     case "system":
     case "announcement":
-      return {
-        name: "information-circle-outline",
-        color: "#6b7280",
-        bg: "bg-gray-100",
-      };
+      return { name: "information-circle-outline", color: "#6b7280", bg: Colors.gray[100] };
     default:
-      return {
-        name: "notifications-outline",
-        color: "#6b7280",
-        bg: "bg-gray-100",
-      };
+      return { name: "notifications-outline", color: "#6b7280", bg: Colors.gray[100] };
   }
 }
 
@@ -148,62 +137,52 @@ function SwipeableNotificationItem({
   }
 
   return (
-    <View className="overflow-hidden">
-      {/* Delete background */}
-      <View className="absolute bottom-0 right-0 top-0 w-20 items-center justify-center bg-red-500">
+    <View style={{ overflow: "hidden" }}>
+      <View style={{ position: "absolute", bottom: 0, right: 0, top: 0, width: 80, alignItems: "center", justifyContent: "center", backgroundColor: "#ef4444" }}>
         <TouchableOpacity
           onPress={onDelete}
-          className="items-center justify-center p-3"
+          style={{ alignItems: "center", justifyContent: "center", padding: 12 }}
           accessibilityLabel="Delete notification"
           accessibilityRole="button"
         >
           <Ionicons name="trash-outline" size={20} color="#fff" />
-          <Text className="mt-0.5 text-xs text-white">Delete</Text>
+          <Text style={{ marginTop: 2, fontSize: 12, color: Colors.white }}>Delete</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Main content */}
-      <Animated.View
-        style={{ transform: [{ translateX }] }}
-        className="bg-white"
-      >
+      <Animated.View style={{ transform: [{ translateX }], backgroundColor: Colors.white }}>
         <TouchableOpacity
-          className={`flex-row items-start border-b border-gray-50 px-1 py-3.5 ${
-            isUnread ? "bg-indigo-50/30" : "bg-white"
-          }`}
+          style={[
+            { flexDirection: "row", alignItems: "flex-start", borderBottomWidth: 1, borderBottomColor: Colors.gray[50], paddingHorizontal: 4, paddingVertical: 14 },
+            isUnread ? { backgroundColor: "rgba(238,242,255,0.5)" } : { backgroundColor: Colors.white },
+          ]}
           onPress={onPress}
           onLongPress={handleSwipeRelease}
           accessibilityLabel={`${isUnread ? "Unread notification: " : ""}${notif.title}. ${notif.message}`}
           accessibilityRole="button"
           accessibilityHint="Tap to view details, long press to reveal delete"
         >
-          <View
-            className={`${iconInfo.bg} h-10 w-10 items-center justify-center rounded-xl`}
-          >
+          <View style={{ backgroundColor: iconInfo.bg, height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12 }}>
             <Ionicons name={iconInfo.name} size={18} color={iconInfo.color} />
           </View>
-          <View className="ml-3 flex-1">
-            <View className="flex-row items-start justify-between">
+          <View style={{ marginLeft: 12, flex: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
               <Text
-                className={`flex-1 text-sm ${
-                  isUnread
-                    ? "font-semibold text-gray-900"
-                    : "font-medium text-gray-700"
-                }`}
+                style={[ { flex: 1, fontSize: 14 }, isUnread ? { fontWeight: "600", color: Colors.gray[900] } : { fontWeight: "500", color: Colors.gray[700] } ]}
                 numberOfLines={2}
               >
                 {notif.title}
               </Text>
-              <Text className="ml-2 text-xs text-gray-400">
+              <Text style={{ marginLeft: 8, fontSize: 12, color: Colors.gray[400] }}>
                 {formatTimeAgo(notif.created_at)}
               </Text>
             </View>
-            <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={2}>
+            <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>
               {notif.message}
             </Text>
           </View>
           {isUnread && (
-            <View className="ml-2 mt-1 h-2.5 w-2.5 rounded-full bg-indigo-500" />
+            <View style={{ marginLeft: 8, marginTop: 4, height: 10, width: 10, borderRadius: 5, backgroundColor: "#6366f1" }} />
           )}
         </TouchableOpacity>
       </Animated.View>
@@ -315,27 +294,20 @@ export default function NotificationsScreen() {
         rightAction={
           unreadCount > 0 ? (
             <TouchableOpacity
-              className="flex-row items-center rounded-full bg-indigo-50 px-3 py-2"
+              style={{ flexDirection: "row", alignItems: "center", borderRadius: 9999, backgroundColor: "#eef2ff", paddingHorizontal: 12, paddingVertical: 8 }}
               onPress={handleMarkAllRead}
               accessibilityLabel="Mark all notifications as read"
               accessibilityRole="button"
             >
-              <Ionicons
-                name="checkmark-done-outline"
-                size={16}
-                color="#6366f1"
-              />
-              <Text className="ml-1 text-xs font-medium text-indigo-600">
-                Mark all read
-              </Text>
+              <Ionicons name="checkmark-done-outline" size={16} color="#6366f1" />
+              <Text style={{ marginLeft: 4, fontSize: 12, fontWeight: "500", color: "#4f46e6" }}>Mark all read</Text>
             </TouchableOpacity>
           ) : undefined
         }
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
-      {/* Filters */}
-      <View className="mb-3">
+      <View style={{ marginBottom: 12 }}>
         <FilterChipGroup
           options={FILTER_OPTIONS}
           selected={filter}

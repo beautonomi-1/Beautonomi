@@ -1,3 +1,4 @@
+import { View, Platform } from "react-native";
 import { Stack } from "expo-router";
 import { RoleGate } from "@/components/RoleGate";
 import { SingularLinkHandler } from "@/components/SingularLinkHandler";
@@ -6,7 +7,13 @@ export default function AppLayout() {
   return (
     <RoleGate>
       <SingularLinkHandler />
-      <Stack screenOptions={{ headerShown: false }}>
+      <View style={{ flex: 1, ...(Platform.OS === "web" ? { width: "100%" } : {}) }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { flex: 1, ...(Platform.OS === "web" ? { width: "100%" } : {}) },
+        }}
+      >
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="account-settings" options={{ headerShown: false }} />
         <Stack.Screen name="partner-profile" options={{ headerShown: false }} />
@@ -26,7 +33,9 @@ export default function AppLayout() {
         <Stack.Screen name="product-orders" options={{ headerShown: false, title: "My Orders" }} />
         <Stack.Screen name="on-demand/waiting" options={{ headerShown: false }} />
         <Stack.Screen name="on-demand/result" options={{ headerShown: false }} />
+        <Stack.Screen name="more-providers/[section]" options={{ headerShown: true }} />
       </Stack>
+      </View>
     </RoleGate>
   );
 }

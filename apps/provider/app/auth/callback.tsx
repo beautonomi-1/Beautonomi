@@ -94,12 +94,12 @@ export default function AuthCallbackScreen() {
 
   if (status === "error") {
     return (
-      <View className="flex-1 items-center justify-center p-6">
-        <Text className="mb-4 text-center text-base text-red-600">
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Text style={{ marginBottom: 16, textAlign: "center", fontSize: 16, color: Colors.error }}>
           {errorMsg}
         </Text>
         <Text
-          className="text-primary underline"
+          style={{ color: Colors.primary, textDecorationLine: "underline" }}
           onPress={() => router.replace("/(auth)/login" as never)}
         >
           Back to login
@@ -109,9 +109,9 @@ export default function AuthCallbackScreen() {
   }
 
   return (
-    <View className="flex-1 items-center justify-center">
+    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
       <ActivityIndicator size="large" color={Colors.primary} />
-      <Text className="mt-4 text-gray-600">Completing sign in...</Text>
+      <Text style={{ marginTop: 16, color: Colors.gray[600] }}>Completing sign in...</Text>
     </View>
   );
 }

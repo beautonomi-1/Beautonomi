@@ -11,12 +11,14 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { Colors } from "@/constants/colors";
 
 interface ServiceCategory {
   id: string;
@@ -46,6 +48,7 @@ interface ProductsResponse {
 
 export default function CatalogueOverviewScreen() {
   const router = useRouter();
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [viewService, setViewService] = useState<ServiceItem | null>(null);
   const [serviceDetail, setServiceDetail] = useState<ServiceItem | null>(null);
@@ -98,7 +101,7 @@ export default function CatalogueOverviewScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Catalogue" showBack />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -109,7 +112,7 @@ export default function CatalogueOverviewScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Catalogue" showBack />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={servicesError} onRetry={onRefresh} />
         </View>
       </ScreenContainer>
@@ -120,33 +123,27 @@ export default function CatalogueOverviewScreen() {
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Catalogue" showBack subtitle="Services & products" />
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
       >
-        <View className="mb-6">
-          <View className="mb-3 flex-row items-center justify-between">
-            <Text className="text-sm font-semibold uppercase tracking-wider text-gray-500">
-              Services
-            </Text>
+        <View style={{ marginBottom: 24 }}>
+          <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", letterSpacing: 1, textTransform: "uppercase", color: Colors.gray[500] }}>Services</Text>
             {services.length > 0 && (
-              <Text className="text-sm text-gray-500">
-                {services.length} service{services.length !== 1 ? "s" : ""}
-              </Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{services.length} service{services.length !== 1 ? "s" : ""}</Text>
             )}
           </View>
           {services.length === 0 ? (
-            <View className="rounded-2xl border border-gray-100 bg-gray-50/50 p-6">
-              <View className="mb-2 h-12 w-12 items-center justify-center rounded-xl bg-pink-100">
+            <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: "rgba(249,250,251,0.5)", padding: 24 }}>
+              <View style={{ marginBottom: 8, height: 48, width: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#fce7f3" }}>
                 <Ionicons name="cut-outline" size={24} color="#ec4899" />
               </View>
-              <Text className="font-medium text-gray-900">No services yet</Text>
-              <Text className="mt-1 text-sm text-gray-500">
-                Add services in the portal to show them here.
-              </Text>
+              <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>No services yet</Text>
+              <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[500] }}>Add services in the portal to show them here.</Text>
             </View>
           ) : (
             services.map((s) => (
@@ -154,16 +151,14 @@ export default function CatalogueOverviewScreen() {
                 key={s.id}
                 onPress={() => openServiceDetail(s)}
                 activeOpacity={0.7}
-                className="mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4"
+                style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               >
-                <View className="h-10 w-10 items-center justify-center rounded-xl bg-pink-100">
+                <View style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#fce7f3" }}>
                   <Ionicons name="cut-outline" size={20} color="#ec4899" />
                 </View>
-                <View className="ml-3 flex-1 min-w-0">
-                  <Text className="font-semibold text-gray-900" numberOfLines={1}>
-                    {s.title}
-                  </Text>
-                  <Text className="mt-0.5 text-sm text-gray-600">
+                <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>{s.title}</Text>
+                  <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }}>
                     {s.currency === "ZAR" ? "R" : s.currency} {Number(s.price).toFixed(2)}
                     {" · "}
                     {s.duration_minutes} min
@@ -176,49 +171,39 @@ export default function CatalogueOverviewScreen() {
           )}
         </View>
 
-        <View className="mb-2">
-          <View className="mb-3 flex-row items-center justify-between">
-            <Text className="text-sm font-semibold uppercase tracking-wider text-gray-500">
-              Products
-            </Text>
+        <View style={{ marginBottom: 8 }}>
+          <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", letterSpacing: 1, textTransform: "uppercase", color: Colors.gray[500] }}>Products</Text>
             {productsTotal > 0 && (
-              <Text className="text-sm text-gray-500">
-                {productsTotal} product{productsTotal !== 1 ? "s" : ""}
-              </Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{productsTotal} product{productsTotal !== 1 ? "s" : ""}</Text>
             )}
           </View>
           <TouchableOpacity
             onPress={goToProducts}
             activeOpacity={0.7}
-            className="mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4"
+            style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
           >
-            <View className="h-10 w-10 items-center justify-center rounded-xl bg-violet-100">
+            <View style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#ede9fe" }}>
               <Ionicons name="cube-outline" size={20} color="#8b5cf6" />
             </View>
-            <View className="ml-3 flex-1">
-              <Text className="font-semibold text-gray-900">Products & inventory</Text>
-              <Text className="mt-0.5 text-sm text-gray-500">
-                {productsTotal === 0
-                  ? "Add and manage products"
-                  : `View all ${productsTotal} product${productsTotal !== 1 ? "s" : ""}`}
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Products & inventory</Text>
+              <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }}>
+                {productsTotal === 0 ? "Add and manage products" : `View all ${productsTotal} product${productsTotal !== 1 ? "s" : ""}`}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
           </TouchableOpacity>
           {products.length > 0 && (
-            <View className="rounded-xl border border-gray-100 bg-gray-50/50 px-3 py-2">
+            <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: "rgba(249,250,251,0.5)", paddingHorizontal: 12, paddingVertical: 8 }}>
               {products.slice(0, 3).map((p) => (
-                <View key={p.id} className="flex-row items-center py-2">
-                  <Text className="flex-1 text-sm text-gray-700" numberOfLines={1}>
-                    {p.name}
-                  </Text>
-                  <Text className="text-sm font-medium text-gray-600">
-                    R {Number(p.retail_price).toFixed(2)}
-                  </Text>
+                <View key={p.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
+                  <Text style={{ flex: 1, fontSize: 14, color: Colors.gray[700] }} numberOfLines={1}>{p.name}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>R {Number(p.retail_price).toFixed(2)}</Text>
                 </View>
               ))}
               {productsTotal > 3 && (
-                <Text className="py-1 text-xs text-gray-500">+{productsTotal - 3} more</Text>
+                <Text style={{ paddingVertical: 4, fontSize: 12, color: Colors.gray[500] }}>+{productsTotal - 3} more</Text>
               )}
             </View>
           )}
@@ -233,40 +218,30 @@ export default function CatalogueOverviewScreen() {
           subtitle={`${viewService.currency === "ZAR" ? "R" : viewService.currency} ${Number(viewService.price).toFixed(2)} · ${viewService.duration_minutes} min`}
         >
           {loadingDetail ? (
-            <View className="items-center py-6">
+            <View style={{ alignItems: "center", paddingVertical: 24 }}>
               <ActivityIndicator size="small" color="#6366f1" />
             </View>
           ) : serviceDetail ? (
             <>
               {serviceDetail.description ? (
-                <Text className="mb-3 text-sm text-gray-600">
-                  {serviceDetail.description}
-                </Text>
+                <Text style={{ marginBottom: 12, fontSize: 14, color: Colors.gray[600] }}>{serviceDetail.description}</Text>
               ) : null}
-              <View className="flex-row flex-wrap gap-2">
-                <View className="rounded-full bg-gray-100 px-2.5 py-1">
-                  <Text className="text-xs font-medium text-gray-700">
-                    {serviceDetail.duration_minutes} min
-                  </Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                <View style={{ borderRadius: 9999, backgroundColor: Colors.gray[100], paddingHorizontal: 10, paddingVertical: 4, marginRight: 8, marginBottom: 8 }}>
+                  <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700] }}>{serviceDetail.duration_minutes} min</Text>
                 </View>
                 {serviceDetail.buffer_minutes ? (
-                  <View className="rounded-full bg-amber-100 px-2.5 py-1">
-                    <Text className="text-xs font-medium text-amber-800">
-                      +{serviceDetail.buffer_minutes} min buffer
-                    </Text>
+                  <View style={{ borderRadius: 9999, backgroundColor: "#fef3c7", paddingHorizontal: 10, paddingVertical: 4, marginRight: 8, marginBottom: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: "#92400e" }}>+{serviceDetail.buffer_minutes} min buffer</Text>
                   </View>
                 ) : null}
                 {categoryName(serviceDetail) ? (
-                  <View className="rounded-full bg-pink-100 px-2.5 py-1">
-                    <Text className="text-xs font-medium text-pink-800">
-                      {categoryName(serviceDetail)}
-                    </Text>
+                  <View style={{ borderRadius: 9999, backgroundColor: "#fce7f3", paddingHorizontal: 10, paddingVertical: 4, marginRight: 8, marginBottom: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: "#9d174d" }}>{categoryName(serviceDetail)}</Text>
                   </View>
                 ) : null}
               </View>
-              <Text className="mt-4 text-xs text-gray-500">
-                To edit this service, use the provider portal.
-              </Text>
+              <Text style={{ marginTop: 16, fontSize: 12, color: Colors.gray[500] }}>To edit this service, use the provider portal.</Text>
             </>
           ) : null}
         </BottomSheet>

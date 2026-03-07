@@ -162,7 +162,7 @@ export default function WaitlistMatchesDashboard({ providerId }: WaitlistMatches
                   </div>
                   <Button
                     onClick={() => handleQuickBook(match)}
-                    className="bg-[#FF0077] hover:bg-[#D60565]"
+                    className="bg-primary hover:bg-primary-hover"
                   >
                     Quick Book
                   </Button>

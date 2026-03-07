@@ -90,7 +90,7 @@ export function ClientQuickView({
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent side="right" className="w-full sm:max-w-md p-0 bg-white">
         {/* Header with Avatar */}
-        <div className="bg-gradient-to-br from-[#FF0077] to-[#FF6B35] p-6 text-white">
+        <div className="bg-gradient-to-br from-primary to-[#FF6B35] p-6 text-white">
           <SheetHeader className="text-left">
             <div className="flex items-start gap-4">
               <Avatar className="w-16 h-16 border-2 border-white/30">
@@ -221,8 +221,8 @@ export function ClientQuickView({
             </h3>
             
             <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-              <div className="w-10 h-10 rounded-full bg-[#FF0077]/10 flex items-center justify-center">
-                <Calendar className="w-5 h-5 text-[#FF0077]" />
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <Calendar className="w-5 h-5 text-primary" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-500">Last Visit</p>
@@ -255,7 +255,7 @@ export function ClientQuickView({
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {client.preferred_services.map((service) => (
-                    <Badge key={service} variant="secondary" className="bg-[#FF0077]/10 text-[#FF0077]">
+                    <Badge key={service} variant="secondary" className="bg-primary/10 text-primary">
                       <Star className="w-3 h-3 mr-1" />
                       {service}
                     </Badge>
@@ -312,7 +312,7 @@ export function ClientQuickView({
             </Button>
             <Button
               onClick={() => onBookAppointment?.(client.id)}
-              className="flex items-center gap-2 bg-[#FF0077] hover:bg-[#D60565]"
+              className="flex items-center gap-2 bg-primary hover:bg-primary-hover"
             >
               <Calendar className="w-4 h-4" />
               Book

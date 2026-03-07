@@ -22,6 +22,7 @@ import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { haptic } from "@/lib/haptics";
+import { Colors } from "@/constants/colors";
 
 interface Milestone {
   id: string;
@@ -58,33 +59,15 @@ interface LoyaltyData {
 
 type Tab = "overview" | "history" | "milestones";
 
-/** Animated progress bar that smoothly fills to a target percentage */
-function AnimatedProgressBar({
-  progress,
-  color = "bg-amber-500",
-}: {
-  progress: number;
-  color?: string;
-}) {
+function AnimatedProgressBar({ progress, color = "#F59E0B" }: { progress: number; color?: string }) {
   const width = useSharedValue(0);
-
   useEffect(() => {
-    width.value = withTiming(Math.min(100, Math.max(0, progress)), {
-      duration: 800,
-      easing: Easing.out(Easing.cubic),
-    });
+    width.value = withTiming(Math.min(100, Math.max(0, progress)), { duration: 800, easing: Easing.out(Easing.cubic) });
   }, [progress, width]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    width: `${width.value}%` as any,
-  }));
-
+  const animatedStyle = useAnimatedStyle(() => ({ width: `${width.value}%` as any }));
   return (
-    <View className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
-      <Animated.View
-        className={`h-2.5 ${color} rounded-full`}
-        style={animatedStyle}
-      />
+    <View style={{ height: 10, backgroundColor: Colors.gray[200], borderRadius: 9999, overflow: "hidden" }}>
+      <Animated.View style={[animatedStyle, { height: 10, backgroundColor: color, borderRadius: 9999 }]} />
     </View>
   );
 }
@@ -211,126 +194,89 @@ export default function LoyaltyScreen() {
       refreshing={refreshing}
       onRefresh={handleRefresh}
     >
-      <View className="flex-1">
-        {/* Points Card */}
-        <View className="rounded-2xl bg-amber-50 p-6 items-center mb-4">
-          <Text className="text-sm text-amber-700 font-medium uppercase tracking-wide">
-            Your Points
-          </Text>
-          <Text className="text-4xl font-bold text-amber-900 mt-1">
-            {points.toLocaleString()}
-          </Text>
+      <View style={{ flex: 1 }}>
+        <View style={{ borderRadius: 16, backgroundColor: "#FFFBEB", padding: 24, alignItems: "center", marginBottom: 16 }}>
+          <Text style={{ fontSize: 14, color: "#B45309", fontWeight: "500", textTransform: "uppercase", letterSpacing: 0.5 }}>Your Points</Text>
+          <Text style={{ fontSize: 36, fontWeight: "700", color: "#78350F", marginTop: 4 }}>{points.toLocaleString()}</Text>
           {rate > 0 && (
-            <Text className="text-sm text-amber-700 mt-1">
-              Worth {currency} {(points * rate).toFixed(2)}
-            </Text>
+            <Text style={{ fontSize: 14, color: "#B45309", marginTop: 4 }}>Worth {currency} {(points * rate).toFixed(2)}</Text>
           )}
-          <Text className="text-xs text-amber-600 mt-2">{earnDesc}</Text>
-
-          {/* Redeem button */}
+          <Text style={{ fontSize: 12, color: "#D97706", marginTop: 8 }}>{earnDesc}</Text>
           <TouchableOpacity
             onPress={handleRedeem}
             disabled={!canRedeem || redeeming}
-            className={`mt-4 px-6 py-2.5 rounded-full ${canRedeem ? "bg-amber-600" : "bg-amber-300"}`}
+            style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 9999, backgroundColor: canRedeem ? "#D97706" : "#FCD34D" }}
             accessibilityRole="button"
             accessibilityLabel="Redeem points"
             accessibilityState={{ disabled: !canRedeem }}
           >
             {redeeming ? (
-              <ActivityIndicator color="#fff" size="small" />
+              <ActivityIndicator color={Colors.white} size="small" />
             ) : (
-              <Text className="text-white font-semibold text-sm">
-                {canRedeem ? "Redeem to Wallet" : `Need ${minRedeem}+ to redeem`}
-              </Text>
+              <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 14 }}>{canRedeem ? "Redeem to Wallet" : `Need ${minRedeem}+ to redeem`}</Text>
             )}
           </TouchableOpacity>
         </View>
-
-        {/* Stats row */}
-        <View className="flex-row gap-3 mb-4">
-          <View className="flex-1 rounded-xl bg-gray-50 p-3 items-center">
-            <Text className="text-xs text-gray-500">Lifetime Earned</Text>
-            <Text className="text-lg font-bold text-gray-900">{lifetimePoints.toLocaleString()}</Text>
+        <View style={{ flexDirection: "row", marginBottom: 16 }}>
+          <View style={{ flex: 1, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12, alignItems: "center", marginRight: 12 }}>
+            <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Lifetime Earned</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{lifetimePoints.toLocaleString()}</Text>
           </View>
-          <View className="flex-1 rounded-xl bg-gray-50 p-3 items-center">
-            <Text className="text-xs text-gray-500">Available</Text>
-            <Text className="text-lg font-bold text-amber-600">{points.toLocaleString()}</Text>
+          <View style={{ flex: 1, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12, alignItems: "center" }}>
+            <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Available</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: "#D97706" }}>{points.toLocaleString()}</Text>
           </View>
         </View>
-
-        {/* Share & Earn referral button */}
         <TouchableOpacity
           onPress={handleShareReferral}
-          className="flex-row items-center justify-center bg-indigo-50 rounded-xl p-3.5 mb-4 border border-indigo-100"
+          style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#EEF2FF", borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: "#C7D2FE" }}
           accessibilityRole="button"
           accessibilityLabel="Share referral code and earn bonus points"
         >
           <Ionicons name="share-social-outline" size={18} color="#6366f1" />
-          <Text className="ml-2 text-sm font-semibold text-indigo-700">Share & Earn Bonus Points</Text>
+          <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "600", color: "#4338CA" }}>Share & Earn Bonus Points</Text>
         </TouchableOpacity>
-
-        {/* Tab bar */}
-        <View className="flex-row mb-4 rounded-xl bg-gray-100 p-1">
+        <View style={{ flexDirection: "row", marginBottom: 16, borderRadius: 12, backgroundColor: Colors.gray[100], padding: 4 }}>
           {tabs.map((t) => (
             <TouchableOpacity
               key={t.key}
               onPress={() => { setTab(t.key); haptic.light(); }}
-              className={`flex-1 py-2 rounded-lg ${tab === t.key ? "bg-white" : ""}`}
+              style={{ flex: 1, paddingVertical: 8, borderRadius: 8, backgroundColor: tab === t.key ? Colors.white : "transparent" }}
               accessibilityRole="tab"
               accessibilityState={{ selected: tab === t.key }}
             >
-              <Text
-                className={`text-center text-sm font-medium ${
-                  tab === t.key ? "text-gray-900" : "text-gray-500"
-                }`}
-              >
-                {t.label}
-              </Text>
+              <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: tab === t.key ? Colors.gray[900] : Colors.gray[500] }}>{t.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Tab content */}
         {tab === "overview" && (
-          <View className="gap-3">
-            {/* Next milestone progress — animated */}
+          <View>
             {data?.next_milestone && (
-              <View className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
-                <Text className="text-sm font-semibold text-amber-900 mb-1">
-                  Next Milestone
-                </Text>
-                <Text className="text-base font-bold text-gray-900">
-                  {data.next_milestone.name}
-                </Text>
-                <Text className="text-xs text-gray-600 mt-0.5">
-                  {data.next_milestone.reward_description}
-                </Text>
-                <View className="mt-3">
-                  <AnimatedProgressBar
-                    progress={(lifetimePoints / data.next_milestone.points_required) * 100}
-                  />
+              <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#FCD34D", backgroundColor: "rgba(255,251,235,0.5)", padding: 16 }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#78350F", marginBottom: 4 }}>Next Milestone</Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{data.next_milestone.name}</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 2 }}>{data.next_milestone.reward_description}</Text>
+                <View style={{ marginTop: 12 }}>
+                  <AnimatedProgressBar progress={(lifetimePoints / data.next_milestone.points_required) * 100} />
                 </View>
-                <Text className="text-xs text-gray-500 mt-1 text-right">
-                  {lifetimePoints} / {data.next_milestone.points_required} pts
-                </Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4, textAlign: "right" }}>{lifetimePoints} / {data.next_milestone.points_required} pts</Text>
               </View>
             )}
-
-            {/* How to earn */}
-            <View className="rounded-xl bg-gray-50 p-4">
-              <Text className="text-sm font-semibold text-gray-900 mb-3">How to Earn Points</Text>
+            <View style={{ borderRadius: 12, backgroundColor: Colors.gray[50], padding: 16, marginTop: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>How to Earn Points</Text>
               {[
                 { icon: "calendar-outline" as const, label: "Complete a booking", desc: "Earn points on every visit" },
                 { icon: "star-outline" as const, label: "Leave a review", desc: "Share your experience" },
                 { icon: "people-outline" as const, label: "Refer a friend", desc: "Both of you earn bonus points" },
               ].map((item, i) => (
-                <View key={i} className="flex-row items-center mb-3 last:mb-0">
-                  <View className="w-10 h-10 rounded-full bg-amber-100 items-center justify-center">
+                <View key={i} style={{ flexDirection: "row", alignItems: "center", marginBottom: i < 2 ? 12 : 0 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#FEF3C7", alignItems: "center", justifyContent: "center" }}>
                     <Ionicons name={item.icon} size={18} color="#92400e" />
                   </View>
-                  <View className="ml-3 flex-1">
-                    <Text className="text-sm font-medium text-gray-900">{item.label}</Text>
-                    <Text className="text-xs text-gray-500">{item.desc}</Text>
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{item.label}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{item.desc}</Text>
                   </View>
                 </View>
               ))}
@@ -341,32 +287,22 @@ export default function LoyaltyScreen() {
         {tab === "history" && (
           <View>
             {(!data?.history || data.history.length === 0) ? (
-              <View className="py-12 items-center">
-                <Ionicons name="receipt-outline" size={40} color="#d1d5db" />
-                <Text className="text-gray-400 mt-3">No transactions yet</Text>
-                <Text className="text-xs text-gray-400 mt-1">Points will appear here after your first booking</Text>
+              <View style={{ paddingVertical: 48, alignItems: "center" }}>
+                <Ionicons name="receipt-outline" size={40} color={Colors.gray[300]} />
+                <Text style={{ color: Colors.gray[400], marginTop: 12 }}>No transactions yet</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 4 }}>Points will appear here after your first booking</Text>
               </View>
             ) : (
               data.history.map((tx) => (
-                <View key={tx.id} className="flex-row items-center py-3 border-b border-gray-100">
-                  <View className={`w-8 h-8 rounded-full items-center justify-center ${
-                    tx.type === "earn" ? "bg-green-100" : tx.type === "redeem" ? "bg-blue-100" : "bg-red-100"
-                  }`}>
-                    <Ionicons
-                      name={tx.type === "earn" ? "add" : tx.type === "redeem" ? "gift-outline" : "time-outline"}
-                      size={16}
-                      color={tx.type === "earn" ? "#16a34a" : tx.type === "redeem" ? "#2563eb" : "#dc2626"}
-                    />
+                <View key={tx.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: tx.type === "earn" ? "#DCFCE7" : tx.type === "redeem" ? "#DBEAFE" : "#FEE2E2" }}>
+                    <Ionicons name={tx.type === "earn" ? "add" : tx.type === "redeem" ? "gift-outline" : "time-outline"} size={16} color={tx.type === "earn" ? "#16a34a" : tx.type === "redeem" ? "#2563eb" : "#dc2626"} />
                   </View>
-                  <View className="ml-3 flex-1">
-                    <Text className="text-sm text-gray-900">{tx.description}</Text>
-                    <Text className="text-xs text-gray-400">{formatDate(tx.created_at)}</Text>
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{tx.description}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{formatDate(tx.created_at)}</Text>
                   </View>
-                  <Text className={`text-sm font-semibold ${
-                    tx.type === "earn" ? "text-green-600" : tx.type === "redeem" ? "text-blue-600" : "text-red-500"
-                  }`}>
-                    {tx.type === "earn" ? "+" : "-"}{Math.abs(tx.points)}
-                  </Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: tx.type === "earn" ? "#16a34a" : tx.type === "redeem" ? "#2563eb" : "#dc2626" }}>{tx.type === "earn" ? "+" : "-"}{Math.abs(tx.points)}</Text>
                 </View>
               ))
             )}
@@ -376,43 +312,28 @@ export default function LoyaltyScreen() {
         {tab === "milestones" && (
           <View>
             {(!data?.milestones || data.milestones.length === 0) ? (
-              <View className="py-12 items-center">
-                <Ionicons name="trophy-outline" size={40} color="#d1d5db" />
-                <Text className="text-gray-400 mt-3">No milestones available</Text>
+              <View style={{ paddingVertical: 48, alignItems: "center" }}>
+                <Ionicons name="trophy-outline" size={40} color={Colors.gray[300]} />
+                <Text style={{ color: Colors.gray[400], marginTop: 12 }}>No milestones available</Text>
               </View>
             ) : (
               data.milestones.map((m) => {
-                const milestoneProgress = m.completed
-                  ? 100
-                  : Math.min(100, (lifetimePoints / m.points_required) * 100);
+                const milestoneProgress = m.completed ? 100 : Math.min(100, (lifetimePoints / m.points_required) * 100);
                 return (
-                  <View key={m.id} className={`py-3 border-b border-gray-100 ${m.completed ? "opacity-80" : ""}`}>
-                    <View className="flex-row items-center">
-                      <View className={`w-10 h-10 rounded-full items-center justify-center ${
-                        m.completed ? "bg-green-100" : "bg-gray-100"
-                      }`}>
-                        {m.completed ? (
-                          <Ionicons name="checkmark-circle" size={20} color="#16a34a" />
-                        ) : (
-                          <Ionicons name="trophy-outline" size={18} color="#9ca3af" />
-                        )}
+                  <View key={m.id} style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.gray[100], opacity: m.completed ? 0.8 : 1 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: m.completed ? "#DCFCE7" : Colors.gray[100] }}>
+                        {m.completed ? <Ionicons name="checkmark-circle" size={20} color="#16a34a" /> : <Ionicons name="trophy-outline" size={18} color={Colors.gray[400]} />}
                       </View>
-                      <View className="ml-3 flex-1">
-                        <Text className={`text-sm font-medium ${m.completed ? "text-green-800" : "text-gray-900"}`}>
-                          {m.name}
-                        </Text>
-                        <Text className="text-xs text-gray-500">{m.reward_description}</Text>
-                        <Text className="text-xs text-gray-400 mt-0.5">
-                          {m.completed ? "Completed" : `${m.points_required.toLocaleString()} pts required`}
-                        </Text>
+                      <View style={{ marginLeft: 12, flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: "500", color: m.completed ? "#166534" : Colors.gray[900] }}>{m.name}</Text>
+                        <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{m.reward_description}</Text>
+                        <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>{m.completed ? "Completed" : `${m.points_required.toLocaleString()} pts required`}</Text>
                       </View>
                     </View>
                     {!m.completed && (
-                      <View className="mt-2 ml-13">
-                        <AnimatedProgressBar
-                          progress={milestoneProgress}
-                          color="bg-amber-400"
-                        />
+                      <View style={{ marginTop: 8, marginLeft: 52 }}>
+                        <AnimatedProgressBar progress={milestoneProgress} color="#FBBF24" />
                       </View>
                     )}
                   </View>

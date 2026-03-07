@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -18,6 +19,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { Colors } from "@/constants/colors";
 
 interface Review {
   id: string;
@@ -44,6 +46,7 @@ const STATUS_FILTERS = [
 ];
 
 export default function ReviewsScreen() {
+  const { screenPadding } = useResponsive();
   const [status, setStatus] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [respondReview, setRespondReview] = useState<Review | null>(null);
@@ -95,7 +98,7 @@ export default function ReviewsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Reviews" showBack />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -106,7 +109,7 @@ export default function ReviewsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Reviews" showBack />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -120,15 +123,15 @@ export default function ReviewsScreen() {
         showBack
         subtitle={`${reviews.length} review${reviews.length === 1 ? "" : "s"}`}
       />
-      <View className="mb-3 flex-row flex-wrap gap-2 px-4">
+      <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 16 }}>
         {STATUS_FILTERS.map((opt) => (
           <TouchableOpacity
             key={opt.value}
             onPress={() => setStatus(opt.value)}
-            className={`rounded-full px-3.5 py-2 ${status === opt.value ? "bg-amber-500" : "bg-gray-100"}`}
+            style={{ marginRight: 8, marginBottom: 8, borderRadius: 9999, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: status === opt.value ? "#f59e0b" : Colors.gray[100] }}
           >
             <Text
-              className={`text-sm font-medium ${status === opt.value ? "text-white" : "text-gray-700"}`}
+              style={{ fontSize: 14, fontWeight: "500", color: status === opt.value ? Colors.white : Colors.gray[700] }}
             >
               {opt.label}
             </Text>
@@ -136,8 +139,8 @@ export default function ReviewsScreen() {
         ))}
       </View>
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -157,10 +160,10 @@ export default function ReviewsScreen() {
           reviews.map((review) => (
             <View
               key={review.id}
-              className="mb-3 rounded-2xl border border-gray-200 bg-white p-4"
+              style={{ marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
             >
-              <View className="flex-row items-start justify-between">
-                <View className="flex-row items-center">
+              <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
                   {[1, 2, 3, 4, 5].map((star) => (
                     <Ionicons
                       key={star}
@@ -171,38 +174,38 @@ export default function ReviewsScreen() {
                   ))}
                 </View>
                 {!review.provider_response && (
-                  <View className="rounded-full bg-amber-100 px-2 py-0.5">
-                    <Text className="text-xs font-medium text-amber-800">To respond</Text>
+                  <View style={{ borderRadius: 9999, backgroundColor: "#fef3c2", paddingHorizontal: 8, paddingVertical: 2 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: "#92400e" }}>To respond</Text>
                   </View>
                 )}
               </View>
-              <Text className="mt-1 text-sm font-medium text-gray-900">
+              <Text style={{ marginTop: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
                 {review.customer?.full_name || "Customer"}
               </Text>
-              <Text className="mt-0.5 text-xs text-gray-500">
+              <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
                 {review.booking?.scheduled_at
                   ? new Date(review.booking.scheduled_at).toLocaleDateString()
                   : new Date(review.created_at).toLocaleDateString()}
               </Text>
               {review.comment ? (
-                <Text className="mt-2 text-sm text-gray-700" numberOfLines={3}>
+                <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[700] }} numberOfLines={3}>
                   {review.comment}
                 </Text>
               ) : null}
               {review.provider_response ? (
-                <View className="mt-2 rounded-lg bg-gray-50 p-2">
-                  <Text className="text-xs font-medium text-gray-500">Your response</Text>
-                  <Text className="mt-0.5 text-sm text-gray-700" numberOfLines={2}>
+                <View style={{ marginTop: 8, borderRadius: 8, backgroundColor: Colors.gray[50], padding: 8 }}>
+                  <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Your response</Text>
+                  <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[700] }} numberOfLines={2}>
                     {review.provider_response}
                   </Text>
                 </View>
               ) : (
                 <TouchableOpacity
                   onPress={() => openRespond(review)}
-                  className="mt-2 flex-row items-center rounded-lg bg-amber-50 px-3 py-2"
+                  style={{ marginTop: 8, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#fffbeb", paddingHorizontal: 12, paddingVertical: 8 }}
                 >
                   <Ionicons name="chatbubble-outline" size={14} color="#f59e0b" />
-                  <Text className="ml-1 text-sm font-medium text-amber-700">
+                  <Text style={{ marginLeft: 4, fontSize: 14, fontWeight: "500", color: "#b45309" }}>
                     Respond
                   </Text>
                 </TouchableOpacity>
@@ -219,14 +222,14 @@ export default function ReviewsScreen() {
         subtitle={respondReview ? (respondReview.customer?.full_name || "Customer") : ""}
       >
         {respondReview?.comment ? (
-          <View className="mb-4 rounded-xl bg-gray-50 p-3">
-            <Text className="text-xs font-medium text-gray-500">Their review</Text>
-            <Text className="mt-1 text-sm text-gray-800">{respondReview.comment}</Text>
+          <View style={{ marginBottom: 16, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
+            <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Their review</Text>
+            <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[800] }}>{respondReview.comment}</Text>
           </View>
         ) : null}
-        <Text className="mb-2 text-sm font-medium text-gray-700">Your response *</Text>
+        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Your response *</Text>
         <TextInput
-          className="mb-4 min-h-[100px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={{ marginBottom: 16, minHeight: 100, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
           placeholder="Thank you for your feedback..."
           placeholderTextColor="#9ca3af"
           value={responseText}
@@ -234,7 +237,7 @@ export default function ReviewsScreen() {
           multiline
           maxLength={1000}
         />
-        <Text className="mb-4 text-xs text-gray-500">{responseText.length}/1000</Text>
+        <Text style={{ marginBottom: 16, fontSize: 12, color: Colors.gray[500] }}>{responseText.length}/1000</Text>
         <ActionButton
           label={responding ? "Sending…" : "Send response"}
           onPress={handleSubmitResponse}

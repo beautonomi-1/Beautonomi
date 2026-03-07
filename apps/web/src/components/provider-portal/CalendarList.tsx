@@ -57,8 +57,8 @@ const getAppointmentStyle = (status: Appointment["status"]) => {
       };
     default:
       return {
-        bg: "bg-[#FF0077]",
-        border: "border-[#FF0077]/20",
+        bg: "bg-primary",
+        border: "border-primary/20",
         text: "text-white",
         icon: CalendarIcon,
       };
@@ -187,7 +187,7 @@ export function CalendarList({
                     const defaultMemberId = teamMembers[0]?.id || "";
                     onTimeSlotClick?.(date, defaultTime, defaultMemberId);
                   }}
-                  className="mt-2 text-sm text-[#FF0077] hover:underline"
+                  className="mt-2 text-sm text-primary hover:underline"
                 >
                   Add appointment
                 </button>
@@ -201,8 +201,8 @@ export function CalendarList({
                     <div key={member.id} className="space-y-2">
                       {/* Team Member Header */}
                       <div className="flex items-center gap-2 py-2">
-                        <div className="w-8 h-8 rounded-full bg-[#FF0077]/10 flex items-center justify-center flex-shrink-0">
-                          <User className="w-4 h-4 text-[#FF0077]" />
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <User className="w-4 h-4 text-primary" />
                         </div>
                         <h4 className="text-sm font-medium text-gray-900">
                           {member.name}
@@ -284,7 +284,7 @@ export function CalendarList({
                     const defaultMemberId = teamMembers[0]?.id || "";
                     onTimeSlotClick?.(date, defaultTime, defaultMemberId);
                   }}
-                  className="w-full mt-4 py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-[#FF0077] hover:text-[#FF0077] transition-colors touch-manipulation min-h-[44px]"
+                  className="w-full mt-4 py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-primary hover:text-primary transition-colors touch-manipulation min-h-[44px]"
                 >
                   + Add Appointment
                 </button>

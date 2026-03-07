@@ -7,6 +7,7 @@ import {
   Alert,
   Switch,
   ActivityIndicator,
+  type ImageStyle,
 } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -25,6 +26,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDuration } from "@/lib/format";
 import { APP_URL } from "@/config/public-env";
 import { supabase } from "@/lib/supabase/client";
+import { twStyle } from "@/lib/twStyle";
 
 interface ServiceDetail {
   id: string;
@@ -352,15 +354,15 @@ export default function ServiceDetailScreen() {
     const value = form?.[field];
     const isString = typeof value === "string";
     return (
-      <View className="mb-4">
-        <Text className="mb-1 text-sm font-medium text-gray-700">
+      <View style={twStyle("mb-4")}>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
           {label}
         </Text>
-        <View className="flex-row items-center">
+        <View style={twStyle("flex-row items-center")}>
           <TextInput
-            className={`flex-1 rounded-xl border bg-gray-50 px-4 py-3 text-sm text-gray-900 ${
+            style={twStyle(`flex-1 rounded-xl border bg-gray-50 px-4 py-3 text-sm text-gray-900 ${
               errors[field] ? "border-red-300" : "border-gray-200"
-            } ${multiline ? "min-h-[80px]" : ""}`}
+            } ${multiline ? "min-h-[80px]" : ""}`)}
             value={isString ? (value as string) : ""}
             onChangeText={(v) => updateForm(field, v)}
             keyboardType={keyboardType}
@@ -370,11 +372,11 @@ export default function ServiceDetailScreen() {
             accessibilityLabel={label}
           />
           {suffix && (
-            <Text className="ml-2 text-sm text-gray-500">{suffix}</Text>
+            <Text style={twStyle("ml-2 text-sm text-gray-500")}>{suffix}</Text>
           )}
         </View>
         {errors[field] && (
-          <Text className="mt-1 text-xs text-red-500">{errors[field]}</Text>
+          <Text style={twStyle("mt-1 text-xs text-red-500")}>{errors[field]}</Text>
         )}
       </View>
     );
@@ -387,32 +389,32 @@ export default function ServiceDetailScreen() {
         showBack
         rightAction={
           editing ? (
-            <View className="flex-row gap-2">
+            <View style={twStyle("flex-row")}>
               <TouchableOpacity
-                className="rounded-full bg-gray-100 px-3 py-2"
+                style={[twStyle("rounded-full bg-gray-100 px-3 py-2"), { marginRight: 8 }]}
                 onPress={handleCancelEdit}
                 accessibilityLabel="Cancel editing"
                 accessibilityRole="button"
               >
-                <Text className="text-sm font-medium text-gray-600">
+                <Text style={twStyle("text-sm font-medium text-gray-600")}>
                   Cancel
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                className="rounded-full bg-indigo-600 px-3 py-2"
+                style={twStyle("rounded-full bg-indigo-600 px-3 py-2")}
                 onPress={handleSave}
                 disabled={saving}
                 accessibilityLabel="Save service changes"
                 accessibilityRole="button"
               >
-                <Text className="text-sm font-medium text-white">
+                <Text style={twStyle("text-sm font-medium text-white")}>
                   {saving ? "Saving..." : "Save"}
                 </Text>
               </TouchableOpacity>
             </View>
           ) : (
             <TouchableOpacity
-              className="h-10 w-10 items-center justify-center rounded-full bg-gray-100"
+              style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
               onPress={() => setEditing(true)}
               accessibilityLabel="Edit service"
               accessibilityRole="button"
@@ -423,11 +425,11 @@ export default function ServiceDetailScreen() {
         }
       />
 
-      <View className={isTablet ? "flex-row gap-6" : ""}>
-        <View className={isTablet ? "flex-1" : ""}>
+      <View style={twStyle(isTablet ? "flex-row" : "")}>
+        <View style={[twStyle(isTablet ? "flex-1" : ""), isTablet && { marginRight: 24 }]}>
           {/* Service Image */}
           <TouchableOpacity
-            className="mb-4 h-48 items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50"
+            style={twStyle("mb-4 h-48 items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50")}
             onPress={handlePickServiceImage}
             disabled={!editing || uploadingImage}
             accessibilityLabel={
@@ -438,22 +440,22 @@ export default function ServiceDetailScreen() {
             accessibilityRole="button"
           >
             {uploadingImage ? (
-              <View className="items-center">
+              <View style={twStyle("items-center")}>
                 <ActivityIndicator size="large" color="#111" />
-                <Text className="mt-2 text-sm text-gray-500">
+                <Text style={twStyle("mt-2 text-sm text-gray-500")}>
                   Uploading…
                 </Text>
               </View>
             ) : service.image_url ? (
-              <View className="h-full w-full">
+              <View style={twStyle("h-full w-full")}>
                 <Image
                   source={{ uri: service.image_url }}
-                  className="h-full w-full rounded-2xl"
+                  style={twStyle("h-full w-full rounded-2xl") as ImageStyle}
                   contentFit="cover"
                   transition={200}
                 />
                 {editing && (
-                  <View className="absolute bottom-2 right-2 rounded-full bg-black/60 p-2">
+                  <View style={twStyle("absolute bottom-2 right-2 rounded-full bg-black/60 p-2")}>
                     <Ionicons name="camera-outline" size={18} color="#fff" />
                   </View>
                 )}
@@ -461,7 +463,7 @@ export default function ServiceDetailScreen() {
             ) : (
               <>
                 <Ionicons name="camera-outline" size={32} color="#9ca3af" />
-                <Text className="mt-2 text-sm text-gray-400">
+                <Text style={twStyle("mt-2 text-sm text-gray-400")}>
                   {editing ? "Tap to upload image" : "No image"}
                 </Text>
               </>
@@ -470,14 +472,14 @@ export default function ServiceDetailScreen() {
 
           {/* Service Form */}
           <SectionHeader title="Service Details" />
-          <View className="rounded-2xl border border-gray-100 bg-white p-4">
+          <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
             {renderFormField("Title", "title")}
             {renderFormField("Description", "description", "default", true)}
-            <View className="flex-row gap-3">
-              <View className="flex-1">
+            <View style={twStyle("flex-row")}>
+              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
                 {renderFormField("Price", "price", "numeric", false, service.currency)}
               </View>
-              <View className="flex-1">
+              <View style={twStyle("flex-1")}>
                 {renderFormField(
                   "Duration",
                   "duration_minutes",
@@ -498,11 +500,11 @@ export default function ServiceDetailScreen() {
 
           {/* Location Types */}
           <SectionHeader title="Location Types" />
-          <View className="rounded-2xl border border-gray-100 bg-white">
-            <View className="flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5">
-              <View className="flex-row items-center">
+          <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
+            <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5")}>
+              <View style={twStyle("flex-row items-center")}>
                 <Ionicons name="business-outline" size={18} color="#6b7280" />
-                <Text className="ml-3 text-sm text-gray-700">At Salon</Text>
+                <Text style={twStyle("ml-3 text-sm text-gray-700")}>At Salon</Text>
               </View>
               <Switch
                 value={form?.supports_at_salon ?? false}
@@ -512,10 +514,10 @@ export default function ServiceDetailScreen() {
                 accessibilityLabel="Toggle at salon"
               />
             </View>
-            <View className="flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5">
-              <View className="flex-row items-center">
+            <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3.5")}>
+              <View style={twStyle("flex-row items-center")}>
                 <Ionicons name="home-outline" size={18} color="#6b7280" />
-                <Text className="ml-3 text-sm text-gray-700">At Home</Text>
+                <Text style={twStyle("ml-3 text-sm text-gray-700")}>At Home</Text>
               </View>
               <Switch
                 value={form?.supports_at_home ?? false}
@@ -526,14 +528,14 @@ export default function ServiceDetailScreen() {
               />
             </View>
             {form?.supports_at_home && (
-              <View className="px-4 py-3">
-                <View className="flex-row gap-3">
-                  <View className="flex-1">
-                    <Text className="mb-1 text-xs text-gray-500">
+              <View style={twStyle("px-4 py-3")}>
+                <View style={twStyle("flex-row")}>
+                  <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+                    <Text style={twStyle("mb-1 text-xs text-gray-500")}>
                       Home Price Adjustment
                     </Text>
                     <TextInput
-                      className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900"
+                      style={twStyle("rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900")}
                       value={form.at_home_price_adjustment}
                       onChangeText={(v) =>
                         updateForm("at_home_price_adjustment", v)
@@ -543,12 +545,12 @@ export default function ServiceDetailScreen() {
                       accessibilityLabel="Home visit price adjustment"
                     />
                   </View>
-                  <View className="flex-1">
-                    <Text className="mb-1 text-xs text-gray-500">
+                  <View style={twStyle("flex-1")}>
+                    <Text style={twStyle("mb-1 text-xs text-gray-500")}>
                       Radius (km)
                     </Text>
                     <TextInput
-                      className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900"
+                      style={twStyle("rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900")}
                       value={form.at_home_radius_km}
                       onChangeText={(v) => updateForm("at_home_radius_km", v)}
                       keyboardType="numeric"
@@ -560,7 +562,7 @@ export default function ServiceDetailScreen() {
               </View>
             )}
             {errors.location && (
-              <Text className="px-4 pb-2 text-xs text-red-500">
+              <Text style={twStyle("px-4 pb-2 text-xs text-red-500")}>
                 {errors.location}
               </Text>
             )}
@@ -568,14 +570,14 @@ export default function ServiceDetailScreen() {
 
           {/* Status Toggle */}
           <SectionHeader title="Status" />
-          <View className="flex-row items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-4">
-            <View className="flex-row items-center">
+          <View style={twStyle("flex-row items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-4")}>
+            <View style={twStyle("flex-row items-center")}>
               <View
-                className={`mr-2 h-3 w-3 rounded-full ${
+                style={twStyle(`mr-2 h-3 w-3 rounded-full ${
                   form?.is_active ? "bg-green-500" : "bg-gray-300"
-                }`}
+                }`)}
               />
-              <Text className="text-sm font-medium text-gray-900">
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
                 {form?.is_active ? "Active" : "Inactive"}
               </Text>
             </View>
@@ -589,7 +591,7 @@ export default function ServiceDetailScreen() {
           </View>
         </View>
 
-        <View className={isTablet ? "flex-1" : ""}>
+        <View style={twStyle(isTablet ? "flex-1" : "")}>
           {/* Add-ons Section */}
           <SectionHeader
             title="Add-ons"
@@ -597,42 +599,42 @@ export default function ServiceDetailScreen() {
             onAction={() => openAddOnForm()}
           />
           {!addOns || addOns.length === 0 ? (
-            <View className="items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-6">
+            <View style={twStyle("items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-6")}>
               <Ionicons name="add-circle-outline" size={28} color="#d1d5db" />
-              <Text className="mt-2 text-sm text-gray-400">
+              <Text style={twStyle("mt-2 text-sm text-gray-400")}>
                 No add-ons yet
               </Text>
               <TouchableOpacity
-                className="mt-3 rounded-lg bg-indigo-50 px-4 py-2"
+                style={twStyle("mt-3 rounded-lg bg-indigo-50 px-4 py-2")}
                 onPress={() => openAddOnForm()}
                 accessibilityLabel="Create first add-on"
                 accessibilityRole="button"
               >
-                <Text className="text-sm font-medium text-indigo-600">
+                <Text style={twStyle("text-sm font-medium text-indigo-600")}>
                   Create Add-on
                 </Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <View className="gap-2">
-              {addOns.map((addOn) => (
+            <View>
+              {addOns.map((addOn, addOnIdx) => (
                 <View
                   key={addOn.id}
-                  className="flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4"
+                  style={[twStyle("flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4"), addOnIdx > 0 && { marginTop: 8 }]}
                 >
-                  <View className="flex-1">
-                    <Text className="text-sm font-medium text-gray-900">
+                  <View style={twStyle("flex-1")}>
+                    <Text style={twStyle("text-sm font-medium text-gray-900")}>
                       {addOn.name}
                     </Text>
-                    <Text className="mt-0.5 text-xs text-gray-500">
+                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                       {formatCurrency(addOn.price, service.currency)} &middot;{" "}
                       {formatDuration(addOn.duration_minutes)}
                     </Text>
                   </View>
-                  <View className="flex-row gap-2">
+                  <View style={twStyle("flex-row")}>
                     <TouchableOpacity
                       onPress={() => openAddOnForm(addOn)}
-                      className="rounded-lg bg-gray-100 p-2"
+                      style={[twStyle("rounded-lg bg-gray-100 p-2"), { marginRight: 8 }]}
                       accessibilityLabel={`Edit add-on ${addOn.name}`}
                       accessibilityRole="button"
                     >
@@ -644,7 +646,7 @@ export default function ServiceDetailScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleDeleteAddOn(addOn)}
-                      className="rounded-lg bg-red-50 p-2"
+                      style={twStyle("rounded-lg bg-red-50 p-2")}
                       accessibilityLabel={`Delete add-on ${addOn.name}`}
                       accessibilityRole="button"
                     >
@@ -663,28 +665,28 @@ export default function ServiceDetailScreen() {
           {/* Variants Section */}
           <SectionHeader title="Service Variants" />
           {!variants || variants.length === 0 ? (
-            <View className="items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-6">
+            <View style={twStyle("items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-6")}>
               <Ionicons name="layers-outline" size={28} color="#d1d5db" />
-              <Text className="mt-2 text-sm text-gray-400">
+              <Text style={twStyle("mt-2 text-sm text-gray-400")}>
                 No variants configured
               </Text>
             </View>
           ) : (
-            <View className="gap-2">
-              {variants.map((v) => (
+            <View>
+              {variants.map((v, vIdx) => (
                 <View
                   key={v.id}
-                  className="flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4"
+                  style={[twStyle("flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4"), vIdx > 0 && { marginTop: 8 }]}
                 >
                   <View>
-                    <Text className="text-sm font-medium text-gray-900">
+                    <Text style={twStyle("text-sm font-medium text-gray-900")}>
                       {v.name}
                     </Text>
-                    <Text className="mt-0.5 text-xs text-gray-500">
+                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                       {formatDuration(v.duration_minutes)}
                     </Text>
                   </View>
-                  <Text className="text-sm font-semibold text-gray-900">
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                     {formatCurrency(v.price, service.currency)}
                   </Text>
                 </View>
@@ -696,14 +698,14 @@ export default function ServiceDetailScreen() {
           {service.provider_categories?.[0] && (
             <>
               <SectionHeader title="Category" />
-              <View className="rounded-xl border border-gray-100 bg-white p-4">
-                <View className="self-start rounded-full bg-indigo-50 px-3 py-1">
-                  <Text className="text-sm font-medium text-indigo-700">
+              <View style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}>
+                <View style={twStyle("self-start rounded-full bg-indigo-50 px-3 py-1")}>
+                  <Text style={twStyle("text-sm font-medium text-indigo-700")}>
                     {service.provider_categories[0].name}
                   </Text>
                 </View>
                 {service.provider_categories[0].description && (
-                  <Text className="mt-2 text-xs text-gray-500">
+                  <Text style={twStyle("mt-2 text-xs text-gray-500")}>
                     {service.provider_categories[0].description}
                   </Text>
                 )}
@@ -719,10 +721,10 @@ export default function ServiceDetailScreen() {
         onClose={() => setShowAddOnSheet(false)}
         title={editingAddOn ? "Edit Add-on" : "New Add-on"}
       >
-        <View className="mb-4">
-          <Text className="mb-1 text-sm font-medium text-gray-700">Name</Text>
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Name</Text>
           <TextInput
-            className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"
+            style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
             placeholder="e.g., Deep conditioning"
             placeholderTextColor="#9ca3af"
             value={addOnForm.name}
@@ -730,13 +732,13 @@ export default function ServiceDetailScreen() {
             accessibilityLabel="Add-on name"
           />
         </View>
-        <View className="mb-4 flex-row gap-3">
-          <View className="flex-1">
-            <Text className="mb-1 text-sm font-medium text-gray-700">
+        <View style={twStyle("mb-4 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
               Price
             </Text>
             <TextInput
-              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"
+              style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
               placeholder="0"
               placeholderTextColor="#9ca3af"
               value={addOnForm.price}
@@ -745,12 +747,12 @@ export default function ServiceDetailScreen() {
               accessibilityLabel="Add-on price"
             />
           </View>
-          <View className="flex-1">
-            <Text className="mb-1 text-sm font-medium text-gray-700">
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
               Duration (min)
             </Text>
             <TextInput
-              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"
+              style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
               placeholder="0"
               placeholderTextColor="#9ca3af"
               value={addOnForm.duration_minutes}
@@ -772,7 +774,7 @@ export default function ServiceDetailScreen() {
         />
       </BottomSheet>
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

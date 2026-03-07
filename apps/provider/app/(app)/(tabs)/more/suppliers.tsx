@@ -10,7 +10,6 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
-import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SearchBar } from "@/components/ui/SearchBar";
@@ -20,6 +19,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
+import { Colors } from "@/constants/colors";
 
 interface Supplier {
   id: string;
@@ -65,23 +65,22 @@ const CATEGORY_OPTIONS = [
   { label: "General", value: "general" },
 ];
 
-function categoryColor(cat: string) {
+function categoryColor(cat: string): { bg: string; text: string } {
   switch (cat) {
     case "hair":
-      return { bg: "bg-purple-50", text: "text-purple-700" };
+      return { bg: "#faf5ff", text: "#7e22ce" };
     case "skincare":
-      return { bg: "bg-pink-50", text: "text-pink-700" };
+      return { bg: "#fdf2f8", text: "#be185d" };
     case "nails":
-      return { bg: "bg-rose-50", text: "text-rose-700" };
+      return { bg: "#fff1f2", text: "#be123c" };
     case "equipment":
-      return { bg: "bg-blue-50", text: "text-blue-700" };
+      return { bg: "#eff6ff", text: "#1d4ed8" };
     default:
-      return { bg: "bg-gray-100", text: "text-gray-600" };
+      return { bg: Colors.gray[100], text: Colors.gray[600] };
   }
 }
 
 export default function SuppliersScreen() {
-  const { isTablet } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -232,47 +231,41 @@ export default function SuppliersScreen() {
 
   const renderSupplierItem = (item: Supplier) => {
     const cat = categoryColor(item.category);
+    const statusBg = item.status === "active" ? "#dcfce7" : Colors.gray[100];
+    const statusText = item.status === "active" ? "#166534" : Colors.gray[500];
     return (
       <TouchableOpacity
         key={item.id}
-        className="mb-2 rounded-xl border border-gray-100 bg-white p-4"
+        style={{ marginBottom: 8, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
         onPress={() => openDetail(item)}
         activeOpacity={0.7}
       >
-        <View className="flex-row items-start">
-          <View className="h-11 w-11 items-center justify-center rounded-xl bg-indigo-50">
+        <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+          <View style={{ height: 44, width: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#eef2ff" }}>
             <Ionicons name="business-outline" size={20} color="#6366f1" />
           </View>
-          <View className="ml-3 flex-1">
-            <View className="flex-row items-center justify-between">
-              <Text className="text-[15px] font-semibold text-gray-900">
+          <View style={{ marginLeft: 12, flex: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>
                 {item.name}
               </Text>
-              <View
-                className={`rounded-full px-2 py-0.5 ${
-                  item.status === "active" ? "bg-green-50" : "bg-gray-100"
-                }`}
-              >
-                <Text
-                  className={`text-[10px] font-medium capitalize ${
-                    item.status === "active" ? "text-green-700" : "text-gray-500"
-                  }`}
-                >
+              <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: statusBg }}>
+                <Text style={{ fontSize: 10, fontWeight: "500", textTransform: "capitalize", color: statusText }}>
                   {item.status}
                 </Text>
               </View>
             </View>
             {item.email && (
-              <Text className="mt-0.5 text-xs text-gray-500">{item.email}</Text>
+              <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>{item.email}</Text>
             )}
-            <View className="mt-2 flex-row items-center gap-2">
-              <View className={`rounded-full px-2 py-0.5 ${cat.bg}`}>
-                <Text className={`text-[10px] font-medium capitalize ${cat.text}`}>
+            <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center" }}>
+              <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: cat.bg, marginRight: 8 }}>
+                <Text style={{ fontSize: 10, fontWeight: "500", textTransform: "capitalize", color: cat.text }}>
                   {item.category}
                 </Text>
               </View>
               {item.product_count > 0 && (
-                <Text className="text-[11px] text-gray-400">
+                <Text style={{ fontSize: 11, color: Colors.gray[400] }}>
                   {item.product_count} product{item.product_count !== 1 ? "s" : ""}
                 </Text>
               )}
@@ -281,43 +274,42 @@ export default function SuppliersScreen() {
           <Ionicons name="chevron-forward" size={16} color="#d1d5db" style={{ marginLeft: 4, alignSelf: "center" }} />
         </View>
 
-        {/* Quick actions */}
         {(item.phone || item.email || item.website) && (
-          <View className="mt-3 flex-row gap-2 border-t border-gray-50 pt-3">
+          <View style={{ marginTop: 12, flexDirection: "row", borderTopWidth: 1, borderTopColor: Colors.gray[50], paddingTop: 12 }}>
             {item.phone && (
               <TouchableOpacity
-                className="flex-row items-center rounded-lg bg-green-50 px-3 py-1.5"
+                style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#dcfce7", paddingHorizontal: 12, paddingVertical: 6, marginRight: 8 }}
                 onPress={(e) => {
                   e.stopPropagation();
                   handleCall(item.phone!);
                 }}
               >
                 <Ionicons name="call-outline" size={13} color="#22c55e" />
-                <Text className="ml-1 text-xs font-medium text-green-700">Call</Text>
+                <Text style={{ marginLeft: 4, fontSize: 12, fontWeight: "500", color: "#15803d" }}>Call</Text>
               </TouchableOpacity>
             )}
             {item.email && (
               <TouchableOpacity
-                className="flex-row items-center rounded-lg bg-blue-50 px-3 py-1.5"
+                style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#dbeafe", paddingHorizontal: 12, paddingVertical: 6, marginRight: 8 }}
                 onPress={(e) => {
                   e.stopPropagation();
                   handleEmail(item.email!);
                 }}
               >
                 <Ionicons name="mail-outline" size={13} color="#3b82f6" />
-                <Text className="ml-1 text-xs font-medium text-blue-700">Email</Text>
+                <Text style={{ marginLeft: 4, fontSize: 12, fontWeight: "500", color: "#1d4ed8" }}>Email</Text>
               </TouchableOpacity>
             )}
             {item.website && (
               <TouchableOpacity
-                className="flex-row items-center rounded-lg bg-violet-50 px-3 py-1.5"
+                style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: "#f5f3ff", paddingHorizontal: 12, paddingVertical: 6 }}
                 onPress={(e) => {
                   e.stopPropagation();
                   handleWebsite(item.website!);
                 }}
               >
                 <Ionicons name="globe-outline" size={13} color="#8b5cf6" />
-                <Text className="ml-1 text-xs font-medium text-violet-700">Web</Text>
+                <Text style={{ marginLeft: 4, fontSize: 12, fontWeight: "500", color: "#6d28d9" }}>Web</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -338,7 +330,7 @@ export default function SuppliersScreen() {
         subtitle={`${suppliers?.length ?? 0} suppliers`}
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-900"
+            style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: Colors.gray[900] }}
             onPress={openNewForm}
           >
             <Ionicons name="add" size={20} color="#fff" />
@@ -346,32 +338,31 @@ export default function SuppliersScreen() {
         }
       />
 
-      {/* Stats */}
-      <View className={`mb-3 gap-3 ${isTablet ? "flex-row" : "flex-row"}`}>
-        <View className="flex-1">
+      <View style={{ marginBottom: 12, flexDirection: "row" }}>
+        <View style={{ flex: 1, marginRight: 12 }}>
           <StatCard
             title="Total Suppliers"
             value={String(suppliers?.length ?? 0)}
             icon="business-outline"
             iconColor="#6366f1"
-            iconBg="bg-indigo-50"
+            iconBg="#eef2ff"
             compact
           />
         </View>
-        <View className="flex-1">
+        <View style={{ flex: 1 }}>
           <StatCard
             title="Active"
             value={String(activeCount)}
             icon="checkmark-circle-outline"
             iconColor="#22c55e"
-            iconBg="bg-green-50"
+            iconBg="#dcfce7"
             compact
           />
         </View>
       </View>
 
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search by name, email, or phone..." />
-      <View className="mt-2 mb-3">
+      <View style={{ marginTop: 8, marginBottom: 12 }}>
         <FilterChipGroup
           options={CATEGORY_OPTIONS}
           selected={categoryFilter}
@@ -401,126 +392,104 @@ export default function SuppliersScreen() {
       >
         {selectedSupplier && (
           <View>
-            <View className="mb-4 flex-row items-center">
-              <View className="h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50">
+            <View style={{ marginBottom: 16, flexDirection: "row", alignItems: "center" }}>
+              <View style={{ height: 56, width: 56, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: "#eef2ff" }}>
                 <Ionicons name="business" size={26} color="#6366f1" />
               </View>
-              <View className="ml-3 flex-1">
-                <Text className="text-lg font-bold text-gray-900">
+              <View style={{ marginLeft: 12, flex: 1 }}>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
                   {selectedSupplier.name}
                 </Text>
-                <View className="mt-1 flex-row items-center gap-2">
+                <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center" }}>
                   <View
-                    className={`rounded-full px-2 py-0.5 ${
-                      selectedSupplier.status === "active" ? "bg-green-50" : "bg-gray-100"
-                    }`}
+                    style={{
+                      borderRadius: 9999,
+                      paddingHorizontal: 8,
+                      paddingVertical: 2,
+                      marginRight: 8,
+                      backgroundColor: selectedSupplier.status === "active" ? "#dcfce7" : Colors.gray[100],
+                    }}
                   >
-                    <Text
-                      className={`text-[10px] font-medium capitalize ${
-                        selectedSupplier.status === "active" ? "text-green-700" : "text-gray-500"
-                      }`}
-                    >
+                    <Text style={{ fontSize: 10, fontWeight: "500", textTransform: "capitalize", color: selectedSupplier.status === "active" ? "#166534" : Colors.gray[500] }}>
                       {selectedSupplier.status}
                     </Text>
                   </View>
-                  <View className={`rounded-full px-2 py-0.5 ${categoryColor(selectedSupplier.category).bg}`}>
-                    <Text className={`text-[10px] font-medium capitalize ${categoryColor(selectedSupplier.category).text}`}>
-                      {selectedSupplier.category}
-                    </Text>
-                  </View>
+                  {(() => {
+                    const c = categoryColor(selectedSupplier.category);
+                    return (
+                      <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: c.bg }}>
+                        <Text style={{ fontSize: 10, fontWeight: "500", textTransform: "capitalize", color: c.text }}>
+                          {selectedSupplier.category}
+                        </Text>
+                      </View>
+                    );
+                  })()}
                 </View>
               </View>
             </View>
 
-            {/* Contact info */}
-            <View className="mb-4 rounded-xl bg-gray-50 p-3">
+            <View style={{ marginBottom: 16, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
               {selectedSupplier.email && (
-                <TouchableOpacity
-                  className="mb-2 flex-row items-center"
-                  onPress={() => handleEmail(selectedSupplier.email!)}
-                >
+                <TouchableOpacity style={{ marginBottom: 8, flexDirection: "row", alignItems: "center" }} onPress={() => handleEmail(selectedSupplier.email!)}>
                   <Ionicons name="mail-outline" size={16} color="#6b7280" />
-                  <Text className="ml-2 flex-1 text-sm text-gray-700">
-                    {selectedSupplier.email}
-                  </Text>
+                  <Text style={{ marginLeft: 8, flex: 1, fontSize: 14, color: Colors.gray[700] }}>{selectedSupplier.email}</Text>
                 </TouchableOpacity>
               )}
               {selectedSupplier.phone && (
-                <TouchableOpacity
-                  className="mb-2 flex-row items-center"
-                  onPress={() => handleCall(selectedSupplier.phone!)}
-                >
+                <TouchableOpacity style={{ marginBottom: 8, flexDirection: "row", alignItems: "center" }} onPress={() => handleCall(selectedSupplier.phone!)}>
                   <Ionicons name="call-outline" size={16} color="#6b7280" />
-                  <Text className="ml-2 flex-1 text-sm text-gray-700">
-                    {selectedSupplier.phone}
-                  </Text>
+                  <Text style={{ marginLeft: 8, flex: 1, fontSize: 14, color: Colors.gray[700] }}>{selectedSupplier.phone}</Text>
                 </TouchableOpacity>
               )}
               {selectedSupplier.address && (
-                <View className="mb-2 flex-row items-start">
+                <View style={{ marginBottom: 8, flexDirection: "row", alignItems: "flex-start" }}>
                   <Ionicons name="location-outline" size={16} color="#6b7280" style={{ marginTop: 1 }} />
-                  <Text className="ml-2 flex-1 text-sm text-gray-700">
-                    {selectedSupplier.address}
-                  </Text>
+                  <Text style={{ marginLeft: 8, flex: 1, fontSize: 14, color: Colors.gray[700] }}>{selectedSupplier.address}</Text>
                 </View>
               )}
               {selectedSupplier.website && (
-                <TouchableOpacity
-                  className="flex-row items-center"
-                  onPress={() => handleWebsite(selectedSupplier.website!)}
-                >
+                <TouchableOpacity style={{ flexDirection: "row", alignItems: "center" }} onPress={() => handleWebsite(selectedSupplier.website!)}>
                   <Ionicons name="globe-outline" size={16} color="#6b7280" />
-                  <Text className="ml-2 flex-1 text-sm text-indigo-600">
-                    {selectedSupplier.website}
-                  </Text>
+                  <Text style={{ marginLeft: 8, flex: 1, fontSize: 14, color: "#4f46e5" }}>{selectedSupplier.website}</Text>
                 </TouchableOpacity>
               )}
               {!selectedSupplier.email && !selectedSupplier.phone && !selectedSupplier.address && !selectedSupplier.website && (
-                <Text className="text-sm text-gray-400">No contact information added</Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[400] }}>No contact information added</Text>
               )}
             </View>
 
-            {/* Stats */}
-            <View className="mb-4 flex-row gap-3">
-              <View className="flex-1 rounded-xl border border-gray-100 p-3">
-                <Text className="text-xs text-gray-500">Products</Text>
-                <Text className="text-lg font-bold text-gray-900">
-                  {selectedSupplier.product_count}
-                </Text>
+            <View style={{ marginBottom: 16, flexDirection: "row" }}>
+              <View style={{ flex: 1, marginRight: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], padding: 12 }}>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Products</Text>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{selectedSupplier.product_count}</Text>
               </View>
-              <View className="flex-1 rounded-xl border border-gray-100 p-3">
-                <Text className="text-xs text-gray-500">Total Orders</Text>
-                <Text className="text-lg font-bold text-gray-900">
-                  {selectedSupplier.total_orders}
-                </Text>
+              <View style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], padding: 12 }}>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Total Orders</Text>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{selectedSupplier.total_orders}</Text>
               </View>
             </View>
 
-            {/* Notes */}
             {selectedSupplier.notes && (
-              <View className="mb-4">
-                <Text className="mb-1 text-xs font-medium text-gray-500">Notes</Text>
-                <Text className="text-sm leading-5 text-gray-700">
-                  {selectedSupplier.notes}
-                </Text>
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Notes</Text>
+                <Text style={{ fontSize: 14, lineHeight: 20, color: Colors.gray[700] }}>{selectedSupplier.notes}</Text>
               </View>
             )}
 
-            {/* Actions */}
-            <View className="flex-row gap-3">
+            <View style={{ flexDirection: "row" }}>
               <TouchableOpacity
-                className="flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3"
+                style={{ flex: 1, marginRight: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#eef2ff", paddingVertical: 12 }}
                 onPress={() => openEditForm(selectedSupplier)}
               >
                 <Ionicons name="create-outline" size={16} color="#6366f1" />
-                <Text className="ml-1.5 text-sm font-medium text-indigo-700">Edit</Text>
+                <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "500", color: "#4338ca" }}>Edit</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                className="flex-1 flex-row items-center justify-center rounded-xl bg-red-50 py-3"
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#fee2e2", paddingVertical: 12 }}
                 onPress={() => handleDelete(selectedSupplier)}
               >
                 <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                <Text className="ml-1.5 text-sm font-medium text-red-700">Delete</Text>
+                <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "500", color: "#b91c1c" }}>Delete</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -534,17 +503,17 @@ export default function SuppliersScreen() {
         title={editMode ? "Edit Supplier" : "New Supplier"}
       >
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">Supplier Name *</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Supplier Name *</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.name}
             onChangeText={(t) => updateForm("name", t)}
             placeholder="e.g. Beauty Wholesale Co."
             placeholderTextColor="#9ca3af"
           />
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Category</Text>
-          <View className="mb-3">
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Category</Text>
+          <View style={{ marginBottom: 12 }}>
             <FilterChipGroup
               options={CATEGORY_OPTIONS.filter((c) => c.value !== "all")}
               selected={form.category}
@@ -552,9 +521,9 @@ export default function SuppliersScreen() {
             />
           </View>
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Email</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Email</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.email}
             onChangeText={(t) => updateForm("email", t)}
             placeholder="supplier@example.com"
@@ -563,9 +532,9 @@ export default function SuppliersScreen() {
             autoCapitalize="none"
           />
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Phone</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Phone</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.phone}
             onChangeText={(t) => updateForm("phone", t)}
             placeholder="+27 ..."
@@ -573,18 +542,18 @@ export default function SuppliersScreen() {
             keyboardType="phone-pad"
           />
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Address</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.address}
             onChangeText={(t) => updateForm("address", t)}
             placeholder="Street address, city"
             placeholderTextColor="#9ca3af"
           />
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Website</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Website</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.website}
             onChangeText={(t) => updateForm("website", t)}
             placeholder="www.example.com"
@@ -592,9 +561,9 @@ export default function SuppliersScreen() {
             autoCapitalize="none"
           />
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Notes</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Notes</Text>
           <TextInput
-            className="mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={{ marginBottom: 16, minHeight: 80, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.notes}
             onChangeText={(t) => updateForm("notes", t)}
             placeholder="Additional notes about this supplier..."

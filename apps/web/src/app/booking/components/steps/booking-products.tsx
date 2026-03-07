@@ -144,7 +144,7 @@ export default function BookingProducts({
             <div
               key={product.id}
               className={`border rounded-lg p-4 transition-colors ${
-                isSelected ? "border-[#FF0077] bg-pink-50" : "border-gray-200 bg-white"
+                isSelected ? "border-primary bg-pink-50" : "border-gray-200 bg-white"
               }`}
             >
               <div className="flex gap-4">
@@ -224,7 +224,7 @@ export default function BookingProducts({
                         variant="outline"
                         size="sm"
                         onClick={() => updateProductQuantity(product.id, 1)}
-                        className="text-[#FF0077] border-[#FF0077] hover:bg-[#FF0077] hover:text-white"
+                        className="text-primary border-primary hover:bg-primary hover:text-white"
                       >
                         <Plus className="w-4 h-4 mr-1" />
                         Add

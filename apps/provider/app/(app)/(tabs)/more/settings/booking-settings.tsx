@@ -15,6 +15,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { twStyle } from "@/lib/twStyle";
 
 /* ─── types matching actual API contracts ─── */
 interface AppointmentSettings {
@@ -53,11 +54,11 @@ function ToggleRow({
   onValueChange: (v: boolean) => void;
 }) {
   return (
-    <View className="flex-row items-center justify-between border-b border-gray-50 py-3">
-      <View className="mr-3 flex-1">
-        <Text className="text-sm font-medium text-gray-700">{label}</Text>
+    <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 py-3")}>
+      <View style={twStyle("mr-3 flex-1")}>
+        <Text style={twStyle("text-sm font-medium text-gray-700")}>{label}</Text>
         {description && (
-          <Text className="mt-0.5 text-xs text-gray-400">{description}</Text>
+          <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>{description}</Text>
         )}
       </View>
       <Switch
@@ -102,19 +103,19 @@ function NumericInput({
 
   return (
     <View
-      className="flex-row items-center justify-between border-b border-gray-50 py-3"
+      style={twStyle("flex-row items-center justify-between border-b border-gray-50 py-3")}
       accessibilityLabel={`${label}: ${value} ${unit}`}
     >
-      <View className="mr-3 flex-1">
-        <Text className="text-sm font-medium text-gray-700">{label}</Text>
+      <View style={twStyle("mr-3 flex-1")}>
+        <Text style={twStyle("text-sm font-medium text-gray-700")}>{label}</Text>
         {description && (
-          <Text className="mt-0.5 text-xs text-gray-400">{description}</Text>
+          <Text style={twStyle("mt-0.5 text-xs text-gray-400")}>{description}</Text>
         )}
       </View>
 
-      <View className="flex-row items-center gap-1">
+      <View style={twStyle("flex-row items-center")}>
         <TouchableOpacity
-          className={`min-h-[44px] min-w-[44px] items-center justify-center rounded-lg ${value <= min ? "bg-gray-100" : "bg-gray-200"}`}
+          style={[twStyle(`min-h-[44px] min-w-[44px] items-center justify-center rounded-lg ${value <= min ? "bg-gray-100" : "bg-gray-200"}`), { marginRight: 4 }]}
           onPress={decrement}
           disabled={value <= min}
           accessibilityLabel={`Decrease ${label}`}
@@ -127,15 +128,15 @@ function NumericInput({
           />
         </TouchableOpacity>
 
-        <View className="min-w-[64px] items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5">
-          <Text className="text-sm font-semibold text-gray-900">
+        <View style={[twStyle("min-w-[64px] items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5"), { marginRight: 4 }]}>
+          <Text style={twStyle("text-sm font-semibold text-gray-900")}>
             {value}
           </Text>
-          <Text className="text-[10px] text-gray-400">{unit}</Text>
+          <Text style={twStyle("text-[10px] text-gray-400")}>{unit}</Text>
         </View>
 
         <TouchableOpacity
-          className={`min-h-[44px] min-w-[44px] items-center justify-center rounded-lg ${value >= max ? "bg-gray-100" : "bg-indigo-100"}`}
+          style={twStyle(`min-h-[44px] min-w-[44px] items-center justify-center rounded-lg ${value >= max ? "bg-gray-100" : "bg-indigo-100"}`)}
           onPress={increment}
           disabled={value >= max}
           accessibilityLabel={`Increase ${label}`}
@@ -267,7 +268,7 @@ export default function BookingSettingsScreen() {
 
       {/* ─── Online Booking ─── */}
       <SectionHeader title="Online Booking" />
-      <View className="rounded-2xl border border-gray-100 bg-white px-4">
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4")}>
         <ToggleRow
           label="Online Booking"
           description="Allow clients to book online"
@@ -280,7 +281,7 @@ export default function BookingSettingsScreen() {
           value={autoConfirm}
           onValueChange={(v) => { setAutoConfirm(v); markChanged(); }}
         />
-        <View className="border-b-0">
+        <View style={twStyle("border-b-0")}>
           <ToggleRow
             label="Require Confirmation"
             description="Manually approve bookings"
@@ -292,21 +293,21 @@ export default function BookingSettingsScreen() {
 
       {/* ─── Default Appointment Status ─── */}
       <SectionHeader title="Default Appointment Status" />
-      <View className="rounded-2xl border border-gray-100 bg-white px-4 py-2">
-        <Text className="mb-2 text-xs text-gray-400">
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-2")}>
+        <Text style={twStyle("mb-2 text-xs text-gray-400")}>
           New appointments will be created with this status
         </Text>
-        <View className="flex-row flex-wrap gap-2 pb-2">
+        <View style={twStyle("flex-row flex-wrap pb-2")}>
           {availableStatuses.map((status) => (
             <TouchableOpacity
               key={status}
-              className={`rounded-full px-4 py-2 ${defaultStatus === status ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`}
+              style={[twStyle(`rounded-full px-4 py-2 ${defaultStatus === status ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), { marginRight: 8, marginBottom: 8 }]}
               onPress={() => { setDefaultStatus(status); markChanged(); }}
               accessibilityLabel={`Set default status to ${STATUS_LABELS[status] ?? status}`}
               accessibilityRole="button"
             >
               <Text
-                className={`text-sm font-medium capitalize ${defaultStatus === status ? "text-white" : "text-gray-600"}`}
+                style={twStyle(`text-sm font-medium capitalize ${defaultStatus === status ? "text-white" : "text-gray-600"}`)}
               >
                 {STATUS_LABELS[status] ?? status}
               </Text>
@@ -317,7 +318,7 @@ export default function BookingSettingsScreen() {
 
       {/* ─── Scheduling ─── */}
       <SectionHeader title="Scheduling" />
-      <View className="rounded-2xl border border-gray-100 bg-white px-4">
+      <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4")}>
         <NumericInput
           label="Advance Notice"
           description="Minimum hours before appointment time"
@@ -341,7 +342,7 @@ export default function BookingSettingsScreen() {
       </View>
 
       {/* ─── Save ─── */}
-      <View className="mt-6">
+      <View style={twStyle("mt-6")}>
         <ActionButton
           label={saving ? "Saving\u2026" : "Save Settings"}
           onPress={handleSave}
@@ -352,12 +353,12 @@ export default function BookingSettingsScreen() {
       </View>
 
       {hasChanges && (
-        <Text className="mt-2 text-center text-xs text-amber-600">
+        <Text style={twStyle("mt-2 text-center text-xs text-amber-600")}>
           You have unsaved changes
         </Text>
       )}
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

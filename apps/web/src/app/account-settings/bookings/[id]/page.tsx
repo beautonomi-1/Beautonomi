@@ -375,7 +375,7 @@ export default function BookingDetailPage() {
                 {(charge.status === 'pending' || charge.status === 'approved') && (
                   <Button
                     onClick={() => router.push(`/account-settings/bookings/${bookingId}/pay-additional/${charge.id}`)}
-                    className="mt-2 w-full sm:w-auto bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white"
+                    className="mt-2 w-full sm:w-auto bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white"
                   >
                     Pay Now
                   </Button>

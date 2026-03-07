@@ -9,6 +9,7 @@ import {
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { Colors } from "@/constants/colors";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -16,6 +17,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface ServiceCategory {
   id: string;
@@ -115,7 +117,7 @@ export default function ServicesCatalogueScreen() {
   }
   if (categories.length === 0 && servicesList.length > 0) {
     sections.push({
-      category: { id: "all", name: "All services", color: "#FF0077" },
+      category: { id: "all", name: "All services", color: Colors.primary },
       services: servicesList,
     });
   }
@@ -123,26 +125,26 @@ export default function ServicesCatalogueScreen() {
   const renderServiceRow = (item: ServiceItem) => (
     <TouchableOpacity
       key={item.id}
-      className="flex-row items-center border-b border-gray-100 py-3.5"
+      style={twStyle("flex-row items-center border-b border-gray-100 py-3.5")}
       onPress={() => handleEditService(item)}
       accessibilityLabel={`Edit ${item.title || item.name}`}
     >
-      <View className="h-10 w-10 items-center justify-center rounded-xl bg-gray-100">
+      <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-gray-100")}>
         <Ionicons name="cut-outline" size={20} color="#6b7280" />
       </View>
-      <View className="ml-3 flex-1">
-        <Text className="text-base font-medium text-gray-900" numberOfLines={1}>
+      <View style={twStyle("ml-3 flex-1")}>
+        <Text style={twStyle("text-base font-medium text-gray-900")} numberOfLines={1}>
           {item.title || item.name || "Unnamed service"}
         </Text>
-        <View className="mt-0.5 flex-row items-center gap-2">
-          <Text className="text-sm font-medium text-indigo-600">
+        <View style={twStyle("mt-0.5 flex-row items-center")}>
+          <Text style={[twStyle("text-sm font-medium text-indigo-600"), { marginRight: 8 }]}>
             {formatCurrency(item.price ?? 0)}
           </Text>
-          <Text className="text-xs text-gray-500">
+          <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 8 }]}>
             {item.duration_minutes ?? 0} min
           </Text>
           {item.service_type && item.service_type !== "basic" && (
-            <Text className="text-xs text-gray-500 capitalize">{item.service_type}</Text>
+            <Text style={twStyle("text-xs text-gray-500 capitalize")}>{item.service_type}</Text>
           )}
         </View>
       </View>
@@ -177,7 +179,7 @@ export default function ServicesCatalogueScreen() {
         rightAction={
           <TouchableOpacity
             onPress={handleAddService}
-            className="h-10 min-w-[44px] flex-row items-center justify-center rounded-full bg-indigo-600 px-3"
+            style={twStyle("h-10 min-w-[44px] flex-row items-center justify-center rounded-full bg-indigo-600 px-3")}
             accessibilityLabel="Add service"
             accessibilityRole="button"
           >
@@ -203,23 +205,22 @@ export default function ServicesCatalogueScreen() {
           }
           contentContainerStyle={{ paddingBottom: 100 }}
           renderItem={({ item: section }: { item: { category: ServiceCategory | null; services: ServiceItem[] } }) => (
-            <View className="mb-4">
+            <View style={twStyle("mb-4")}>
               <View
-                className="mb-2 flex-row items-center px-1"
-                style={{
+                style={[twStyle("mb-2 flex-row items-center px-1"), {
                   borderLeftWidth: 4,
                   borderLeftColor: (section.category?.color as string) || "#ec4899",
                   paddingLeft: 8,
-                }}
+                }]}
               >
-                <Text className="text-sm font-semibold text-gray-900">
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                   {section.category?.name ?? "Services"}
                 </Text>
-                <Text className="ml-2 text-xs text-gray-500">
+                <Text style={twStyle("ml-2 text-xs text-gray-500")}>
                   {section.services.length} service{section.services.length !== 1 ? "s" : ""}
                 </Text>
               </View>
-              <View className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+              <View style={twStyle("rounded-xl border border-gray-100 bg-white overflow-hidden")}>
                 {section.services.map((svc: ServiceItem) => renderServiceRow(svc))}
               </View>
             </View>

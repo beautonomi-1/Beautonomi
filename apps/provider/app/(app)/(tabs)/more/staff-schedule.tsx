@@ -22,6 +22,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { capitalizeFirst } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -145,41 +146,39 @@ function TimePicker({
       statusBarTranslucent
     >
       <Pressable
-        className="flex-1 items-center justify-center bg-black/40"
-        style={{ zIndex: 10000, elevation: 10000 }}
+        style={[twStyle("flex-1 items-center justify-center bg-black/40"), { zIndex: 10000, elevation: 10000 }]}
         onPress={onClose}
       >
         <Pressable
-          className="mx-6 w-80 rounded-2xl bg-white p-6"
-          style={{ zIndex: 10001, elevation: 10001 }}
+          style={[twStyle("mx-6 w-80 rounded-2xl bg-white p-6"), { zIndex: 10001, elevation: 10001 }]}
           onPress={() => {}}
           accessibilityLabel="Time picker dialog"
         >
-          <Text className="mb-4 text-center text-lg font-semibold text-gray-900">
+          <Text style={twStyle("mb-4 text-center text-lg font-semibold text-gray-900")}>
             {title ?? "Select Time"}
           </Text>
 
-          <View className="flex-row justify-center gap-4">
+          <View style={twStyle("flex-row justify-center")}>
             {/* Hour */}
-            <View className="items-center">
-              <Text className="mb-2 text-xs font-medium text-gray-500">
+            <View style={[twStyle("items-center"), { marginRight: 16 }]}>
+              <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>
                 Hour
               </Text>
               <ScrollView
-                className="h-40 w-16 rounded-xl bg-gray-50"
+                style={twStyle("h-40 w-16 rounded-xl bg-gray-50")}
                 showsVerticalScrollIndicator={false}
                 accessibilityLabel="Hour selector"
               >
                 {HOURS.map((h) => (
                   <TouchableOpacity
                     key={h}
-                    className={`items-center py-2 ${hour === h ? "rounded-lg bg-indigo-600" : ""}`}
+                    style={twStyle(`items-center py-2 ${hour === h ? "rounded-lg bg-indigo-600" : ""}`)}
                     onPress={() => setHour(h)}
                     accessibilityLabel={`Hour ${h}`}
                     accessibilityRole="button"
                   >
                     <Text
-                      className={`text-base font-medium ${hour === h ? "text-white" : "text-gray-700"}`}
+                      style={twStyle(`text-base font-medium ${hour === h ? "text-white" : "text-gray-700"}`)}
                     >
                       {pad(h)}
                     </Text>
@@ -188,26 +187,26 @@ function TimePicker({
               </ScrollView>
             </View>
 
-            <Text className="self-center text-2xl font-bold text-gray-400">
+            <Text style={[twStyle("self-center text-2xl font-bold text-gray-400"), { marginRight: 16 }]}>
               :
             </Text>
 
             {/* Minute */}
-            <View className="items-center">
-              <Text className="mb-2 text-xs font-medium text-gray-500">
+            <View style={twStyle("items-center")}>
+              <Text style={twStyle("mb-2 text-xs font-medium text-gray-500")}>
                 Min
               </Text>
-              <View className="w-16 rounded-xl bg-gray-50">
+              <View style={twStyle("w-16 rounded-xl bg-gray-50")}>
                 {MINUTES.map((m) => (
                   <TouchableOpacity
                     key={m}
-                    className={`items-center py-3 ${minute === m ? "rounded-lg bg-indigo-600" : ""}`}
+                    style={twStyle(`items-center py-3 ${minute === m ? "rounded-lg bg-indigo-600" : ""}`)}
                     onPress={() => setMinute(m)}
                     accessibilityLabel={`Minute ${pad(m)}`}
                     accessibilityRole="button"
                   >
                     <Text
-                      className={`text-base font-medium ${minute === m ? "text-white" : "text-gray-700"}`}
+                      style={twStyle(`text-base font-medium ${minute === m ? "text-white" : "text-gray-700"}`)}
                     >
                       {pad(m)}
                     </Text>
@@ -218,27 +217,27 @@ function TimePicker({
           </View>
 
           {/* Preview */}
-          <Text className="mt-4 text-center text-xl font-bold text-gray-900">
+          <Text style={twStyle("mt-4 text-center text-xl font-bold text-gray-900")}>
             {formatTimeLabel(`${pad(hour)}:${pad(minute)}`)}
           </Text>
 
           {/* Actions */}
-          <View className="mt-5 flex-row gap-3">
+          <View style={twStyle("mt-5 flex-row")}>
             <TouchableOpacity
-              className="flex-1 items-center rounded-xl border border-gray-200 py-3"
+              style={[twStyle("flex-1 items-center rounded-xl border border-gray-200 py-3"), { marginRight: 12 }]}
               onPress={onClose}
               accessibilityLabel="Cancel time selection"
               accessibilityRole="button"
             >
-              <Text className="font-medium text-gray-600">Cancel</Text>
+              <Text style={twStyle("font-medium text-gray-600")}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              className="flex-1 items-center rounded-xl bg-indigo-600 py-3"
+              style={twStyle("flex-1 items-center rounded-xl bg-indigo-600 py-3")}
               onPress={handleConfirm}
               accessibilityLabel="Confirm time selection"
               accessibilityRole="button"
             >
-              <Text className="font-medium text-white">Confirm</Text>
+              <Text style={twStyle("font-medium text-white")}>Confirm</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -441,12 +440,12 @@ export default function StaffScheduleScreen() {
         rightAction={
           <TouchableOpacity
             onPress={() => openAddShift()}
-            className="flex-row items-center rounded-xl bg-gray-900 px-4 py-2"
+            style={twStyle("flex-row items-center rounded-xl bg-gray-900 px-4 py-2")}
             accessibilityLabel="Add shift"
             accessibilityRole="button"
           >
             <Ionicons name="add" size={18} color="#fff" />
-            <Text className="ml-1 text-sm font-semibold text-white">
+            <Text style={twStyle("ml-1 text-sm font-semibold text-white")}>
               Add Shift
             </Text>
           </TouchableOpacity>
@@ -455,7 +454,7 @@ export default function StaffScheduleScreen() {
 
       {/* ── Add team member CTA: one flow with shifts on Team screen ── */}
       <TouchableOpacity
-        className="mb-3 flex-row items-center justify-center rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 py-2.5"
+        style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 py-2.5")}
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           router.push("/(app)/(tabs)/more/team?add=1" as never);
@@ -464,7 +463,7 @@ export default function StaffScheduleScreen() {
         accessibilityRole="button"
       >
         <Ionicons name="person-add-outline" size={18} color="#6366f1" />
-        <Text className="ml-2 text-sm font-medium text-indigo-700">
+        <Text style={twStyle("ml-2 text-sm font-medium text-indigo-700")}>
           Add team member (set shifts in one step)
         </Text>
       </TouchableOpacity>
@@ -473,11 +472,11 @@ export default function StaffScheduleScreen() {
       {loadingStaff && !staff ? (
         <SkeletonList rows={1} />
       ) : (
-        <View className="mb-4">
+        <View style={twStyle("mb-4")}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+            contentContainerStyle={{ paddingVertical: 4 }}
           >
             {(staff ?? [])
               .filter((s) => s.is_active)
@@ -486,11 +485,11 @@ export default function StaffScheduleScreen() {
                 return (
                   <TouchableOpacity
                     key={member.id}
-                    className={`flex-row items-center rounded-2xl px-4 py-2.5 ${
+                    style={[twStyle(`flex-row items-center rounded-2xl px-4 py-2.5 ${
                       isSelected
                         ? "border border-indigo-200 bg-indigo-50"
                         : "border border-gray-100 bg-white"
-                    }`}
+                    }`), { marginRight: 8 }]}
                     onPress={() => setSelectedStaffId(member.id)}
                     accessibilityLabel={`Select ${member.name}`}
                     accessibilityRole="button"
@@ -500,19 +499,19 @@ export default function StaffScheduleScreen() {
                       imageUrl={member.avatar_url}
                       size="sm"
                     />
-                    <View className="ml-2">
+                    <View style={twStyle("ml-2")}>
                       <Text
-                        className={`text-sm font-medium ${isSelected ? "text-indigo-700" : "text-gray-900"}`}
+                        style={twStyle(`text-sm font-medium ${isSelected ? "text-indigo-700" : "text-gray-900"}`)}
                         numberOfLines={1}
                       >
                         {member.name}
                       </Text>
-                      <Text className="text-[10px] text-gray-500">
+                      <Text style={twStyle("text-[10px] text-gray-500")}>
                         {capitalizeFirst(member.role)}
                       </Text>
                     </View>
                     {isSelected && (
-                      <View className="ml-2">
+                      <View style={twStyle("ml-2")}>
                         <Ionicons
                           name="checkmark-circle"
                           size={16}
@@ -529,20 +528,20 @@ export default function StaffScheduleScreen() {
 
       {/* ── Weekly hours summary ── */}
       {selectedStaffId && (
-        <View className="mb-4 flex-row items-center justify-between rounded-2xl border border-gray-100 bg-white p-4">
-          <View className="flex-row items-center">
-            <View className="h-10 w-10 items-center justify-center rounded-xl bg-indigo-50">
+        <View style={twStyle("mb-4 flex-row items-center justify-between rounded-2xl border border-gray-100 bg-white p-4")}>
+          <View style={twStyle("flex-row items-center")}>
+            <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-indigo-50")}>
               <Ionicons name="time-outline" size={20} color="#6366f1" />
             </View>
-            <View className="ml-3">
-              <Text className="text-xs text-gray-500">Total Weekly Hours</Text>
-              <Text className="text-lg font-bold text-gray-900">
+            <View style={twStyle("ml-3")}>
+              <Text style={twStyle("text-xs text-gray-500")}>Total Weekly Hours</Text>
+              <Text style={twStyle("text-lg font-bold text-gray-900")}>
                 {totalWeeklyHours}h
               </Text>
             </View>
           </View>
-          <View className="flex-row items-center rounded-full bg-indigo-50 px-3 py-1">
-            <Text className="text-xs font-medium text-indigo-700">
+          <View style={twStyle("flex-row items-center rounded-full bg-indigo-50 px-3 py-1")}>
+            <Text style={twStyle("text-xs font-medium text-indigo-700")}>
               {Array.from(shiftsByDay.values()).filter((s) => s.length > 0)
                 .length}{" "}
               days
@@ -553,9 +552,9 @@ export default function StaffScheduleScreen() {
 
       {/* ── Quick Actions ── */}
       {selectedStaffId && (
-        <View className="mb-4 flex-row gap-2">
+        <View style={twStyle("mb-4 flex-row")}>
           <TouchableOpacity
-            className="flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5"
+            style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5"), { marginRight: 8 }]}
             onPress={() => {
               Alert.alert(
                 "Set Standard Hours",
@@ -582,10 +581,10 @@ export default function StaffScheduleScreen() {
             }}
           >
             <Ionicons name="calendar-outline" size={16} color="#6366f1" />
-            <Text className="ml-1.5 text-xs font-medium text-indigo-600">Standard Hours</Text>
+            <Text style={twStyle("ml-1.5 text-xs font-medium text-indigo-600")}>Standard Hours</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            className="flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5"
+            style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
             onPress={() => {
               Alert.alert(
                 "Set Extended Hours",
@@ -612,11 +611,11 @@ export default function StaffScheduleScreen() {
             }}
           >
             <Ionicons name="time-outline" size={16} color="#8b5cf6" />
-            <Text className="ml-1.5 text-xs font-medium text-violet-600">Extended Hours</Text>
+            <Text style={twStyle("ml-1.5 text-xs font-medium text-violet-600")}>Extended Hours</Text>
           </TouchableOpacity>
           {(staff?.length ?? 0) > 1 && (
             <TouchableOpacity
-              className="flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5"
+              style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-2.5")}
               onPress={() => {
                 const otherStaff = (staff ?? []).filter((s) => s.id !== selectedStaffId);
                 if (otherStaff.length === 0) return;
@@ -650,7 +649,7 @@ export default function StaffScheduleScreen() {
               }}
             >
               <Ionicons name="copy-outline" size={16} color="#0ea5e9" />
-              <Text className="ml-1.5 text-xs font-medium text-sky-600">Copy</Text>
+              <Text style={twStyle("ml-1.5 text-xs font-medium text-sky-600")}>Copy</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -672,36 +671,37 @@ export default function StaffScheduleScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: day }: { item: string }) => {
             const dayShifts = shiftsByDay.get(day) ?? [];
             const hasShifts = dayShifts.length > 0;
 
             return (
               <View
-                className="rounded-xl border border-gray-100 bg-white"
+                style={twStyle("rounded-xl border border-gray-100 bg-white")}
                 accessibilityLabel={`${day} schedule`}
               >
                 {/* Day header */}
-                <View className="flex-row items-center justify-between border-b border-gray-50 px-4 py-3">
-                  <View className="flex-row items-center">
+                <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 px-4 py-3")}>
+                  <View style={twStyle("flex-row items-center")}>
                     <View
-                      className={`h-8 w-8 items-center justify-center rounded-lg ${hasShifts ? "bg-indigo-50" : "bg-gray-50"}`}
+                      style={twStyle(`h-8 w-8 items-center justify-center rounded-lg ${hasShifts ? "bg-indigo-50" : "bg-gray-50"}`)}
                     >
                       <Text
-                        className={`text-xs font-bold ${hasShifts ? "text-indigo-600" : "text-gray-400"}`}
+                        style={twStyle(`text-xs font-bold ${hasShifts ? "text-indigo-600" : "text-gray-400"}`)}
                       >
                         {day.slice(0, 2)}
                       </Text>
                     </View>
                     <Text
-                      className={`ml-3 text-base font-semibold ${hasShifts ? "text-gray-900" : "text-gray-400"}`}
+                      style={twStyle(`ml-3 text-base font-semibold ${hasShifts ? "text-gray-900" : "text-gray-400"}`)}
                     >
                       {day}
                     </Text>
                   </View>
                   <TouchableOpacity
-                    className="flex-row items-center rounded-lg bg-gray-50 px-3 py-1.5"
+                    style={twStyle("flex-row items-center rounded-lg bg-gray-50 px-3 py-1.5")}
                     onPress={() => openAddShift(day)}
                     accessibilityLabel={`Add shift on ${day}`}
                     accessibilityRole="button"
@@ -711,7 +711,7 @@ export default function StaffScheduleScreen() {
                       size={14}
                       color="#6366f1"
                     />
-                    <Text className="ml-1 text-xs font-medium text-indigo-600">
+                    <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
                       Add
                     </Text>
                   </TouchableOpacity>
@@ -722,27 +722,27 @@ export default function StaffScheduleScreen() {
                   dayShifts.map((shift, idx) => (
                     <View
                       key={shift.id}
-                      className={`flex-row items-center px-4 py-3 ${idx < dayShifts.length - 1 ? "border-b border-gray-50" : ""}`}
+                      style={twStyle(`flex-row items-center px-4 py-3 ${idx < dayShifts.length - 1 ? "border-b border-gray-50" : ""}`)}
                     >
-                      <View className="mr-3 h-8 w-1 rounded-full bg-indigo-400" />
-                      <View className="flex-1">
-                        <View className="flex-row items-center">
+                      <View style={twStyle("mr-3 h-8 w-1 rounded-full bg-indigo-400")} />
+                      <View style={twStyle("flex-1")}>
+                        <View style={twStyle("flex-row items-center")}>
                           <Ionicons
                             name="time-outline"
                             size={14}
                             color="#6b7280"
                           />
-                          <Text className="ml-1.5 text-sm font-medium text-gray-900">
+                          <Text style={twStyle("ml-1.5 text-sm font-medium text-gray-900")}>
                             {formatTimeLabel(shift.start_time)} –{" "}
                             {formatTimeLabel(shift.end_time)}
                           </Text>
                         </View>
                         {shift.notes && (
-                          <Text className="mt-0.5 text-xs text-gray-500">
+                          <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                             {shift.notes}
                           </Text>
                         )}
-                        <Text className="mt-0.5 text-[10px] text-gray-400">
+                        <Text style={twStyle("mt-0.5 text-[10px] text-gray-400")}>
                           {(
                             (timeToMinutes(shift.end_time) -
                               timeToMinutes(shift.start_time)) /
@@ -751,9 +751,9 @@ export default function StaffScheduleScreen() {
                           h shift
                         </Text>
                       </View>
-                      <View className="flex-row items-center gap-1">
+                      <View style={twStyle("flex-row items-center")}>
                         <TouchableOpacity
-                          className="h-8 w-8 items-center justify-center rounded-lg bg-gray-50"
+                          style={[twStyle("h-8 w-8 items-center justify-center rounded-lg bg-gray-50"), { marginRight: 4 }]}
                           onPress={() => openEditShift(shift)}
                           accessibilityLabel="Edit shift"
                           accessibilityRole="button"
@@ -766,7 +766,7 @@ export default function StaffScheduleScreen() {
                         </TouchableOpacity>
                         {shift.id ? (
                           <TouchableOpacity
-                            className="h-8 w-8 items-center justify-center rounded-lg bg-red-50"
+                            style={twStyle("h-8 w-8 items-center justify-center rounded-lg bg-red-50")}
                             onPress={() => handleDeleteShift(shift)}
                             accessibilityLabel="Delete shift"
                             accessibilityRole="button"
@@ -782,8 +782,8 @@ export default function StaffScheduleScreen() {
                     </View>
                   ))
                 ) : (
-                  <View className="px-4 py-3">
-                    <Text className="text-sm italic text-gray-400">
+                  <View style={twStyle("px-4 py-3")}>
+                    <Text style={twStyle("text-sm italic text-gray-400")}>
                       No shifts – Day off
                     </Text>
                   </View>
@@ -805,14 +805,14 @@ export default function StaffScheduleScreen() {
         {/* Staff selector (only when adding) */}
         {!editingShift && (
           <>
-            <Text className="mb-2 text-sm font-medium text-gray-700">
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
               Staff Member *
             </Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              className="mb-4"
-              contentContainerStyle={{ gap: 8 }}
+              style={twStyle("mb-4")}
+              contentContainerStyle={{}}
             >
               {(staff ?? [])
                 .filter((s) => s.is_active)
@@ -821,7 +821,7 @@ export default function StaffScheduleScreen() {
                   return (
                     <TouchableOpacity
                       key={member.id}
-                      className={`flex-row items-center rounded-xl px-3 py-2 ${isSelected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`}
+                      style={[twStyle(`flex-row items-center rounded-xl px-3 py-2 ${isSelected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), { marginRight: 8 }]}
                       onPress={() =>
                         setForm((prev) => ({ ...prev, staff_id: member.id }))
                       }
@@ -834,7 +834,7 @@ export default function StaffScheduleScreen() {
                         size="sm"
                       />
                       <Text
-                        className={`ml-2 text-sm font-medium ${isSelected ? "text-white" : "text-gray-700"}`}
+                        style={twStyle(`ml-2 text-sm font-medium ${isSelected ? "text-white" : "text-gray-700"}`)}
                       >
                         {member.name}
                       </Text>
@@ -846,16 +846,16 @@ export default function StaffScheduleScreen() {
         )}
 
         {/* Day of Week */}
-        <Text className="mb-2 text-sm font-medium text-gray-700">
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
           Day of Week *
         </Text>
-        <View className="mb-4 flex-row flex-wrap gap-2">
+        <View style={twStyle("mb-4 flex-row flex-wrap")}>
           {DAYS.map((day) => {
             const isSelected = form.day_of_week === day;
             return (
               <TouchableOpacity
                 key={day}
-                className={`rounded-full px-3.5 py-2 ${isSelected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`}
+                style={[twStyle(`rounded-full px-3.5 py-2 ${isSelected ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"}`), { marginRight: 8, marginBottom: 8 }]}
                 onPress={() =>
                   setForm((prev) => ({ ...prev, day_of_week: day }))
                 }
@@ -863,7 +863,7 @@ export default function StaffScheduleScreen() {
                 accessibilityRole="button"
               >
                 <Text
-                  className={`text-sm font-medium ${isSelected ? "text-white" : "text-gray-600"}`}
+                  style={twStyle(`text-sm font-medium ${isSelected ? "text-white" : "text-gray-600"}`)}
                 >
                   {day.slice(0, 3)}
                 </Text>
@@ -873,32 +873,32 @@ export default function StaffScheduleScreen() {
         </View>
 
         {/* Time selection */}
-        <Text className="mb-2 text-sm font-medium text-gray-700">
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
           Shift Times *
         </Text>
-        <View className="mb-4 flex-row items-center gap-3">
+        <View style={twStyle("mb-4 flex-row items-center")}>
           <TouchableOpacity
-            className="flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3"
+            style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3"), { marginRight: 12 }]}
             onPress={() => setPickerField("start_time")}
             accessibilityLabel={`Start time: ${formatTimeLabel(form.start_time)}`}
             accessibilityRole="button"
           >
             <Ionicons name="time-outline" size={16} color="#6366f1" />
-            <Text className="ml-2 text-base font-medium text-gray-900">
+            <Text style={twStyle("ml-2 text-base font-medium text-gray-900")}>
               {formatTimeLabel(form.start_time)}
             </Text>
           </TouchableOpacity>
 
-          <Text className="text-sm text-gray-400">to</Text>
+          <Text style={twStyle("text-sm text-gray-400")}>to</Text>
 
           <TouchableOpacity
-            className="flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3"
+            style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-gray-50 py-3")}
             onPress={() => setPickerField("end_time")}
             accessibilityLabel={`End time: ${formatTimeLabel(form.end_time)}`}
             accessibilityRole="button"
           >
             <Ionicons name="time-outline" size={16} color="#6366f1" />
-            <Text className="ml-2 text-base font-medium text-gray-900">
+            <Text style={twStyle("ml-2 text-base font-medium text-gray-900")}>
               {formatTimeLabel(form.end_time)}
             </Text>
           </TouchableOpacity>
@@ -906,9 +906,9 @@ export default function StaffScheduleScreen() {
 
         {/* Duration preview */}
         {timeToMinutes(form.end_time) > timeToMinutes(form.start_time) && (
-          <View className="mb-4 flex-row items-center rounded-xl bg-indigo-50 px-4 py-2.5">
+          <View style={twStyle("mb-4 flex-row items-center rounded-xl bg-indigo-50 px-4 py-2.5")}>
             <Ionicons name="hourglass-outline" size={16} color="#6366f1" />
-            <Text className="ml-2 text-sm font-medium text-indigo-700">
+            <Text style={twStyle("ml-2 text-sm font-medium text-indigo-700")}>
               {(
                 (timeToMinutes(form.end_time) -
                   timeToMinutes(form.start_time)) /
@@ -920,12 +920,12 @@ export default function StaffScheduleScreen() {
         )}
 
         {/* Notes */}
-        <Text className="mb-1 text-sm font-medium text-gray-700">
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
           Notes (optional)
         </Text>
-        <View className="mb-4">
-          <View className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-            <Text className="text-sm text-gray-900">
+        <View style={twStyle("mb-4")}>
+          <View style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+            <Text style={twStyle("text-sm text-gray-900")}>
               {form.notes || "No notes"}
             </Text>
           </View>

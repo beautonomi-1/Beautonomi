@@ -3,7 +3,6 @@ import { View, Text, TouchableOpacity, Alert, Share } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiPost } from "@/hooks/useApi";
-import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SearchBar } from "@/components/ui/SearchBar";
@@ -12,6 +11,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate, formatTimeAgo } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface Transaction {
   id: string;
@@ -84,7 +84,6 @@ function paymentMethodIcon(method: string | null): keyof typeof Ionicons.glyphMa
 }
 
 export default function TransactionsScreen() {
-  const { isTablet } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState("month");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -167,39 +166,39 @@ export default function TransactionsScreen() {
     return (
       <TouchableOpacity
         key={item.id}
-        className="mb-1.5 flex-row items-center rounded-xl border border-gray-100 bg-white p-3.5"
+        style={twStyle("mb-1.5 flex-row items-center rounded-xl border border-gray-100 bg-white p-3.5")}
         onPress={() => setSelectedTxn(item)}
         activeOpacity={0.7}
       >
-        <View className={`h-10 w-10 items-center justify-center rounded-xl ${ic.bg}`}>
+        <View style={twStyle(`h-10 w-10 items-center justify-center rounded-xl ${ic.bg}`)}>
           <Ionicons name={ic.name} size={18} color={ic.color} />
         </View>
-        <View className="ml-3 flex-1">
-          <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
+        <View style={twStyle("ml-3 flex-1")}>
+          <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={1}>
             {item.description}
           </Text>
-          <View className="mt-0.5 flex-row items-center gap-2">
-            <Text className="text-xs text-gray-400">
+          <View style={twStyle("mt-0.5 flex-row items-center")}>
+            <Text style={[twStyle("text-xs text-gray-400"), { marginRight: 8 }]}>
               {formatTimeAgo(item.created_at)}
             </Text>
             {item.client_name && (
-              <Text className="text-xs text-gray-400" numberOfLines={1}>
+              <Text style={twStyle("text-xs text-gray-400")} numberOfLines={1}>
                 • {item.client_name}
               </Text>
             )}
           </View>
         </View>
-        <View className="items-end ml-2">
+        <View style={twStyle("items-end ml-2")}>
           <Text
-            className={`text-sm font-bold ${
+            style={twStyle(`text-sm font-bold ${
               isDebit ? "text-red-600" : "text-green-600"
-            }`}
+            }`)}
           >
             {isDebit ? "-" : "+"}
             {formatCurrency(item.amount)}
           </Text>
-          <View className={`mt-0.5 rounded-full px-1.5 py-0.5 ${ss.bg}`}>
-            <Text className={`text-[9px] font-medium capitalize ${ss.text}`}>
+          <View style={twStyle(`mt-0.5 rounded-full px-1.5 py-0.5 ${ss.bg}`)}>
+            <Text style={twStyle(`text-[9px] font-medium capitalize ${ss.text}`)}>
               {item.status}
             </Text>
           </View>
@@ -220,7 +219,7 @@ export default function TransactionsScreen() {
         subtitle={`${filtered.length} transaction${filtered.length !== 1 ? "s" : ""}`}
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-100"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
             onPress={handleExport}
             disabled={exporting}
           >
@@ -230,35 +229,35 @@ export default function TransactionsScreen() {
       />
 
       {/* Summary cards */}
-      <View className={`mb-3 gap-2 ${isTablet ? "flex-row" : "flex-row"}`}>
-        <View className="flex-1 rounded-xl border border-green-100 bg-green-50 p-3">
-          <Text className="text-[10px] font-medium text-green-600">Income</Text>
-          <Text className="text-base font-bold text-green-700">
+      <View style={twStyle("mb-3 flex-row")}>
+        <View style={[twStyle("flex-1 rounded-xl border border-green-100 bg-green-50 p-3"), { marginRight: 8 }]}>
+          <Text style={twStyle("text-[10px] font-medium text-green-600")}>Income</Text>
+          <Text style={twStyle("text-base font-bold text-green-700")}>
             {formatCurrency(totalIn)}
           </Text>
         </View>
-        <View className="flex-1 rounded-xl border border-red-100 bg-red-50 p-3">
-          <Text className="text-[10px] font-medium text-red-600">Outgoing</Text>
-          <Text className="text-base font-bold text-red-700">
+        <View style={[twStyle("flex-1 rounded-xl border border-red-100 bg-red-50 p-3"), { marginRight: 8 }]}>
+          <Text style={twStyle("text-[10px] font-medium text-red-600")}>Outgoing</Text>
+          <Text style={twStyle("text-base font-bold text-red-700")}>
             {formatCurrency(totalOut)}
           </Text>
         </View>
         <View
-          className={`flex-1 rounded-xl border p-3 ${
+          style={twStyle(`flex-1 rounded-xl border p-3 ${
             netAmount >= 0 ? "border-blue-100 bg-blue-50" : "border-orange-100 bg-orange-50"
-          }`}
+          }`)}
         >
           <Text
-            className={`text-[10px] font-medium ${
+            style={twStyle(`text-[10px] font-medium ${
               netAmount >= 0 ? "text-blue-600" : "text-orange-600"
-            }`}
+            }`)}
           >
             Net
           </Text>
           <Text
-            className={`text-base font-bold ${
+            style={twStyle(`text-base font-bold ${
               netAmount >= 0 ? "text-blue-700" : "text-orange-700"
-            }`}
+            }`)}
           >
             {formatCurrency(Math.abs(netAmount))}
           </Text>
@@ -271,10 +270,10 @@ export default function TransactionsScreen() {
         placeholder="Search transactions..."
       />
 
-      <View className="mt-2 mb-1">
+      <View style={twStyle("mt-2 mb-1")}>
         <FilterChipGroup options={PERIOD_FILTERS} selected={period} onSelect={setPeriod} />
       </View>
-      <View className="mb-3">
+      <View style={twStyle("mb-3")}>
         <FilterChipGroup options={TYPE_FILTERS} selected={typeFilter} onSelect={setTypeFilter} />
       </View>
 
@@ -291,8 +290,12 @@ export default function TransactionsScreen() {
           }
         />
       ) : (
-        <View className="gap-1.5">
-          {filtered.map((item) => renderTransactionItem(item))}
+        <View>
+          {filtered.map((item, idx) => (
+            <View key={item.id} style={idx > 0 ? { marginTop: 6 } : undefined}>
+              {renderTransactionItem(item)}
+            </View>
+          ))}
         </View>
       )}
 
@@ -304,9 +307,9 @@ export default function TransactionsScreen() {
       >
         {selectedTxn && (
           <View>
-            <View className="mb-4 items-center">
+            <View style={twStyle("mb-4 items-center")}>
               <View
-                className={`h-14 w-14 items-center justify-center rounded-2xl ${txnIcon(selectedTxn.type).bg}`}
+                style={twStyle(`h-14 w-14 items-center justify-center rounded-2xl ${txnIcon(selectedTxn.type).bg}`)}
               >
                 <Ionicons
                   name={txnIcon(selectedTxn.type).name}
@@ -315,66 +318,66 @@ export default function TransactionsScreen() {
                 />
               </View>
               <Text
-                className={`mt-2 text-2xl font-bold ${
+                style={twStyle(`mt-2 text-2xl font-bold ${
                   selectedTxn.type === "payout" || selectedTxn.type === "fee" || selectedTxn.type === "refund"
                     ? "text-red-600"
                     : "text-green-600"
-                }`}
+                }`)}
               >
                 {selectedTxn.type === "payout" || selectedTxn.type === "fee" || selectedTxn.type === "refund"
                   ? "-"
                   : "+"}
                 {formatCurrency(selectedTxn.amount)}
               </Text>
-              <Text className="mt-1 text-sm text-gray-500">{selectedTxn.description}</Text>
+              <Text style={twStyle("mt-1 text-sm text-gray-500")}>{selectedTxn.description}</Text>
             </View>
 
-            <View className="mb-4 rounded-xl bg-gray-50 p-4">
-              <View className="mb-3 flex-row justify-between">
-                <Text className="text-xs text-gray-500">Type</Text>
-                <Text className="text-sm font-medium capitalize text-gray-900">
+            <View style={twStyle("mb-4 rounded-xl bg-gray-50 p-4")}>
+              <View style={twStyle("mb-3 flex-row justify-between")}>
+                <Text style={twStyle("text-xs text-gray-500")}>Type</Text>
+                <Text style={twStyle("text-sm font-medium capitalize text-gray-900")}>
                   {selectedTxn.type}
                 </Text>
               </View>
-              <View className="mb-3 flex-row justify-between">
-                <Text className="text-xs text-gray-500">Status</Text>
-                <View className={`rounded-full px-2 py-0.5 ${statusStyle(selectedTxn.status).bg}`}>
-                  <Text className={`text-xs font-medium capitalize ${statusStyle(selectedTxn.status).text}`}>
+              <View style={twStyle("mb-3 flex-row justify-between")}>
+                <Text style={twStyle("text-xs text-gray-500")}>Status</Text>
+                <View style={twStyle(`rounded-full px-2 py-0.5 ${statusStyle(selectedTxn.status).bg}`)}>
+                  <Text style={twStyle(`text-xs font-medium capitalize ${statusStyle(selectedTxn.status).text}`)}>
                     {selectedTxn.status}
                   </Text>
                 </View>
               </View>
-              <View className="mb-3 flex-row justify-between">
-                <Text className="text-xs text-gray-500">Date</Text>
-                <Text className="text-sm text-gray-900">
+              <View style={twStyle("mb-3 flex-row justify-between")}>
+                <Text style={twStyle("text-xs text-gray-500")}>Date</Text>
+                <Text style={twStyle("text-sm text-gray-900")}>
                   {formatDate(selectedTxn.created_at)}
                 </Text>
               </View>
               {selectedTxn.client_name && (
-                <View className="mb-3 flex-row justify-between">
-                  <Text className="text-xs text-gray-500">Client</Text>
-                  <Text className="text-sm text-gray-900">{selectedTxn.client_name}</Text>
+                <View style={twStyle("mb-3 flex-row justify-between")}>
+                  <Text style={twStyle("text-xs text-gray-500")}>Client</Text>
+                  <Text style={twStyle("text-sm text-gray-900")}>{selectedTxn.client_name}</Text>
                 </View>
               )}
               {selectedTxn.payment_method && (
-                <View className="mb-3 flex-row items-center justify-between">
-                  <Text className="text-xs text-gray-500">Payment Method</Text>
-                  <View className="flex-row items-center">
+                <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+                  <Text style={twStyle("text-xs text-gray-500")}>Payment Method</Text>
+                  <View style={twStyle("flex-row items-center")}>
                     <Ionicons
                       name={paymentMethodIcon(selectedTxn.payment_method)}
                       size={14}
                       color="#6b7280"
                     />
-                    <Text className="ml-1 text-sm capitalize text-gray-900">
+                    <Text style={twStyle("ml-1 text-sm capitalize text-gray-900")}>
                       {selectedTxn.payment_method}
                     </Text>
                   </View>
                 </View>
               )}
               {selectedTxn.reference && (
-                <View className="flex-row justify-between">
-                  <Text className="text-xs text-gray-500">Reference</Text>
-                  <Text className="text-sm font-mono text-gray-700" selectable>
+                <View style={twStyle("flex-row justify-between")}>
+                  <Text style={twStyle("text-xs text-gray-500")}>Reference</Text>
+                  <Text style={twStyle("text-sm font-mono text-gray-700")} selectable>
                     {selectedTxn.reference}
                   </Text>
                 </View>
@@ -382,14 +385,14 @@ export default function TransactionsScreen() {
             </View>
 
             {selectedTxn.notes && (
-              <View className="mb-4">
-                <Text className="mb-1 text-xs font-medium text-gray-500">Notes</Text>
-                <Text className="text-sm leading-5 text-gray-700">{selectedTxn.notes}</Text>
+              <View style={twStyle("mb-4")}>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Notes</Text>
+                <Text style={twStyle("text-sm leading-5 text-gray-700")}>{selectedTxn.notes}</Text>
               </View>
             )}
 
             <TouchableOpacity
-              className="flex-row items-center justify-center rounded-xl bg-gray-100 py-3"
+              style={twStyle("flex-row items-center justify-center rounded-xl bg-gray-100 py-3")}
               onPress={async () => {
                 await Share.share({
                   message: `Transaction: ${selectedTxn.description}\nAmount: ${formatCurrency(selectedTxn.amount)}\nDate: ${formatDate(selectedTxn.created_at)}\nRef: ${selectedTxn.reference ?? "N/A"}`,
@@ -397,7 +400,7 @@ export default function TransactionsScreen() {
               }}
             >
               <Ionicons name="share-outline" size={16} color="#374151" />
-              <Text className="ml-1.5 text-sm font-medium text-gray-700">Share Receipt</Text>
+              <Text style={twStyle("ml-1.5 text-sm font-medium text-gray-700")}>Share Receipt</Text>
             </TouchableOpacity>
           </View>
         )}

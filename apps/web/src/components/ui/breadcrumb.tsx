@@ -41,7 +41,7 @@ export default function Breadcrumb({ items }: BreadcrumbProps) {
               {item.href && !isLast ? (
                 <Link
                   href={item.href}
-                  className="hover:text-[#FF0077] transition-colors px-1 py-0.5 rounded active:bg-gray-100 truncate max-w-[120px] sm:max-w-[200px]"
+                  className="hover:text-primary transition-colors px-1 py-0.5 rounded active:bg-gray-100 truncate max-w-[120px] sm:max-w-[200px]"
                   title={item.label}
                 >
                   {item.label}

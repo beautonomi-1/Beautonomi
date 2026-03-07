@@ -53,6 +53,9 @@ Beautonomi/
 | `pnpm dev:web` | Run web app only |
 | `pnpm dev:customer` | Run customer Expo app only |
 | `pnpm dev:provider` | Run provider Expo app only |
+| `pnpm dev:check:customer` | Verify customer app at http://localhost:8081 (server must be running) |
+| `pnpm dev:check:provider` | Verify provider app at http://localhost:8082 (server must be running) |
+| `pnpm dev:check` | Verify both Expo dev servers (page + bundle 200) |
 | `pnpm build` | Build all apps |
 | `pnpm lint` | Lint all packages |
 | `pnpm typecheck` | Type-check all packages |
@@ -162,6 +165,14 @@ Translations live in `packages/i18n/src/locales/`. The web app auto-detects brow
 - **Web**: Deployed via Vercel. See `apps/web/` Vercel config.
 - **Mobile**: Built & submitted via EAS. See [docs/DEPLOYMENT_EAS.md](./docs/DEPLOYMENT_EAS.md) for full setup guide.
 - **Database**: Supabase migrations in `supabase/migrations/`. See [supabase/README.md](./supabase/README.md).
+
+### Production readiness
+
+See **[docs/PRODUCTION_READINESS.md](./docs/PRODUCTION_READINESS.md)** for the full checklist. Summary:
+
+- **Pre-release**: `pnpm run release:check` (or `prepare:production` for typecheck + lint + test + build). Run `npx expo-doctor` in `apps/customer` and `apps/provider` before EAS builds.
+- **Mobile (EAS)**: Production profile sets `APP_ENV=production`; OneSignal and config use it. Set secrets in [expo.dev](https://expo.dev) per app: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`, `EXPO_PUBLIC_APP_URL`, and optionally `EXPO_PUBLIC_SENTRY_DSN`, `EXPO_PUBLIC_ONESIGNAL_APP_ID`.
+- **Build**: `pnpm run build:customer:ios`, `build:provider:ios`, etc., or `eas build --profile production --platform all` from each app dir.
 
 ---
 

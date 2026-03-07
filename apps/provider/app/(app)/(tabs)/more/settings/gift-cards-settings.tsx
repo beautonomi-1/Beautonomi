@@ -9,6 +9,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { StatCard } from "@/components/ui/StatCard";
 import { formatCurrency } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface GiftCardSettings {
   enabled: boolean;
@@ -118,9 +119,9 @@ export default function GiftCardsSettingsScreen() {
       />
 
       {stats && (
-        <View className="mb-4">
-          <View className="flex-row gap-2">
-            <View className="flex-1">
+        <View style={twStyle("mb-4")}>
+          <View style={twStyle("flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
               <StatCard
                 title="Sold"
                 value={formatCurrency(stats.total_sold)}
@@ -130,7 +131,7 @@ export default function GiftCardsSettingsScreen() {
                 compact
               />
             </View>
-            <View className="flex-1">
+            <View style={twStyle("flex-1")}>
               <StatCard
                 title="Active"
                 value={String(stats.active_cards)}
@@ -141,8 +142,8 @@ export default function GiftCardsSettingsScreen() {
               />
             </View>
           </View>
-          <View className="mt-2 flex-row gap-2">
-            <View className="flex-1">
+          <View style={twStyle("mt-2 flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
               <StatCard
                 title="Redeemed"
                 value={formatCurrency(stats.total_redeemed)}
@@ -152,7 +153,7 @@ export default function GiftCardsSettingsScreen() {
                 compact
               />
             </View>
-            <View className="flex-1">
+            <View style={twStyle("flex-1")}>
               <StatCard
                 title="Outstanding"
                 value={formatCurrency(stats.outstanding_balance)}
@@ -167,30 +168,30 @@ export default function GiftCardsSettingsScreen() {
       )}
 
       {settings?.isUsingPlatformDefault && !useCustom && (
-        <View className="mb-4 flex-row rounded-xl border border-amber-100 bg-amber-50 p-3">
+        <View style={twStyle("mb-4 flex-row rounded-xl border border-amber-100 bg-amber-50 p-3")}>
           <Ionicons
             name="information-circle"
             size={16}
             color="#f59e0b"
             style={{ marginTop: 1 }}
           />
-          <Text className="ml-2 flex-1 text-xs leading-4 text-amber-700">
+          <Text style={twStyle("ml-2 flex-1 text-xs leading-4 text-amber-700")}>
             Using platform defaults. Enable custom values to override.
           </Text>
         </View>
       )}
 
-      <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row flex-1 items-center">
-            <View className="h-11 w-11 items-center justify-center rounded-xl bg-purple-50">
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row flex-1 items-center")}>
+            <View style={twStyle("h-11 w-11 items-center justify-center rounded-xl bg-purple-50")}>
               <Ionicons name="gift" size={22} color="#a855f7" />
             </View>
-            <View className="ml-3 flex-1">
-              <Text className="text-[15px] font-semibold text-gray-900">
+            <View style={twStyle("ml-3 flex-1")}>
+              <Text style={twStyle("text-[15px] font-semibold text-gray-900")}>
                 Enable Gift Cards
               </Text>
-              <Text className="text-xs text-gray-500">
+              <Text style={twStyle("text-xs text-gray-500")}>
                 Allow clients to purchase and redeem gift cards
               </Text>
             </View>
@@ -207,38 +208,38 @@ export default function GiftCardsSettingsScreen() {
       {enabled && (
         <>
           {/* Platform defaults display */}
-          <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+          <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
             Platform Defaults
           </Text>
-          <View className="mb-4 rounded-xl bg-gray-50 p-4">
-            <View className="mb-2 flex-row justify-between">
-              <Text className="text-xs text-gray-500">Min Value</Text>
-              <Text className="text-sm font-medium text-gray-900">
+          <View style={twStyle("mb-4 rounded-xl bg-gray-50 p-4")}>
+            <View style={twStyle("mb-2 flex-row justify-between")}>
+              <Text style={twStyle("text-xs text-gray-500")}>Min Value</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
                 R {settings?.min_value ?? 50}
               </Text>
             </View>
-            <View className="mb-2 flex-row justify-between">
-              <Text className="text-xs text-gray-500">Max Value</Text>
-              <Text className="text-sm font-medium text-gray-900">
+            <View style={twStyle("mb-2 flex-row justify-between")}>
+              <Text style={twStyle("text-xs text-gray-500")}>Max Value</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
                 R {settings?.max_value ?? 10000}
               </Text>
             </View>
-            <View className="flex-row justify-between">
-              <Text className="text-xs text-gray-500">Default Expiry</Text>
-              <Text className="text-sm font-medium text-gray-900">
+            <View style={twStyle("flex-row justify-between")}>
+              <Text style={twStyle("text-xs text-gray-500")}>Default Expiry</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
                 {settings?.default_expiry_months ?? 12} months
               </Text>
             </View>
           </View>
 
           {/* Custom overrides */}
-          <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-            <View className="mb-3 flex-row items-center justify-between">
-              <View className="flex-1">
-                <Text className="text-sm font-medium text-gray-900">
+          <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+            <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+              <View style={twStyle("flex-1")}>
+                <Text style={twStyle("text-sm font-medium text-gray-900")}>
                   Custom Values
                 </Text>
-                <Text className="text-xs text-gray-500">
+                <Text style={twStyle("text-xs text-gray-500")}>
                   Override platform defaults
                 </Text>
               </View>
@@ -252,34 +253,34 @@ export default function GiftCardsSettingsScreen() {
 
             {useCustom && (
               <>
-                <View className="border-t border-gray-100 pt-3">
-                  <Text className="mb-1 text-sm font-medium text-gray-700">
+                <View style={twStyle("border-t border-gray-100 pt-3")}>
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
                     Min Value (R)
                   </Text>
                   <TextInput
-                    className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                    style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                     value={customMin}
                     onChangeText={(t) => update(() => setCustomMin(t))}
                     keyboardType="decimal-pad"
                     placeholder={`Default: ${settings?.min_value ?? 50}`}
                     placeholderTextColor="#9ca3af"
                   />
-                  <Text className="mb-1 text-sm font-medium text-gray-700">
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
                     Max Value (R)
                   </Text>
                   <TextInput
-                    className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                    style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                     value={customMax}
                     onChangeText={(t) => update(() => setCustomMax(t))}
                     keyboardType="decimal-pad"
                     placeholder={`Default: ${settings?.max_value ?? 10000}`}
                     placeholderTextColor="#9ca3af"
                   />
-                  <Text className="mb-1 text-sm font-medium text-gray-700">
+                  <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
                     Expiry (months)
                   </Text>
                   <TextInput
-                    className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                    style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                     value={customExpiry}
                     onChangeText={(t) => update(() => setCustomExpiry(t))}
                     keyboardType="number-pad"
@@ -292,23 +293,23 @@ export default function GiftCardsSettingsScreen() {
           </View>
 
           {/* How it works */}
-          <View className="mb-4 rounded-xl bg-indigo-50 p-4">
-            <Text className="mb-2 text-sm font-semibold text-indigo-900">
+          <View style={twStyle("mb-4 rounded-xl bg-indigo-50 p-4")}>
+            <Text style={twStyle("mb-2 text-sm font-semibold text-indigo-900")}>
               How Gift Cards Work
             </Text>
-            <View className="gap-2">
+            <View>
               {[
                 "Clients purchase gift cards through your booking page or in-store",
                 "Gift cards can be sent via email with a personal message",
                 "Recipients redeem the card code at checkout for services or products",
               ].map((step, idx) => (
-                <View key={idx} className="flex-row items-start">
-                  <View className="mt-0.5 h-4 w-4 items-center justify-center rounded-full bg-indigo-200">
-                    <Text className="text-[9px] font-bold text-indigo-700">
+                <View key={idx} style={[twStyle("flex-row items-start"), idx > 0 ? { marginTop: 8 } : undefined]}>
+                  <View style={twStyle("mt-0.5 h-4 w-4 items-center justify-center rounded-full bg-indigo-200")}>
+                    <Text style={twStyle("text-[9px] font-bold text-indigo-700")}>
                       {idx + 1}
                     </Text>
                   </View>
-                  <Text className="ml-2 flex-1 text-xs text-indigo-700">
+                  <Text style={twStyle("ml-2 flex-1 text-xs text-indigo-700")}>
                     {step}
                   </Text>
                 </View>
@@ -317,11 +318,11 @@ export default function GiftCardsSettingsScreen() {
           </View>
 
           {settings?.terms && (
-            <View className="mb-4 rounded-xl border border-gray-100 bg-white p-4">
-              <Text className="mb-1 text-xs font-medium text-gray-500">
+            <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
+              <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>
                 Terms & Conditions
               </Text>
-              <Text className="text-sm leading-5 text-gray-700">
+              <Text style={twStyle("text-sm leading-5 text-gray-700")}>
                 {settings.terms}
               </Text>
             </View>
@@ -336,7 +337,7 @@ export default function GiftCardsSettingsScreen() {
         disabled={!dirty}
         fullWidth
       />
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

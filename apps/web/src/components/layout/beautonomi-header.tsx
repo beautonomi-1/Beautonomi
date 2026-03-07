@@ -959,7 +959,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                       </Button>
                       <Button
                         variant="secondary"
-                        className="w-full justify-start text-base font-medium h-14 px-4 bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#D60565] hover:to-[#FF0077] text-white rounded-xl"
+                        className="w-full justify-start text-base font-medium h-14 px-4 bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white rounded-xl"
                         onClick={() => {
                           setIsUserMenuOpen(false);
                           router.push("/signup?type=customer");

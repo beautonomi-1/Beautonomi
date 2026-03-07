@@ -14,12 +14,16 @@ import { Stack, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { api } from "@/lib/api-client";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
+import { Colors } from "@/constants/colors";
 
 const AMOUNTS = [100, 250, 500, 1000, 2500, 5000];
 
 export default function GiftCardPurchaseScreen() {
   useScreenTracking("Gift Card Purchase");
   const router = useRouter();
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const [amount, setAmount] = useState<number>(250);
   const [customAmount, setCustomAmount] = useState("");
   const [quantity, setQuantity] = useState(1);
@@ -67,86 +71,47 @@ export default function GiftCardPurchaseScreen() {
   return (
     <>
       <Stack.Screen options={{ title: "Buy Gift Card", headerBackTitle: "Back" }} />
-      <KeyboardAvoidingView
-        className="flex-1 bg-white"
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
-      >
-        <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
-          <Text className="text-lg font-semibold text-gray-900 mb-2">Select amount (ZAR)</Text>
-          <View className="flex-row flex-wrap gap-2 mb-4">
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.white }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
+          <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Select amount (ZAR)</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16 }}>
             {AMOUNTS.map((a) => (
               <TouchableOpacity
                 key={a}
-                onPress={() => {
-                  setAmount(a);
-                  setCustomAmount("");
-                }}
-                className={`px-4 py-3 rounded-xl border ${
-                  amount === a && !customAmount
-                    ? "bg-primary border-primary"
-                    : "bg-white border-gray-200"
-                }`}
+                onPress={() => { setAmount(a); setCustomAmount(""); }}
+                style={{ paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, borderWidth: 1, backgroundColor: amount === a && !customAmount ? Colors.primary : Colors.white, borderColor: amount === a && !customAmount ? Colors.primary : Colors.gray[200], marginRight: 8, marginBottom: 8 }}
               >
-                <Text
-                  className={`font-medium ${amount === a && !customAmount ? "text-white" : "text-gray-700"}`}
-                >
-                  {a}
-                </Text>
+                <Text style={{ fontWeight: "500", color: amount === a && !customAmount ? Colors.white : Colors.gray[700] }}>{a}</Text>
               </TouchableOpacity>
             ))}
           </View>
-
-          <Text className="text-sm text-gray-600 mb-2">Or enter custom amount</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Or enter custom amount</Text>
           <TextInput
-            className="border border-gray-200 rounded-xl px-4 py-3 text-base mb-4"
+            style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, marginBottom: 16 }}
             placeholder="e.g. 350"
+            placeholderTextColor={Colors.gray[400]}
             value={customAmount}
-            onChangeText={(t) => {
-              setCustomAmount(t);
-              if (t) setAmount(0);
-            }}
+            onChangeText={(t) => { setCustomAmount(t); if (t) setAmount(0); }}
             keyboardType="number-pad"
           />
-
-          <Text className="text-sm text-gray-600 mb-2">Quantity</Text>
-          <View className="flex-row items-center gap-4 mb-6">
-            <TouchableOpacity
-              onPress={() => setQuantity((q) => Math.max(1, q - 1))}
-              className="w-12 h-12 rounded-full bg-gray-100 items-center justify-center"
-            >
-              <Text className="text-xl text-gray-700">−</Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Quantity</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 24 }}>
+            <TouchableOpacity onPress={() => setQuantity((q) => Math.max(1, q - 1))} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center", marginRight: 16 }}>
+              <Text style={{ fontSize: 20, color: Colors.gray[700] }}>−</Text>
             </TouchableOpacity>
-            <Text className="text-xl font-semibold text-gray-900">{quantity}</Text>
-            <TouchableOpacity
-              onPress={() => setQuantity((q) => q + 1)}
-              className="w-12 h-12 rounded-full bg-gray-100 items-center justify-center"
-            >
-              <Text className="text-xl text-gray-700">+</Text>
+            <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginRight: 16 }}>{quantity}</Text>
+            <TouchableOpacity onPress={() => setQuantity((q) => q + 1)} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center" }}>
+              <Text style={{ fontSize: 20, color: Colors.gray[700] }}>+</Text>
             </TouchableOpacity>
           </View>
-
-          <View className="bg-gray-50 rounded-xl p-4 mb-6">
-            <Text className="text-gray-600">Total</Text>
-            <Text className="text-2xl font-bold text-gray-900">
-              ZAR {total.toLocaleString()}
-            </Text>
+          <View style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 24 }}>
+            <Text style={{ color: Colors.gray[600] }}>Total</Text>
+            <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>ZAR {total.toLocaleString()}</Text>
           </View>
-
-          <TouchableOpacity
-            onPress={purchase}
-            disabled={finalAmount <= 0 || loading}
-            className="bg-primary py-4 rounded-xl items-center disabled:opacity-50"
-          >
-            {loading ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Text className="text-white font-semibold text-lg">Pay with Paystack</Text>
-            )}
+          <TouchableOpacity onPress={purchase} disabled={finalAmount <= 0 || loading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: finalAmount <= 0 || loading ? 0.5 : 1 }}>
+            {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>Pay with Paystack</Text>}
           </TouchableOpacity>
-          <Text className="text-xs text-gray-500 text-center mt-4">
-            You will be redirected to complete payment securely.
-          </Text>
+          <Text style={{ fontSize: 12, color: Colors.gray[500], textAlign: "center", marginTop: 16 }}>You will be redirected to complete payment securely.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </>

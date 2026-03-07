@@ -7,6 +7,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 type WaitlistEntry = {
   id: string;
@@ -26,16 +27,16 @@ type WaitlistEntry = {
 
 type WaitlistResponse = { entries: WaitlistEntry[]; total?: number };
 
-function statusColor(status: string): string {
+function statusBgColor(status: string): string {
   switch (status) {
     case "waiting":
-      return "bg-amber-100";
+      return "#fef3c7";
     case "contacted":
-      return "bg-blue-100";
+      return "#dbeafe";
     case "booked":
-      return "bg-green-100";
+      return "#dcfce7";
     default:
-      return "bg-gray-100";
+      return Colors.gray[100];
   }
 }
 
@@ -56,7 +57,7 @@ export default function WaitlistScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Waitlist" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -67,7 +68,7 @@ export default function WaitlistScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Waitlist" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -78,39 +79,39 @@ export default function WaitlistScreen() {
     <ScreenContainer>
       <ScreenHeader title="Waitlist" subtitle="Appointments, waitlist & schedule" onBack={() => router.back()} />
       <ScrollView
-        className="flex-1"
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
         {entries.length === 0 ? (
-          <View className="py-12 px-4 items-center">
+          <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="people-outline" size={48} color="#9ca3af" />
-            <Text className="mt-4 text-center text-gray-600">No waitlist entries</Text>
-            <Text className="mt-2 text-center text-sm text-gray-500">
+            <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>No waitlist entries</Text>
+            <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
               Entries will appear here when customers join the waitlist
             </Text>
           </View>
         ) : (
-          <View className="pb-4">
+          <View style={{ paddingBottom: 16 }}>
             {entries.map((entry) => (
               <View
                 key={entry.id}
-                className="mb-3 rounded-xl border border-gray-200 bg-white p-4"
+                style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               >
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="font-semibold text-gray-900" numberOfLines={1}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
                     {entry.customer_name || "No name"}
                   </Text>
-                  <View className={`rounded-full px-2 py-0.5 ${statusColor(entry.status)}`}>
-                    <Text className="text-xs font-medium text-gray-800">{entry.status}</Text>
+                  <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: statusBgColor(entry.status) }}>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[800] }}>{entry.status}</Text>
                   </View>
                 </View>
                 {entry.service && (
-                  <Text className="text-sm text-gray-600">{entry.service.title}</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[600] }}>{entry.service.title}</Text>
                 )}
                 {(entry.preferred_date || entry.customer_phone) && (
-                  <Text className="mt-1 text-xs text-gray-500">
+                  <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
                     {entry.preferred_date
                       ? new Date(entry.preferred_date).toLocaleDateString()
                       : ""}

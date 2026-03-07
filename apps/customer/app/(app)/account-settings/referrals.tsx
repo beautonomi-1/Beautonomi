@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, Share, Alert } from "react-native";
+import { View, Text, TouchableOpacity, Share, Alert, Platform } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
+import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 
 interface ReferralStats {
@@ -81,62 +82,62 @@ export default function ReferralsScreen() {
 
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load}>
-      <View className="gap-4 px-4">
+      <View style={{ paddingHorizontal: 16 }}>
         {!isEnabled && (
-          <View className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-            <Text className="text-sm text-amber-800">
+          <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#FCD34D", backgroundColor: "#FFFBEB", padding: 12 }}>
+            <Text style={{ fontSize: 14, color: "#92400E" }}>
               Referrals are currently disabled. You can still see your code; rewards will apply when the program is enabled again.
             </Text>
           </View>
         )}
 
-        <View className="bg-pink-50 rounded-2xl p-4">
-          <Text className="text-sm text-gray-600">Your referral code</Text>
-          <Text className="text-xl font-bold text-gray-900 mt-1 font-mono">{code || "—"}</Text>
+        <View style={{ backgroundColor: "#FDF2F8", borderRadius: 16, padding: 16, marginTop: 16 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Your referral code</Text>
+          <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], marginTop: 4, fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" }}>{code || "—"}</Text>
         </View>
 
-        <View className="bg-white rounded-2xl border border-gray-200 p-4">
-          <Text className="text-sm text-gray-600 mb-1">Your referral link</Text>
-          <Text className="text-base text-gray-900 font-mono" numberOfLines={2} selectable>
+        <View style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], padding: 16, marginTop: 16 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 4 }}>Your referral link</Text>
+          <Text style={{ fontSize: 16, color: Colors.gray[900], fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" }} numberOfLines={2} selectable>
             {link || "—"}
           </Text>
-          <View className="flex-row gap-2 mt-3">
+          <View style={{ flexDirection: "row", marginTop: 12 }}>
             <TouchableOpacity
               onPress={handleCopy}
-              className="flex-1 flex-row items-center justify-center gap-2 bg-gray-100 py-3 rounded-xl"
+              style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: Colors.gray[100], paddingVertical: 12, borderRadius: 12, marginRight: 8 }}
             >
-              <Ionicons name={copied ? "checkmark-circle" : "copy-outline"} size={20} color="#374151" />
-              <Text className="text-gray-700 font-medium">{copied ? "Copied" : "Copy link"}</Text>
+              <Ionicons name={copied ? "checkmark-circle" : "copy-outline"} size={20} color={Colors.gray[700]} style={{ marginRight: 8 }} />
+              <Text style={{ color: Colors.gray[700], fontWeight: "500" }}>{copied ? "Copied" : "Copy link"}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleShare}
-              className="flex-1 flex-row items-center justify-center gap-2 bg-[#FF0077] py-3 rounded-xl"
+              style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: Colors.primary, paddingVertical: 12, borderRadius: 12 }}
             >
-              <Ionicons name="share-outline" size={20} color="white" />
-              <Text className="text-white font-medium">Share</Text>
+              <Ionicons name="share-outline" size={20} color={Colors.white} style={{ marginRight: 8 }} />
+              <Text style={{ color: Colors.white, fontWeight: "500" }}>Share</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <Text className="text-gray-600 text-sm">
+        <Text style={{ color: Colors.gray[600], fontSize: 14 }}>
           Share your code or link. When a friend signs up and completes their first booking, you earn {amount} {currency}.
         </Text>
 
         {stats && (stats.total_referrals > 0 || stats.successful_referrals > 0 || stats.total_earnings > 0) && (
-          <View className="rounded-2xl border border-gray-200 bg-white p-4 gap-3">
-            <Text className="font-semibold text-gray-900">Your stats</Text>
-            <View className="flex-row flex-wrap gap-4">
-              <View>
-                <Text className="text-2xl font-bold text-gray-900">{stats.total_referrals}</Text>
-                <Text className="text-sm text-gray-500">Total referrals</Text>
+          <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16, marginTop: 16 }}>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Your stats</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12 }}>
+              <View style={{ marginRight: 16, marginBottom: 8 }}>
+                <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{stats.total_referrals}</Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Total referrals</Text>
+              </View>
+              <View style={{ marginRight: 16, marginBottom: 8 }}>
+                <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{stats.successful_referrals}</Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Successful</Text>
               </View>
               <View>
-                <Text className="text-2xl font-bold text-gray-900">{stats.successful_referrals}</Text>
-                <Text className="text-sm text-gray-500">Successful</Text>
-              </View>
-              <View>
-                <Text className="text-2xl font-bold text-gray-900">{stats.total_earnings}</Text>
-                <Text className="text-sm text-gray-500">{currency} earned</Text>
+                <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{stats.total_earnings}</Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{currency} earned</Text>
               </View>
             </View>
           </View>

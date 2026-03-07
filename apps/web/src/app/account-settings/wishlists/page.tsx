@@ -10,7 +10,7 @@ import LoginModal from "@/components/global/login-modal";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import EmptyState from "@/components/ui/empty-state";
 import LoadingTimeout from "@/components/ui/loading-timeout";
-import ProviderCard from "@/app/home/components/provider-card";
+import ProviderCard from "@/app/home/components/provider-card-dynamic";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import { Plus } from "lucide-react";
 

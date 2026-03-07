@@ -279,7 +279,7 @@ export default function ProviderFinance() {
             {canRequestPayout ? (
             <Dialog open={showPayoutDialog} onOpenChange={setShowPayoutDialog}>
               <DialogTrigger asChild>
-                <Button className="bg-[#FF0077] hover:bg-[#D60565]">
+                <Button className="bg-primary hover:bg-primary-hover">
                   <ArrowUpRight className="w-4 h-4 mr-2" />
                   Request Payout
                 </Button>
@@ -379,7 +379,7 @@ export default function ProviderFinance() {
                   <Button
                     onClick={handleRequestPayout}
                     disabled={isRequestingPayout || payoutAccounts.length === 0 || !payoutAmount || parseFloat(payoutAmount) < (earnings.minimum_payout_amount ?? 100) || parseFloat(payoutAmount) > earnings.available_balance}
-                    className="bg-[#FF0077] hover:bg-[#D60565]"
+                    className="bg-primary hover:bg-primary-hover"
                   >
                     {isRequestingPayout ? "Submitting..." : "Request Payout"}
                   </Button>

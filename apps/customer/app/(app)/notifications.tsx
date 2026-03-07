@@ -7,12 +7,14 @@ import {
   ActivityIndicator,
   RefreshControl,
   Pressable,
+  Platform,
 } from "react-native";
 import { Stack, router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 
 interface Notification {
   id: string;
@@ -37,6 +39,8 @@ function formatTime(iso: string) {
 export default function NotificationsScreen() {
   useScreenTracking("Notifications");
   const { user } = useAuth();
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const [list, setList] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -92,8 +96,8 @@ export default function NotificationsScreen() {
 
   if (!user) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-6">
-        <Text className="text-gray-600">Log in to view notifications</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Text style={{ color: Colors.gray[600] }}>Log in to view notifications</Text>
       </View>
     );
   }
@@ -106,34 +110,39 @@ export default function NotificationsScreen() {
           headerRight: () =>
             list.some((n) => !n.is_read) ? (
               <TouchableOpacity onPress={markAllRead}>
-                <Text className="text-primary font-medium">Mark all read</Text>
+                <Text style={{ color: Colors.primary, fontWeight: "500" }}>Mark all read</Text>
               </TouchableOpacity>
             ) : null,
         }}
       />
       {loading && list.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
       ) : (
         <FlatList
           data={list}
           keyExtractor={(n) => n.id}
-          contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
+          contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />}
           ListEmptyComponent={
-            <View className="py-16 items-center">
-              <Text className="text-gray-500">No notifications</Text>
+            <View style={{ paddingVertical: 64, alignItems: "center" }}>
+              <Text style={{ color: Colors.gray[500] }}>No notifications</Text>
             </View>
           }
           renderItem={({ item }) => (
             <Pressable
               onPress={() => onPress(item)}
-              className={`py-4 border-b border-gray-100 ${!item.is_read ? "bg-primary-light" : ""}`}
+              style={{
+                paddingVertical: 16,
+                borderBottomWidth: 1,
+                borderBottomColor: Colors.gray[100],
+                backgroundColor: !item.is_read ? Colors.primaryLight : undefined,
+              }}
             >
-              <Text className="font-semibold text-gray-900">{item.title}</Text>
-              <Text className="text-gray-600 mt-1">{item.message}</Text>
-              <Text className="text-xs text-gray-400 mt-2">{formatTime(item.created_at)}</Text>
+              <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.title}</Text>
+              <Text style={{ color: Colors.gray[600], marginTop: 4 }}>{item.message}</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 8 }}>{formatTime(item.created_at)}</Text>
             </Pressable>
           )}
         />

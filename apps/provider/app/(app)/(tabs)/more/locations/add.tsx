@@ -20,6 +20,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
+import { Colors } from "@/constants/colors";
 
 export default function AddLocationScreen() {
   const router = useRouter();
@@ -101,19 +102,28 @@ export default function AddLocationScreen() {
       <ScreenHeader title="Add location" onBack={() => router.back()} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        className="flex-1"
+        style={{ flex: 1 }}
       >
         <ScrollView
-          className="flex-1"
+          style={{ flex: 1 }}
           contentContainerStyle={{ paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View className="px-4">
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Location name *</Text>
+          <View style={{ paddingHorizontal: 16 }}>
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Location name *</Text>
               <TextInput
-                className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.name ? "border-red-500" : "border-gray-200"}`}
+                style={{
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: errors.name ? "#ef4444" : Colors.gray[200],
+                  backgroundColor: Colors.white,
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  fontSize: 16,
+                  color: Colors.gray[900],
+                }}
                 value={name}
                 onChangeText={(t) => {
                   setName(t);
@@ -123,16 +133,16 @@ export default function AddLocationScreen() {
                 placeholderTextColor="#9ca3af"
               />
               {errors.name ? (
-                <Text className="mt-1 text-sm text-red-500">
+                <Text style={{ marginTop: 4, fontSize: 14, color: "#ef4444" }}>
                   {errors.name === "validation.required"
                     ? t(errors.name, { field: FIELD_LABELS.name })
                     : t(errors.name)}
                 </Text>
               ) : null}
             </View>
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Address *</Text>
-              <Text className="mb-2 text-xs text-gray-500">
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address *</Text>
+              <Text style={{ marginBottom: 8, fontSize: 12, color: Colors.gray[500] }}>
                 Search for an address to fill the form and set coordinates automatically.
               </Text>
               <AddressAutocomplete
@@ -154,10 +164,19 @@ export default function AddLocationScreen() {
                 countryCode="ZA"
               />
             </View>
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Address line 1</Text>
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address line 1</Text>
               <TextInput
-                className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.address_line1 ? "border-red-500" : "border-gray-200"}`}
+                style={{
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: errors.address_line1 ? "#ef4444" : Colors.gray[200],
+                  backgroundColor: Colors.white,
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  fontSize: 16,
+                  color: Colors.gray[900],
+                }}
                 value={address_line1}
                 onChangeText={(t) => {
                   setAddressLine1(t);
@@ -167,28 +186,37 @@ export default function AddLocationScreen() {
                 placeholderTextColor="#9ca3af"
               />
               {errors.address_line1 ? (
-                <Text className="mt-1 text-sm text-red-500">
+                <Text style={{ marginTop: 4, fontSize: 14, color: "#ef4444" }}>
                   {errors.address_line1 === "validation.required"
                     ? t(errors.address_line1, { field: FIELD_LABELS.address_line1 })
                     : t(errors.address_line1)}
                 </Text>
               ) : null}
             </View>
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Address line 2</Text>
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address line 2</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={address_line2}
                 onChangeText={setAddressLine2}
                 placeholder="Suite, floor, etc."
                 placeholderTextColor="#9ca3af"
               />
             </View>
-            <View className="mb-4 flex-row gap-3">
-              <View className="flex-1">
-                <Text className="mb-1.5 text-sm font-medium text-gray-700">City *</Text>
+            <View style={{ marginBottom: 16, flexDirection: "row" }}>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>City *</Text>
                 <TextInput
-                  className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.city ? "border-red-500" : "border-gray-200"}`}
+                  style={{
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: errors.city ? "#ef4444" : Colors.gray[200],
+                    backgroundColor: Colors.white,
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    fontSize: 16,
+                    color: Colors.gray[900],
+                  }}
                   value={city}
                   onChangeText={(t) => {
                     setCity(t);
@@ -198,17 +226,24 @@ export default function AddLocationScreen() {
                   placeholderTextColor="#9ca3af"
                 />
                 {errors.city ? (
-                  <Text className="mt-1 text-sm text-red-500">
-                    {errors.city === "validation.required"
-                      ? t(errors.city, { field: FIELD_LABELS.city })
-                      : t(errors.city)}
+                  <Text style={{ marginTop: 4, fontSize: 14, color: "#ef4444" }}>
+                    {errors.city === "validation.required" ? t(errors.city, { field: FIELD_LABELS.city }) : t(errors.city)}
                   </Text>
                 ) : null}
               </View>
-              <View className="flex-1">
-                <Text className="mb-1.5 text-sm font-medium text-gray-700">Country *</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Country *</Text>
                 <TextInput
-                  className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.country ? "border-red-500" : "border-gray-200"}`}
+                  style={{
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: errors.country ? "#ef4444" : Colors.gray[200],
+                    backgroundColor: Colors.white,
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    fontSize: 16,
+                    color: Colors.gray[900],
+                  }}
                   value={country}
                   onChangeText={(t) => {
                     setCountry(t);
@@ -218,29 +253,27 @@ export default function AddLocationScreen() {
                   placeholderTextColor="#9ca3af"
                 />
                 {errors.country ? (
-                  <Text className="mt-1 text-sm text-red-500">
-                    {errors.country === "validation.required"
-                      ? t(errors.country, { field: FIELD_LABELS.country })
-                      : t(errors.country)}
+                  <Text style={{ marginTop: 4, fontSize: 14, color: "#ef4444" }}>
+                    {errors.country === "validation.required" ? t(errors.country, { field: FIELD_LABELS.country }) : t(errors.country)}
                   </Text>
                 ) : null}
               </View>
             </View>
-            <View className="mb-4 flex-row gap-3">
-              <View className="flex-1">
-                <Text className="mb-1.5 text-sm font-medium text-gray-700">State / Province</Text>
+            <View style={{ marginBottom: 16, flexDirection: "row" }}>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>State / Province</Text>
                 <TextInput
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                   value={state}
                   onChangeText={setState}
                   placeholder="Optional"
                   placeholderTextColor="#9ca3af"
                 />
               </View>
-              <View className="flex-1">
-                <Text className="mb-1.5 text-sm font-medium text-gray-700">Postal code</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Postal code</Text>
                 <TextInput
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                   value={postal_code}
                   onChangeText={setPostalCode}
                   placeholder="Optional"
@@ -249,10 +282,19 @@ export default function AddLocationScreen() {
                 />
               </View>
             </View>
-            <View className="mb-6">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Phone</Text>
+            <View style={{ marginBottom: 24 }}>
+              <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Phone</Text>
               <TextInput
-                className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.phone ? "border-red-500" : "border-gray-200"}`}
+                style={{
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: errors.phone ? "#ef4444" : Colors.gray[200],
+                  backgroundColor: Colors.white,
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  fontSize: 16,
+                  color: Colors.gray[900],
+                }}
                 value={phone}
                 onChangeText={(t) => {
                   setPhone(t);
@@ -263,7 +305,7 @@ export default function AddLocationScreen() {
                 keyboardType="phone-pad"
               />
               {errors.phone ? (
-                <Text className="mt-1 text-sm text-red-500">{t(errors.phone)}</Text>
+                <Text style={{ marginTop: 4, fontSize: 14, color: "#ef4444" }}>{t(errors.phone)}</Text>
               ) : null}
             </View>
             <ActionButton

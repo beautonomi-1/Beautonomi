@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
+import { twStyle } from "@/lib/twStyle";
 
 interface Category {
   id: string;
@@ -209,7 +210,7 @@ export default function ServiceCategoriesScreen() {
         subtitle={`${allCats.length} categories`}
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-900"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
             onPress={openCreate}
           >
             <Ionicons name="add" size={20} color="#fff" />
@@ -218,8 +219,8 @@ export default function ServiceCategoriesScreen() {
       />
 
       {allCats.length > 0 && (
-        <View className="mb-3 flex-row gap-3">
-          <View className="flex-1">
+        <View style={twStyle("mb-3 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <StatCard
               title="Categories"
               value={String(allCats.length)}
@@ -229,7 +230,7 @@ export default function ServiceCategoriesScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <StatCard
               title="Services"
               value={String(totalServices)}
@@ -243,7 +244,7 @@ export default function ServiceCategoriesScreen() {
       )}
 
       {allCats.length > 3 && (
-        <View className="mb-3">
+        <View style={twStyle("mb-3")}>
           <SearchBar
             value={search}
             onChangeText={setSearch}
@@ -261,11 +262,12 @@ export default function ServiceCategoriesScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item }: { item: Category | { id: string; type: "header"; title: string } }) => {
             if ("type" in item && item.type === "header") {
               return (
-                <Text className="mt-2 text-xs font-semibold uppercase text-gray-400">
+                <Text style={twStyle("mt-2 text-xs font-semibold uppercase text-gray-400")}>
                   {item.title}
                 </Text>
               );
@@ -273,35 +275,35 @@ export default function ServiceCategoriesScreen() {
             const cat = item as Category & { type: "own" | "global" };
             return (
               <TouchableOpacity
-                className={`rounded-xl border bg-white p-4 ${
+                style={twStyle(`rounded-xl border bg-white p-4 ${
                   cat.is_active ? "border-gray-100" : "border-gray-100 opacity-60"
-                }`}
+                }`)}
                 onPress={() => (cat.type === "own" ? openEdit(cat) : null)}
                 activeOpacity={cat.type === "own" ? 0.7 : 1}
               >
-                <View className="flex-row items-center">
-                  <View className="h-10 w-10 items-center justify-center rounded-xl bg-indigo-50">
+                <View style={twStyle("flex-row items-center")}>
+                  <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-indigo-50")}>
                     <Ionicons
                       name={(cat.icon as any) || "grid-outline"}
                       size={20}
                       color="#6366f1"
                     />
                   </View>
-                  <View className="ml-3 flex-1">
-                    <View className="flex-row items-center gap-2">
-                      <Text className="text-sm font-semibold text-gray-900">
+                  <View style={twStyle("ml-3 flex-1")}>
+                    <View style={twStyle("flex-row items-center")}>
+                      <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>
                         {cat.name}
                       </Text>
                       {!cat.is_active && (
-                        <View className="rounded-full bg-gray-100 px-2 py-0.5">
-                          <Text className="text-[10px] font-medium text-gray-500">
+                        <View style={[twStyle("rounded-full bg-gray-100 px-2 py-0.5"), { marginRight: 8 }]}>
+                          <Text style={twStyle("text-[10px] font-medium text-gray-500")}>
                             Inactive
                           </Text>
                         </View>
                       )}
                       {cat.type === "global" && (
-                        <View className="rounded-full bg-blue-50 px-2 py-0.5">
-                          <Text className="text-[10px] font-medium text-blue-600">
+                        <View style={twStyle("rounded-full bg-blue-50 px-2 py-0.5")}>
+                          <Text style={twStyle("text-[10px] font-medium text-blue-600")}>
                             Platform
                           </Text>
                         </View>
@@ -309,22 +311,23 @@ export default function ServiceCategoriesScreen() {
                     </View>
                     {cat.description && (
                       <Text
-                        className="mt-0.5 text-xs text-gray-500"
+                        style={twStyle("mt-0.5 text-xs text-gray-500")}
                         numberOfLines={1}
                       >
                         {cat.description}
                       </Text>
                     )}
                     {cat.service_count !== undefined && (
-                      <Text className="mt-0.5 text-xs text-indigo-500">
+                      <Text style={twStyle("mt-0.5 text-xs text-indigo-500")}>
                         {cat.service_count} service
                         {cat.service_count !== 1 ? "s" : ""}
                       </Text>
                     )}
                   </View>
                   {cat.type === "own" && (
-                    <View className="flex-row items-center gap-2">
+                    <View style={twStyle("flex-row items-center")}>
                       <TouchableOpacity
+                        style={{ marginRight: 8 }}
                         onPress={() => handleToggleActive(cat)}
                       >
                         <Ionicons
@@ -370,37 +373,37 @@ export default function ServiceCategoriesScreen() {
         title={editing ? "Edit Category" : "New Category"}
       >
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Name *
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
             placeholder="e.g. Hair, Nails, Skin"
             placeholderTextColor="#9ca3af"
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Description
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
             onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
             placeholder="Optional..."
             placeholderTextColor="#9ca3af"
             multiline
           />
-          <Text className="mb-2 text-sm font-medium text-gray-700">Icon</Text>
-          <View className="mb-3 flex-row flex-wrap gap-2">
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Icon</Text>
+          <View style={twStyle("mb-3 flex-row flex-wrap")}>
             {ICON_OPTIONS.map((icon) => (
               <TouchableOpacity
                 key={icon}
-                className={`h-10 w-10 items-center justify-center rounded-xl ${
+                style={[twStyle(`h-10 w-10 items-center justify-center rounded-xl ${
                   form.icon === icon
                     ? "bg-indigo-100 border-2 border-indigo-500"
                     : "bg-gray-100"
-                }`}
+                }`), { marginRight: 8, marginBottom: 8 }]}
                 onPress={() => setForm((p) => ({ ...p, icon }))}
               >
                 <Ionicons
@@ -411,8 +414,8 @@ export default function ServiceCategoriesScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <View className="mb-4 flex-row items-center justify-between">
-            <Text className="text-sm font-medium text-gray-700">Active</Text>
+          <View style={twStyle("mb-4 flex-row items-center justify-between")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
             <Switch
               value={form.is_active}
               onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}

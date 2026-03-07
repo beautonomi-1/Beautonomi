@@ -13,6 +13,7 @@ import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format, startOfMonth, endOfMonth, subDays } from "date-fns";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -20,6 +21,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { twStyle } from "@/lib/twStyle";
 
 interface PayRun {
   id: string;
@@ -31,6 +33,7 @@ interface PayRun {
 }
 
 export default function PayrollScreen() {
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [periodType, setPeriodType] = useState<"weekly" | "monthly">("weekly");
@@ -120,7 +123,7 @@ export default function PayrollScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Payroll" showBack />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -131,7 +134,7 @@ export default function PayrollScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Payroll" showBack />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -152,24 +155,24 @@ export default function PayrollScreen() {
               setPeriodType("weekly");
               setCreateOpen(true);
             }}
-            className="flex-row items-center rounded-xl bg-emerald-600 px-4 py-2"
+            style={twStyle("flex-row items-center rounded-xl bg-emerald-600 px-4 py-2")}
           >
             <Ionicons name="add" size={18} color="#fff" />
-            <Text className="ml-1.5 text-sm font-semibold text-white">New run</Text>
+            <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>New run</Text>
           </TouchableOpacity>
         }
       />
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={twStyle("flex-1")}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
       >
-        <View className="mb-4 rounded-2xl bg-emerald-50/80 p-4">
-          <Text className="text-sm font-medium text-emerald-900">Pay runs</Text>
-          <Text className="mt-1 text-sm text-emerald-800">
+        <View style={twStyle("mb-4 rounded-2xl bg-emerald-50/80 p-4")}>
+          <Text style={twStyle("text-sm font-medium text-emerald-900")}>Pay runs</Text>
+          <Text style={twStyle("mt-1 text-sm text-emerald-800")}>
             Create a run for a period, then approve and mark paid when ready.
           </Text>
         </View>
@@ -189,30 +192,30 @@ export default function PayrollScreen() {
           payRuns.map((run) => (
             <View
               key={run.id}
-              className="mb-3 rounded-2xl border border-gray-200 bg-white p-4"
+              style={twStyle("mb-3 rounded-2xl border border-gray-200 bg-white p-4")}
             >
-              <View className="flex-row items-start justify-between">
+              <View style={twStyle("flex-row items-start justify-between")}>
                 <View>
-                  <Text className="font-semibold text-gray-900">
+                  <Text style={twStyle("font-semibold text-gray-900")}>
                     {formatDate(run.pay_period_start)} – {formatDate(run.pay_period_end)}
                   </Text>
                   <View
-                    className={`mt-2 self-start rounded-full px-2.5 py-1 ${
+                    style={twStyle(`mt-2 self-start rounded-full px-2.5 py-1 ${
                       run.status === "paid"
                         ? "bg-gray-100"
                         : run.status === "approved"
                           ? "bg-amber-100"
                           : "bg-blue-100"
-                    }`}
+                    }`)}
                   >
                     <Text
-                      className={`text-xs font-medium capitalize ${
+                      style={twStyle(`text-xs font-medium capitalize ${
                         run.status === "paid"
                           ? "text-gray-700"
                           : run.status === "approved"
                             ? "text-amber-800"
                             : "text-blue-800"
-                      }`}
+                      }`)}
                     >
                       {run.status}
                     </Text>
@@ -222,19 +225,19 @@ export default function PayrollScreen() {
               {run.status === "draft" && (
                 <TouchableOpacity
                   onPress={() => handleApprove(run)}
-                  className="mt-3 flex-row items-center justify-center rounded-xl bg-emerald-600 py-2.5"
+                  style={twStyle("mt-3 flex-row items-center justify-center rounded-xl bg-emerald-600 py-2.5")}
                 >
                   <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
-                  <Text className="ml-2 text-sm font-semibold text-white">Approve</Text>
+                  <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>Approve</Text>
                 </TouchableOpacity>
               )}
               {run.status === "approved" && (
                 <TouchableOpacity
                   onPress={() => handleMarkPaid(run)}
-                  className="mt-3 flex-row items-center justify-center rounded-xl bg-gray-800 py-2.5"
+                  style={twStyle("mt-3 flex-row items-center justify-center rounded-xl bg-gray-800 py-2.5")}
                 >
                   <Ionicons name="cash-outline" size={18} color="#fff" />
-                  <Text className="ml-2 text-sm font-semibold text-white">Mark as paid</Text>
+                  <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>Mark as paid</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -248,36 +251,36 @@ export default function PayrollScreen() {
         title="Create pay run"
         subtitle="Choose period type and date"
       >
-        <View className="mb-4 flex-row gap-3">
+        <View style={twStyle("mb-4 flex-row")}>
           <TouchableOpacity
             onPress={() => setPeriodType("weekly")}
-            className={`flex-1 rounded-xl py-3 ${periodType === "weekly" ? "bg-emerald-600" : "bg-gray-100"}`}
+            style={[twStyle(`flex-1 rounded-xl py-3 ${periodType === "weekly" ? "bg-emerald-600" : "bg-gray-100"}`), { marginRight: 12 }]}
           >
             <Text
-              className={`text-center text-sm font-medium ${periodType === "weekly" ? "text-white" : "text-gray-700"}`}
+              style={twStyle(`text-center text-sm font-medium ${periodType === "weekly" ? "text-white" : "text-gray-700"}`)}
             >
               Weekly
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setPeriodType("monthly")}
-            className={`flex-1 rounded-xl py-3 ${periodType === "monthly" ? "bg-emerald-600" : "bg-gray-100"}`}
+            style={twStyle(`flex-1 rounded-xl py-3 ${periodType === "monthly" ? "bg-emerald-600" : "bg-gray-100"}`)}
           >
             <Text
-              className={`text-center text-sm font-medium ${periodType === "monthly" ? "text-white" : "text-gray-700"}`}
+              style={twStyle(`text-center text-sm font-medium ${periodType === "monthly" ? "text-white" : "text-gray-700"}`)}
             >
               Monthly
             </Text>
           </TouchableOpacity>
         </View>
-        <Text className="mb-2 text-sm font-medium text-gray-700">
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
           {periodType === "monthly" ? "Month" : "Period end date"}
         </Text>
         <TouchableOpacity
           onPress={() => setShowDatePicker(true)}
-          className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+          style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
         >
-          <Text className="text-base text-gray-900">{periodLabel}</Text>
+          <Text style={twStyle("text-base text-gray-900")}>{periodLabel}</Text>
         </TouchableOpacity>
         {showDatePicker && (
           <DateTimePicker

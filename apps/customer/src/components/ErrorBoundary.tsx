@@ -1,6 +1,7 @@
 import React, { Component, type ReactNode } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { captureError } from "@/lib/sentry";
+import { Colors } from "@/constants/colors";
 
 interface Props {
   children: ReactNode;
@@ -39,26 +40,22 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <View
-          className="flex-1 items-center justify-center bg-white p-6"
+          style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white, padding: 24 }}
           accessibilityRole="alert"
           accessibilityLabel="Application error occurred"
         >
-          <Text className="mb-2 text-center text-lg font-semibold text-red-600">
-            Something went wrong
-          </Text>
-          <Text className="mb-6 text-center text-sm text-gray-500">
-            {__DEV__ && this.state.error?.message
-              ? this.state.error.message
-              : "An unexpected error occurred. Please try again."}
+          <Text style={{ marginBottom: 8, textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.error }}>Something went wrong</Text>
+          <Text style={{ marginBottom: 24, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
+            {__DEV__ && this.state.error?.message ? this.state.error.message : "An unexpected error occurred. Please try again."}
           </Text>
           <TouchableOpacity
-            className="rounded-lg bg-gray-900 px-6 py-3"
+            style={{ borderRadius: 8, backgroundColor: Colors.gray[900], paddingHorizontal: 24, paddingVertical: 12 }}
             onPress={this.handleReset}
             accessibilityRole="button"
             accessibilityLabel="Retry"
             accessibilityHint="Tap to reload the application"
           >
-            <Text className="font-medium text-white">Tap to retry</Text>
+            <Text style={{ fontWeight: "500", color: Colors.white }}>Tap to retry</Text>
           </TouchableOpacity>
         </View>
       );

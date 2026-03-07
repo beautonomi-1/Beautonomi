@@ -10,11 +10,13 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { useApi } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 interface BookingCustomer {
   id: string;
@@ -44,6 +46,7 @@ interface Booking {
 
 export default function BookingsListScreen() {
   const router = useRouter();
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const now = new Date();
   const start = format(startOfMonth(now), "yyyy-MM-dd");
@@ -63,7 +66,7 @@ export default function BookingsListScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Bookings" showBack />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -74,26 +77,26 @@ export default function BookingsListScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Bookings" showBack />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
     );
   }
 
-  const statusColor = (s: string) => {
+  const getStatusStyle = (s: string): { backgroundColor: string; color: string } => {
     switch (s) {
       case "confirmed":
-        return "bg-green-100 text-green-800";
+        return { backgroundColor: "#dcfce7", color: "#166534" };
       case "completed":
-        return "bg-gray-100 text-gray-800";
+        return { backgroundColor: Colors.gray[100], color: Colors.gray[800] };
       case "cancelled":
       case "no_show":
-        return "bg-red-100 text-red-800";
+        return { backgroundColor: "#fee2e2", color: "#991b1b" };
       case "pending":
-        return "bg-amber-100 text-amber-800";
+        return { backgroundColor: "#fef3c7", color: "#92400e" };
       default:
-        return "bg-gray-100 text-gray-700";
+        return { backgroundColor: Colors.gray[100], color: Colors.gray[700] };
     }
   };
 
@@ -106,16 +109,16 @@ export default function BookingsListScreen() {
         rightAction={
           <TouchableOpacity
             onPress={() => router.push("/(app)/(tabs)/more/bookings/new" as never)}
-            className="flex-row items-center rounded-xl bg-indigo-600 px-4 py-2"
+            style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: "#4f46e5", paddingHorizontal: 16, paddingVertical: 8 }}
           >
             <Ionicons name="add" size={18} color="#fff" />
-            <Text className="ml-1.5 text-sm font-semibold text-white">New</Text>
+            <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "600", color: Colors.white }}>New</Text>
           </TouchableOpacity>
         }
       />
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -141,32 +144,33 @@ export default function BookingsListScreen() {
                   minute: "2-digit",
                 })
               : "—";
+            const statusStyle = getStatusStyle(b.status);
             return (
               <TouchableOpacity
                 key={b.id}
                 onPress={() =>
                   router.push(`/(app)/(tabs)/more/bookings/${b.id}` as never)
                 }
-                className="mb-3 rounded-2xl border border-gray-200 bg-white p-4"
+                style={{ marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
                 activeOpacity={0.7}
               >
-                <View className="flex-row items-start justify-between">
-                  <View className="flex-1">
-                    <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
+                <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
                       {customerName}
                     </Text>
-                    <Text className="mt-0.5 text-sm text-gray-600" numberOfLines={1}>
+                    <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }} numberOfLines={1}>
                       {serviceName}
                     </Text>
-                    <Text className="mt-1 text-xs text-gray-500">{scheduled}</Text>
+                    <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>{scheduled}</Text>
                     {b.total_amount != null && b.total_amount > 0 && (
-                      <Text className="mt-0.5 text-xs font-medium text-gray-700">
+                      <Text style={{ marginTop: 2, fontSize: 12, fontWeight: "500", color: Colors.gray[700] }}>
                         R{b.total_amount.toFixed(2)}
                       </Text>
                     )}
                   </View>
-                  <View className={`rounded-full px-2.5 py-1 ${statusColor(b.status)}`}>
-                    <Text className="text-xs font-medium capitalize">
+                  <View style={[{ borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 4 }, { backgroundColor: statusStyle.backgroundColor }]}>
+                    <Text style={{ fontSize: 12, fontWeight: "500", textTransform: "capitalize", color: statusStyle.color }}>
                       {b.status.replace("_", " ")}
                     </Text>
                   </View>

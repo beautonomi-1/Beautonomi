@@ -27,6 +27,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { twStyle } from "@/lib/twStyle";
 
 type BusinessData = {
   id: string;
@@ -190,7 +191,7 @@ export default function BusinessDetailsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Business details" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -201,7 +202,7 @@ export default function BusinessDetailsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Business details" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -213,22 +214,21 @@ export default function BusinessDetailsScreen() {
       <ScreenHeader title="Business details" onBack={() => router.back()} />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        className="flex-1"
+        style={twStyle("flex-1")}
       >
         <ScrollView
-          className="flex-1"
+          style={twStyle("flex-1")}
           contentContainerStyle={{ paddingBottom: 100 }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View className="px-4">
+          <View style={twStyle("px-4")}>
             {/* Logo */}
-            <View className="mb-6 items-center">
+            <View style={twStyle("mb-6 items-center")}>
               <TouchableOpacity
                 onPress={pickLogo}
                 disabled={uploadingLogo}
-                className="overflow-hidden rounded-full border-2 border-gray-200"
-                style={{ width: 96, height: 96 }}
+                style={[twStyle("overflow-hidden rounded-full border-2 border-gray-200"), { width: 96, height: 96 }]}
                 accessibilityRole="button"
                 accessibilityLabel="Change logo"
               >
@@ -239,23 +239,23 @@ export default function BusinessDetailsScreen() {
                     contentFit="cover"
                   />
                 ) : (
-                  <View className="h-full w-full items-center justify-center bg-gray-100">
+                  <View style={twStyle("h-full w-full items-center justify-center bg-gray-100")}>
                     <Ionicons name="business-outline" size={40} color="#9ca3af" />
                   </View>
                 )}
                 {uploadingLogo && (
-                  <View className="absolute inset-0 items-center justify-center bg-black/40">
+                  <View style={twStyle("absolute inset-0 items-center justify-center bg-black/40")}>
                     <ActivityIndicator color="#fff" />
                   </View>
                 )}
               </TouchableOpacity>
-              <Text className="mt-2 text-sm text-gray-500">Tap to change logo</Text>
+              <Text style={twStyle("mt-2 text-sm text-gray-500")}>Tap to change logo</Text>
             </View>
 
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Business name *</Text>
+            <View style={twStyle("mb-4")}>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Business name *</Text>
               <TextInput
-                className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.business_name ? "border-red-500" : "border-gray-200"}`}
+                style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.business_name ? "border-red-500" : "border-gray-200"}`)}
                 value={form.business_name}
                 onChangeText={(t) => {
                   setForm((f) => ({ ...f, business_name: t }));
@@ -266,7 +266,7 @@ export default function BusinessDetailsScreen() {
                 autoCapitalize="words"
               />
               {errors.business_name ? (
-                <Text className="mt-1 text-sm text-red-500">
+                <Text style={twStyle("mt-1 text-sm text-red-500")}>
                   {errors.business_name === "validation.required"
                     ? t(errors.business_name, { field: FIELD_LABELS.business_name })
                     : t(errors.business_name)}
@@ -274,10 +274,10 @@ export default function BusinessDetailsScreen() {
               ) : null}
             </View>
 
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Description</Text>
+            <View style={twStyle("mb-4")}>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Description</Text>
               <TextInput
-                className="min-h-[100px] rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                style={twStyle("min-h-[100px] rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 value={form.description ?? ""}
                 onChangeText={(t) => setForm((f) => ({ ...f, description: t || null }))}
                 placeholder="What you offer (shown to clients)"
@@ -287,10 +287,10 @@ export default function BusinessDetailsScreen() {
               />
             </View>
 
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Email *</Text>
+            <View style={twStyle("mb-4")}>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Email *</Text>
               <TextInput
-                className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.email ? "border-red-500" : "border-gray-200"}`}
+                style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.email ? "border-red-500" : "border-gray-200"}`)}
                 value={form.email}
                 onChangeText={(t) => {
                   setForm((f) => ({ ...f, email: t }));
@@ -302,14 +302,14 @@ export default function BusinessDetailsScreen() {
                 autoCapitalize="none"
               />
               {errors.email ? (
-                <Text className="mt-1 text-sm text-red-500">{t(errors.email)}</Text>
+                <Text style={twStyle("mt-1 text-sm text-red-500")}>{t(errors.email)}</Text>
               ) : null}
             </View>
 
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Phone</Text>
+            <View style={twStyle("mb-4")}>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Phone</Text>
               <TextInput
-                className={`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.phone ? "border-red-500" : "border-gray-200"}`}
+                style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.phone ? "border-red-500" : "border-gray-200"}`)}
                 value={form.phone}
                 onChangeText={(t) => {
                   setForm((f) => ({ ...f, phone: t }));
@@ -320,14 +320,14 @@ export default function BusinessDetailsScreen() {
                 keyboardType="phone-pad"
               />
               {errors.phone ? (
-                <Text className="mt-1 text-sm text-red-500">{t(errors.phone)}</Text>
+                <Text style={twStyle("mt-1 text-sm text-red-500")}>{t(errors.phone)}</Text>
               ) : null}
             </View>
 
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Website</Text>
+            <View style={twStyle("mb-4")}>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Website</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 value={form.website ?? ""}
                 onChangeText={(t) => setForm((f) => ({ ...f, website: t.trim() || null }))}
                 placeholder="https://..."
@@ -337,34 +337,34 @@ export default function BusinessDetailsScreen() {
               />
             </View>
 
-            <View className="mb-2 rounded-xl border border-gray-100 bg-gray-50 p-3">
-              <Text className="text-xs font-medium text-gray-500 uppercase tracking-wider">Address (optional)</Text>
+            <View style={twStyle("mb-2 rounded-xl border border-gray-100 bg-gray-50 p-3")}>
+              <Text style={twStyle("text-xs font-medium text-gray-500 uppercase tracking-wider")}>Address (optional)</Text>
             </View>
-            <View className="mb-4">
-              <Text className="mb-1.5 text-sm font-medium text-gray-700">Address line 1</Text>
+            <View style={twStyle("mb-4")}>
+              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Address line 1</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 value={form.address_line1 ?? ""}
                 onChangeText={(t) => setForm((f) => ({ ...f, address_line1: t.trim() || null }))}
                 placeholder="Street address"
                 placeholderTextColor="#9ca3af"
               />
             </View>
-            <View className="mb-4 flex-row gap-3">
-              <View className="flex-1">
-                <Text className="mb-1.5 text-sm font-medium text-gray-700">City</Text>
+            <View style={twStyle("mb-4 flex-row")}>
+              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>City</Text>
                 <TextInput
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   value={form.city ?? ""}
                   onChangeText={(t) => setForm((f) => ({ ...f, city: t.trim() || null }))}
                   placeholder="City"
                   placeholderTextColor="#9ca3af"
                 />
               </View>
-              <View className="flex-1">
-                <Text className="mb-1.5 text-sm font-medium text-gray-700">Country</Text>
+              <View style={twStyle("flex-1")}>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Country</Text>
                 <TextInput
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   value={form.country ?? ""}
                   onChangeText={(t) => setForm((f) => ({ ...f, country: t.trim() || null }))}
                   placeholder="Country"

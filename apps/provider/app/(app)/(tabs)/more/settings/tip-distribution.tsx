@@ -8,6 +8,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { StatCard } from "@/components/ui/StatCard";
+import { twStyle } from "@/lib/twStyle";
 
 interface TipDistribution {
   keep_all_tips: boolean;
@@ -80,8 +81,8 @@ export default function TipDistributionScreen() {
       <ScreenHeader title="Tip Distribution" showBack subtitle="How tips are shared" />
 
       {stats && (
-        <View className="mb-4 flex-row gap-3">
-          <View className="flex-1">
+        <View style={twStyle("mb-4 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <StatCard
               title="This Month"
               value={`R ${stats.total_tips_this_month.toFixed(0)}`}
@@ -91,7 +92,7 @@ export default function TipDistributionScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <StatCard
               title="Distributed"
               value={`R ${stats.total_distributed.toFixed(0)}`}
@@ -101,7 +102,7 @@ export default function TipDistributionScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <StatCard
               title="Avg Tip"
               value={`R ${stats.avg_tip_amount.toFixed(0)}`}
@@ -114,11 +115,11 @@ export default function TipDistributionScreen() {
         </View>
       )}
 
-      <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-        <View className="mb-4 flex-row items-center justify-between">
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900">Keep All Tips</Text>
-            <Text className="text-xs text-gray-500">Business keeps 100% of tips</Text>
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("mb-4 flex-row items-center justify-between")}>
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>Keep All Tips</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>Business keeps 100% of tips</Text>
           </View>
           <Switch
             value={keepAll}
@@ -128,10 +129,10 @@ export default function TipDistributionScreen() {
           />
         </View>
 
-        <View className={`flex-row items-center justify-between ${keepAll ? "opacity-40" : ""}`}>
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900">Distribute to Staff</Text>
-            <Text className="text-xs text-gray-500">Tips go to staff members</Text>
+        <View style={twStyle(`flex-row items-center justify-between ${keepAll ? "opacity-40" : ""}`)}>
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>Distribute to Staff</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>Tips go to staff members</Text>
           </View>
           <Switch
             value={distribute}
@@ -145,45 +146,45 @@ export default function TipDistributionScreen() {
 
       {distribute && !keepAll && (
         <>
-          <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+          <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
             Distribution Method
           </Text>
-          <View className="mb-4 gap-2">
-            {DISTRIBUTION_METHODS.map((m) => (
+          <View style={twStyle("mb-4")}>
+            {DISTRIBUTION_METHODS.map((m, idx) => (
               <TouchableOpacity
                 key={m.value}
-                className={`flex-row items-center rounded-xl border p-4 ${
+                style={[twStyle(`flex-row items-center rounded-xl border p-4 ${
                   method === m.value ? "border-indigo-300 bg-indigo-50" : "border-gray-100 bg-white"
-                }`}
+                }`), idx > 0 ? { marginTop: 8 } : undefined]}
                 onPress={() => update(() => setMethod(m.value as typeof method))}
               >
                 <View
-                  className={`h-5 w-5 items-center justify-center rounded-full border-2 ${
+                  style={twStyle(`h-5 w-5 items-center justify-center rounded-full border-2 ${
                     method === m.value ? "border-indigo-600 bg-indigo-600" : "border-gray-300"
-                  }`}
+                  }`)}
                 >
                   {method === m.value && <Ionicons name="checkmark" size={12} color="#fff" />}
                 </View>
-                <View className="ml-3 flex-1">
-                  <Text className="text-sm font-medium text-gray-900">{m.label}</Text>
-                  <Text className="text-xs text-gray-500">{m.desc}</Text>
+                <View style={twStyle("ml-3 flex-1")}>
+                  <Text style={twStyle("text-sm font-medium text-gray-900")}>{m.label}</Text>
+                  <Text style={twStyle("text-xs text-gray-500")}>{m.desc}</Text>
                 </View>
               </TouchableOpacity>
             ))}
           </View>
 
           {method === "custom" && (
-            <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Pool Percentage (%)</Text>
+            <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Pool Percentage (%)</Text>
               <TextInput
-                className="mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={poolPct}
                 onChangeText={(t) => { setPoolPct(t); setDirty(true); }}
                 keyboardType="decimal-pad"
                 placeholder="0"
                 placeholderTextColor="#9ca3af"
               />
-              <Text className="text-xs text-gray-400">
+              <Text style={twStyle("text-xs text-gray-400")}>
                 {poolPct && !isNaN(Number(poolPct))
                   ? `${poolPct}% goes to tip pool, ${100 - Number(poolPct)}% to service provider`
                   : "Enter a percentage between 0 and 100"}
@@ -194,10 +195,10 @@ export default function TipDistributionScreen() {
       )}
 
       {!keepAll && distribute && (
-        <View className="mb-4 rounded-xl bg-indigo-50 p-3">
-          <View className="flex-row items-center gap-2">
-            <Ionicons name="information-circle" size={16} color="#6366f1" />
-            <Text className="flex-1 text-xs text-indigo-700">
+        <View style={twStyle("mb-4 rounded-xl bg-indigo-50 p-3")}>
+          <View style={twStyle("flex-row items-center")}>
+            <Ionicons name="information-circle" size={16} color="#6366f1" style={{ marginRight: 8 }} />
+            <Text style={twStyle("flex-1 text-xs text-indigo-700")}>
               {method === "equal"
                 ? "All tips will be split equally among on-duty staff at the time of payment."
                 : method === "by_service"
@@ -209,7 +210,7 @@ export default function TipDistributionScreen() {
       )}
 
       <ActionButton label="Save Settings" onPress={handleSave} loading={saving} disabled={!dirty} fullWidth />
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

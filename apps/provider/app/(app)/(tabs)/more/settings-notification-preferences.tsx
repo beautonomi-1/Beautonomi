@@ -15,6 +15,7 @@ import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { twStyle } from "@/lib/twStyle";
 
 interface ChannelPrefs {
   email?: boolean;
@@ -121,15 +122,15 @@ export default function SettingsNotificationPreferencesScreen() {
       />
 
       <ScrollView
-        className="flex-1"
+        style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
         {error && (
-          <View className="mx-2 mb-3 rounded-xl border border-red-200 bg-red-50 p-3">
-            <Text className="text-sm text-red-700">{error}</Text>
-            <TouchableOpacity onPress={() => refresh()} className="mt-2">
-              <Text className="text-sm font-medium text-red-700">Retry</Text>
+          <View style={twStyle("mx-2 mb-3 rounded-xl border border-red-200 bg-red-50 p-3")}>
+            <Text style={twStyle("text-sm text-red-700")}>{error}</Text>
+            <TouchableOpacity onPress={() => refresh()} style={twStyle("mt-2")}>
+              <Text style={twStyle("text-sm font-medium text-red-700")}>Retry</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -137,33 +138,33 @@ export default function SettingsNotificationPreferencesScreen() {
         {SECTIONS.filter((s) => s.id !== "unsubscribe_marketing").map((section) => {
           const channel = (localPrefs[section.id] as ChannelPrefs) ?? defaultChannel();
           return (
-            <View key={section.id} className="mb-4 rounded-xl border border-gray-200 bg-white overflow-hidden">
-              <View className="border-b border-gray-100 px-4 py-3">
-                <Text className="text-base font-semibold text-gray-900">{section.title}</Text>
-                <Text className="mt-0.5 text-sm text-gray-500">{section.description}</Text>
+            <View key={section.id} style={twStyle("mb-4 rounded-xl border border-gray-200 bg-white overflow-hidden")}>
+              <View style={twStyle("border-b border-gray-100 px-4 py-3")}>
+                <Text style={twStyle("text-base font-semibold text-gray-900")}>{section.title}</Text>
+                <Text style={twStyle("mt-0.5 text-sm text-gray-500")}>{section.description}</Text>
               </View>
-              <View className="px-4 py-2">
-                <View className="flex-row items-center justify-between py-2">
+              <View style={twStyle("px-4 py-2")}>
+                <View style={twStyle("flex-row items-center justify-between py-2")}>
                   <Ionicons name="mail-outline" size={20} color="#6b7280" />
-                  <Text className="flex-1 ml-3 text-sm text-gray-700">Email</Text>
+                  <Text style={twStyle("flex-1 ml-3 text-sm text-gray-700")}>Email</Text>
                   <Switch
                     value={channel.email !== false}
                     onValueChange={(v) => updateSection(section.id, "email", v)}
                     disabled={saving}
                   />
                 </View>
-                <View className="flex-row items-center justify-between py-2">
+                <View style={twStyle("flex-row items-center justify-between py-2")}>
                   <Ionicons name="chatbubble-outline" size={20} color="#6b7280" />
-                  <Text className="flex-1 ml-3 text-sm text-gray-700">SMS</Text>
+                  <Text style={twStyle("flex-1 ml-3 text-sm text-gray-700")}>SMS</Text>
                   <Switch
                     value={channel.sms === true}
                     onValueChange={(v) => updateSection(section.id, "sms", v)}
                     disabled={saving}
                   />
                 </View>
-                <View className="flex-row items-center justify-between py-2">
+                <View style={twStyle("flex-row items-center justify-between py-2")}>
                   <Ionicons name="notifications-outline" size={20} color="#6b7280" />
-                  <Text className="flex-1 ml-3 text-sm text-gray-700">Push</Text>
+                  <Text style={twStyle("flex-1 ml-3 text-sm text-gray-700")}>Push</Text>
                   <Switch
                     value={channel.push === true}
                     onValueChange={(v) => updateSection(section.id, "push", v)}
@@ -175,11 +176,11 @@ export default function SettingsNotificationPreferencesScreen() {
           );
         })}
 
-        <View className="mb-4 rounded-xl border border-gray-200 bg-white overflow-hidden">
-          <View className="px-4 py-3 flex-row items-center justify-between">
+        <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-white overflow-hidden")}>
+          <View style={twStyle("px-4 py-3 flex-row items-center justify-between")}>
             <View>
-              <Text className="text-base font-semibold text-gray-900">Marketing & promotions</Text>
-              <Text className="mt-0.5 text-sm text-gray-500">Unsubscribe from marketing emails</Text>
+              <Text style={twStyle("text-base font-semibold text-gray-900")}>Marketing & promotions</Text>
+              <Text style={twStyle("mt-0.5 text-sm text-gray-500")}>Unsubscribe from marketing emails</Text>
             </View>
             <Switch
               value={localPrefs.unsubscribe_marketing === true}
@@ -190,9 +191,9 @@ export default function SettingsNotificationPreferencesScreen() {
         </View>
 
         {saving && (
-          <View className="py-2 flex-row items-center justify-center">
+          <View style={twStyle("py-2 flex-row items-center justify-center")}>
             <ActivityIndicator size="small" color="#6366f1" />
-            <Text className="ml-2 text-sm text-gray-500">Saving...</Text>
+            <Text style={twStyle("ml-2 text-sm text-gray-500")}>Saving...</Text>
           </View>
         )}
       </ScrollView>

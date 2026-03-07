@@ -1,3 +1,3 @@
 // Custom entry point for monorepo compatibility.
-// Resolves expo-router from project context to avoid Metro 500 on web.
+// Single synchronous import so web gets one bundle (no chunk fetch that can "fail to load response data").
 import "expo-router/entry";

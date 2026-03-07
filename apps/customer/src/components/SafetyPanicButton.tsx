@@ -56,7 +56,7 @@ export function SafetyPanicButton({ bookingId = null }: SafetyPanicButtonProps) 
     <TouchableOpacity
       onPress={handlePress}
       disabled={loading}
-      className="flex-row items-center justify-center py-3.5 rounded-xl border border-red-200 bg-red-50 mb-3"
+      style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: "#FECACA", backgroundColor: "#FEF2F2", marginBottom: 12 }}
       accessibilityRole="button"
       accessibilityLabel="Safety - get help"
     >
@@ -65,7 +65,7 @@ export function SafetyPanicButton({ bookingId = null }: SafetyPanicButtonProps) 
       ) : (
         <>
           <Ionicons name="shield-checkmark-outline" size={20} color="#dc2626" />
-          <Text className="ml-2 font-medium text-red-700">Safety / Get help</Text>
+          <Text style={{ marginLeft: 8, fontWeight: "500", color: "#B91C1C" }}>Safety / Get help</Text>
         </>
       )}
     </TouchableOpacity>

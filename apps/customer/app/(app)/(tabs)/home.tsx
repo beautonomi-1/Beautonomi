@@ -6,6 +6,7 @@ import {
   RefreshControl,
   TouchableOpacity,
   StatusBar,
+  StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -23,37 +24,209 @@ import { AddressPicker } from "@/components/AddressPicker";
 import { InlineSearch } from "@/components/InlineSearch";
 import { FadeIn } from "@/components/FadeIn";
 import type { PublicProviderCard } from "@/types/api";
-import { SCREEN_PADDING, TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import {
+  TAB_CONTENT_PADDING_BOTTOM,
+  HOME_SECTION_MARGIN_BOTTOM,
+  HOME_SECTION_HEADER_MARGIN_BOTTOM,
+  HOME_SECTION_HEADER_MARGIN_TOP,
+  HOME_SECTION_TITLE_FONT_SIZE,
+} from "@/constants/layout";
 import { Colors } from "@/constants/colors";
 import { HomeSkeleton } from "@/components/Skeleton";
 
 const GAP = 16;
+const HEADER_PINK_HEIGHT = 56;
 
-function SectionHeader({ title, onViewMore }: { title: string; onViewMore?: () => void }) {
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: Colors.white,
+  },
+  contentWrapper: {
+    flex: 1,
+    backgroundColor: Colors.white,
+  },
+  contentWrapperTablet: {
+    maxWidth: 640,
+    alignSelf: "center",
+    width: "100%",
+  },
+  addressBar: {
+    backgroundColor: Colors.primary,
+  },
+  addressBarInner: {
+    height: HEADER_PINK_HEIGHT,
+    minHeight: HEADER_PINK_HEIGHT,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addressBarButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  addressBarIconMargin: { marginRight: 8 },
+  addressBarText: {
+    color: "white",
+    fontWeight: "500",
+    fontSize: 16,
+    flexShrink: 1,
+  },
+  addressBarChevron: { marginLeft: 8 },
+  navRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+  },
+  navLeftGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  navTab: {
+    alignItems: "center",
+    paddingBottom: 4,
+    flexDirection: "row",
+    marginRight: 24,
+  },
+  navTabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.primary,
+  },
+  navTabExplore: { marginRight: 24 },
+  navTabLabel: { marginLeft: 8 },
+  navTabLabelExplore: { marginLeft: 6 },
+  navNewBadge: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: "center",
+    marginLeft: 6,
+  },
+  navNewBadgeText: { fontSize: 8, color: Colors.white, fontWeight: "700" },
+  navRightGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  navSearchMargin: { marginRight: 16 },
+  categoryRow: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+    flexDirection: "row",
+  },
+  categoryScroll: { flexGrow: 0 },
+  categoryScrollContent: {
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  mainScroll: {
+    flex: 1,
+    backgroundColor: Colors.white,
+  },
+  mainScrollContent: {
+    paddingBottom: TAB_CONTENT_PADDING_BOTTOM,
+    paddingTop: 16,
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: HOME_SECTION_HEADER_MARGIN_BOTTOM,
+    paddingHorizontal: 16,
+  },
+  sectionHeaderFirst: { marginTop: 16 },
+  sectionHeaderRest: { marginTop: HOME_SECTION_HEADER_MARGIN_TOP },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  sectionTitleStarMargin: { marginLeft: 4 },
+  viewMoreRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  viewMoreText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: Colors.gray[900],
+    textDecorationLine: "underline",
+  },
+  viewMoreIcon: { marginLeft: 4 },
+  sectionContainer: { marginBottom: HOME_SECTION_MARGIN_BOTTOM },
+  horizontalCardsContent: {
+    paddingHorizontal: 16,
+    flexDirection: "row",
+  },
+  cardWrapper: { marginRight: GAP },
+  errorBox: {
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: 12,
+    padding: 16,
+    margin: 16,
+  },
+  errorText: { color: "#B91C1C", marginBottom: 12 },
+  retryButton: {
+    backgroundColor: Colors.primary,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  retryText: { color: Colors.white, fontWeight: "600" },
+});
+
+function SectionHeader({
+  title,
+  onViewMore,
+  contentPadding,
+  isFirst,
+}: {
+  title: string;
+  onViewMore?: () => void;
+  contentPadding: number;
+  isFirst?: boolean;
+}) {
   return (
-    <View className="flex-row justify-between items-center mb-3 mt-6 first:mt-0 px-4">
-      <View className="flex-row items-center gap-1">
-        <Text className="text-xl font-normal text-gray-900">{title}</Text>{
-          title === "Top Rated" ? (
-            <View className="flex-row">
-              <Text className="text-yellow-400 text-xs">★★★</Text>
-            </View>
-          ) : null
-        }
-      </View>{
-        onViewMore ? (
-          <TouchableOpacity
-            onPress={onViewMore}
-            className="flex-row items-center"
-            accessibilityRole="button"
-            accessibilityLabel={`View more ${title}`}
-            accessibilityHint={`Shows all providers in the ${title} section`}
-          >
-            <Text className="text-xs font-medium text-gray-900 underline">View More</Text>
-            <Ionicons name="arrow-forward" size={12} color="black" />
-          </TouchableOpacity>
-        ) : null
-      }
+    <View
+      style={[
+        styles.sectionHeaderRow,
+        { paddingHorizontal: contentPadding },
+        isFirst ? styles.sectionHeaderFirst : styles.sectionHeaderRest,
+      ]}
+    >
+      <View style={styles.sectionTitleRow}>
+        <Text style={{ fontSize: HOME_SECTION_TITLE_FONT_SIZE, fontWeight: "400", color: Colors.gray[900] }}>
+          {title}
+        </Text>
+        {title === "Top Rated" ? (
+          <View style={styles.sectionTitleStarMargin}>
+            <Text style={{ color: "#FACC15", fontSize: 12 }}>★★★</Text>
+          </View>
+        ) : null}
+      </View>
+      {onViewMore ? (
+        <TouchableOpacity
+          onPress={onViewMore}
+          style={styles.viewMoreRow}
+          accessibilityRole="button"
+          accessibilityLabel={`View more ${title}`}
+          accessibilityHint={`Shows all providers in the ${title} section`}
+        >
+          <Text style={styles.viewMoreText}>View More</Text>
+          <Ionicons name="arrow-forward" size={12} color="black" style={styles.viewMoreIcon} />
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
@@ -63,26 +236,37 @@ function ProviderSection({
   providers,
   badge,
   cardWidth,
+  contentPadding,
+  isFirst,
+  onViewMore,
 }: {
   title: string;
   providers: PublicProviderCard[];
-  badge: "topRated" | "hottest" | "nearest" | "upcoming";
+  badge: "topRated" | "sponsored" | "hottest" | "nearest" | "upcoming";
   cardWidth: number;
+  contentPadding: number;
+  isFirst?: boolean;
+  onViewMore?: () => void;
 }) {
   if (providers.length === 0) return null;
 
   return (
-    <View className="mb-6">
-      <SectionHeader title={title} onViewMore={() => {}} />
+    <View style={styles.sectionContainer}>
+      <SectionHeader
+        title={title}
+        onViewMore={onViewMore}
+        contentPadding={contentPadding}
+        isFirst={isFirst}
+      />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: SCREEN_PADDING, gap: GAP }}
+        contentContainerStyle={[styles.horizontalCardsContent, { paddingHorizontal: contentPadding }]}
         accessibilityRole="list"
         accessibilityLabel={`${title} providers`}
       >
         {providers.slice(0, 8).map((p) => (
-          <View key={p.id} style={{ width: cardWidth }}>
+          <View key={p.id} style={[styles.cardWrapper, { width: cardWidth }]}>
             <ProviderCard
               provider={p}
               showTopRatedBadge={badge === "topRated"}
@@ -111,7 +295,16 @@ function CategoryPill({
   return (
     <TouchableOpacity
       onPress={onPress}
-      className={`flex-row items-center px-4 py-2 rounded-full mr-3 ${active ? "border-b-2 border-primary" : ""}`}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 9999,
+        marginRight: 12,
+        borderBottomWidth: active ? 2 : 0,
+        borderBottomColor: active ? Colors.primary : "transparent",
+      }}
       accessibilityRole="button"
       accessibilityLabel={`${label} category`}
       accessibilityState={{ selected: active }}
@@ -125,7 +318,13 @@ function CategoryPill({
           style={{ marginRight: 6 }}
         />
       ) : null}
-      <Text className={`text-sm ${active ? "text-primary font-medium" : "text-gray-600"}`}>
+      <Text
+        style={{
+          fontSize: 14,
+          color: active ? Colors.primary : Colors.gray[600],
+          fontWeight: active ? "500" : "400",
+        }}
+      >
         {label}
       </Text>
     </TouchableOpacity>
@@ -137,8 +336,11 @@ export default function HomeScreen() {
   useAuth();
   const { coords } = useLocation();
   const { selectedAddress, setSelectedAddress } = useSelectedAddress();
-  const { cardWidth } = useResponsive();
+  const { cardWidth, contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const [activeCategory, setActiveCategory] = useState("All");
+  const contentWrapperDynamic = isTablet
+    ? [styles.contentWrapper, { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }]
+    : styles.contentWrapper;
 
   const { categories: globalCategories } = useGlobalCategories();
 
@@ -168,145 +370,189 @@ export default function HomeScreen() {
 
   if (loading && !data) {
     return (
-      <View className="flex-1 bg-white">
+      <View style={styles.root}>
         <HomeSkeleton />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-white">
+    <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
 
-      <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.primary }}>
-        <View className="px-4 py-3 flex-row items-center justify-between">
-          <TouchableOpacity
-            className="flex-row items-center gap-2 flex-1"
-            onPress={() => setAddressPickerVisible(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Select address"
-            accessibilityHint="Opens address selector to choose your location"
-          >
-            <Ionicons name="location" size={20} color="white" />
-            <Text className="text-white font-medium text-base flex-shrink" numberOfLines={1}>
-              {addressLabel}
-            </Text>
-            <Ionicons name="chevron-down" size={16} color="white" />
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-
-      <View className="flex-row justify-between items-center px-4 py-3 border-b border-gray-100">
-        <View className="flex-row gap-6 items-center">
-          <TouchableOpacity
-            className="items-center border-b-2 border-primary pb-1 flex-row gap-2"
-            accessibilityRole="button"
-            accessibilityLabel="Home tab"
-            accessibilityState={{ selected: true }}
-          >
-            <Ionicons name="home" size={18} color={Colors.primary} />
-            <Text className="text-primary font-medium">Home</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            className="items-center pb-1 flex-row gap-2"
-            onPress={() => router.push("/(app)/(tabs)/explore")}
-            accessibilityRole="button"
-            accessibilityLabel="Explore tab"
-            accessibilityHint="Navigate to the Explore feed"
-            accessibilityState={{ selected: false }}
-          >
-            <Ionicons name="compass-outline" size={18} color={Colors.gray[500]} />
-            <Text className="text-gray-500 font-medium">Explore</Text>
-            <View className="bg-primary px-1 rounded-sm">
-              <Text className="text-[8px] text-white font-bold">NEW</Text>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            className="items-center pb-1 flex-row gap-2"
-            onPress={() => router.push("/shop" as any)}
-            accessibilityRole="button"
-            accessibilityLabel="Shop tab"
-            accessibilityHint="Browse products"
-            accessibilityState={{ selected: false }}
-          >
-            <Ionicons name="bag-outline" size={18} color={Colors.gray[500]} />
-            <Text className="text-gray-500 font-medium">Shop</Text>
-          </TouchableOpacity>
-        </View>
-        <View className="flex-row gap-4 items-center">
-          <InlineSearch />
-          <TouchableOpacity
-            onPress={() => router.push("/(app)/(tabs)/profile")}
-            accessibilityRole="button"
-            accessibilityLabel="Profile"
-            accessibilityHint="Navigate to your profile"
-          >
-            <Ionicons name="person-outline" size={24} color="#333" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View className="py-3 border-b border-gray-100">
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 16 }}
-          accessibilityRole="list"
-          accessibilityLabel="Category filters"
-        >
-          <CategoryPill
-            label="All"
-            active={activeCategory === "All"}
-            icon="apps-outline"
-            onPress={() => handleCategoryPress("All")}
-          />
-          {globalCategories.map((cat) => (
-            <CategoryPill
-              key={cat.id}
-              label={cat.name}
-              active={activeCategory === cat.name}
-              icon={getCategoryIcon(cat.slug) as keyof typeof Ionicons.glyphMap}
-              onPress={() => handleCategoryPress(cat.name)}
-            />
-          ))}
-        </ScrollView>
-      </View>
-
-      <ScrollView
-        className="flex-1 bg-white"
-        contentContainerStyle={{
-          paddingBottom: TAB_CONTENT_PADDING_BOTTOM,
-        }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={Colors.primary} />
-        }
-      >{
-        error ? (
-          <View className="bg-red-50 border border-red-200 rounded-xl p-4 m-4">
-            <Text className="text-red-700 mb-3">{error}</Text>
+      <View style={contentWrapperDynamic}>
+        <SafeAreaView edges={["top"]} style={styles.addressBar}>
+          <View style={[styles.addressBarInner, { paddingHorizontal: contentPadding }]}>
             <TouchableOpacity
-              onPress={() => refetch()}
-              className="bg-primary py-2.5 rounded-xl items-center"
+              style={styles.addressBarButton}
+              onPress={() => setAddressPickerVisible(true)}
               accessibilityRole="button"
-              accessibilityLabel="Retry loading providers"
-              accessibilityHint="Attempts to reload the provider list"
+              accessibilityLabel="Select address"
+              accessibilityHint="Opens address selector to choose your location"
             >
-              <Text className="text-white font-semibold">Retry</Text>
+              <Ionicons name="location" size={20} color="white" style={styles.addressBarIconMargin} />
+              <Text style={styles.addressBarText} numberOfLines={1}>
+                {addressLabel}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color="white" style={styles.addressBarChevron} />
             </TouchableOpacity>
           </View>
-        ) : null
-      }{
-        data ? (
-          <FadeIn delay={100} duration={400}>
-            <View className="pt-4">
-              <ProviderSection title="Top Rated" providers={data.topRated || []} badge="topRated" cardWidth={cardWidth} />
-              <ProviderSection title="Nearest Providers" providers={data.nearest || []} badge="nearest" cardWidth={cardWidth} />
-              <ProviderSection title="Hottest Picks" providers={data.hottest || []} badge="hottest" cardWidth={cardWidth} />
-              <ProviderSection title="Upcoming Talent" providers={data.upcoming || []} badge="upcoming" cardWidth={cardWidth} />
+        </SafeAreaView>
+
+        <View style={[styles.navRow, { paddingHorizontal: contentPadding }]}>
+          <View style={styles.navLeftGroup}>
+            <TouchableOpacity
+              style={[styles.navTab, styles.navTabActive]}
+              accessibilityRole="button"
+              accessibilityLabel="Home tab"
+              accessibilityState={{ selected: true }}
+            >
+              <Ionicons name="home" size={18} color={Colors.primary} />
+              <Text style={[styles.navTabLabel, { color: Colors.primary, fontWeight: "500" }]}>Home</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.navTab, styles.navTabExplore]}
+              onPress={() => router.push("/(app)/(tabs)/explore")}
+              accessibilityRole="button"
+              accessibilityLabel="Explore tab"
+              accessibilityHint="Navigate to the Explore feed"
+              accessibilityState={{ selected: false }}
+            >
+              <Ionicons name="compass-outline" size={18} color={Colors.gray[500]} />
+              <Text style={[styles.navTabLabelExplore, { color: Colors.gray[500], fontWeight: "500" }]}>
+                Explore
+              </Text>
+              <View style={styles.navNewBadge}>
+                <Text style={styles.navNewBadgeText}>NEW</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.navTab}
+              onPress={() => router.push("/shop" as any)}
+              accessibilityRole="button"
+              accessibilityLabel="Shop tab"
+              accessibilityHint="Browse products"
+              accessibilityState={{ selected: false }}
+            >
+              <Ionicons name="bag-outline" size={18} color={Colors.gray[500]} />
+              <Text style={[styles.navTabLabel, { color: Colors.gray[500], fontWeight: "500" }]}>Shop</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.navRightGroup}>
+            <View style={styles.navSearchMargin}>
+              <InlineSearch />
             </View>
-          </FadeIn>
-        ) : null
-      }</ScrollView>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/profile")}
+              accessibilityRole="button"
+              accessibilityLabel="Profile"
+              accessibilityHint="Navigate to your profile"
+            >
+              <Ionicons name="person-outline" size={24} color="#333" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.categoryRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[styles.categoryScrollContent, { paddingHorizontal: contentPadding }]}
+            style={styles.categoryScroll}
+            accessibilityRole="list"
+            accessibilityLabel="Category filters"
+          >
+            <CategoryPill
+              label="All"
+              active={activeCategory === "All"}
+              icon="apps-outline"
+              onPress={() => handleCategoryPress("All")}
+            />
+            {globalCategories.map((cat) => (
+              <CategoryPill
+                key={cat.id}
+                label={cat.name}
+                active={activeCategory === cat.name}
+                icon={getCategoryIcon(cat.slug) as keyof typeof Ionicons.glyphMap}
+                onPress={() => handleCategoryPress(cat.name)}
+              />
+            ))}
+          </ScrollView>
+        </View>
+
+        <ScrollView
+          style={styles.mainScroll}
+          contentContainerStyle={styles.mainScrollContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={Colors.primary} />
+          }
+        >
+          {error ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>
+                {error === "Failed to fetch"
+                  ? "Can't connect. Check your internet and try again."
+                  : error}
+              </Text>
+              <TouchableOpacity
+                onPress={() => refetch()}
+                style={styles.retryButton}
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading providers"
+                accessibilityHint="Attempts to reload the provider list"
+              >
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          {data ? (
+            <FadeIn delay={100} duration={400}>
+              <View>
+                <ProviderSection
+                  title="Top Rated"
+                  providers={data.topRated || []}
+                  badge="topRated"
+                  cardWidth={cardWidth}
+                  contentPadding={contentPadding}
+                  isFirst
+                  onViewMore={() => router.push("/(app)/more-providers/top-rated")}
+                />
+                <ProviderSection
+                  title="Sponsored"
+                  providers={data.sponsored || []}
+                  badge="sponsored"
+                  cardWidth={cardWidth}
+                  contentPadding={contentPadding}
+                />
+                <ProviderSection
+                  title="Nearest Providers"
+                  providers={data.nearest || []}
+                  badge="nearest"
+                  cardWidth={cardWidth}
+                  contentPadding={contentPadding}
+                  onViewMore={() => router.push("/(app)/more-providers/nearest")}
+                />
+                <ProviderSection
+                  title="Hottest Picks"
+                  providers={data.hottest || []}
+                  badge="hottest"
+                  cardWidth={cardWidth}
+                  contentPadding={contentPadding}
+                  onViewMore={() => router.push("/(app)/more-providers/hottest")}
+                />
+                <ProviderSection
+                  title="Upcoming Talent"
+                  providers={data.upcoming || []}
+                  badge="upcoming"
+                  cardWidth={cardWidth}
+                  contentPadding={contentPadding}
+                  onViewMore={() => router.push("/(app)/more-providers/upcoming")}
+                />
+              </View>
+            </FadeIn>
+          ) : null}
+        </ScrollView>
+      </View>
 
       <AddressPicker
         visible={addressPickerVisible}

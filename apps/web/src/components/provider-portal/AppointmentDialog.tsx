@@ -687,9 +687,9 @@ export function AppointmentDialog({
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     "w-10 h-10 rounded-full flex items-center justify-center",
-                    isWalkIn ? "bg-gray-200" : "bg-[#FF0077]/10"
+                    isWalkIn ? "bg-gray-200" : "bg-primary/10"
                   )}>
-                    <User className={cn("w-5 h-5", isWalkIn ? "text-gray-600" : "text-[#FF0077]")} />
+                    <User className={cn("w-5 h-5", isWalkIn ? "text-gray-600" : "text-primary")} />
                   </div>
                   <div>
                     <p className="font-medium">
@@ -735,8 +735,8 @@ export function AppointmentDialog({
                         className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3"
                         onClick={() => handleSelectClient(client)}
                       >
-                        <div className="w-8 h-8 rounded-full bg-[#FF0077]/10 flex items-center justify-center">
-                          <span className="text-sm font-medium text-[#FF0077]">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <span className="text-sm font-medium text-primary">
                             {client.first_name.charAt(0)}{client.last_name.charAt(0)}
                           </span>
                         </div>
@@ -758,7 +758,7 @@ export function AppointmentDialog({
                     onClick={handleWalkIn}
                     className={cn(
                       "flex-1",
-                      isWalkIn && "bg-[#FF0077] hover:bg-[#D60565] text-white"
+                      isWalkIn && "bg-primary hover:bg-primary-hover text-white"
                     )}
                   >
                     <User className="w-4 h-4 mr-2" />
@@ -1252,7 +1252,7 @@ export function AppointmentDialog({
                 <Button 
                   type="button" 
                   disabled={isLoading || !cart.some(item => item.type === "service") || !formData.team_member_id} 
-                  className="flex-1 sm:flex-none bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
+                  className="flex-1 sm:flex-none bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
                   onClick={async (e) => {
                     e.preventDefault();
                     setIsLoading(true);

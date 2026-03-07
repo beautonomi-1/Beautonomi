@@ -25,6 +25,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { StatCard } from "@/components/ui/StatCard";
 import { capitalizeFirst } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -193,20 +194,20 @@ export default function TeamListScreen() {
         rightAction={
           <TouchableOpacity
             onPress={openAddSheet}
-            className="flex-row items-center rounded-xl bg-gray-900 px-4 py-2"
+            style={twStyle("flex-row items-center rounded-xl bg-gray-900 px-4 py-2")}
             accessibilityLabel="Add team member"
             accessibilityRole="button"
           >
             <Ionicons name="add" size={18} color="#fff" />
-            <Text className="ml-1 text-sm font-semibold text-white">Add</Text>
+            <Text style={twStyle("ml-1 text-sm font-semibold text-white")}>Add</Text>
           </TouchableOpacity>
         }
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
       {/* ── Summary Stats ── */}
-      <View className="mb-4 flex-row gap-3">
-        <View className="flex-1">
+      <View style={twStyle("mb-4 flex-row")}>
+        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
           <StatCard
             title="Total"
             value={String(totalCount)}
@@ -214,7 +215,7 @@ export default function TeamListScreen() {
             compact
           />
         </View>
-        <View className="flex-1">
+        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
           <StatCard
             title="Active"
             value={String(activeCount)}
@@ -224,7 +225,7 @@ export default function TeamListScreen() {
             compact
           />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard
             title="Avg Rating"
             value={avgRating.toFixed(1)}
@@ -237,14 +238,14 @@ export default function TeamListScreen() {
       </View>
 
       {/* ── Search & Filter ── */}
-      <View className="mb-3">
+      <View style={twStyle("mb-3")}>
         <SearchBar
           placeholder="Search by name, email, role..."
           value={search}
           onChangeText={setSearch}
         />
       </View>
-      <View className="mb-3">
+      <View style={twStyle("mb-3")}>
         <FilterChipGroup
           options={[
             { label: "All", value: "all" },
@@ -279,52 +280,53 @@ export default function TeamListScreen() {
           showsVerticalScrollIndicator={true}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: isTablet ? 12 : 0 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
           numColumns={isTablet ? 2 : 1}
-          columnWrapperStyle={isTablet ? { gap: 12 } : undefined}
-          renderItem={({ item: member }: { item: StaffMember }) => (
+          columnWrapperStyle={isTablet ? { marginBottom: 12 } : undefined}
+          renderItem={({ item: member, index }: { item: StaffMember; index: number }) => (
+            <View style={isTablet && index % 2 === 0 ? { marginRight: 12 } : undefined}>
             <TouchableOpacity
-              className={`${
+              style={twStyle(`${
                 isTablet
                   ? "flex-1 rounded-2xl border border-gray-100 bg-white p-4"
                   : "flex-row items-center border-b border-gray-50 py-3.5"
-              }`}
+              }`)}
               onPress={() =>
                 router.push(`/(app)/(tabs)/more/team-member/${member.id}` as any)
               }
               accessibilityLabel={`View ${member.name}`}
             >
               {isTablet ? (
-                <View className="items-center">
+                <View style={twStyle("items-center")}>
                   <Avatar
                     name={member.name}
                     imageUrl={member.avatar_url}
                     size="lg"
                   />
-                  <Text className="mt-2 text-base font-semibold text-gray-900">
+                  <Text style={twStyle("mt-2 text-base font-semibold text-gray-900")}>
                     {member.name}
                   </Text>
-                  <Text className="mt-0.5 text-xs text-gray-500">
+                  <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                     {capitalizeFirst(member.role)}
                   </Text>
-                  <View className="mt-2 flex-row items-center">
+                  <View style={twStyle("mt-2 flex-row items-center")}>
                     <View
-                      className={`mr-1.5 h-2 w-2 rounded-full ${member.is_active ? "bg-green-500" : "bg-gray-300"}`}
+                      style={twStyle(`mr-1.5 h-2 w-2 rounded-full ${member.is_active ? "bg-green-500" : "bg-gray-300"}`)}
                     />
-                    <Text className="text-xs text-gray-500">
+                    <Text style={twStyle("text-xs text-gray-500")}>
                       {member.is_active ? "Active" : "Inactive"}
                     </Text>
                   </View>
                   {member.average_rating != null && (
-                    <View className="mt-1 flex-row items-center">
+                    <View style={twStyle("mt-1 flex-row items-center")}>
                       <Ionicons name="star" size={12} color="#f59e0b" />
-                      <Text className="ml-0.5 text-xs text-gray-500">
+                      <Text style={twStyle("ml-0.5 text-xs text-gray-500")}>
                         {member.average_rating.toFixed(1)}
                       </Text>
                     </View>
                   )}
                   {member.locations?.[0]?.location_name && (
-                    <Text className="mt-1 text-xs text-gray-400">
+                    <Text style={twStyle("mt-1 text-xs text-gray-400")}>
                       {member.locations[0].location_name}
                     </Text>
                   )}
@@ -336,34 +338,35 @@ export default function TeamListScreen() {
                     imageUrl={member.avatar_url}
                     size="md"
                   />
-                  <View className="ml-3 flex-1">
-                    <Text className="text-base font-medium text-gray-900">
+                  <View style={twStyle("ml-3 flex-1")}>
+                    <Text style={twStyle("text-base font-medium text-gray-900")}>
                       {member.name}
                     </Text>
-                    <Text className="mt-0.5 text-xs text-gray-500">
+                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                       {capitalizeFirst(member.role)}
                       {member.locations?.[0]?.location_name
                         ? ` · ${member.locations[0].location_name}`
                         : ""}
                     </Text>
                   </View>
-                  <View className="flex-row items-center gap-2">
+                  <View style={twStyle("flex-row items-center")}>
                     {member.average_rating != null && (
-                      <View className="flex-row items-center">
+                      <View style={[twStyle("flex-row items-center"), { marginRight: 8 }]}>
                         <Ionicons name="star" size={12} color="#f59e0b" />
-                        <Text className="ml-0.5 text-xs text-gray-500">
+                        <Text style={twStyle("ml-0.5 text-xs text-gray-500")}>
                           {member.average_rating.toFixed(1)}
                         </Text>
                       </View>
                     )}
                     <View
-                      className={`h-2 w-2 rounded-full ${member.is_active ? "bg-green-500" : "bg-gray-300"}`}
+                      style={[twStyle(`h-2 w-2 rounded-full ${member.is_active ? "bg-green-500" : "bg-gray-300"}`), { marginRight: 8 }]}
                     />
                     <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
                   </View>
                 </>
               )}
             </TouchableOpacity>
+            </View>
           )}
         />
       )}
@@ -404,17 +407,17 @@ export default function TeamListScreen() {
         />
 
         {/* Role Selector */}
-        <Text className="mb-1 mt-2 text-sm font-medium text-gray-700">Role</Text>
-        <View className="mb-3 flex-row flex-wrap gap-2">
+        <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Role</Text>
+        <View style={twStyle("mb-3 flex-row flex-wrap")}>
           {ROLES.map((r) => (
             <TouchableOpacity
               key={r.value}
-              className={`rounded-full px-4 py-2 ${form.role === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`}
+              style={[twStyle(`rounded-full px-4 py-2 ${form.role === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8, marginBottom: 8 }]}
               onPress={() => setForm((p) => ({ ...p, role: r.value }))}
               accessibilityLabel={`Select role ${r.label}`}
             >
               <Text
-                className={`text-sm font-medium ${form.role === r.value ? "text-white" : "text-gray-600"}`}
+                style={twStyle(`text-sm font-medium ${form.role === r.value ? "text-white" : "text-gray-600"}`)}
               >
                 {r.label}
               </Text>
@@ -434,16 +437,16 @@ export default function TeamListScreen() {
         {/* Location Assignment */}
         {locations && locations.length > 0 && (
           <>
-            <Text className="mb-1 mt-2 text-sm font-medium text-gray-700">
+            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>
               Assign Locations
             </Text>
-            <View className="mb-3 rounded-xl border border-gray-200 bg-gray-50">
+            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
               {locations.map((loc, i) => {
                 const isSelected = form.location_ids.includes(loc.id);
                 return (
                   <TouchableOpacity
                     key={loc.id}
-                    className={`flex-row items-center px-4 py-3 ${i < locations.length - 1 ? "border-b border-gray-100" : ""}`}
+                    style={twStyle(`flex-row items-center px-4 py-3 ${i < locations.length - 1 ? "border-b border-gray-100" : ""}`)}
                     onPress={() => toggleFormLocation(loc.id)}
                     accessibilityLabel={`${isSelected ? "Deselect" : "Select"} ${loc.name}`}
                   >
@@ -452,7 +455,7 @@ export default function TeamListScreen() {
                       size={20}
                       color={isSelected ? "#6366f1" : "#9ca3af"}
                     />
-                    <Text className="ml-3 text-sm text-gray-900">{loc.name}</Text>
+                    <Text style={twStyle("ml-3 text-sm text-gray-900")}>{loc.name}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -463,16 +466,16 @@ export default function TeamListScreen() {
         {/* Service Assignment */}
         {services && services.length > 0 && (
           <>
-            <Text className="mb-1 mt-2 text-sm font-medium text-gray-700">
+            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>
               Assign Services
             </Text>
-            <View className="mb-3 rounded-xl border border-gray-200 bg-gray-50">
+            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
               {services.map((svc, i) => {
                 const isSelected = form.service_ids.includes(svc.id);
                 return (
                   <TouchableOpacity
                     key={svc.id}
-                    className={`flex-row items-center px-4 py-3 ${i < services.length - 1 ? "border-b border-gray-100" : ""}`}
+                    style={twStyle(`flex-row items-center px-4 py-3 ${i < services.length - 1 ? "border-b border-gray-100" : ""}`)}
                     onPress={() => toggleFormService(svc.id)}
                     accessibilityLabel={`${isSelected ? "Deselect" : "Select"} ${svc.title}`}
                   >
@@ -481,7 +484,7 @@ export default function TeamListScreen() {
                       size={20}
                       color={isSelected ? "#6366f1" : "#9ca3af"}
                     />
-                    <Text className="ml-3 text-sm text-gray-900">{svc.title}</Text>
+                    <Text style={twStyle("ml-3 text-sm text-gray-900")}>{svc.title}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -490,12 +493,12 @@ export default function TeamListScreen() {
         )}
 
         {/* Invite via email toggle */}
-        <View className="mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+        <View style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
           <View>
-            <Text className="text-sm font-medium text-gray-900">
+            <Text style={twStyle("text-sm font-medium text-gray-900")}>
               Invite via Email
             </Text>
-            <Text className="text-xs text-gray-500">
+            <Text style={twStyle("text-xs text-gray-500")}>
               Send an invitation email to join
             </Text>
           </View>
@@ -538,10 +541,10 @@ function FormField({
   keyboardType?: "default" | "email-address" | "phone-pad" | "numeric";
 }) {
   return (
-    <View className="mb-3">
-      <Text className="mb-1 text-sm font-medium text-gray-700">{label}</Text>
+    <View style={twStyle("mb-3")}>
+      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{label}</Text>
       <TextInput
-        className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+        style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
         placeholder={placeholder}
         placeholderTextColor="#9ca3af"
         value={value}

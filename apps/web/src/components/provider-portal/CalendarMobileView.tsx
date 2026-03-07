@@ -583,7 +583,7 @@ export function CalendarMobileView({
           {/* Layout Toggle Row */}
           <div className="flex items-center justify-between px-3 py-2.5 w-full box-border">
             <span className="text-xs font-bold text-gray-900 uppercase tracking-widest flex items-center gap-2">
-              <Users className="w-3.5 h-3.5 text-[#FF0077]" />
+              <Users className="w-3.5 h-3.5 text-primary" />
               Staff View
             </span>
             <div className="flex items-center p-1 bg-gray-100/80 rounded-lg border border-gray-200">
@@ -648,7 +648,7 @@ export function CalendarMobileView({
                           "text-xs px-2 py-0.5 rounded-full font-medium",
                           selectedStaffIndex === idx
                             ? "bg-[#4fd1c5] text-[#1a1f3c]"
-                            : "bg-[#FF0077] text-white"
+                            : "bg-primary text-white"
                         )}>
                           {count}
                         </span>
@@ -1484,7 +1484,7 @@ function _MobileAppointmentSheet({
                     <div className={cn("w-2.5 h-2.5 rounded-full mr-2", config.color)} />
                     {config.label}
                     {currentAppointment.status === key && (
-                      <Check className="w-4 h-4 ml-auto text-[#FF0077]" />
+                      <Check className="w-4 h-4 ml-auto text-primary" />
                     )}
                   </DropdownMenuItem>
                 ))}
@@ -1504,7 +1504,7 @@ function _MobileAppointmentSheet({
               <Button 
                 onClick={onCheckout}
                 size="sm"
-                className="h-9 px-4 bg-[#FF0077] hover:bg-[#D60565] text-white text-sm font-medium"
+                className="h-9 px-4 bg-primary hover:bg-primary-hover text-white text-sm font-medium"
               >
                 CHECKOUT
               </Button>
@@ -1589,7 +1589,7 @@ function _MobileAppointmentSheet({
               {appointment.client_phone && (
                 <a 
                   href={`tel:${appointment.client_phone}`}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 bg-white rounded-lg border border-gray-200 hover:bg-[#FF0077] hover:border-[#FF0077] hover:text-white transition-colors text-sm font-medium text-gray-700"
+                  className="flex-1 flex items-center justify-center gap-2 py-2 bg-white rounded-lg border border-gray-200 hover:bg-primary hover:border-primary hover:text-white transition-colors text-sm font-medium text-gray-700"
                 >
                   <Phone className="w-4 h-4" />
                   Call
@@ -1598,7 +1598,7 @@ function _MobileAppointmentSheet({
               {appointment.client_phone && (
                 <a 
                   href={`sms:${appointment.client_phone}`}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 bg-white rounded-lg border border-gray-200 hover:bg-[#FF0077] hover:border-[#FF0077] hover:text-white transition-colors text-sm font-medium text-gray-700"
+                  className="flex-1 flex items-center justify-center gap-2 py-2 bg-white rounded-lg border border-gray-200 hover:bg-primary hover:border-primary hover:text-white transition-colors text-sm font-medium text-gray-700"
                 >
                   <MessageCircle className="w-4 h-4" />
                   Message
@@ -1607,7 +1607,7 @@ function _MobileAppointmentSheet({
               {appointment.client_email && (
                 <a 
                   href={`mailto:${appointment.client_email}`}
-                  className="flex-1 flex items-center justify-center gap-2 py-2 bg-white rounded-lg border border-gray-200 hover:bg-[#FF0077] hover:border-[#FF0077] hover:text-white transition-colors text-sm font-medium text-gray-700"
+                  className="flex-1 flex items-center justify-center gap-2 py-2 bg-white rounded-lg border border-gray-200 hover:bg-primary hover:border-primary hover:text-white transition-colors text-sm font-medium text-gray-700"
                 >
                   <Mail className="w-4 h-4" />
                   Email
@@ -1620,7 +1620,7 @@ function _MobileAppointmentSheet({
           <div className="flex items-center gap-3 px-3 py-3 bg-white rounded-xl border border-gray-200">
             <CreditCard className="w-5 h-5 text-gray-400" />
             <span className="text-sm text-gray-600 flex-1">Add Credit Card</span>
-            <button className="text-sm font-medium text-[#FF0077] hover:text-[#D60565]">
+            <button className="text-sm font-medium text-primary hover:text-primary-hover">
               Add
             </button>
           </div>
@@ -1882,7 +1882,7 @@ function _MobileAppointmentSheet({
         ) : (
           <Button 
             onClick={onCheckout}
-            className="w-full bg-[#FF0077] hover:bg-[#D60565] text-white h-11 text-base font-semibold"
+            className="w-full bg-primary hover:bg-primary-hover text-white h-11 text-base font-semibold"
           >
             <CreditCard className="w-5 h-5 mr-2" />
             Checkout

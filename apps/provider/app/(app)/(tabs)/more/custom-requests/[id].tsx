@@ -22,6 +22,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
+import { twStyle } from "@/lib/twStyle";
 
 type CustomRequest = {
   id: string;
@@ -139,7 +140,7 @@ export default function CustomRequestDetailScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Request" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message="Request not found" />
         </View>
       </ScreenContainer>
@@ -150,7 +151,7 @@ export default function CustomRequestDetailScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Request" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center">
+        <View style={twStyle("flex-1 items-center justify-center")}>
           <ActivityIndicator size="large" />
         </View>
       </ScreenContainer>
@@ -161,7 +162,7 @@ export default function CustomRequestDetailScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Request" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState
             message={detailError ?? "Request not found"}
             onRetry={refresh}
@@ -180,41 +181,41 @@ export default function CustomRequestDetailScreen() {
         onBack={() => router.back()}
       />
       <ScrollView
-        className="flex-1"
+        style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 120 }}
         showsVerticalScrollIndicator={false}
       >
-        <View className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
-          <Text className="text-xs font-medium uppercase tracking-wide text-gray-500">Request</Text>
-          <Text className="mt-1 text-base text-gray-900">{request.description ?? "—"}</Text>
-          <View className="mt-2 flex-row flex-wrap gap-2">
-            <Text className="text-sm text-gray-600">
+        <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 p-4")}>
+          <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500")}>Request</Text>
+          <Text style={twStyle("mt-1 text-base text-gray-900")}>{request.description ?? "—"}</Text>
+          <View style={twStyle("mt-2 flex-row flex-wrap")}>
+            <Text style={[twStyle("text-sm text-gray-600"), { marginRight: 8, marginBottom: 8 }]}>
               {request.location_type === "at_home" ? "At home" : "At salon"}
             </Text>
             {request.duration_minutes != null && (
-              <Text className="text-sm text-gray-600">· {request.duration_minutes} min</Text>
+              <Text style={[twStyle("text-sm text-gray-600"), { marginRight: 8, marginBottom: 8 }]}>· {request.duration_minutes} min</Text>
             )}
             {(request.budget_min != null || request.budget_max != null) && (
-              <Text className="text-sm text-gray-600">
+              <Text style={twStyle("text-sm text-gray-600")}>
                 · Budget: {request.budget_min ?? "?"} – {request.budget_max ?? "?"} ZAR
               </Text>
             )}
           </View>
           {request.preferred_start_at && (
-            <Text className="mt-1 text-sm text-gray-600">
+            <Text style={twStyle("mt-1 text-sm text-gray-600")}>
               Preferred: {new Date(request.preferred_start_at).toLocaleString()}
             </Text>
           )}
           {request.offers && request.offers.length > 0 && (
-            <Text className="mt-2 text-sm text-gray-500">
+            <Text style={twStyle("mt-2 text-sm text-gray-500")}>
               {request.offers.length} offer(s) already sent
             </Text>
           )}
         </View>
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">Price (ZAR) *</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Price (ZAR) *</Text>
         <TextInput
-          className="mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
           value={price}
           onChangeText={setPrice}
           keyboardType="decimal-pad"
@@ -222,9 +223,9 @@ export default function CustomRequestDetailScreen() {
           placeholderTextColor="#9ca3af"
         />
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">Duration (minutes) *</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Duration (minutes) *</Text>
         <TextInput
-          className="mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
           value={durationMinutes}
           onChangeText={setDurationMinutes}
           keyboardType="number-pad"
@@ -232,9 +233,9 @@ export default function CustomRequestDetailScreen() {
           placeholderTextColor="#9ca3af"
         />
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">Offer expires in (days)</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Offer expires in (days)</Text>
         <TextInput
-          className="mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
           value={expirationDays}
           onChangeText={setExpirationDays}
           keyboardType="number-pad"
@@ -244,18 +245,18 @@ export default function CustomRequestDetailScreen() {
 
         {request.location_type === "at_salon" && locations.length > 0 && (
           <>
-            <Text className="mb-1 text-sm font-medium text-gray-700">Venue (optional)</Text>
-            <View className="mb-3 flex-row flex-wrap gap-2">
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Venue (optional)</Text>
+            <View style={twStyle("mb-3 flex-row flex-wrap")}>
               {locations.map((loc) => (
                 <TouchableOpacity
                   key={loc.id}
                   onPress={() => setLocationId(locationId === loc.id ? null : loc.id)}
-                  className={`rounded-xl border px-3 py-2 ${
+                  style={[twStyle(`rounded-xl border px-3 py-2 ${
                     locationId === loc.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
-                  }`}
+                  }`), { marginRight: 8, marginBottom: 8 }]}
                 >
                   <Text
-                    className={`text-sm ${locationId === loc.id ? "font-medium text-primary" : "text-gray-600"}`}
+                    style={twStyle(`text-sm ${locationId === loc.id ? "font-medium text-primary" : "text-gray-600"}`)}
                   >
                     {loc.name}
                   </Text>
@@ -267,18 +268,18 @@ export default function CustomRequestDetailScreen() {
 
         {staffList.length > 0 && (
           <>
-            <Text className="mb-1 text-sm font-medium text-gray-700">Assigned staff (optional)</Text>
-            <View className="mb-3 flex-row flex-wrap gap-2">
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Assigned staff (optional)</Text>
+            <View style={twStyle("mb-3 flex-row flex-wrap")}>
               {staffList.map((s) => (
                 <TouchableOpacity
                   key={s.id}
                   onPress={() => setStaffId(staffId === s.id ? null : s.id)}
-                  className={`rounded-xl border px-3 py-2 ${
+                  style={[twStyle(`rounded-xl border px-3 py-2 ${
                     staffId === s.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
-                  }`}
+                  }`), { marginRight: 8, marginBottom: 8 }]}
                 >
                   <Text
-                    className={`text-sm ${staffId === s.id ? "font-medium text-primary" : "text-gray-600"}`}
+                    style={twStyle(`text-sm ${staffId === s.id ? "font-medium text-primary" : "text-gray-600"}`)}
                   >
                     {s.name}
                   </Text>
@@ -288,12 +289,12 @@ export default function CustomRequestDetailScreen() {
           </>
         )}
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">Appointment date & time (optional)</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Appointment date & time (optional)</Text>
         <TouchableOpacity
           onPress={() => setShowDatePicker(true)}
-          className="mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3"
+          style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3")}
         >
-          <Text className="text-base text-gray-900">
+          <Text style={twStyle("text-base text-gray-900")}>
             {scheduledAt.toLocaleString()}
           </Text>
         </TouchableOpacity>
@@ -312,9 +313,9 @@ export default function CustomRequestDetailScreen() {
 
         {isAtHome && (
           <>
-            <Text className="mb-1 text-sm font-medium text-gray-700">Travel fee (ZAR, optional)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Travel fee (ZAR, optional)</Text>
             <TextInput
-              className="mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               value={travelFee}
               onChangeText={setTravelFee}
               keyboardType="decimal-pad"
@@ -324,9 +325,9 @@ export default function CustomRequestDetailScreen() {
           </>
         )}
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">Notes (optional)</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes (optional)</Text>
         <TextInput
-          className="mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
           value={notes}
           onChangeText={setNotes}
           placeholder="Additional details for the customer..."

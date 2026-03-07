@@ -373,60 +373,60 @@ export default function AdminContent() {
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                 <div className="w-full sm:w-auto overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
                   <TabsList className="inline-flex w-full sm:w-auto backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-1 shadow-lg min-w-max sm:min-w-0">
-                    <TabsTrigger value="faqs" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
+                    <TabsTrigger value="faqs" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
                     <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                     <span className="hidden sm:inline">FAQs</span>
                     <span className="sm:hidden">FAQ</span>
                   </TabsTrigger>
-                    <TabsTrigger value="resources" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
+                    <TabsTrigger value="resources" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
                       <BookOpen className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                       <span className="hidden sm:inline">Resources</span>
                       <span className="sm:hidden">Res</span>
                     </TabsTrigger>
-                    <TabsTrigger value="cities" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
+                    <TabsTrigger value="cities" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
                       <MapPin className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                       <span className="hidden sm:inline">Cities</span>
                       <span className="sm:hidden">City</span>
                     </TabsTrigger>
-                    <TabsTrigger value="pages" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
+                    <TabsTrigger value="pages" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
                       <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                       Pages
                     </TabsTrigger>
-                    <TabsTrigger value="footer" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
+                    <TabsTrigger value="footer" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
                       <MapPin className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                       <span className="hidden sm:inline">Footer</span>
                       <span className="sm:hidden">Foot</span>
                     </TabsTrigger>
-                    <TabsTrigger value="apps" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
+                    <TabsTrigger value="apps" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
                       <MapPin className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                       Apps
                     </TabsTrigger>
-                    <TabsTrigger value="profile-questions" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
+                    <TabsTrigger value="profile-questions" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
                       <HelpCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                       <span className="hidden lg:inline">Profile Questions</span>
                       <span className="lg:hidden">Profile</span>
                     </TabsTrigger>
-                    <TabsTrigger value="footer-settings" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
+                    <TabsTrigger value="footer-settings" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
                       <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                       <span className="hidden lg:inline">Footer Settings</span>
                       <span className="lg:hidden">Footer</span>
                     </TabsTrigger>
-                    <TabsTrigger value="social-media" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
+                    <TabsTrigger value="social-media" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
                       <MapPin className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                       <span className="hidden lg:inline">Social Media</span>
                       <span className="lg:hidden">Social</span>
                     </TabsTrigger>
-                    <TabsTrigger value="preference-options" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
+                    <TabsTrigger value="preference-options" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
                       <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                       <span className="hidden lg:inline">Preferences</span>
                       <span className="lg:hidden">Prefs</span>
                     </TabsTrigger>
-                    <TabsTrigger value="about-us" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
+                    <TabsTrigger value="about-us" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
                     <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                     <span className="hidden sm:inline">About Us</span>
                     <span className="sm:hidden">About</span>
                   </TabsTrigger>
-                    <TabsTrigger value="signup-page" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#FF0077] data-[state=active]:to-[#E6006A] data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
+                    <TabsTrigger value="signup-page" className="text-xs sm:text-sm px-2 sm:px-3 py-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-primary-hover data-[state=active]:text-white data-[state=active]:shadow-md rounded-lg transition-all">
                     <Users className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                     <span className="hidden lg:inline">Signup Page</span>
                     <span className="lg:hidden">Signup</span>
@@ -436,7 +436,7 @@ export default function AdminContent() {
                 <div className="flex-shrink-0">
                   {activeTab === "faqs" && (
                     <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                      <Button onClick={() => setShowFAQModal(true)} className="w-full sm:w-auto bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white shadow-lg">
+                      <Button onClick={() => setShowFAQModal(true)} className="w-full sm:w-auto bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white shadow-lg">
                         <Plus className="w-4 h-4 mr-2" />
                         <span className="hidden sm:inline">Add FAQ</span>
                         <span className="sm:hidden">Add</span>
@@ -559,7 +559,7 @@ export default function AdminContent() {
                     }
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 backdrop-blur-xl bg-white/80 border border-white/40 text-gray-900 placeholder-gray-500 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+                    className="pl-10 backdrop-blur-xl bg-white/80 border border-white/40 text-gray-900 placeholder-gray-500 focus:border-primary focus:ring-primary rounded-xl"
                   />
                 </div>
               {activeTab === "pages" && (
@@ -1398,7 +1398,7 @@ function FAQCard({
             onClick={onEdit}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
-            className="p-2 text-gray-600 hover:text-[#FF0077] hover:bg-pink-50 rounded-lg transition-colors"
+            className="p-2 text-gray-600 hover:text-primary hover:bg-pink-50 rounded-lg transition-colors"
             aria-label="Edit FAQ"
           >
             <Edit className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1457,7 +1457,7 @@ function ResourceCard({
             onClick={onEdit}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
-            className="p-2 text-gray-600 hover:text-[#FF0077] hover:bg-pink-50 rounded-lg transition-colors"
+            className="p-2 text-gray-600 hover:text-primary hover:bg-pink-50 rounded-lg transition-colors"
             aria-label="Edit Resource"
           >
             <Edit className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1523,7 +1523,7 @@ function CityCard({
             onClick={onEdit}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
-            className="p-2 text-gray-600 hover:text-[#FF0077] hover:bg-pink-50 rounded-lg transition-colors"
+            className="p-2 text-gray-600 hover:text-primary hover:bg-pink-50 rounded-lg transition-colors"
             aria-label="Edit City"
           >
             <Edit className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1923,7 +1923,7 @@ function PageContentCard({
             onClick={onEdit}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
-            className="p-2 text-gray-600 hover:text-[#FF0077] hover:bg-pink-50 rounded-lg transition-colors"
+            className="p-2 text-gray-600 hover:text-primary hover:bg-pink-50 rounded-lg transition-colors"
             aria-label="Edit Page"
           >
             <Edit className="w-4 h-4 sm:w-5 sm:h-5" />

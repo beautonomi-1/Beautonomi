@@ -500,7 +500,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       <button
                         onClick={handleResendVerification}
                         disabled={isResendingVerification}
-                        className="text-sm font-medium text-[#FF0077] hover:underline disabled:opacity-50 disabled:cursor-not-allowed py-1 rounded-lg touch-manipulation"
+                        className="text-sm font-medium text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed py-1 rounded-lg touch-manipulation"
                       >
                         {isResendingVerification ? "Sending…" : "Resend verification email"}
                       </button>
@@ -556,7 +556,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
               </p>
               
               <Button 
-                className="w-full rounded-2xl bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40"
+                className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40"
                 onClick={handlePhoneSendOtp}
                 disabled={isLoading || !fullPhoneE164}
               >
@@ -583,14 +583,14 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                   setOtpCode(v);
                   if (error) setError(null);
                 }}
-                className="text-center text-xl sm:text-2xl tracking-[0.4em] font-mono rounded-2xl min-h-[56px] mb-5 border-gray-200 focus-visible:ring-2 focus-visible:ring-[#FF0077]/30"
+                className="text-center text-xl sm:text-2xl tracking-[0.4em] font-mono rounded-2xl min-h-[56px] mb-5 border-gray-200 focus-visible:ring-2 focus-visible:ring-primary/30"
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && otpCode.trim().length >= 4) handleVerifyOtp();
                 }}
               />
               <Button
-                className="w-full rounded-2xl bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white min-h-[52px] h-12 text-base font-semibold mb-4 touch-manipulation shadow-lg shadow-pink-200/40"
+                className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-4 touch-manipulation shadow-lg shadow-pink-200/40"
                 onClick={handleVerifyOtp}
                 disabled={isLoading || otpCode.trim().length < 4}
               >
@@ -635,7 +635,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       <Label className="text-sm font-medium text-gray-700 mb-2 block">Full name</Label>
                       <Input
                         type="text"
-                        className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 focus-visible:ring-2 focus-visible:ring-[#FF0077]/20"
+                        className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 focus-visible:ring-2 focus-visible:ring-primary/20"
                         placeholder="Full name"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
@@ -653,7 +653,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                     <Label className="text-sm font-medium text-gray-700 mb-2 block">Email</Label>
                     <Input
                       type="email"
-                      className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 focus-visible:ring-2 focus-visible:ring-[#FF0077]/20"
+                      className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 focus-visible:ring-2 focus-visible:ring-primary/20"
                       placeholder="you@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -683,7 +683,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       <div className="relative">
                         <Input
                           type={showPassword ? "text" : "password"}
-                          className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 pr-12 focus-visible:ring-2 focus-visible:ring-[#FF0077]/20"
+                          className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 pr-12 focus-visible:ring-2 focus-visible:ring-primary/20"
                           placeholder="Password"
                           value={password}
                           onChange={(e) => {
@@ -721,14 +721,14 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       <Link
                         href="/forgot-password"
                         onClick={() => setOpen(false)}
-                        className="text-[15px] text-gray-500 hover:text-[#FF0077] font-medium py-2 inline-block touch-manipulation"
+                        className="text-[15px] text-gray-500 hover:text-primary font-medium py-2 inline-block touch-manipulation"
                       >
-                        Forgot your password? <span className="text-[#FF0077] font-semibold">Reset it</span>
+                        Forgot your password? <span className="text-primary font-semibold">Reset it</span>
                       </Link>
                     </div>
                   )}
                   <Button 
-                    className="w-full rounded-2xl bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40"
+                    className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40"
                     onClick={!isSignup ? handleEmailAuth : handleEmailContinue}
                     disabled={isLoading || !email || (!isSignup && !password)}
                   >
@@ -810,7 +810,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                     <div className="relative">
                       <Input
                         type={showPassword ? "text" : "password"}
-                        className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 pr-12 focus-visible:ring-2 focus-visible:ring-[#FF0077]/20"
+                        className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 pr-12 focus-visible:ring-2 focus-visible:ring-primary/20"
                         placeholder="Password"
                         value={password}
                         onChange={(e) => {
@@ -844,7 +844,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                     </div>
                   </div>
                   <Button 
-                    className="w-full rounded-2xl bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white min-h-[52px] h-12 text-base font-semibold mb-5 touch-manipulation shadow-lg shadow-pink-200/40"
+                    className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-5 touch-manipulation shadow-lg shadow-pink-200/40"
                     onClick={handleEmailAuth}
                     disabled={isLoading || !password}
                   >
@@ -858,7 +858,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       <Link
                         href="/forgot-password"
                         onClick={() => setOpen(false)}
-                        className="block w-full py-3 text-[15px] text-[#FF0077] hover:underline font-medium touch-manipulation"
+                        className="block w-full py-3 text-[15px] text-primary hover:underline font-medium touch-manipulation"
                       >
                         Forgot your password?
                       </Link>

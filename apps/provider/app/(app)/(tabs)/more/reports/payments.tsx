@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 type DateRange = "today" | "week" | "month" | "last_month" | "3months";
 
@@ -84,60 +85,60 @@ export default function PaymentsReport() {
     <ScreenContainer>
       <ScreenHeader title="Payments" showBack subtitle="Methods, payouts & refunds" />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4" contentContainerStyle={{ gap: 8 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4")} contentContainerStyle={{ flexDirection: "row" }}>
         {DATE_RANGES.map((r) => (
           <TouchableOpacity
             key={r.value}
-            className={`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`}
+            style={[twStyle(`rounded-full px-4 py-2 ${dateRange === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`), { marginRight: 8 }]}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDateRange(r.value); }}
           >
-            <Text className={`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`}>{r.label}</Text>
+            <Text style={twStyle(`text-sm font-medium ${dateRange === r.value ? "text-white" : "text-gray-600"}`)}>{r.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      {loading && !data && <ActivityIndicator className="my-8" color="#0ea5e9" />}
+      {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#0ea5e9" />}
       {!loading && !data && <EmptyState icon="card-outline" title="No payment data" description="Payment analytics will appear here" />}
 
       {data && (
-        <View className="gap-4">
-          <View className="flex-row gap-3">
-            <View className="flex-1">
+        <View>
+          <View style={twStyle("flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
               <StatCard title="Collected" value={formatCurrency(data.total_collected)} icon="arrow-down-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
             </View>
-            <View className="flex-1">
+            <View style={twStyle("flex-1")}>
               <StatCard title="Refunded" value={formatCurrency(data.total_refunded)} icon="arrow-up-circle-outline" iconColor="#ef4444" iconBg="bg-red-50" compact />
             </View>
           </View>
 
-          <View className="rounded-2xl bg-sky-50 p-5 items-center">
-            <Text className="text-sm text-sky-700">Net Revenue</Text>
-            <Text className="text-3xl font-bold text-sky-900 mt-1">{formatCurrency(data.net_revenue)}</Text>
+          <View style={[twStyle("rounded-2xl bg-sky-50 p-5 items-center"), { marginTop: 16, marginBottom: 16 }]}>
+            <Text style={twStyle("text-sm text-sky-700")}>Net Revenue</Text>
+            <Text style={twStyle("text-3xl font-bold text-sky-900 mt-1")}>{formatCurrency(data.net_revenue)}</Text>
           </View>
 
           {data.by_method.length > 0 && (
             <View>
               <SectionHeader title="Payment Methods" />
-              <View className="rounded-2xl border border-gray-100 bg-white p-4 gap-3">
+              <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
                 {data.by_method.map((m, i) => {
-                  const total = data.by_method.reduce((s, x) => s + x.amount, 0);
-                  const pct = total > 0 ? (m.amount / total) * 100 : 0;
-                  const color = METHOD_COLORS[m.method] || "#9ca3af";
-                  return (
-                    <View key={i}>
-                      <View className="flex-row justify-between mb-1">
-                        <View className="flex-row items-center">
-                          <View style={{ backgroundColor: color }} className="h-3 w-3 rounded-full mr-2" />
-                          <Text className="text-sm text-gray-600 capitalize">{m.method.replace(/_/g, " ")}</Text>
-                        </View>
-                        <Text className="text-sm font-semibold text-gray-900">{formatCurrency(m.amount)} ({m.count})</Text>
+                const total = data.by_method.reduce((s, x) => s + x.amount, 0);
+                const pct = total > 0 ? (m.amount / total) * 100 : 0;
+                const color = METHOD_COLORS[m.method] || "#9ca3af";
+                return (
+                  <View key={i} style={i > 0 ? { marginTop: 12 } : undefined}>
+                    <View style={twStyle("flex-row justify-between mb-1")}>
+                      <View style={twStyle("flex-row items-center")}>
+                        <View style={[{ backgroundColor: color }, twStyle("h-3 w-3 rounded-full mr-2")]} />
+                        <Text style={twStyle("text-sm text-gray-600 capitalize")}>{m.method.replace(/_/g, " ")}</Text>
                       </View>
-                      <View className="h-2 rounded-full bg-gray-100">
-                        <View style={{ width: `${Math.max(pct, 1)}%`, backgroundColor: color }} className="h-full rounded-full" />
-                      </View>
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(m.amount)} ({m.count})</Text>
                     </View>
-                  );
-                })}
+                    <View style={twStyle("h-2 rounded-full bg-gray-100")}>
+                      <View style={[{ width: `${Math.max(pct, 1)}%`, backgroundColor: color }, twStyle("h-full rounded-full")]} />
+                    </View>
+                  </View>
+                );
+              })}
               </View>
             </View>
           )}
@@ -145,15 +146,15 @@ export default function PaymentsReport() {
           {data.recent_payouts.length > 0 && (
             <View>
               <SectionHeader title="Recent Payouts" />
-              <View className="rounded-2xl border border-gray-100 bg-white px-4 py-1">
+              <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-1")}>
                 {data.recent_payouts.slice(0, 10).map((p, i) => (
-                  <View key={i} className="flex-row items-center justify-between py-3 border-b border-gray-50">
+                  <View key={i} style={twStyle("flex-row items-center justify-between py-3 border-b border-gray-50")}>
                     <View>
-                      <Text className="text-sm text-gray-900">{formatCurrency(p.amount)}</Text>
-                      <Text className="text-xs text-gray-400">{p.date}</Text>
+                      <Text style={twStyle("text-sm text-gray-900")}>{formatCurrency(p.amount)}</Text>
+                      <Text style={twStyle("text-xs text-gray-400")}>{p.date}</Text>
                     </View>
-                    <View className={`rounded-full px-2.5 py-1 ${p.status === "completed" ? "bg-green-100" : "bg-amber-100"}`}>
-                      <Text className={`text-xs font-medium ${p.status === "completed" ? "text-green-700" : "text-amber-700"}`}>{p.status}</Text>
+                    <View style={twStyle(`rounded-full px-2.5 py-1 ${p.status === "completed" ? "bg-green-100" : "bg-amber-100"}`)}>
+                      <Text style={twStyle(`text-xs font-medium ${p.status === "completed" ? "text-green-700" : "text-amber-700"}`)}>{p.status}</Text>
                     </View>
                   </View>
                 ))}
@@ -164,28 +165,28 @@ export default function PaymentsReport() {
           {data.recent_refunds.length > 0 && (
             <View>
               <SectionHeader title="Recent Refunds" />
-              <View className="rounded-2xl border border-gray-100 bg-white px-4 py-1">
+              <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-1")}>
                 {data.recent_refunds.slice(0, 10).map((r, i) => (
-                  <View key={i} className="py-3 border-b border-gray-50">
-                    <View className="flex-row justify-between">
-                      <Text className="text-sm font-medium text-red-600">{formatCurrency(r.amount)}</Text>
-                      <Text className="text-xs text-gray-400">{r.date}</Text>
+                  <View key={i} style={twStyle("py-3 border-b border-gray-50")}>
+                    <View style={twStyle("flex-row justify-between")}>
+                      <Text style={twStyle("text-sm font-medium text-red-600")}>{formatCurrency(r.amount)}</Text>
+                      <Text style={twStyle("text-xs text-gray-400")}>{r.date}</Text>
                     </View>
-                    {r.reason && <Text className="text-xs text-gray-500 mt-0.5">{r.reason}</Text>}
+                    {r.reason && <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>{r.reason}</Text>}
                   </View>
                 ))}
               </View>
             </View>
           )}
 
-          <TouchableOpacity className="rounded-xl bg-gray-100 py-3 px-4 flex-row items-center justify-center" onPress={handleExport}>
+          <TouchableOpacity style={twStyle("rounded-xl bg-gray-100 py-3 px-4 flex-row items-center justify-center")} onPress={handleExport}>
             <Ionicons name="share-outline" size={18} color="#374151" />
-            <Text className="ml-2 text-sm font-medium text-gray-700">Export Report</Text>
+            <Text style={twStyle("ml-2 text-sm font-medium text-gray-700")}>Export Report</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

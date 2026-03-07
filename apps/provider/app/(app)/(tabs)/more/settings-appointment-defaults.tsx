@@ -16,6 +16,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { twStyle } from "@/lib/twStyle";
 
 const APPOINTMENT_STATUSES = [
   { value: "pending", label: "Pending" },
@@ -94,58 +95,58 @@ export default function SettingsAppointmentDefaultsScreen() {
           <TouchableOpacity
             onPress={handleSave}
             disabled={saving}
-            className="min-h-[40px] flex-row items-center justify-center rounded-full bg-indigo-600 px-4"
+            style={twStyle("min-h-[40px] flex-row items-center justify-center rounded-full bg-indigo-600 px-4")}
             accessibilityLabel="Save appointment settings"
             accessibilityRole="button"
           >
             {saving ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text className="font-medium text-white">Save</Text>
+              <Text style={twStyle("font-medium text-white")}>Save</Text>
             )}
           </TouchableOpacity>
         }
       />
 
       <ScrollView
-        className="flex-1"
+        style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
-        <View className="px-2 pt-2">
+        <View style={twStyle("px-2 pt-2")}>
           {error && (
-            <View className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3">
-              <Text className="text-sm text-red-700">{error}</Text>
+            <View style={twStyle("mb-3 rounded-xl border border-red-200 bg-red-50 p-3")}>
+              <Text style={twStyle("text-sm text-red-700")}>{error}</Text>
               <TouchableOpacity
                 onPress={() => refresh()}
-                className="mt-2"
+                style={twStyle("mt-2")}
                 accessibilityLabel="Retry"
                 accessibilityRole="button"
               >
-                <Text className="text-sm font-medium text-red-700">Retry</Text>
+                <Text style={twStyle("text-sm font-medium text-red-700")}>Retry</Text>
               </TouchableOpacity>
             </View>
           )}
 
-          <View className="mb-3">
-            <Text className="mb-1 text-sm font-medium text-gray-700">Default appointment status</Text>
-            <Text className="mb-2 text-xs text-gray-500">
+          <View style={twStyle("mb-3")}>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Default appointment status</Text>
+            <Text style={twStyle("mb-2 text-xs text-gray-500")}>
               Status for new appointments when they are created
             </Text>
             <TouchableOpacity
-              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+              style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
               onPress={() => setStatusSheetOpen(true)}
               accessibilityLabel={`Default appointment status, ${statusLabel}`}
               accessibilityRole="button"
             >
-              <Text className="text-base text-gray-900">{statusLabel}</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{statusLabel}</Text>
             </TouchableOpacity>
           </View>
 
-          <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-            <View className="flex-1 pr-3">
-              <Text className="text-sm font-medium text-gray-700">Auto-confirm appointments</Text>
-              <Text className="mt-0.5 text-xs text-gray-500">
+          <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+            <View style={twStyle("flex-1 pr-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Auto-confirm appointments</Text>
+              <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                 New bookings are confirmed automatically
               </Text>
             </View>
@@ -155,10 +156,10 @@ export default function SettingsAppointmentDefaultsScreen() {
             />
           </View>
 
-          <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-            <View className="flex-1 pr-3">
-              <Text className="text-sm font-medium text-gray-700">Require confirmation for bookings</Text>
-              <Text className="mt-0.5 text-xs text-gray-500">
+          <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+            <View style={twStyle("flex-1 pr-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>Require confirmation for bookings</Text>
+              <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                 Online bookings need your confirmation first
               </Text>
             </View>
@@ -168,7 +169,7 @@ export default function SettingsAppointmentDefaultsScreen() {
             />
           </View>
 
-          <View className="mt-4">
+          <View style={twStyle("mt-4")}>
             <ActionButton
               label={saving ? "Saving..." : "Save changes"}
               onPress={handleSave}
@@ -184,11 +185,11 @@ export default function SettingsAppointmentDefaultsScreen() {
         onClose={() => setStatusSheetOpen(false)}
         title="Default status"
       >
-        <ScrollView className="max-h-80">
+        <ScrollView style={twStyle("max-h-80")}>
           {APPOINTMENT_STATUSES.map((s) => (
             <TouchableOpacity
               key={s.value}
-              className="border-b border-gray-100 py-3.5"
+              style={twStyle("border-b border-gray-100 py-3.5")}
               onPress={() => {
                 setSettings((prev) => ({ ...prev, defaultAppointmentStatus: s.value }));
                 setStatusSheetOpen(false);
@@ -196,7 +197,7 @@ export default function SettingsAppointmentDefaultsScreen() {
               accessibilityLabel={s.label}
               accessibilityRole="button"
             >
-              <Text className="text-base text-gray-900">{s.label}</Text>
+              <Text style={twStyle("text-base text-gray-900")}>{s.label}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>

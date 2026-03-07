@@ -419,7 +419,7 @@ export default function StepServiceSelection({
                   updateBookingState({ groupParticipants: undefined });
                 }
               }}
-              className="w-5 h-5 rounded border-gray-300 text-[#FF0077] focus:ring-[#FF0077]"
+              className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary"
             />
             <div className="flex-1">
               <p className="font-medium text-gray-900">Book for multiple people</p>
@@ -467,7 +467,7 @@ export default function StepServiceSelection({
               layout
               className={`border-2 rounded-xl overflow-hidden transition-all ${
                 isSelected
-                  ? "border-[#FF0077] bg-pink-50"
+                  ? "border-primary bg-pink-50"
                   : "border-gray-200 bg-white"
               }`}
             >
@@ -500,7 +500,7 @@ export default function StepServiceSelection({
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
                       isSelected
-                        ? "bg-[#FF0077] text-white"
+                        ? "bg-primary text-white"
                         : "border-2 border-gray-300"
                     }`}
                   >
@@ -541,7 +541,7 @@ export default function StepServiceSelection({
                             })}
                             className={`w-full p-3 rounded-lg border-2 text-left transition-all touch-target ${
                               !selectedService?.baseServiceId || selectedService?.id === service.id
-                                ? "border-[#FF0077] bg-pink-50"
+                                ? "border-primary bg-pink-50"
                                 : "border-gray-200 bg-white hover:border-gray-300"
                             }`}
                           >
@@ -559,7 +559,7 @@ export default function StepServiceSelection({
                                 </div>
                               </div>
                               {(!selectedService?.baseServiceId || selectedService?.id === service.id) && (
-                                <Check className="w-5 h-5 text-[#FF0077]" />
+                                <Check className="w-5 h-5 text-primary" />
                               )}
                             </div>
                           </motion.button>
@@ -572,7 +572,7 @@ export default function StepServiceSelection({
                               onClick={() => handleVariantSelect(service.id, variant)}
                               className={`w-full p-3 rounded-lg border-2 text-left transition-all touch-target ${
                                 selectedService?.id === variant.id
-                                  ? "border-[#FF0077] bg-pink-50"
+                                  ? "border-primary bg-pink-50"
                                   : "border-gray-200 bg-white hover:border-gray-300"
                               }`}
                             >
@@ -592,7 +592,7 @@ export default function StepServiceSelection({
                                   </div>
                                 </div>
                                 {selectedService?.id === variant.id && (
-                                  <Check className="w-5 h-5 text-[#FF0077]" />
+                                  <Check className="w-5 h-5 text-primary" />
                                 )}
                               </div>
                             </motion.button>
@@ -605,13 +605,13 @@ export default function StepServiceSelection({
                     {filteredStaff.length > 0 ? (
                       <div>
                         <Label className="text-sm font-medium text-gray-700 mb-3 block">
-                          Select Professional <span className="text-[#FF0077]">*</span>
+                          Select Professional <span className="text-primary">*</span>
                         </Label>
                         <p className="text-xs text-gray-500 mb-3">
                           Choose a professional to ensure your booking appears on their calendar
                         </p>
                         {!selectedService?.staffId && (
-                          <p className="text-xs text-[#FF0077] mb-2 font-medium">
+                          <p className="text-xs text-primary mb-2 font-medium">
                             Please select a professional to continue
                           </p>
                         )}
@@ -628,7 +628,7 @@ export default function StepServiceSelection({
                                 onClick={() => handleStaffSelect(service.id, staffMember)}
                                 className={`flex-shrink-0 w-20 flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-colors touch-target ${
                                   selectedService?.staffId === staffMember.id
-                                    ? "border-[#FF0077] bg-pink-50"
+                                    ? "border-primary bg-pink-50"
                                     : "border-gray-200 bg-white"
                                 }`}
                               >

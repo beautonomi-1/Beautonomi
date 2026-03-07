@@ -7,10 +7,12 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { twStyle } from "@/lib/twStyle";
 
 interface AnalyticsData {
   revenue: { total: number; thisMonth: number; lastMonth: number; growth: string };
@@ -28,6 +30,7 @@ function formatCurrency(amount: number): string {
 
 export default function AnalyticsScreen() {
   const [refreshing, setRefreshing] = useState(false);
+  const { screenPadding } = useResponsive();
   const { data, loading, error, refresh } = useApi<AnalyticsData>("/api/provider/analytics?period=month");
 
   const onRefresh = useCallback(async () => {
@@ -40,7 +43,7 @@ export default function AnalyticsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Analytics" showBack />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -51,7 +54,7 @@ export default function AnalyticsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Analytics" showBack />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -66,55 +69,55 @@ export default function AnalyticsScreen() {
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Analytics" showBack />
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={twStyle("flex-1")}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
       >
-        <View className="mb-4 flex-row flex-wrap gap-3">
-          <View className="min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4">
-            <View className="flex-row items-center">
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-violet-50">
+        <View style={twStyle("mb-4 flex-row flex-wrap")}>
+          <View style={[twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4"), { marginRight: 12, marginBottom: 12 }]}>
+            <View style={twStyle("flex-row items-center")}>
+              <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-violet-50")}>
                 <Ionicons name="trending-up-outline" size={20} color="#8b5cf6" />
               </View>
-              <Text className="ml-2 text-lg font-bold text-gray-900">
+              <Text style={twStyle("ml-2 text-lg font-bold text-gray-900")}>
                 {formatCurrency(rev.thisMonth ?? 0)}
               </Text>
             </View>
-            <Text className="mt-1 text-xs text-gray-500">Revenue this month</Text>
+            <Text style={twStyle("mt-1 text-xs text-gray-500")}>Revenue this month</Text>
             {rev.growth !== "0" && (
-              <Text className={`mt-0.5 text-xs font-medium ${parseFloat(rev.growth) >= 0 ? "text-green-600" : "text-red-600"}`}>
+              <Text style={twStyle(`mt-0.5 text-xs font-medium ${parseFloat(rev.growth) >= 0 ? "text-green-600" : "text-red-600"}`)}>
                 {parseFloat(rev.growth) >= 0 ? "+" : ""}{rev.growth}% vs last month
               </Text>
             )}
           </View>
-          <View className="min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4">
-            <View className="flex-row items-center">
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-indigo-50">
+          <View style={[twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4"), { marginRight: 12, marginBottom: 12 }]}>
+            <View style={twStyle("flex-row items-center")}>
+              <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-indigo-50")}>
                 <Ionicons name="calendar-outline" size={20} color="#6366f1" />
               </View>
-              <Text className="ml-2 text-lg font-bold text-gray-900">
+              <Text style={twStyle("ml-2 text-lg font-bold text-gray-900")}>
                 {book.upcoming ?? 0}
               </Text>
             </View>
-            <Text className="mt-1 text-xs text-gray-500">Upcoming bookings</Text>
-            <Text className="mt-0.5 text-xs text-gray-500">
+            <Text style={twStyle("mt-1 text-xs text-gray-500")}>Upcoming bookings</Text>
+            <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
               {book.thisMonth ?? 0} this month
             </Text>
           </View>
-          <View className="min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4">
-            <View className="flex-row items-center">
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-teal-50">
+          <View style={twStyle("min-w-[45%] flex-1 rounded-2xl border border-gray-100 bg-white p-4")}>
+            <View style={twStyle("flex-row items-center")}>
+              <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-teal-50")}>
                 <Ionicons name="people-outline" size={20} color="#14b8a6" />
               </View>
-              <Text className="ml-2 text-lg font-bold text-gray-900">
+              <Text style={twStyle("ml-2 text-lg font-bold text-gray-900")}>
                 {cust.total ?? 0}
               </Text>
             </View>
-            <Text className="mt-1 text-xs text-gray-500">Total customers</Text>
-            <Text className="mt-0.5 text-xs text-gray-500">
+            <Text style={twStyle("mt-1 text-xs text-gray-500")}>Total customers</Text>
+            <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
               {cust.repeat ?? 0} repeat · {cust.new ?? 0} new
             </Text>
           </View>

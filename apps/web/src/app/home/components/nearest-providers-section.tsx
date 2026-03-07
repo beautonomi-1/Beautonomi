@@ -6,7 +6,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { PublicProviderCard } from "@/types/beautonomi";
-import ProviderCard from "./provider-card";
+import ProviderCard from "./provider-card-dynamic";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -164,7 +164,7 @@ const NearestProvidersSection = () => {
                 <Select value={String(radiusKm)} onValueChange={(v) => setRadiusKm(Number(v))}>
                   <SelectTrigger
                     id="radius-select"
-                    className="w-[100px] rounded-full bg-gray-100 border-0 px-4 py-2 h-9 text-sm font-medium text-gray-700 hover:bg-gray-200 focus:ring-2 focus:ring-[#FF0077]/30"
+                    className="w-[100px] rounded-full bg-gray-100 border-0 px-4 py-2 h-9 text-sm font-medium text-gray-700 hover:bg-gray-200 focus:ring-2 focus:ring-primary/30"
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -176,7 +176,7 @@ const NearestProvidersSection = () => {
                 </Select>
               </div>
             )}
-            <Link href="/more-nearest-providers-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-[#FF0077]">
+            <Link href="/more-nearest-providers-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-primary">
               View More
               <ArrowRight className="ml-1 h-3 w-3 md:h-4 md:w-4" />
             </Link>

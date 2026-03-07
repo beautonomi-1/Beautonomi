@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Pressable, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Pressable, ActivityIndicator, Platform } from "react-native";
 import { router } from "expo-router";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
+import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import type { Booking } from "@/types/api";
 
@@ -16,6 +17,8 @@ function formatTime(s: string) {
 
 export default function AccountBookingsScreen() {
   const { user } = useAuth();
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const [tab, setTab] = useState<"upcoming" | "past" | "cancelled">("upcoming");
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,39 +93,58 @@ export default function AccountBookingsScreen() {
 
   if (loading && !bookings.length) {
     return (
-      <View className="flex-1 items-center justify-center">
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator size="large" color={Colors.primary} />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-gray-50">
-      <View className="bg-white px-4 pt-2 pb-2">
-        <View className="flex-row gap-2">
+    <View style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
+      <View style={{ backgroundColor: Colors.white, paddingHorizontal: contentPadding, paddingTop: 8, paddingBottom: 8 }}>
+        <View style={{ flexDirection: "row" }}>
           {TABS.map((t) => (
-            <TouchableOpacity key={t.key} onPress={() => setTab(t.key)} className={`px-4 py-2 rounded-full ${tab === t.key ? "bg-primary" : "bg-gray-100"}`}>
-              <Text className={`font-medium ${tab === t.key ? "text-white" : "text-gray-700"}`}>{t.label}</Text>
+            <TouchableOpacity
+              key={t.key}
+              onPress={() => setTab(t.key)}
+              style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 9999, backgroundColor: tab === t.key ? Colors.primary : Colors.gray[100], marginRight: 8 }}
+            >
+              <Text style={{ fontWeight: "500", color: tab === t.key ? Colors.white : Colors.gray[700] }}>{t.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: 48 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />}>
-        {error && <View className="bg-red-50 rounded-xl p-4 mb-4"><Text className="text-red-700">{error}</Text></View>}
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />}>
+        {error && (
+          <View style={{ backgroundColor: "#FEF2F2", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <Text style={{ color: "#B91C1C" }}>{error}</Text>
+          </View>
+        )}
         {bookings.length === 0 ? (
-          <Text className="text-center text-gray-500 py-12">No bookings</Text>
+          <Text style={{ textAlign: "center", color: Colors.gray[500], paddingVertical: 48 }}>No bookings</Text>
         ) : (
           bookings.map((b) => (
-            <Pressable key={b.id} onPress={() => router.push({ pathname: "/(app)/booking-detail", params: { id: b.id } })} className="bg-white rounded-xl p-4 mb-3 border border-gray-100">
-              <View className="flex-row justify-between">
-                <Text className="font-semibold text-gray-900">{(b as any).provider_name || b.services?.[0]?.offering_name || "Booking"}</Text>
-                <View className={`px-2 py-0.5 rounded ${b.status === "confirmed" ? "bg-green-100" : b.status === "cancelled" ? "bg-red-100" : "bg-gray-100"}`}>
-                  <Text className="text-xs font-medium">{String(b.status).charAt(0).toUpperCase() + String(b.status).slice(1)}</Text>
+            <Pressable
+              key={b.id}
+              onPress={() => router.push({ pathname: "/(app)/booking-detail", params: { id: b.id } })}
+              style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.gray[100] }}
+            >
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{(b as any).provider_name || b.services?.[0]?.offering_name || "Booking"}</Text>
+                <View
+                  style={{
+                    paddingHorizontal: 8,
+                    paddingVertical: 2,
+                    borderRadius: 4,
+                    backgroundColor: b.status === "confirmed" ? "#DCFCE7" : b.status === "cancelled" ? "#FEE2E2" : Colors.gray[100],
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[900] }}>{String(b.status).charAt(0).toUpperCase() + String(b.status).slice(1)}</Text>
                 </View>
               </View>
-              <Text className="text-gray-600 mt-1">{formatDate(b.scheduled_at)}</Text>
-              <Text className="text-gray-600">{formatTime(b.scheduled_at)}</Text>
-              <Text className="font-semibold text-gray-900 mt-2">{b.currency} {b.total_amount?.toFixed(2)}</Text>
+              <Text style={{ color: Colors.gray[600], marginTop: 4 }}>{formatDate(b.scheduled_at)}</Text>
+              <Text style={{ color: Colors.gray[600] }}>{formatTime(b.scheduled_at)}</Text>
+              <Text style={{ fontWeight: "600", color: Colors.gray[900], marginTop: 8 }}>{b.currency} {b.total_amount?.toFixed(2)}</Text>
             </Pressable>
           ))
         )}

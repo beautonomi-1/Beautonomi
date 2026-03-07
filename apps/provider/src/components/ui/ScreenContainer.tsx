@@ -22,15 +22,17 @@ export function ScreenContainer({
   style,
   noPadding = false,
 }: ScreenContainerProps) {
-  const { screenPadding, isTablet } = useResponsive();
+  const { screenPadding, isTablet, contentMaxWidth } = useResponsive();
   const insets = useSafeAreaInsets();
   const padding = noPadding ? 0 : screenPadding;
   const contentBottomPadding = TAB_BAR_BASE_HEIGHT + 24 + insets.bottom;
+  const tabletWrapperStyle = isTablet
+    ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const, flex: 1, minHeight: 0, backgroundColor: "#ffffff" as const }
+    : undefined;
 
   const content = scrollable ? (
     <ScrollView
-      className="flex-1"
-      style={{ backgroundColor: "#ffffff" }}
+      style={{ flex: 1, backgroundColor: "#ffffff" }}
       contentContainerStyle={{ paddingHorizontal: padding, paddingBottom: contentBottomPadding, backgroundColor: "#ffffff" }}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
@@ -43,18 +45,21 @@ export function ScreenContainer({
       {children}
     </ScrollView>
   ) : (
-    <View className="flex-1" style={{ paddingHorizontal: padding, backgroundColor: "#ffffff", minHeight: 0, ...style }}>
+    <View style={{ flex: 1, paddingHorizontal: padding, backgroundColor: "#ffffff", minHeight: 0, ...style }}>
       {children}
     </View>
   );
 
   return (
     <SafeAreaView
-      className="flex-1 bg-white"
       edges={edges}
-      style={[{ backgroundColor: "#ffffff" }, style]}
+      style={[{ flex: 1, backgroundColor: "#ffffff" }, style]}
     >
-      {isTablet ? <View className="mx-auto w-full max-w-[1200px] flex-1 min-h-0" style={{ backgroundColor: "#ffffff", minHeight: 0 }}>{content}</View> : content}
+      {isTablet && tabletWrapperStyle ? (
+        <View style={tabletWrapperStyle}>{content}</View>
+      ) : (
+        content
+      )}
     </SafeAreaView>
   );
 }

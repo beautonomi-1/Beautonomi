@@ -39,6 +39,7 @@ function normalize(r: unknown): HomeApiResponse {
 
   return {
     topRated: arr(raw?.topRated ?? raw?.top_rated),
+    sponsored: arr(raw?.sponsored),
     nearest: arr(raw?.nearest),
     hottest: arr(raw?.hottest),
     upcoming: arr(raw?.upcoming),

@@ -51,6 +51,7 @@ import {
 } from "@/lib/format";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
+import { Colors } from "@/constants/colors";
 
 /* ================================================================== */
 /*  Types                                                              */
@@ -134,52 +135,48 @@ const DAY_NAMES = [
   "saturday",
 ];
 
-const STATUS_COLORS: Record<
-  string,
-  { bg: string; border: string; text: string }
-> = {
-  confirmed: { bg: "bg-blue-100", border: "border-l-blue-500", text: "text-blue-900" },
-  pending: { bg: "bg-amber-50", border: "border-l-amber-500", text: "text-amber-900" },
-  booked: { bg: "bg-amber-50", border: "border-l-amber-500", text: "text-amber-900" },
-  in_progress: { bg: "bg-pink-50", border: "border-l-pink-500", text: "text-pink-900" },
-  started: { bg: "bg-pink-50", border: "border-l-pink-500", text: "text-pink-900" },
-  completed: { bg: "bg-gray-100", border: "border-l-gray-400", text: "text-gray-600" },
-  cancelled: { bg: "bg-gray-100", border: "border-l-gray-300", text: "text-gray-400" },
-  no_show: { bg: "bg-red-50", border: "border-l-red-500", text: "text-red-800" },
+type ColorTriple = { bg: string; border: string; text: string };
+
+const STATUS_COLORS: Record<string, ColorTriple> = {
+  confirmed: { bg: "#dbeafe", border: "#3b82f6", text: "#1e3a8a" },
+  pending: { bg: "#fffbeb", border: "#f59e0b", text: "#78350f" },
+  booked: { bg: "#fffbeb", border: "#f59e0b", text: "#78350f" },
+  in_progress: { bg: "#fdf2f8", border: "#ec4899", text: "#831843" },
+  started: { bg: "#fdf2f8", border: "#ec4899", text: "#831843" },
+  completed: { bg: Colors.gray[100], border: Colors.gray[400], text: Colors.gray[600] },
+  cancelled: { bg: Colors.gray[100], border: Colors.gray[300], text: Colors.gray[400] },
+  no_show: { bg: "#fef2f2", border: "#ef4444", text: "#991b1b" },
 };
 
-const SERVICE_COLOR_MAP: [string[], { bg: string; border: string; text: string }][] = [
-  [["haircut", "cut", "trim"], { bg: "bg-cyan-50", border: "border-l-cyan-500", text: "text-cyan-900" }],
-  [["color", "colour", "dye"], { bg: "bg-amber-50", border: "border-l-amber-500", text: "text-amber-900" }],
-  [["highlight", "foil"], { bg: "bg-yellow-50", border: "border-l-yellow-400", text: "text-yellow-800" }],
-  [["balayage", "ombre"], { bg: "bg-pink-50", border: "border-l-pink-400", text: "text-pink-900" }],
-  [["facial", "face"], { bg: "bg-gray-100", border: "border-l-gray-500", text: "text-gray-800" }],
-  [["manicure", "pedicure", "nail"], { bg: "bg-blue-50", border: "border-l-blue-500", text: "text-blue-900" }],
-  [["massage", "body"], { bg: "bg-green-50", border: "border-l-green-500", text: "text-green-900" }],
-  [["wax"], { bg: "bg-orange-50", border: "border-l-orange-400", text: "text-orange-900" }],
-  [["brow", "lash", "eye"], { bg: "bg-stone-100", border: "border-l-stone-500", text: "text-stone-800" }],
-  [["treatment", "therapy"], { bg: "bg-purple-50", border: "border-l-purple-500", text: "text-purple-900" }],
+const SERVICE_COLOR_MAP: [string[], ColorTriple][] = [
+  [["haircut", "cut", "trim"], { bg: "#ecfeff", border: "#06b6d4", text: "#164e63" }],
+  [["color", "colour", "dye"], { bg: "#fffbeb", border: "#f59e0b", text: "#78350f" }],
+  [["highlight", "foil"], { bg: "#fefce8", border: "#facc15", text: "#854d0e" }],
+  [["balayage", "ombre"], { bg: "#fdf2f8", border: "#f472b6", text: "#831843" }],
+  [["facial", "face"], { bg: Colors.gray[100], border: Colors.gray[500], text: Colors.gray[800] }],
+  [["manicure", "pedicure", "nail"], { bg: "#eff6ff", border: "#3b82f6", text: "#1e3a8a" }],
+  [["massage", "body"], { bg: "#f0fdf4", border: "#22c55e", text: "#14532d" }],
+  [["wax"], { bg: "#fff7ed", border: "#fb923c", text: "#9a3412" }],
+  [["brow", "lash", "eye"], { bg: "#fafaf9", border: "#78716c", text: "#292524" }],
+  [["treatment", "therapy"], { bg: "#f5f3ff", border: "#8b5cf6", text: "#4c1d95" }],
 ];
 
-const TEAM_COLORS = [
-  { bg: "bg-indigo-50", border: "border-l-indigo-500", text: "text-indigo-900" },
-  { bg: "bg-emerald-50", border: "border-l-emerald-500", text: "text-emerald-900" },
-  { bg: "bg-rose-50", border: "border-l-rose-500", text: "text-rose-900" },
-  { bg: "bg-sky-50", border: "border-l-sky-500", text: "text-sky-900" },
-  { bg: "bg-amber-50", border: "border-l-amber-500", text: "text-amber-900" },
-  { bg: "bg-violet-50", border: "border-l-violet-500", text: "text-violet-900" },
-  { bg: "bg-teal-50", border: "border-l-teal-500", text: "text-teal-900" },
-  { bg: "bg-fuchsia-50", border: "border-l-fuchsia-500", text: "text-fuchsia-900" },
+const TEAM_COLORS: ColorTriple[] = [
+  { bg: "#eef2ff", border: "#6366f1", text: "#312e81" },
+  { bg: "#ecfdf5", border: "#10b981", text: "#064e3b" },
+  { bg: "#fff1f2", border: "#f43f5e", text: "#9f1239" },
+  { bg: "#f0f9ff", border: "#0ea5e9", text: "#0c4a6e" },
+  { bg: "#fffbeb", border: "#f59e0b", text: "#78350f" },
+  { bg: "#f5f3ff", border: "#8b5cf6", text: "#4c1d95" },
+  { bg: "#f0fdfa", border: "#14b8a6", text: "#134e4a" },
+  { bg: "#fdf4ff", border: "#d946ef", text: "#701a75" },
 ];
 
-const BLOCK_TYPE_COLORS: Record<
-  string,
-  { bg: string; border: string; text: string; icon: string }
-> = {
-  break: { bg: "bg-yellow-50", border: "border-l-yellow-400", text: "text-yellow-800", icon: "cafe-outline" },
-  lunch: { bg: "bg-yellow-50", border: "border-l-yellow-400", text: "text-yellow-800", icon: "cafe-outline" },
-  meeting: { bg: "bg-blue-50", border: "border-l-blue-400", text: "text-blue-800", icon: "people-outline" },
-  other: { bg: "bg-gray-50", border: "border-l-gray-400", text: "text-gray-600", icon: "ban-outline" },
+const BLOCK_TYPE_COLORS: Record<string, { bg: string; border: string; text: string; icon: string }> = {
+  break: { bg: "#fefce8", border: "#facc15", text: "#854d0e", icon: "cafe-outline" },
+  lunch: { bg: "#fefce8", border: "#facc15", text: "#854d0e", icon: "cafe-outline" },
+  meeting: { bg: "#eff6ff", border: "#60a5fa", text: "#1e40af", icon: "people-outline" },
+  other: { bg: Colors.gray[50], border: Colors.gray[400], text: Colors.gray[600], icon: "ban-outline" },
 };
 
 const STATUS_ACTIONS = [
@@ -214,7 +211,7 @@ function getServiceColors(booking: Booking) {
   for (const [keywords, colors] of SERVICE_COLOR_MAP) {
     if (keywords.some((kw) => serviceName.includes(kw))) return colors;
   }
-  return { bg: "bg-slate-50", border: "border-l-slate-400", text: "text-slate-800" };
+  return { bg: "#f8fafc", border: "#94a3b8", text: "#1e293b" };
 }
 
 function getTeamColors(booking: Booking, staffList: StaffMember[]) {
@@ -283,11 +280,11 @@ function isNewBooking(booking: Booking): boolean {
 
 function CalendarSkeleton() {
   return (
-    <View className="flex-1 px-4 pt-4" accessibilityLabel="Loading calendar">
+    <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }} accessibilityLabel="Loading calendar">
       {[0, 1, 2, 3, 4, 5].map((i) => (
-        <View key={i} className="mb-3 flex-row items-center">
-          <View className="mr-3 h-4 w-10 rounded bg-gray-200" />
-          <View className="h-14 flex-1 rounded-xl bg-gray-100" />
+        <View key={i} style={{ marginBottom: 12, flexDirection: "row", alignItems: "center" }}>
+          <View style={{ marginRight: 12, height: 16, width: 40, borderRadius: 4, backgroundColor: Colors.gray[200] }} />
+          <View style={{ height: 56, flex: 1, borderRadius: 12, backgroundColor: Colors.gray[100] }} />
         </View>
       ))}
     </View>
@@ -325,8 +322,7 @@ function CurrentTimeIndicator({
 
   return (
     <View
-      className="absolute left-0 right-0 flex-row items-center"
-      style={{ top, zIndex: 100, pointerEvents: "none" }}
+      style={{ position: "absolute", left: 0, right: 0, top, flexDirection: "row", alignItems: "center", zIndex: 100, pointerEvents: "none" }}
       accessibilityLabel={`Current time ${format(now, "HH:mm")}`}
     >
       <View
@@ -373,16 +369,16 @@ function DatePickerModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable className="flex-1 items-center justify-center bg-black/40" onPress={onClose}>
-        <Pressable className="mx-6 w-80 rounded-2xl bg-white p-5" onPress={() => {}}>
-          <View className="mb-3 flex-row items-center justify-between">
+      <Pressable style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.4)" }} onPress={onClose}>
+        <Pressable style={{ marginHorizontal: 24, width: 320, borderRadius: 16, backgroundColor: Colors.white, padding: 20 }} onPress={() => {}}>
+          <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <TouchableOpacity
               onPress={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
               accessibilityLabel="Previous month"
             >
               <Ionicons name="chevron-back" size={20} color="#111" />
             </TouchableOpacity>
-            <Text className="text-base font-bold text-gray-900">{format(month, "MMMM yyyy")}</Text>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{format(month, "MMMM yyyy")}</Text>
             <TouchableOpacity
               onPress={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
               accessibilityLabel="Next month"
@@ -391,15 +387,15 @@ function DatePickerModal({
             </TouchableOpacity>
           </View>
 
-          <View className="mb-1 flex-row">
+          <View style={{ marginBottom: 4, flexDirection: "row" }}>
             {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
-              <View key={d} className="flex-1 items-center">
-                <Text className="text-xs font-medium text-gray-400">{d}</Text>
+              <View key={d} style={{ flex: 1, alignItems: "center" }}>
+                <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[400] }}>{d}</Text>
               </View>
             ))}
           </View>
 
-          <View className="flex-row flex-wrap">
+          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
             {cells.map((day, i) => {
               if (day === null) return <View key={`e-${i}`} style={{ width: "14.28%" }} />;
               const date = new Date(month.getFullYear(), month.getMonth(), day);
@@ -408,12 +404,23 @@ function DatePickerModal({
               return (
                 <TouchableOpacity
                   key={day}
-                  style={{ width: "14.28%" }}
-                  className={`items-center rounded-full py-2 ${isSelected ? "bg-gray-900" : isToday ? "bg-gray-100" : ""}`}
+                  style={{
+                    width: "14.28%",
+                    alignItems: "center",
+                    paddingVertical: 8,
+                    borderRadius: 9999,
+                    backgroundColor: isSelected ? Colors.gray[900] : isToday ? Colors.gray[100] : "transparent",
+                  }}
                   onPress={() => { onSelect(date); onClose(); }}
                   accessibilityLabel={format(date, "MMMM d, yyyy")}
                 >
-                  <Text className={`text-sm ${isSelected ? "font-bold text-white" : isToday ? "font-bold text-gray-900" : "text-gray-700"}`}>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: isSelected || isToday ? "700" : "400",
+                      color: isSelected ? Colors.white : isToday ? Colors.gray[900] : Colors.gray[700],
+                    }}
+                  >
                     {day}
                   </Text>
                 </TouchableOpacity>
@@ -422,10 +429,10 @@ function DatePickerModal({
           </View>
 
           <TouchableOpacity
-            className="mt-3 items-center rounded-lg bg-gray-100 py-2"
+            style={{ marginTop: 12, alignItems: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingVertical: 8 }}
             onPress={() => { onSelect(new Date()); onClose(); }}
           >
-            <Text className="text-sm font-semibold text-gray-900">Today</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Today</Text>
           </TouchableOpacity>
         </Pressable>
       </Pressable>
@@ -942,29 +949,30 @@ export default function CalendarScreen() {
     const isNew = isNewBooking(booking);
     const isCancelled = booking.status === "cancelled";
     const hasNotes = !!booking.notes;
-    const highContrastBg = preferences.highContrast ? "bg-gray-800" : "";
-    const highContrastText = preferences.highContrast ? "text-white" : colors.text;
+    const blockBg = preferences.highContrast ? Colors.gray[800] : colors.bg;
+    const blockTextColor = preferences.highContrast ? Colors.white : colors.text;
     const canDrag =
       dropContext &&
       booking.status !== "completed" &&
       booking.status !== "cancelled" &&
       viewMode === "day";
 
+    const subTextColor = preferences.highContrast ? Colors.gray[400] : Colors.gray[500];
     const blockContent = (
       <>
         {preferences.showAppointmentIcons && isNew && (
-          <View className="absolute -right-0.5 -top-0.5 rounded-bl-md bg-indigo-600 px-1 py-0.5">
-            <Text className="text-[7px] font-bold text-white">NEW</Text>
+          <View style={{ position: "absolute", right: -2, top: -2, borderBottomLeftRadius: 6, backgroundColor: "#4f46e6", paddingHorizontal: 4, paddingVertical: 2 }}>
+            <Text style={{ fontSize: 7, fontWeight: "700", color: Colors.white }}>NEW</Text>
           </View>
         )}
         {isSmall ? (
-          <Text className={`text-[10px] font-semibold ${highContrastText}`} numberOfLines={1}>
+          <Text style={{ fontSize: 10, fontWeight: "600", color: blockTextColor }} numberOfLines={1}>
             {booking.customers?.full_name ?? "Walk-in"}
           </Text>
         ) : (
           <>
-            <View className="flex-row items-center">
-              <Text className={`flex-1 text-[10px] font-bold ${highContrastText}`} numberOfLines={1}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={{ flex: 1, fontSize: 10, fontWeight: "700", color: blockTextColor }} numberOfLines={1}>
                 {booking.customers?.full_name ?? "Walk-in"}
               </Text>
               {preferences.showAppointmentIcons && hasNotes && (
@@ -972,23 +980,23 @@ export default function CalendarScreen() {
               )}
             </View>
             {booking.services?.length > 0 && (
-              <Text className={`text-[9px] ${preferences.highContrast ? "text-gray-300" : "text-gray-600"}`} numberOfLines={1}>
+              <Text style={{ fontSize: 9, color: preferences.highContrast ? Colors.gray[300] : Colors.gray[600] }} numberOfLines={1}>
                 {booking.services.map((s) => (s.guest_name ? `${s.name ?? s.offering_name ?? "Service"} (${s.guest_name})` : (s.name ?? s.offering_name ?? "Service"))).join(", ")}
               </Text>
             )}
             {booking.is_group_booking && booking.group_booking_ref && (
-              <Text className={`mt-0.5 text-[8px] ${preferences.highContrast ? "text-gray-400" : "text-gray-500"}`} numberOfLines={1}>
+              <Text style={{ marginTop: 2, fontSize: 8, color: subTextColor }} numberOfLines={1}>
                 Group: {booking.group_booking_ref}
               </Text>
             )}
             {!preferences.compactMode && height >= 55 && (
-              <Text className={`mt-0.5 text-[9px] ${preferences.highContrast ? "text-gray-400" : "text-gray-500"}`}>
+              <Text style={{ marginTop: 2, fontSize: 9, color: subTextColor }}>
                 {formatTime(booking.scheduled_at)}
                 {preferences.showPrices && <> &middot; {formatCurrency(booking.total_amount, booking.currency)}</>}
               </Text>
             )}
             {preferences.showClientPhone && !preferences.compactMode && height >= 70 && booking.customers?.phone && (
-              <Text className={`text-[8px] ${preferences.highContrast ? "text-gray-400" : "text-gray-400"}`} numberOfLines={1}>
+              <Text style={{ fontSize: 8, color: subTextColor }} numberOfLines={1}>
                 {booking.customers.phone}
               </Text>
             )}
@@ -998,10 +1006,20 @@ export default function CalendarScreen() {
     );
 
     const blockStyle = {
+      position: "absolute" as const,
+      left: 4,
+      right: 4,
       top,
       height: Math.max(height, 20),
       zIndex: 10,
-      opacity: draggingBooking?.id === booking.id ? 0.4 : 1,
+      opacity: draggingBooking?.id === booking.id ? 0.4 : isCancelled ? 0.5 : 1,
+      overflow: "hidden" as const,
+      borderRadius: 8,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.border,
+      backgroundColor: blockBg,
+      paddingHorizontal: 6,
+      paddingVertical: 4,
     };
 
     if (canDrag) {
@@ -1041,7 +1059,6 @@ export default function CalendarScreen() {
       return (
         <GestureDetector key={booking.id} gesture={composed}>
           <TouchableOpacity
-            className={`absolute left-1 right-1 overflow-hidden rounded-lg border-l-[3px] px-1.5 py-1 ${preferences.highContrast ? highContrastBg : colors.bg} ${colors.border} ${isCancelled ? "opacity-50" : ""}`}
             style={blockStyle}
             activeOpacity={0.7}
             onPress={() => !draggingRef.current && handleTapBooking(booking.id)}
@@ -1061,7 +1078,6 @@ export default function CalendarScreen() {
     return (
       <TouchableOpacity
         key={booking.id}
-        className={`absolute left-1 right-1 overflow-hidden rounded-lg border-l-[3px] px-1.5 py-1 ${preferences.highContrast ? highContrastBg : colors.bg} ${colors.border} ${isCancelled ? "opacity-50" : ""}`}
         style={blockStyle}
         activeOpacity={0.7}
         onPress={() => handleTapBooking(booking.id)}
@@ -1086,12 +1102,26 @@ export default function CalendarScreen() {
     return (
       <View
         key={block.id}
-        className={`absolute left-1 right-1 overflow-hidden rounded-md border-l-[3px] px-1.5 py-0.5 ${bColors.bg} ${bColors.border}`}
-        style={{ top, height, zIndex: 5, pointerEvents: "none" }}
+        style={{
+          position: "absolute",
+          left: 4,
+          right: 4,
+          top,
+          height,
+          zIndex: 5,
+          pointerEvents: "none",
+          overflow: "hidden",
+          borderRadius: 6,
+          borderLeftWidth: 3,
+          borderLeftColor: bColors.border,
+          backgroundColor: bColors.bg,
+          paddingHorizontal: 6,
+          paddingVertical: 2,
+        }}
       >
-        <View className="flex-row items-center">
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
           <Ionicons name={bColors.icon as keyof typeof Ionicons.glyphMap} size={10} color="#92400e" />
-          <Text className={`ml-1 text-[9px] font-medium ${bColors.text}`} numberOfLines={1}>
+          <Text style={{ marginLeft: 4, fontSize: 9, fontWeight: "500", color: bColors.text }} numberOfLines={1}>
             {block.title || capitalizeFirst(block.block_type)}
           </Text>
         </View>
@@ -1105,11 +1135,11 @@ export default function CalendarScreen() {
     if (!operatingHours) return null;
     const dayName = DAY_NAMES[day.getDay()] ?? "monday";
     const schedule = operatingHours[dayName];
-    const shadeBg = preferences.highContrast ? "bg-gray-700" : "bg-gray-200";
+    const shadeBg = preferences.highContrast ? Colors.gray[700] : Colors.gray[200];
 
     if (!schedule || !schedule.is_open || schedule.open_time == null || schedule.close_time == null) {
       return (
-        <View className={`absolute left-0 right-0 ${shadeBg}`} style={{ top: GRID_TOP_PADDING, height: totalGridHeight, opacity: 0.3, zIndex: 1, pointerEvents: "none" }} />
+        <View style={{ position: "absolute", left: 0, right: 0, top: GRID_TOP_PADDING, height: totalGridHeight, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }} />
       );
     }
 
@@ -1118,12 +1148,12 @@ export default function CalendarScreen() {
     const elements: React.ReactNode[] = [];
     const beforeHeight = Math.max(0, (openMin / 60 - startHour) * SLOT_HEIGHT);
     if (beforeHeight > 0) {
-      elements.push(<View key="before" className={`absolute left-0 right-0 ${shadeBg}`} style={{ top: GRID_TOP_PADDING, height: beforeHeight, opacity: 0.3, zIndex: 1, pointerEvents: "none" }} />);
+      elements.push(<View key="before" style={{ position: "absolute", left: 0, right: 0, top: GRID_TOP_PADDING, height: beforeHeight, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }} />);
     }
     const afterTop = GRID_TOP_PADDING + (closeMin / 60 - startHour) * SLOT_HEIGHT;
     const afterHeight = totalGridHeight + GRID_TOP_PADDING - afterTop;
     if (afterHeight > 0 && afterTop < totalGridHeight + GRID_TOP_PADDING) {
-      elements.push(<View key="after" className={`absolute left-0 right-0 ${shadeBg}`} style={{ top: afterTop, height: afterHeight, opacity: 0.3, zIndex: 1, pointerEvents: "none" }} />);
+      elements.push(<View key="after" style={{ position: "absolute", left: 0, right: 0, top: afterTop, height: afterHeight, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }} />);
     }
     return <>{elements}</>;
   }
@@ -1145,16 +1175,23 @@ export default function CalendarScreen() {
   ) {
     const dayBlocks = getTimeBlocksForDay(day);
     return (
-      <View style={{ width: colWidth, height: totalGridHeight + GRID_TOP_PADDING, paddingTop: GRID_TOP_PADDING }} className="relative">
+      <View style={{ width: colWidth, height: totalGridHeight + GRID_TOP_PADDING, paddingTop: GRID_TOP_PADDING, position: "relative" }}>
         {renderHoursShading(day)}
 
         {/* Grid rows + half-hour dashed lines */}
-        <View className="absolute inset-0" style={{ zIndex: 1 }}>
+        <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 1 }}>
           {gridRows.map((row, idx) => (
             <TouchableOpacity
               key={`${row.hour}-${row.minute}`}
-              className={`absolute left-0 right-0 ${row.minute === 0 ? "border-t border-gray-200" : "border-t border-gray-50"}`}
-              style={{ top: idx * rowHeight + GRID_TOP_PADDING, height: rowHeight }}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                top: idx * rowHeight + GRID_TOP_PADDING,
+                height: rowHeight,
+                borderTopWidth: 1,
+                borderTopColor: row.minute === 0 ? Colors.gray[200] : Colors.gray[50],
+              }}
               activeOpacity={0.6}
               onPress={() => handleTapSlot(row.hour, row.minute, day)}
               accessibilityRole="button"
@@ -1165,17 +1202,16 @@ export default function CalendarScreen() {
           {Array.from({ length: endHour - startHour }, (_, i) => (
             <View
               key={`half-${i}`}
-              className="absolute left-0 right-0"
-              style={{ top: i * SLOT_HEIGHT + SLOT_HEIGHT / 2 + GRID_TOP_PADDING, height: 1, borderTopWidth: 1, borderStyle: "dashed", borderColor: "#e5e7eb", zIndex: 0, pointerEvents: "none" }}
+              style={{ position: "absolute", left: 0, right: 0, top: i * SLOT_HEIGHT + SLOT_HEIGHT / 2 + GRID_TOP_PADDING, height: 1, borderTopWidth: 1, borderStyle: "dashed", borderColor: "#e5e7eb", zIndex: 0, pointerEvents: "none" }}
             />
           ))}
         </View>
 
-        <View className="absolute inset-0" style={{ zIndex: 5, pointerEvents: "box-none" }}>
+        <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 5, pointerEvents: "box-none" }}>
           {dayBlocks.map((tb) => renderTimeBlock(tb))}
         </View>
 
-        <View className="absolute inset-0" style={{ zIndex: 10, pointerEvents: "box-none" }}>
+        <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 10, pointerEvents: "box-none" }}>
           {bookingsForDay.map((b) => renderBookingBlock(b, colWidth, day, dropContext))}
         </View>
 
@@ -1211,14 +1247,14 @@ export default function CalendarScreen() {
   return (
     <ScreenContainer scrollable={false} noPadding>
       {/* ─── Dark Header (matches web portal) ─── */}
-      <View style={{ backgroundColor: DARK_HEADER }} className="pb-2 pt-2">
+      <View style={{ backgroundColor: DARK_HEADER, paddingBottom: 8, paddingTop: 8 }}>
         <View style={tabletContentStyle}>
         {/* Date navigation row */}
-        <View className="flex-row items-center justify-between px-4">
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16 }}>
           <TouchableOpacity
             onPress={() => navigateDate(-1)}
             hitSlop={8}
-            className="min-h-[44px] min-w-[44px] items-center justify-center"
+            style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" }}
             accessibilityLabel={viewMode === "week" ? "Previous week" : "Previous day"}
           >
             <Ionicons name="chevron-back" size={22} color="#fff" />
@@ -1226,10 +1262,10 @@ export default function CalendarScreen() {
 
           <TouchableOpacity
             onPress={() => setDatePickerVisible(true)}
-            className="flex-row items-center"
+            style={{ flexDirection: "row", alignItems: "center" }}
             accessibilityLabel="Jump to date"
           >
-            <Text className="text-lg font-bold text-white">
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.white }}>
               {viewMode === "week"
                 ? `${format(weekStart, "MMM d")} – ${format(addDays(weekStart, 6), "MMM d")}`
                 : viewMode === "3day"
@@ -1237,19 +1273,19 @@ export default function CalendarScreen() {
                 : format(selectedDate, "EEE, MMM d")}
             </Text>
             {todayBookingCount > 0 && viewMode === "day" && (
-              <View style={{ backgroundColor: TEAL_ACCENT }} className="ml-2 rounded-full px-2 py-0.5">
-                <Text className="text-xs font-bold" style={{ color: DARK_HEADER }}>
+              <View style={{ marginLeft: 8, borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: TEAL_ACCENT }}>
+                <Text style={{ fontSize: 12, fontWeight: "700", color: DARK_HEADER }}>
                   {todayBookingCount}
                 </Text>
               </View>
             )}
           </TouchableOpacity>
 
-          <View className="flex-row items-center gap-2">
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
             <TouchableOpacity
               onPress={() => setPrefsVisible(true)}
               hitSlop={8}
-              className="min-h-[44px] min-w-[44px] items-center justify-center"
+              style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", marginRight: 8 }}
               accessibilityLabel="Calendar preferences"
             >
               <Ionicons name="settings-outline" size={20} color="rgba(255,255,255,0.7)" />
@@ -1257,7 +1293,7 @@ export default function CalendarScreen() {
             <TouchableOpacity
               onPress={() => navigateDate(1)}
               hitSlop={8}
-              className="min-h-[44px] min-w-[44px] items-center justify-center"
+              style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" }}
               accessibilityLabel={viewMode === "week" ? "Next week" : "Next day"}
             >
               <Ionicons name="chevron-forward" size={22} color="#fff" />
@@ -1266,8 +1302,8 @@ export default function CalendarScreen() {
         </View>
 
         {/* View toggle + Today */}
-        <View className="mt-1 flex-row items-center justify-between px-4">
-          <View className="flex-row rounded-lg p-0.5" style={{ backgroundColor: "rgba(255,255,255,0.1)" }}>
+        <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16 }}>
+          <View style={{ flexDirection: "row", borderRadius: 8, padding: 2, backgroundColor: "rgba(255,255,255,0.1)" }}>
             {([
               { key: "day" as ViewMode, label: "DAY" },
               { key: "3day" as ViewMode, label: "3 DAY" },
@@ -1275,56 +1311,53 @@ export default function CalendarScreen() {
             ]).map((v) => (
               <TouchableOpacity
                 key={v.key}
-                className={`rounded-md px-3 py-1.5 ${viewMode === v.key ? "bg-white" : ""}`}
+                style={{ borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: viewMode === v.key ? Colors.white : "transparent" }}
                 onPress={() => setViewMode(v.key)}
               >
-                <Text className={`text-xs font-semibold ${viewMode === v.key ? "text-gray-900" : "text-white/70"}`}>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: viewMode === v.key ? Colors.gray[900] : "rgba(255,255,255,0.7)" }}>
                   {v.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <View className="flex-row items-center gap-2">
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
             {waitingCount > 0 && (
               <TouchableOpacity
-                className="flex-row items-center gap-1 rounded-md px-2 py-1"
-                style={{ backgroundColor: "rgba(239,68,68,0.2)" }}
+                style={{ flexDirection: "row", alignItems: "center", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "rgba(239,68,68,0.2)", marginRight: 8 }}
                 onPress={() => router.push("/(app)/(tabs)/more/waiting-room" as never)}
                 accessibilityLabel={`${waitingCount} waiting`}
               >
-                <Ionicons name="people" size={12} color="#fca5a5" />
-                <Text className="text-[10px] font-bold text-red-300">{waitingCount}</Text>
+                <Ionicons name="people" size={12} color="#fca5a5" style={{ marginRight: 4 }} />
+                <Text style={{ fontSize: 10, fontWeight: "700", color: "#fca5a5" }}>{waitingCount}</Text>
               </TouchableOpacity>
             )}
             {preferences.colorBy !== "status" && (
-              <View className="rounded-md px-2 py-1" style={{ backgroundColor: "rgba(79,209,197,0.2)" }}>
-                <Text className="text-[10px] font-medium" style={{ color: TEAL_ACCENT }}>
+              <View style={{ borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "rgba(79,209,197,0.2)", marginRight: 8 }}>
+                <Text style={{ fontSize: 10, fontWeight: "500", color: TEAL_ACCENT }}>
                   {preferences.colorBy === "service" ? "By Service" : "By Staff"}
                 </Text>
               </View>
             )}
             <TouchableOpacity
               onPress={() => setShowLegend(true)}
-              className="rounded-md px-2 py-1"
-              style={{ backgroundColor: "rgba(255,255,255,0.1)" }}
+              style={{ borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "rgba(255,255,255,0.1)", marginRight: 8 }}
               accessibilityLabel="Color legend"
             >
               <Ionicons name="color-palette-outline" size={14} color="rgba(255,255,255,0.7)" />
             </TouchableOpacity>
             <TouchableOpacity
-              style={{ backgroundColor: TEAL_ACCENT }}
-              className="rounded-lg px-3 py-1.5"
+              style={{ backgroundColor: TEAL_ACCENT, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 }}
               onPress={() => { setSelectedDate(new Date()); hasScrolledToNow.current = false; }}
               accessibilityLabel="Today"
             >
-              <Text className="text-xs font-semibold" style={{ color: DARK_HEADER }}>Today</Text>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: DARK_HEADER }}>Today</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Scrollable date strip */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2 px-2" contentContainerStyle={{ gap: 4 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8, paddingHorizontal: 8 }} contentContainerStyle={{ flexDirection: "row" }}>
           {weekDays.map((day) => {
             const isSelected = isSameDay(day, selectedDate);
             const isToday = isSameDay(day, new Date());
@@ -1332,20 +1365,22 @@ export default function CalendarScreen() {
             return (
               <TouchableOpacity
                 key={day.toISOString()}
-                className={`items-center rounded-xl px-3.5 py-2 ${isSelected ? "" : isToday ? "border border-white/30" : ""}`}
-                style={isSelected ? { backgroundColor: TEAL_ACCENT } : undefined}
+                style={[
+                  { alignItems: "center", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, marginRight: 4 },
+                  isSelected ? { backgroundColor: TEAL_ACCENT } : isToday ? { borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" } : {},
+                ]}
                 onPress={() => { setSelectedDate(day); if (viewMode === "week") setViewMode("day"); hasScrolledToNow.current = false; }}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isSelected }}
               >
-                <Text className={`text-[10px] font-medium ${isSelected ? "" : "text-white/60"}`} style={isSelected ? { color: DARK_HEADER } : undefined}>
+                <Text style={{ fontSize: 10, fontWeight: "500", color: isSelected ? DARK_HEADER : "rgba(255,255,255,0.6)" }}>
                   {format(day, "EEE")}
                 </Text>
-                <Text className={`mt-0.5 text-base font-bold ${isSelected ? "" : "text-white"}`} style={isSelected ? { color: DARK_HEADER } : undefined}>
+                <Text style={{ marginTop: 2, fontSize: 16, fontWeight: "700", color: isSelected ? DARK_HEADER : Colors.white }}>
                   {format(day, "d")}
                 </Text>
                 {count > 0 && !isSelected && (
-                  <View className="mt-1 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: TEAL_ACCENT }} />
+                  <View style={{ marginTop: 4, height: 6, width: 6, borderRadius: 3, backgroundColor: TEAL_ACCENT }} />
                 )}
               </TouchableOpacity>
             );
@@ -1356,33 +1391,33 @@ export default function CalendarScreen() {
 
       {/* ─── Layout Toggle + Staff Filter (matches web "Staff View" bar) ─── */}
       {viewMode === "day" && staffList.length > 1 && staffFilter === "all" && (
-        <View className="border-b border-gray-200 bg-white py-2" style={isTablet ? { paddingHorizontal: screenPadding } : { paddingHorizontal: 12 }}>
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center gap-1.5">
-              <Ionicons name="people-outline" size={14} color="#6366f1" />
-              <Text className="text-xs font-bold uppercase tracking-wider text-gray-900">Staff View</Text>
+        <View style={{ borderBottomWidth: 1, borderBottomColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 8, ...(isTablet ? { paddingHorizontal: screenPadding } : { paddingHorizontal: 12 }) }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Ionicons name="people-outline" size={14} color="#6366f1" style={{ marginRight: 6 }} />
+              <Text style={{ fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2, color: Colors.gray[900] }}>Staff View</Text>
             </View>
-            <View className="flex-row rounded-lg border border-gray-200 bg-gray-100 p-0.5">
+            <View style={{ flexDirection: "row", borderRadius: 8, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[100], padding: 2 }}>
               <TouchableOpacity
-                className={`flex-row items-center gap-1 rounded-md px-3 py-1.5 ${layoutMode === "columns" ? "bg-white shadow-sm" : ""}`}
+                style={{ flexDirection: "row", alignItems: "center", borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6, marginRight: 4, backgroundColor: layoutMode === "columns" ? Colors.white : "transparent", elevation: layoutMode === "columns" ? 1 : 0, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 }}
                 onPress={() => setLayoutMode("columns")}
               >
                 <Ionicons name="grid-outline" size={12} color={layoutMode === "columns" ? "#111" : "#9ca3af"} />
-                <Text className={`text-xs font-semibold ${layoutMode === "columns" ? "text-gray-900" : "text-gray-500"}`}>All</Text>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: layoutMode === "columns" ? Colors.gray[900] : Colors.gray[500] }}>All</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                className={`flex-row items-center gap-1 rounded-md px-3 py-1.5 ${layoutMode === "single" ? "bg-white shadow-sm" : ""}`}
+                style={{ flexDirection: "row", alignItems: "center", borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: layoutMode === "single" ? Colors.white : "transparent", elevation: layoutMode === "single" ? 1 : 0, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 }}
                 onPress={() => setLayoutMode("single")}
               >
-                <Ionicons name="person-outline" size={12} color={layoutMode === "single" ? "#111" : "#9ca3af"} />
-                <Text className={`text-xs font-semibold ${layoutMode === "single" ? "text-gray-900" : "text-gray-500"}`}>Single</Text>
+                <Ionicons name="person-outline" size={12} color={layoutMode === "single" ? "#111" : "#9ca3af"} style={{ marginRight: 4 }} />
+                <Text style={{ fontSize: 12, fontWeight: "600", color: layoutMode === "single" ? Colors.gray[900] : Colors.gray[500] }}>Single</Text>
               </TouchableOpacity>
             </View>
           </View>
 
           {/* Single mode: staff tabs */}
           {layoutMode === "single" && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-2" contentContainerStyle={{ gap: 8 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ flexDirection: "row" }}>
               {staffList.map((member, idx) => {
                 const count = filteredBookings.filter((b) =>
                   b.services?.some((svc) => svc.staff_id === member.id || svc.staff_name === member.name),
@@ -1391,24 +1426,22 @@ export default function CalendarScreen() {
                 return (
                   <TouchableOpacity
                     key={member.id}
-                    className={`flex-row items-center gap-2 rounded-lg px-3 py-2 ${isActive ? "" : "bg-gray-100"}`}
-                    style={isActive ? { backgroundColor: DARK_HEADER } : undefined}
+                    style={[ { flexDirection: "row", alignItems: "center", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8 }, isActive ? { backgroundColor: DARK_HEADER } : { backgroundColor: Colors.gray[100] } ]}
                     onPress={() => setSelectedStaffIndex(idx)}
                   >
                     <View
-                      className={`h-6 w-6 items-center justify-center rounded-full ${isActive ? "" : "bg-gray-300"}`}
-                      style={isActive ? { backgroundColor: TEAL_ACCENT } : undefined}
+                      style={[ { height: 24, width: 24, alignItems: "center", justifyContent: "center", borderRadius: 12, marginRight: 8 }, isActive ? { backgroundColor: TEAL_ACCENT } : { backgroundColor: Colors.gray[300] } ]}
                     >
-                      <Text className={`text-[9px] font-bold ${isActive ? "" : "text-gray-600"}`} style={isActive ? { color: DARK_HEADER } : undefined}>
+                      <Text style={[ { fontSize: 9, fontWeight: "700" }, isActive ? { color: DARK_HEADER } : { color: Colors.gray[600] } ]}>
                         {member.name.charAt(0)}
                       </Text>
                     </View>
-                    <Text className={`text-sm font-medium ${isActive ? "text-white" : "text-gray-700"}`}>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: isActive ? Colors.white : Colors.gray[700], marginRight: count > 0 ? 8 : 0 }}>
                       {member.name.split(" ")[0]}
                     </Text>
                     {count > 0 && (
-                      <View className={`rounded-full px-1.5 py-0.5 ${isActive ? "" : "bg-indigo-600"}`} style={isActive ? { backgroundColor: TEAL_ACCENT } : undefined}>
-                        <Text className={`text-[9px] font-bold ${isActive ? "" : "text-white"}`} style={isActive ? { color: DARK_HEADER } : undefined}>
+                      <View style={[ { borderRadius: 9999, paddingHorizontal: 6, paddingVertical: 2 }, isActive ? { backgroundColor: TEAL_ACCENT } : { backgroundColor: "#4f46e6" } ]}>
+                        <Text style={[ { fontSize: 9, fontWeight: "700" }, isActive ? { color: DARK_HEADER } : { color: Colors.white } ]}>
                           {count}
                         </Text>
                       </View>
@@ -1423,12 +1456,12 @@ export default function CalendarScreen() {
 
       {/* ─── Staff/Location Filters (when not in multi-column mode or in week/3day view) ─── */}
       {(viewMode === "week" || viewMode === "3day" || staffList.length <= 1 || staffFilter !== "all") && (
-        <View className="border-b border-gray-100 bg-white py-2" style={isTablet ? { paddingHorizontal: screenPadding } : { paddingHorizontal: 16 }}>
+        <View style={{ borderBottomWidth: 1, borderBottomColor: Colors.gray[100], backgroundColor: Colors.white, paddingVertical: 8, paddingHorizontal: screenPadding }}>
           {staffOptions.length > 1 && (
             <FilterChipGroup options={staffOptions} selected={staffFilter} onSelect={setStaffFilter} />
           )}
           {locationOptions.length > 1 && (
-            <View className="mt-1">
+            <View style={{ marginTop: 4 }}>
               <FilterChipGroup options={locationOptions} selected={locationFilter} onSelect={setLocationFilter} />
             </View>
           )}
@@ -1443,7 +1476,7 @@ export default function CalendarScreen() {
       ) : (
         <ScrollView
           ref={scrollRef}
-          className="flex-1"
+          style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 80, paddingTop: 20 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#111" />}
@@ -1455,7 +1488,7 @@ export default function CalendarScreen() {
           {...panResponder.panHandlers}
         >
           <View style={isTablet ? { paddingHorizontal: screenPadding, width: "100%" } : {}}>
-          <View ref={gridContainerRef} className="flex-row px-2">
+          <View ref={gridContainerRef} style={{ flexDirection: "row", paddingHorizontal: 8 }}>
             {/* Time column: fixed width, aligns with grid rows; border separates from staff columns */}
             <View
               style={{
@@ -1472,10 +1505,9 @@ export default function CalendarScreen() {
                 .map((row) => (
                   <View
                     key={`t-${row.hour}`}
-                    className="absolute left-0 right-0 items-end pr-2"
-                    style={{ top: (row.hour - startHour) * SLOT_HEIGHT, width: TIME_COL_WIDTH }}
+                    style={{ position: "absolute", left: 0, right: 0, top: (row.hour - startHour) * SLOT_HEIGHT, width: TIME_COL_WIDTH, alignItems: "flex-end", paddingRight: 8 }}
                   >
-                    <Text className="text-xs font-semibold text-gray-600">{row.label}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[600] }}>{row.label}</Text>
                   </View>
                 ))}
             </View>
@@ -1485,7 +1517,7 @@ export default function CalendarScreen() {
               viewMode === "3day" ? (
                 <>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View className="flex-row">
+                    <View style={{ flexDirection: "row" }}>
                       {threeDays.map((day) => {
                         const key = format(day, "yyyy-MM-dd");
                         const dayBookings = (bookingsByDay.get(key) ?? []).length > 0
@@ -1496,15 +1528,14 @@ export default function CalendarScreen() {
                         return (
                           <View key={key}>
                             <TouchableOpacity
-                              className="items-center border-b border-gray-200 pb-1 pt-1"
-                              style={{ width: threeDayColWidth, backgroundColor: isToday ? TEAL_ACCENT + "30" : "#f9fafb" }}
+                              style={{ width: threeDayColWidth, alignItems: "center", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], paddingBottom: 4, paddingTop: 4, backgroundColor: isToday ? TEAL_ACCENT + "30" : "#f9fafb" }}
                               onPress={() => { setSelectedDate(day); setViewMode("day"); }}
                             >
-                              <Text className="text-[10px] text-gray-400">{format(day, "EEE")}</Text>
-                              <Text className={`text-sm font-bold ${isToday ? "text-indigo-600" : "text-gray-700"}`}>{format(day, "d MMM")}</Text>
-                              <Text className="text-[9px] text-gray-400">{dayBookings.length} appt{dayBookings.length !== 1 ? "s" : ""}</Text>
+                              <Text style={{ fontSize: 10, color: Colors.gray[400] }}>{format(day, "EEE")}</Text>
+                              <Text style={{ fontSize: 14, fontWeight: "700", color: isToday ? "#4f46e6" : Colors.gray[700] }}>{format(day, "d MMM")}</Text>
+                              <Text style={{ fontSize: 9, color: Colors.gray[400] }}>{dayBookings.length} appt{dayBookings.length !== 1 ? "s" : ""}</Text>
                             </TouchableOpacity>
-                            <View className="border-r border-gray-50">
+                            <View style={{ borderRightWidth: 1, borderRightColor: Colors.gray[50] }}>
                               {renderDayGrid(day, dayBookings, threeDayColWidth, false)}
                             </View>
                           </View>
@@ -1547,22 +1578,21 @@ export default function CalendarScreen() {
                     }}
                     scrollEventThrottle={32}
                   >
-                    <View className="flex-row">
+                    <View style={{ flexDirection: "row" }}>
                       {staffColumns.map((col) => {
                         const initials = col.staffName.split(" ").filter(Boolean).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
                         return (
                           <View key={col.staffId} style={{ width: dayColumnWidth, borderRightWidth: 1, borderRightColor: "#e5e7eb" }}>
                             <TouchableOpacity
-                              className="items-center border-b border-gray-200 px-1 pb-1 pt-1"
-                              style={{ width: dayColumnWidth, backgroundColor: DARK_HEADER }}
+                              style={{ width: dayColumnWidth, alignItems: "center", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], paddingHorizontal: 4, paddingBottom: 4, paddingTop: 4, backgroundColor: DARK_HEADER }}
                               onPress={() => handleStaffHeaderPress(col)}
                               activeOpacity={0.7}
                             >
-                              <View className="mb-0.5 h-6 w-6 items-center justify-center rounded-full" style={{ backgroundColor: TEAL_ACCENT }}>
-                                <Text className="text-[9px] font-bold" style={{ color: DARK_HEADER }}>{initials}</Text>
+                              <View style={{ marginBottom: 2, height: 24, width: 24, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: TEAL_ACCENT }}>
+                                <Text style={{ fontSize: 9, fontWeight: "700", color: DARK_HEADER }}>{initials}</Text>
                               </View>
-                              <Text className="text-[10px] font-semibold text-white" numberOfLines={1}>{col.staffName.split(" ")[0]}</Text>
-                              <Text className="text-[9px]" style={{ color: TEAL_ACCENT }}>
+                              <Text style={{ fontSize: 10, fontWeight: "600", color: Colors.white }} numberOfLines={1}>{col.staffName.split(" ")[0]}</Text>
+                              <Text style={{ fontSize: 9, color: TEAL_ACCENT }}>
                                 {col.bookings.length} appt{col.bookings.length !== 1 ? "s" : ""}
                               </Text>
                             </TouchableOpacity>
@@ -1616,7 +1646,7 @@ export default function CalendarScreen() {
             ) : (
               <>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View className="flex-row">
+                  <View style={{ flexDirection: "row" }}>
                     {weekDays.map((day) => {
                       const key = format(day, "yyyy-MM-dd");
                       const dayBookings = bookingsByDay.get(key) ?? [];
@@ -1624,13 +1654,12 @@ export default function CalendarScreen() {
                       return (
                         <View key={key}>
                           <View
-                            className={`items-center border-b border-gray-200 pb-1 ${isToday ? "" : ""}`}
-                            style={{ width: dayColumnWidth, backgroundColor: isToday ? TEAL_ACCENT + "30" : "#f9fafb" }}
+                            style={{ width: dayColumnWidth, alignItems: "center", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], paddingBottom: 4, backgroundColor: isToday ? TEAL_ACCENT + "30" : "#f9fafb" }}
                           >
-                            <Text className="text-[10px] text-gray-400">{format(day, "EEE")}</Text>
-                            <Text className={`text-xs font-bold ${isToday ? "text-indigo-600" : "text-gray-700"}`}>{format(day, "d")}</Text>
+                            <Text style={{ fontSize: 10, color: Colors.gray[400] }}>{format(day, "EEE")}</Text>
+                            <Text style={{ fontSize: 12, fontWeight: "700", color: isToday ? "#4f46e6" : Colors.gray[700] }}>{format(day, "d")}</Text>
                           </View>
-                          <View className="border-r border-gray-50">
+                          <View style={{ borderRightWidth: 1, borderRightColor: Colors.gray[50] }}>
                             {renderDayGrid(day, dayBookings, dayColumnWidth, false)}
                           </View>
                         </View>
@@ -1690,15 +1719,15 @@ export default function CalendarScreen() {
                 elevation: 8,
               }}
             >
-              <Text className="text-[10px] font-bold text-gray-900" numberOfLines={1}>
+              <Text style={{ fontSize: 10, fontWeight: "700", color: Colors.gray[900] }} numberOfLines={1}>
                 {draggingBooking.customers?.full_name ?? "Walk-in"}
               </Text>
               {draggingBooking.services?.length > 0 && (
-                <Text className="mt-0.5 text-[9px] text-gray-600" numberOfLines={1}>
+                <Text style={{ marginTop: 2, fontSize: 9, color: Colors.gray[600] }} numberOfLines={1}>
                   {draggingBooking.services.map((s) => s.name).join(", ")}
                 </Text>
               )}
-              <Text className="mt-0.5 text-[9px] text-gray-500">{formatTime(draggingBooking.scheduled_at)}</Text>
+              <Text style={{ marginTop: 2, fontSize: 9, color: Colors.gray[500] }}>{formatTime(draggingBooking.scheduled_at)}</Text>
             </View>
           </View>
         </Modal>
@@ -1720,9 +1749,9 @@ export default function CalendarScreen() {
       />
 
       {/* ─── Floating Action Button ─── */}
-      <View className="absolute bottom-6 right-5" style={{ zIndex: 100 }}>
+      <View style={{ position: "absolute", bottom: 24, right: 20, zIndex: 100 }}>
         {fabOpen && (
-          <View className="mb-3">
+          <View style={{ marginBottom: 12 }}>
             {[
               {
                 label: "Walk-in",
@@ -1776,16 +1805,15 @@ export default function CalendarScreen() {
                 }}
               >
                 <TouchableOpacity
-                  className="mb-2 flex-row items-center self-end"
+                  style={{ marginBottom: 8, flexDirection: "row", alignItems: "center", alignSelf: "flex-end" }}
                   onPress={action.onPress}
                   activeOpacity={0.7}
                 >
-                  <View className="mr-2 rounded-lg bg-white px-3 py-1.5 shadow-sm">
-                    <Text className="text-xs font-medium text-gray-800">{action.label}</Text>
+                  <View style={{ marginRight: 8, borderRadius: 8, backgroundColor: Colors.white, paddingHorizontal: 12, paddingVertical: 6, elevation: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[800] }}>{action.label}</Text>
                   </View>
                   <View
-                    className="h-10 w-10 items-center justify-center rounded-full shadow-md"
-                    style={{ backgroundColor: action.color }}
+                    style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: action.color, elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 }}
                   >
                     <Ionicons name={action.icon} size={18} color="#fff" />
                   </View>
@@ -1795,8 +1823,7 @@ export default function CalendarScreen() {
           </View>
         )}
         <TouchableOpacity
-          className="h-14 w-14 items-center justify-center rounded-full shadow-lg"
-          style={{ backgroundColor: fabOpen ? "#ef4444" : DARK_HEADER }}
+          style={{ height: 56, width: 56, alignItems: "center", justifyContent: "center", borderRadius: 28, backgroundColor: fabOpen ? "#ef4444" : DARK_HEADER, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 }}
           onPress={toggleFab}
           activeOpacity={0.8}
         >
@@ -1820,18 +1847,17 @@ export default function CalendarScreen() {
       {/* Dismiss FAB overlay */}
       {fabOpen && (
         <Pressable
-          className="absolute inset-0"
-          style={{ zIndex: 99 }}
+          style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 99 }}
           onPress={() => { setFabOpen(false); Animated.spring(fabAnim, { toValue: 0, useNativeDriver: true, friction: 6 }).start(); }}
         />
       )}
 
       {/* ─── Legend Modal ─── */}
       <Modal visible={showLegend} transparent animationType="fade" onRequestClose={() => setShowLegend(false)}>
-        <Pressable className="flex-1 items-center justify-center bg-black/40" onPress={() => setShowLegend(false)}>
-          <Pressable className="mx-6 w-80 rounded-2xl bg-white p-5" onPress={() => {}}>
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className="text-base font-bold text-gray-900">Color Legend</Text>
+        <Pressable style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.4)" }} onPress={() => setShowLegend(false)}>
+          <Pressable style={{ marginHorizontal: 24, width: 320, borderRadius: 16, backgroundColor: Colors.white, padding: 20 }} onPress={() => {}}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Color Legend</Text>
               <TouchableOpacity onPress={() => setShowLegend(false)}>
                 <Ionicons name="close" size={20} color="#6b7280" />
               </TouchableOpacity>
@@ -1839,10 +1865,10 @@ export default function CalendarScreen() {
 
             {preferences.colorBy === "status" && (
               <View>
-                <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">Status Colors</Text>
+                <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Status Colors</Text>
                 {Object.entries(STATUS_COLORS).map(([key, colors]) => (
-                  <View key={key} className={`mb-1.5 flex-row items-center gap-2 rounded-lg ${colors.bg} border-l-[3px] ${colors.border} px-3 py-2`}>
-                    <Text className={`text-xs font-medium capitalize ${colors.text}`}>{key.replace(/_/g, " ")}</Text>
+                  <View key={key} style={{ marginBottom: 6, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: colors.bg, borderLeftWidth: 3, borderLeftColor: colors.border, paddingHorizontal: 12, paddingVertical: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "500", textTransform: "capitalize", color: colors.text }}>{key.replace(/_/g, " ")}</Text>
                   </View>
                 ))}
               </View>
@@ -1850,10 +1876,10 @@ export default function CalendarScreen() {
 
             {preferences.colorBy === "service" && (
               <View>
-                <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">Service Colors</Text>
+                <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Service Colors</Text>
                 {SERVICE_COLOR_MAP.map(([keywords, colors], i) => (
-                  <View key={i} className={`mb-1.5 flex-row items-center gap-2 rounded-lg ${colors.bg} border-l-[3px] ${colors.border} px-3 py-2`}>
-                    <Text className={`text-xs font-medium capitalize ${colors.text}`}>{(keywords as string[])[0]}</Text>
+                  <View key={i} style={{ marginBottom: 6, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: colors.bg, borderLeftWidth: 3, borderLeftColor: colors.border, paddingHorizontal: 12, paddingVertical: 8 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "500", textTransform: "capitalize", color: colors.text }}>{(keywords as string[])[0]}</Text>
                   </View>
                 ))}
               </View>
@@ -1861,24 +1887,24 @@ export default function CalendarScreen() {
 
             {preferences.colorBy === "team_member" && (
               <View>
-                <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">Team Colors</Text>
+                <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Team Colors</Text>
                 {staffList.slice(0, TEAM_COLORS.length).map((member, i) => {
                   const tc = TEAM_COLORS[i % TEAM_COLORS.length]!;
                   return (
-                    <View key={member.id} className={`mb-1.5 flex-row items-center gap-2 rounded-lg ${tc.bg} border-l-[3px] ${tc.border} px-3 py-2`}>
-                      <Text className={`text-xs font-medium ${tc.text}`}>{member.name}</Text>
+                    <View key={member.id} style={{ marginBottom: 6, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: tc.bg, borderLeftWidth: 3, borderLeftColor: tc.border, paddingHorizontal: 12, paddingVertical: 8 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "500", color: tc.text }}>{member.name}</Text>
                     </View>
                   );
                 })}
               </View>
             )}
 
-            <View className="mt-3">
-              <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">Time Blocks</Text>
+            <View style={{ marginTop: 12 }}>
+              <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Time Blocks</Text>
               {Object.entries(BLOCK_TYPE_COLORS).map(([key, colors]) => (
-                <View key={key} className={`mb-1.5 flex-row items-center gap-2 rounded-lg ${colors.bg} border-l-[3px] ${colors.border} px-3 py-2`}>
-                  <Ionicons name={colors.icon as keyof typeof Ionicons.glyphMap} size={12} color="#92400e" />
-                  <Text className={`text-xs font-medium capitalize ${colors.text}`}>{key}</Text>
+                <View key={key} style={{ marginBottom: 6, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: colors.bg, borderLeftWidth: 3, borderLeftColor: colors.border, paddingHorizontal: 12, paddingVertical: 8 }}>
+                  <Ionicons name={colors.icon as keyof typeof Ionicons.glyphMap} size={12} color="#92400e" style={{ marginRight: 8 }} />
+                  <Text style={{ fontSize: 12, fontWeight: "500", textTransform: "capitalize", color: colors.text }}>{key}</Text>
                 </View>
               ))}
             </View>
@@ -1893,60 +1919,55 @@ export default function CalendarScreen() {
         title="Add Time Block"
       >
         <View>
-          <Text className="mb-2 text-sm text-gray-500">
+          <Text style={{ marginBottom: 8, fontSize: 14, color: Colors.gray[500] }}>
             {format(selectedDate, "EEEE, MMMM d, yyyy")}
           </Text>
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Block Type</Text>
-          <View className="mb-3 flex-row flex-wrap gap-2">
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Block Type</Text>
+          <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap" }}>
             {BLOCK_TYPES.map((bt) => (
               <TouchableOpacity
                 key={bt.value}
-                className={`flex-row items-center gap-1.5 rounded-lg px-3 py-2 ${
-                  timeBlockForm.type === bt.value ? "bg-indigo-600" : "bg-gray-100"
-                }`}
+                style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8, marginBottom: 8, backgroundColor: timeBlockForm.type === bt.value ? "#4f46e6" : Colors.gray[100] }}
                 onPress={() => setTimeBlockForm((p) => ({ ...p, type: bt.value }))}
               >
                 <Ionicons
                   name={bt.icon}
                   size={14}
                   color={timeBlockForm.type === bt.value ? "#fff" : "#6b7280"}
+                  style={{ marginRight: 6 }}
                 />
-                <Text
-                  className={`text-xs font-medium ${
-                    timeBlockForm.type === bt.value ? "text-white" : "text-gray-700"
-                  }`}
-                >
+                <Text style={{ fontSize: 12, fontWeight: "500", color: timeBlockForm.type === bt.value ? Colors.white : Colors.gray[700] }}>
                   {bt.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Title</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Title</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={timeBlockForm.title}
             onChangeText={(t) => setTimeBlockForm((p) => ({ ...p, title: t }))}
             placeholder={capitalizeFirst(timeBlockForm.type)}
             placeholderTextColor="#9ca3af"
           />
 
-          <View className="mb-3 flex-row gap-3">
-            <View className="flex-1">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Start Time</Text>
+          <View style={{ marginBottom: 12, flexDirection: "row" }}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Start Time</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={timeBlockForm.startTime}
                 onChangeText={(t) => setTimeBlockForm((p) => ({ ...p, startTime: t }))}
                 placeholder="HH:MM"
                 placeholderTextColor="#9ca3af"
               />
             </View>
-            <View className="flex-1">
-              <Text className="mb-1 text-sm font-medium text-gray-700">End Time</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>End Time</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={timeBlockForm.endTime}
                 onChangeText={(t) => setTimeBlockForm((p) => ({ ...p, endTime: t }))}
                 placeholder="HH:MM"
@@ -1957,27 +1978,23 @@ export default function CalendarScreen() {
 
           {staffList.length > 0 && (
             <>
-              <Text className="mb-1 text-sm font-medium text-gray-700">Staff Member (optional)</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4" contentContainerStyle={{ gap: 8 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Staff Member (optional)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ flexDirection: "row" }}>
                 <TouchableOpacity
-                  className={`rounded-lg px-3 py-2 ${!timeBlockForm.staffId ? "bg-indigo-600" : "bg-gray-100"}`}
+                  style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8, backgroundColor: !timeBlockForm.staffId ? "#4f46e6" : Colors.gray[100] }}
                   onPress={() => setTimeBlockForm((p) => ({ ...p, staffId: "" }))}
                 >
-                  <Text className={`text-xs font-medium ${!timeBlockForm.staffId ? "text-white" : "text-gray-700"}`}>
+                  <Text style={{ fontSize: 12, fontWeight: "500", color: !timeBlockForm.staffId ? Colors.white : Colors.gray[700] }}>
                     All Staff
                   </Text>
                 </TouchableOpacity>
                 {staffList.map((member) => (
                   <TouchableOpacity
                     key={member.id}
-                    className={`rounded-lg px-3 py-2 ${timeBlockForm.staffId === member.id ? "bg-indigo-600" : "bg-gray-100"}`}
+                    style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8, backgroundColor: timeBlockForm.staffId === member.id ? "#4f46e6" : Colors.gray[100] }}
                     onPress={() => setTimeBlockForm((p) => ({ ...p, staffId: member.id }))}
                   >
-                    <Text
-                      className={`text-xs font-medium ${
-                        timeBlockForm.staffId === member.id ? "text-white" : "text-gray-700"
-                      }`}
-                    >
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: timeBlockForm.staffId === member.id ? Colors.white : Colors.gray[700] }}>
                       {member.name}
                     </Text>
                   </TouchableOpacity>

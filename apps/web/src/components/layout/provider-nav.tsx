@@ -84,7 +84,7 @@ export default function ProviderNav() {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
                   isActive
-                    ? "bg-[#FF0077] text-white"
+                    ? "bg-primary text-white"
                     : "text-gray-700 hover:bg-gray-100"
                 )}
               >

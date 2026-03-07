@@ -357,7 +357,7 @@ export default function BuilderPanel({ zone, loading, onUpdated, onZoneCreated }
             )}
             <div className="pt-2">
               <Button
-                className="w-full bg-[#FF0077] hover:bg-[#D60565]"
+                className="w-full bg-primary hover:bg-primary-hover"
                 disabled={zone.status === "active" || publishing || loading}
                 onClick={publish}
               >

@@ -534,12 +534,12 @@ function CalendarDesktopViewComponent({
                             </AvatarFallback>
                           </Avatar>
                           {uniqueBookingCount > 0 && (
-                            <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#FF0077] text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow">
+                            <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-primary text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow">
                               {uniqueBookingCount}
                             </span>
                           )}
                         </div>
-                        <span className="text-sm font-medium text-gray-700 group-hover:text-[#FF0077] transition-colors flex items-center gap-0.5">
+                        <span className="text-sm font-medium text-gray-700 group-hover:text-primary transition-colors flex items-center gap-0.5">
                           {member.name.split(" ")[0]}
                           <ChevronDown className="w-3 h-3 text-gray-400" />
                         </span>
@@ -582,7 +582,7 @@ function CalendarDesktopViewComponent({
                 key={idx}
                 className={cn(
                   "flex-1 min-w-[90px] max-w-[200px] border-r border-gray-200 last:border-r-0 py-3 text-center",
-                  isToday(date) && "bg-[#FF0077]/5"
+                  isToday(date) && "bg-primary/5"
                 )}
               >
                 <p className="text-xs text-gray-500 uppercase font-medium tracking-wide">
@@ -590,7 +590,7 @@ function CalendarDesktopViewComponent({
                 </p>
                 <p className={cn(
                   "text-xl font-bold mt-0.5",
-                  isToday(date) ? "text-[#FF0077]" : "text-gray-900"
+                  isToday(date) ? "text-primary" : "text-gray-900"
                 )}>
                   {format(date, "d")}
                 </p>
@@ -916,7 +916,7 @@ function CalendarDesktopViewComponent({
                       key={dateIdx}
                       className={cn(
                         "flex-1 min-w-[90px] max-w-[200px] border-r border-gray-200 last:border-r-0 relative",
-                        isToday(date) && "bg-[#FF0077]/3"
+                        isToday(date) && "bg-primary/3"
                       )}
                     >
                       {/* Time slot backgrounds */}

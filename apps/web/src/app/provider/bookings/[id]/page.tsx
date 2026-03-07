@@ -575,7 +575,7 @@ export default function ProviderBookingDetail() {
                         key={mins}
                         onClick={() => handleStartJourney(mins)}
                         disabled={isStartingJourney}
-                        className="min-h-[44px] bg-[#FF0077] hover:bg-[#D60565]"
+                        className="min-h-[44px] bg-primary hover:bg-primary-hover"
                       >
                         <Navigation className="w-4 h-4 mr-2" />
                         ETA {mins} min

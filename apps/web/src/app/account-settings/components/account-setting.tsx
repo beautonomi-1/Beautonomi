@@ -87,7 +87,7 @@ const AccountSettingsPage: React.FC = () => {
               {user?.full_name || "User"}, {user?.email || ""} ·{" "}
             </span>
           )}
-          <a href="/profile" className="text-sm md:text-base text-[#FF0077] hover:text-[#D60565] underline font-medium transition-colors">Go to profile</a>
+          <a href="/profile" className="text-sm md:text-base text-primary hover:text-primary-hover underline font-medium transition-colors">Go to profile</a>
         </div>
         
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
@@ -95,7 +95,7 @@ const AccountSettingsPage: React.FC = () => {
             <div key={index} onClick={(e) => handleCardClick(card, e)}>
               {card.isAction ? (
                 <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-all duration-200 active:scale-[0.98] h-full cursor-pointer">
-                  <card.icon className="text-2xl md:text-3xl mb-3 md:mb-4 text-[#FF0077]" />
+                  <card.icon className="text-2xl md:text-3xl mb-3 md:mb-4 text-primary" />
                   <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">{card.title}</h2>
                   <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{card.description}</p>
                 </div>
@@ -103,10 +103,10 @@ const AccountSettingsPage: React.FC = () => {
                 <Link href={card.link} className="block">
                   <div className={`p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border transition-all duration-200 active:scale-[0.98] h-full ${
                     card.link === "/account-settings/loyalty"
-                      ? "bg-gradient-to-br from-white to-[#FF0077]/5 border-[#FF0077]/30 hover:border-[#FF0077]/50"
+                      ? "bg-gradient-to-br from-white to-primary/5 border-primary/30 hover:border-primary/50"
                       : "bg-white border-gray-100 hover:border-[#FF0077]/20"
                   }`}>
-                    <card.icon className="text-2xl md:text-3xl mb-3 md:mb-4 text-[#FF0077]" />
+                    <card.icon className="text-2xl md:text-3xl mb-3 md:mb-4 text-primary" />
                     <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">{card.title}</h2>
                     <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{card.description}</p>
                   </div>
@@ -118,7 +118,7 @@ const AccountSettingsPage: React.FC = () => {
           {user && user.role === 'customer' && (
             <Link href="/provider/onboarding" className="block">
               <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-all duration-200 active:scale-[0.98] h-full">
-                <FaStore className="text-2xl md:text-3xl mb-3 md:mb-4 text-[#FF0077]" />
+                <FaStore className="text-2xl md:text-3xl mb-3 md:mb-4 text-primary" />
                 <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">Become a Provider</h2>
                 <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">
                   Start offering your beauty services on Beautonomi. Manage bookings, payments, and grow your business all in one place.
@@ -130,7 +130,7 @@ const AccountSettingsPage: React.FC = () => {
 
         <div className="mt-6 md:mt-8 text-center">
           <p className="mb-2 text-sm md:text-base font-light text-gray-600">Need to deactivate your account?</p>
-          <Link href="/account-settings/login-and-security" className="text-sm md:text-base text-[#FF0077] hover:text-[#D60565] underline font-medium transition-colors">Take care of that now</Link>
+          <Link href="/account-settings/login-and-security" className="text-sm md:text-base text-primary hover:text-primary-hover underline font-medium transition-colors">Take care of that now</Link>
         </div>
       </div>
 

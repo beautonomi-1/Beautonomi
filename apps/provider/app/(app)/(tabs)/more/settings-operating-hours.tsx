@@ -25,6 +25,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { twStyle } from "@/lib/twStyle";
 
 /** Parse "HH:mm" to Date (use fixed date for time-only). */
 function timeStringToDate(s: string): Date {
@@ -155,7 +156,7 @@ export default function SettingsOperatingHoursScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Operating hours" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -166,7 +167,7 @@ export default function SettingsOperatingHoursScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Operating hours" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -178,20 +179,20 @@ export default function SettingsOperatingHoursScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Operating hours" onBack={() => router.back()} />
-        <View className="flex-1 px-4 py-12">
-          <View className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
-            <View className="flex-row items-center mb-2">
+        <View style={twStyle("flex-1 px-4 py-12")}>
+          <View style={twStyle("rounded-2xl border border-amber-200 bg-amber-50 p-6")}>
+            <View style={twStyle("flex-row items-center mb-2")}>
               <Ionicons name="time-outline" size={24} color="#d97706" />
-              <Text className="ml-2 text-base font-semibold text-amber-900">No locations yet</Text>
+              <Text style={twStyle("ml-2 text-base font-semibold text-amber-900")}>No locations yet</Text>
             </View>
-            <Text className="text-sm text-amber-800">
+            <Text style={twStyle("text-sm text-amber-800")}>
               Add at least one location in Settings first. Operating hours are set per location.
             </Text>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/locations" as never)}
-              className="mt-4 rounded-xl bg-amber-600 py-3 items-center"
+              style={twStyle("mt-4 rounded-xl bg-amber-600 py-3 items-center")}
             >
-              <Text className="font-semibold text-white">Go to Locations</Text>
+              <Text style={twStyle("font-semibold text-white")}>Go to Locations</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -207,34 +208,33 @@ export default function SettingsOperatingHoursScreen() {
         onBack={() => router.back()}
       />
       <ScrollView
-        className="flex-1"
+        style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
-        <View className="px-4">
+        <View style={twStyle("px-4")}>
           {locations.map((loc) => {
             const hours = locationHours[loc.locationId] ?? normalizeWorkingHours(loc.workingHours);
             return (
-              <View key={loc.locationId} className="mb-6 rounded-2xl border border-gray-200 bg-white overflow-hidden">
-                <View className="bg-gray-50 px-4 py-3 flex-row items-center justify-between">
-                  <Text className="font-semibold text-gray-900">{loc.locationName}</Text>
+              <View key={loc.locationId} style={twStyle("mb-6 rounded-2xl border border-gray-200 bg-white overflow-hidden")}>
+                <View style={twStyle("bg-gray-50 px-4 py-3 flex-row items-center justify-between")}>
+                  <Text style={twStyle("font-semibold text-gray-900")}>{loc.locationName}</Text>
                   {loc.isPrimary && (
-                    <View className="rounded bg-teal-100 px-2 py-0.5">
-                      <Text className="text-xs font-medium text-teal-800">Primary</Text>
+                    <View style={twStyle("rounded bg-teal-100 px-2 py-0.5")}>
+                      <Text style={twStyle("text-xs font-medium text-teal-800")}>Primary</Text>
                     </View>
                   )}
                 </View>
-                <View className="p-4">
+                <View style={twStyle("p-4")}>
                   {DAYS.map((day) => {
                     const d = hours[day] ?? { open: "09:00", close: "18:00", closed: false };
                     return (
                       <View
                         key={day}
-                        className="flex-row items-center py-3 border-b border-gray-100"
-                        style={{ borderBottomWidth: DAYS.indexOf(day) < DAYS.length - 1 ? 1 : 0 }}
+                        style={[twStyle("flex-row items-center py-3 border-b border-gray-100"), { borderBottomWidth: DAYS.indexOf(day) < DAYS.length - 1 ? 1 : 0 }]}
                       >
-                        <View className="w-24">
-                          <Text className="text-sm text-gray-700">{DAY_LABELS[day]}</Text>
+                        <View style={twStyle("w-24")}>
+                          <Text style={twStyle("text-sm text-gray-700")}>{DAY_LABELS[day]}</Text>
                         </View>
                         <Switch
                           value={!d.closed}
@@ -249,31 +249,31 @@ export default function SettingsOperatingHoursScreen() {
                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                 setActiveTimePicker({ locationId: loc.locationId, day, field: "open" });
                               }}
-                              className="ml-2 min-w-[64px] rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                              style={twStyle("ml-2 min-w-[64px] rounded-lg border border-gray-200 bg-gray-50 px-3 py-2")}
                               accessibilityLabel={`Open time ${d.open}`}
                               accessibilityRole="button"
                             >
-                              <Text className="text-center text-sm text-gray-900">{d.open}</Text>
+                              <Text style={twStyle("text-center text-sm text-gray-900")}>{d.open}</Text>
                             </TouchableOpacity>
-                            <Text className="mx-1 text-gray-400">–</Text>
+                            <Text style={twStyle("mx-1 text-gray-400")}>–</Text>
                             <TouchableOpacity
                               onPress={() => {
                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                 setActiveTimePicker({ locationId: loc.locationId, day, field: "close" });
                               }}
-                              className="min-w-[64px] rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                              style={twStyle("min-w-[64px] rounded-lg border border-gray-200 bg-gray-50 px-3 py-2")}
                               accessibilityLabel={`Close time ${d.close}`}
                               accessibilityRole="button"
                             >
-                              <Text className="text-center text-sm text-gray-900">{d.close}</Text>
+                              <Text style={twStyle("text-center text-sm text-gray-900")}>{d.close}</Text>
                             </TouchableOpacity>
                           </>
                         )}
-                        {d.closed && <Text className="ml-2 text-sm text-gray-400">Closed</Text>}
+                        {d.closed && <Text style={twStyle("ml-2 text-sm text-gray-400")}>Closed</Text>}
                       </View>
                     );
                   })}
-                  <View className="mt-4">
+                  <View style={twStyle("mt-4")}>
                     <ActionButton
                       label="Save hours"
                       variant="secondary"
@@ -305,19 +305,19 @@ export default function SettingsOperatingHoursScreen() {
           >
             <TouchableOpacity
               activeOpacity={1}
-              className="flex-1 bg-black/50 justify-end"
+              style={twStyle("flex-1 bg-black/50 justify-end")}
               onPress={() => setActiveTimePicker(null)}
             >
               <View
-                className="bg-white rounded-t-2xl pb-8 pt-2"
+                style={twStyle("bg-white rounded-t-2xl pb-8 pt-2")}
                 onStartShouldSetResponder={() => true}
               >
-                <View className="flex-row justify-end px-4 py-2">
+                <View style={twStyle("flex-row justify-end px-4 py-2")}>
                   <TouchableOpacity
                     onPress={() => setActiveTimePicker(null)}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   >
-                    <Text className="text-teal-600 font-medium">Done</Text>
+                    <Text style={twStyle("text-teal-600 font-medium")}>Done</Text>
                   </TouchableOpacity>
                 </View>
                 <DateTimePicker

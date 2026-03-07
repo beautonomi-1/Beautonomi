@@ -670,13 +670,13 @@ export default function StepPayment({
               onClick={() => setPaymentMethod("card")}
               className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
                 paymentMethod === "card"
-                  ? "border-[#FF0077] bg-pink-50"
+                  ? "border-primary bg-pink-50"
                   : "border-gray-200 hover:border-gray-300 bg-white"
               }`}
             >
-              <CreditCard className={`w-5 h-5 ${paymentMethod === "card" ? "text-[#FF0077]" : "text-gray-500"}`} />
-              <span className={`text-sm font-medium ${paymentMethod === "card" ? "text-[#FF0077]" : "text-gray-700"}`}>Card</span>
-              {paymentMethod === "card" && <Check className="w-4 h-4 text-[#FF0077]" />}
+              <CreditCard className={`w-5 h-5 ${paymentMethod === "card" ? "text-primary" : "text-gray-500"}`} />
+              <span className={`text-sm font-medium ${paymentMethod === "card" ? "text-primary" : "text-gray-700"}`}>Card</span>
+              {paymentMethod === "card" && <Check className="w-4 h-4 text-primary" />}
             </button>
           )}
           <button
@@ -684,13 +684,13 @@ export default function StepPayment({
             onClick={() => setPaymentMethod("cash")}
             className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
               paymentMethod === "cash"
-                ? "border-[#FF0077] bg-pink-50"
+                ? "border-primary bg-pink-50"
                 : "border-gray-200 hover:border-gray-300 bg-white"
             }`}
           >
-            <Banknote className={`w-5 h-5 ${paymentMethod === "cash" ? "text-[#FF0077]" : "text-gray-500"}`} />
-            <span className={`text-sm font-medium ${paymentMethod === "cash" ? "text-[#FF0077]" : "text-gray-700"}`}>Cash</span>
-            {paymentMethod === "cash" && <Check className="w-4 h-4 text-[#FF0077]" />}
+            <Banknote className={`w-5 h-5 ${paymentMethod === "cash" ? "text-primary" : "text-gray-500"}`} />
+            <span className={`text-sm font-medium ${paymentMethod === "cash" ? "text-primary" : "text-gray-700"}`}>Cash</span>
+            {paymentMethod === "cash" && <Check className="w-4 h-4 text-primary" />}
           </button>
           {giftCardsEnabled && (
             <button
@@ -698,13 +698,13 @@ export default function StepPayment({
               onClick={() => setPaymentMethod("giftcard")}
               className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
                 paymentMethod === "giftcard"
-                  ? "border-[#FF0077] bg-pink-50"
+                  ? "border-primary bg-pink-50"
                   : "border-gray-200 hover:border-gray-300 bg-white"
               }`}
             >
-              <Gift className={`w-5 h-5 ${paymentMethod === "giftcard" ? "text-[#FF0077]" : "text-gray-500"}`} />
-              <span className={`text-sm font-medium ${paymentMethod === "giftcard" ? "text-[#FF0077]" : "text-gray-700"}`}>Gift Card</span>
-              {paymentMethod === "giftcard" && <Check className="w-4 h-4 text-[#FF0077]" />}
+              <Gift className={`w-5 h-5 ${paymentMethod === "giftcard" ? "text-primary" : "text-gray-500"}`} />
+              <span className={`text-sm font-medium ${paymentMethod === "giftcard" ? "text-primary" : "text-gray-700"}`}>Gift Card</span>
+              {paymentMethod === "giftcard" && <Check className="w-4 h-4 text-primary" />}
             </button>
           )}
         </div>
@@ -728,7 +728,7 @@ export default function StepPayment({
               )}
             </label>
             {useWallet && walletBalance > 0 && (
-              <Wallet className="w-4 h-4 text-[#FF0077] shrink-0" />
+              <Wallet className="w-4 h-4 text-primary shrink-0" />
             )}
           </div>
         )}
@@ -741,12 +741,12 @@ export default function StepPayment({
               onClick={() => setPaymentOption("full")}
               className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${
                 paymentOption === "full"
-                  ? "border-[#FF0077] bg-pink-50"
+                  ? "border-primary bg-pink-50"
                   : "border-gray-200 hover:border-gray-300 bg-white"
               }`}
             >
-              {paymentOption === "full" && <CheckCircle className="w-4 h-4 text-[#FF0077]" />}
-              <span className={`text-sm font-medium ${paymentOption === "full" ? "text-[#FF0077]" : "text-gray-700"}`}>
+              {paymentOption === "full" && <CheckCircle className="w-4 h-4 text-primary" />}
+              <span className={`text-sm font-medium ${paymentOption === "full" ? "text-primary" : "text-gray-700"}`}>
                 Pay in Full
               </span>
             </button>
@@ -755,12 +755,12 @@ export default function StepPayment({
               onClick={() => setPaymentOption("deposit")}
               className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${
                 paymentOption === "deposit"
-                  ? "border-[#FF0077] bg-pink-50"
+                  ? "border-primary bg-pink-50"
                   : "border-gray-200 hover:border-gray-300 bg-white"
               }`}
             >
-              {paymentOption === "deposit" && <CheckCircle className="w-4 h-4 text-[#FF0077]" />}
-              <span className={`text-sm font-medium ${paymentOption === "deposit" ? "text-[#FF0077]" : "text-gray-700"}`}>
+              {paymentOption === "deposit" && <CheckCircle className="w-4 h-4 text-primary" />}
+              <span className={`text-sm font-medium ${paymentOption === "deposit" ? "text-primary" : "text-gray-700"}`}>
                 Deposit (50%)
               </span>
             </button>
@@ -803,18 +803,18 @@ export default function StepPayment({
                           onClick={() => { setSelectedCardId(card.id); setUseNewCard(false); }}
                           className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${
                             active
-                              ? "border-[#FF0077] bg-pink-50"
+                              ? "border-primary bg-pink-50"
                               : "border-gray-200 hover:border-gray-300 bg-white"
                           }`}
                         >
                           <div className={`w-10 h-7 rounded-md flex items-center justify-center ${
-                            active ? "bg-[#FF0077]/10" : "bg-gray-100"
+                            active ? "bg-primary/10" : "bg-gray-100"
                           }`}>
-                            <CreditCard className={`w-5 h-5 ${active ? "text-[#FF0077]" : "text-gray-500"}`} />
+                            <CreditCard className={`w-5 h-5 ${active ? "text-primary" : "text-gray-500"}`} />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className={`text-sm font-semibold ${active ? "text-[#FF0077]" : "text-gray-900"}`}>
+                              <span className={`text-sm font-semibold ${active ? "text-primary" : "text-gray-900"}`}>
                                 {brand}{card.last4 ? ` •••• ${card.last4}` : ""}
                               </span>
                               {card.is_default ? (
@@ -826,7 +826,7 @@ export default function StepPayment({
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); handleSetDefaultCard(card.id); }}
                                   disabled={settingDefaultId === card.id}
-                                  className="text-[10px] font-semibold text-[#FF0077] hover:text-[#D60565] underline disabled:opacity-50"
+                                  className="text-[10px] font-semibold text-primary hover:text-primary-hover underline disabled:opacity-50"
                                 >
                                   {settingDefaultId === card.id ? "Updating..." : "Set default"}
                                 </button>
@@ -836,7 +836,7 @@ export default function StepPayment({
                               <span className="text-xs text-gray-500">Expires {expiry}</span>
                             )}
                           </div>
-                          {active && <CheckCircle className="w-5 h-5 text-[#FF0077] flex-shrink-0" />}
+                          {active && <CheckCircle className="w-5 h-5 text-primary flex-shrink-0" />}
                         </motion.button>
                       );
                     })}
@@ -861,7 +861,7 @@ export default function StepPayment({
                     const def = savedCards.find((c) => c.is_default) || savedCards[0];
                     if (def) setSelectedCardId(def.id);
                   }}
-                  className="flex items-center gap-2 text-sm text-[#FF0077] hover:text-[#D60565] font-medium transition-colors"
+                  className="flex items-center gap-2 text-sm text-primary hover:text-primary-hover font-medium transition-colors"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   Use a saved card instead
@@ -879,7 +879,7 @@ export default function StepPayment({
                         <button
                           type="button"
                           onClick={() => toast.info(SAVE_CARD_INFO, { duration: 8000 })}
-                          className="p-0.5 rounded-full hover:bg-gray-200 text-[#FF0077]"
+                          className="p-0.5 rounded-full hover:bg-gray-200 text-primary"
                           aria-label="Info about saving card"
                         >
                           <Info className="w-4 h-4" />
@@ -943,7 +943,7 @@ export default function StepPayment({
             <Button
               onClick={handlePayment}
               disabled={isProcessing || isChargingCard || !bookingState.clientInfo || (cancellationPolicy != null && !acceptedCancellationPolicy)}
-              className="w-full h-14 text-base font-semibold bg-[#FF0077] hover:bg-[#D60565] disabled:opacity-50 touch-target flex items-center justify-center gap-2"
+              className="w-full h-14 text-base font-semibold bg-primary hover:bg-primary-hover disabled:opacity-50 touch-target flex items-center justify-center gap-2"
             >
               {(isProcessing || isChargingCard) ? (
                 <>

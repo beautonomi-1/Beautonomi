@@ -412,14 +412,14 @@ export function GroupBookingDialog({
                 className={cn(
                   "p-4 border-2 rounded-lg text-left transition-all",
                   formData.location_type === "at_salon"
-                    ? "border-[#FF0077] bg-[#FF0077]/5"
+                    ? "border-primary bg-primary/5"
                     : "border-gray-200 hover:border-gray-300"
                 )}
               >
                 <div className="flex items-center gap-3">
                   <Building2 className={cn(
                     "w-5 h-5",
-                    formData.location_type === "at_salon" ? "text-[#FF0077]" : "text-gray-400"
+                    formData.location_type === "at_salon" ? "text-primary" : "text-gray-400"
                   )} />
                   <div>
                     <div className="font-medium text-sm sm:text-base">At Salon</div>
@@ -434,14 +434,14 @@ export function GroupBookingDialog({
                 className={cn(
                   "p-4 border-2 rounded-lg text-left transition-all",
                   formData.location_type === "at_home"
-                    ? "border-[#FF0077] bg-[#FF0077]/5"
+                    ? "border-primary bg-primary/5"
                     : "border-gray-200 hover:border-gray-300"
                 )}
               >
                 <div className="flex items-center gap-3">
                   <Home className={cn(
                     "w-5 h-5",
-                    formData.location_type === "at_home" ? "text-[#FF0077]" : "text-gray-400"
+                    formData.location_type === "at_home" ? "text-primary" : "text-gray-400"
                   )} />
                   <div>
                     <div className="font-medium text-sm sm:text-base">At Home</div>
@@ -560,8 +560,8 @@ export function GroupBookingDialog({
                   <div key={index} className="p-3 sm:p-4 bg-gray-50 rounded-lg border space-y-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-[#FF0077]/10 flex items-center justify-center flex-shrink-0">
-                          <User className="w-4 h-4 text-[#FF0077]" />
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <User className="w-4 h-4 text-primary" />
                         </div>
                         <div>
                           <div className="font-medium text-sm sm:text-base">
@@ -682,7 +682,7 @@ export function GroupBookingDialog({
             <Button
               type="submit"
               disabled={isLoading || participants.length === 0}
-              className="w-full sm:w-auto bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
+              className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
             >
               {isLoading ? "Saving..." : booking ? "Update Group Booking" : "Create Group Booking"}
             </Button>

@@ -70,7 +70,7 @@ export default function CTASection() {
             <Button
               size="lg"
               onClick={handleTryItNow}
-              className="bg-[#FF0077] hover:bg-[#D60565] text-white px-8 py-6 text-lg font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
+              className="bg-primary hover:bg-primary-hover text-white px-8 py-6 text-lg font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
             >
               Try it now
               <ArrowRight className="ml-2 w-5 h-5" />
@@ -79,7 +79,7 @@ export default function CTASection() {
               size="lg"
               variant="outline"
               onClick={handleBookDemo}
-              className="border-2 border-[#FF0077] text-[#FF0077] hover:bg-[#FF0077] hover:text-white px-8 py-6 text-lg font-semibold rounded-full transition-all duration-300"
+              className="border-2 border-primary text-primary hover:bg-primary hover:text-white px-8 py-6 text-lg font-semibold rounded-full transition-all duration-300"
             >
               Book a demo
             </Button>

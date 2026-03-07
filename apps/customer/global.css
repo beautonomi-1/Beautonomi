@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Ensure full viewport height on web so flex layouts work and tab bar stays sticky */
+/* Web-only: full viewport height so flex layouts work. On native, layout uses inline style (flex: 1). */
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -13,4 +13,24 @@ html, body, #root {
 #root {
   display: flex;
   flex-direction: column;
+}
+
+/* Force tab navigator to column layout on web so tab bar stays at bottom (not left) */
+#tabs-root,
+#tabs-root > div {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+}
+/* Scene (first child) fills space; tab bar (last child) stays at bottom with fixed height */
+#tabs-root > div > *:first-child {
+  flex: 1 1 0 !important;
+  min-height: 0 !important;
+  width: 100% !important;
+}
+#tabs-root > div > *:last-child {
+  flex: 0 0 auto !important;
+  width: 100% !important;
 }

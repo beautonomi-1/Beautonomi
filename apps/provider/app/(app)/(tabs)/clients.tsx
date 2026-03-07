@@ -25,6 +25,7 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { formatPhone, formatTimeAgo, formatCurrency } from "@/lib/format";
 import { api } from "@/lib/api-client";
 import { useProvider } from "@/providers/ProviderContext";
+import { Colors } from "@/constants/colors";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -309,78 +310,73 @@ export default function ClientsScreen() {
       (client.total_spent != null && client.total_spent >= 5000);
 
     return (
-      <View
-        className="mb-2 rounded-xl border border-gray-100 bg-white p-4"
-        style={{ elevation: 1 }}
-      >
+      <View style={{ marginBottom: 8, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, elevation: 1 }}>
         <TouchableOpacity
           onPress={() => router.push(`/(app)/(tabs)/more/clients/${client.id}` as any)}
           accessibilityRole="button"
           accessibilityLabel={`${client.full_name}, ${client.total_bookings ?? 0} visits`}
           activeOpacity={0.7}
         >
-          <View className="flex-row items-center">
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
             <Avatar name={client.full_name} imageUrl={client.avatar_url} size="md" />
-            <View className="ml-3 flex-1">
-              <View className="flex-row items-center">
-                <Text className="text-base font-medium text-gray-900" numberOfLines={1}>
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
                   {client.full_name}
                 </Text>
                 {isVip && (
-                  <View className="ml-2 rounded-full bg-amber-100 px-2 py-0.5">
-                    <Text className="text-[10px] font-bold text-amber-700">VIP</Text>
+                  <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 2 }}>
+                    <Text style={{ fontSize: 10, fontWeight: "700", color: "#b45309" }}>VIP</Text>
                   </View>
                 )}
               </View>
-              <Text className="mt-0.5 text-sm text-gray-500" numberOfLines={1}>
+              <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }} numberOfLines={1}>
                 {client.phone ? formatPhone(client.phone) : client.email || "No contact info"}
               </Text>
             </View>
           </View>
         </TouchableOpacity>
 
-        {/* Stats row */}
-        <View className="mt-3 flex-row items-center border-t border-gray-50 pt-3">
-          <View className="flex-1 flex-row items-center">
-            <Ionicons name="calendar-outline" size={13} color="#9ca3af" />
-            <Text className="ml-1 text-xs text-gray-500">
+        <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderTopColor: Colors.gray[50], paddingTop: 12 }}>
+          <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+            <Ionicons name="calendar-outline" size={13} color={Colors.gray[400]} />
+            <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[500] }}>
               {client.total_bookings ?? 0} visit{(client.total_bookings ?? 0) !== 1 ? "s" : ""}
             </Text>
           </View>
-          <View className="flex-1 flex-row items-center">
-            <Ionicons name="wallet-outline" size={13} color="#9ca3af" />
-            <Text className="ml-1 text-xs text-gray-500">
+          <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+            <Ionicons name="wallet-outline" size={13} color={Colors.gray[400]} />
+            <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[500] }}>
               {formatCurrency(client.total_spent ?? 0)}
             </Text>
           </View>
           {client.last_visit && (
-            <View className="flex-1 items-end">
-              <Text className="text-[10px] text-gray-400">
+            <View style={{ flex: 1, alignItems: "flex-end" }}>
+              <Text style={{ fontSize: 10, color: Colors.gray[400] }}>
                 Last: {formatTimeAgo(client.last_visit)}
               </Text>
             </View>
           )}
         </View>
 
-        {/* Quick actions - separate buttons so no nested <button> on web */}
-        <View className="mt-3 flex-row gap-2">
+        <View style={{ marginTop: 12, flexDirection: "row" }}>
           <TouchableOpacity
-            className="flex-1 flex-row items-center justify-center rounded-lg bg-gray-900 py-2"
+            style={{ flex: 1, marginRight: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: Colors.gray[900], paddingVertical: 8 }}
             onPress={() => handleBook(client)}
             accessibilityRole="button"
             accessibilityLabel={`Book appointment for ${client.full_name}`}
           >
             <Ionicons name="calendar" size={14} color="#fff" />
-            <Text className="ml-1.5 text-xs font-semibold text-white">Book</Text>
+            <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.white }}>Book</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            className="flex-1 flex-row items-center justify-center rounded-lg border border-gray-200 bg-white py-2"
+            style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 8 }}
             onPress={() => handleMessage(client)}
             accessibilityRole="button"
             accessibilityLabel={`Message ${client.full_name}`}
           >
-            <Ionicons name="chatbubble-outline" size={14} color="#374151" />
-            <Text className="ml-1.5 text-xs font-semibold text-gray-700">Message</Text>
+            <Ionicons name="chatbubble-outline" size={14} color={Colors.gray[700]} />
+            <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Message</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -398,7 +394,7 @@ export default function ClientsScreen() {
         subtitle={`${filteredClients.length} client${filteredClients.length !== 1 ? "s" : ""}`}
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-900"
+            style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: Colors.gray[900] }}
             onPress={() => {
               resetForm();
               setShowAddSheet(true);
@@ -412,8 +408,7 @@ export default function ClientsScreen() {
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
-      {/* Filter chips */}
-      <View className="mb-2">
+      <View style={{ marginBottom: 8 }}>
         <FilterChipGroup
           options={filterOptions.map((f) => ({
             ...f,
@@ -424,8 +419,7 @@ export default function ClientsScreen() {
         />
       </View>
 
-      {/* Search */}
-      <View className="mb-3">
+      <View style={{ marginBottom: 12 }}>
         <SearchBar placeholder="Search clients..." value={search} onChangeText={setSearch} />
       </View>
 
@@ -473,18 +467,24 @@ export default function ClientsScreen() {
         onClose={() => setShowAddSheet(false)}
         title="Add Client"
       >
-        <View className="gap-4">
-          {/* First Name */}
-          <View>
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">
-              First Name <Text className="text-red-500">*</Text>
+        <View>
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
+              First Name <Text style={{ color: Colors.error }}>*</Text>
             </Text>
             <TextInput
-              className={`rounded-xl border bg-gray-50 px-4 py-3 text-base text-gray-900 ${
-                formErrors.firstName ? "border-red-400" : "border-gray-200"
-              }`}
+              style={{
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: formErrors.firstName ? "#f87171" : Colors.gray[200],
+                backgroundColor: Colors.gray[50],
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                fontSize: 16,
+                color: Colors.gray[900],
+              }}
               placeholder="Enter first name"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={Colors.gray[400]}
               value={firstName}
               onChangeText={(t) => {
                 setFirstName(t);
@@ -494,17 +494,16 @@ export default function ClientsScreen() {
               accessibilityLabel="First name"
             />
             {formErrors.firstName ? (
-              <Text className="mt-1 text-xs text-red-500">{formErrors.firstName}</Text>
+              <Text style={{ marginTop: 4, fontSize: 12, color: Colors.error }}>{formErrors.firstName}</Text>
             ) : null}
           </View>
 
-          {/* Last Name */}
-          <View>
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Last Name</Text>
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Last Name</Text>
             <TextInput
-              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
               placeholder="Enter last name"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={Colors.gray[400]}
               value={lastName}
               onChangeText={setLastName}
               autoCapitalize="words"
@@ -512,15 +511,21 @@ export default function ClientsScreen() {
             />
           </View>
 
-          {/* Phone */}
-          <View>
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Phone</Text>
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Phone</Text>
             <TextInput
-              className={`rounded-xl border bg-gray-50 px-4 py-3 text-base text-gray-900 ${
-                formErrors.phone ? "border-red-400" : "border-gray-200"
-              }`}
+              style={{
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: formErrors.phone ? "#f87171" : Colors.gray[200],
+                backgroundColor: Colors.gray[50],
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                fontSize: 16,
+                color: Colors.gray[900],
+              }}
               placeholder="+27 xxx xxx xxxx"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={Colors.gray[400]}
               value={phone}
               onChangeText={(t) => {
                 setPhone(t);
@@ -530,19 +535,25 @@ export default function ClientsScreen() {
               accessibilityLabel="Phone number"
             />
             {formErrors.phone ? (
-              <Text className="mt-1 text-xs text-red-500">{formErrors.phone}</Text>
+              <Text style={{ marginTop: 4, fontSize: 12, color: Colors.error }}>{formErrors.phone}</Text>
             ) : null}
           </View>
 
-          {/* Email */}
-          <View>
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Email</Text>
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Email</Text>
             <TextInput
-              className={`rounded-xl border bg-gray-50 px-4 py-3 text-base text-gray-900 ${
-                formErrors.email ? "border-red-400" : "border-gray-200"
-              }`}
+              style={{
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: formErrors.email ? "#f87171" : Colors.gray[200],
+                backgroundColor: Colors.gray[50],
+                paddingHorizontal: 16,
+                paddingVertical: 12,
+                fontSize: 16,
+                color: Colors.gray[900],
+              }}
               placeholder="email@example.com"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={Colors.gray[400]}
               value={email}
               onChangeText={(t) => {
                 setEmail(t);
@@ -553,7 +564,7 @@ export default function ClientsScreen() {
               accessibilityLabel="Email address"
             />
             {formErrors.email ? (
-              <Text className="mt-1 text-xs text-red-500">{formErrors.email}</Text>
+              <Text style={{ marginTop: 4, fontSize: 12, color: Colors.error }}>{formErrors.email}</Text>
             ) : null}
           </View>
 

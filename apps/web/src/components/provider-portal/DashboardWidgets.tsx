@@ -63,7 +63,7 @@ export function GradientStatCard({
   trend,
 }: GradientStatCardProps) {
   const gradients = {
-    pink: "from-[#FF0077] to-[#FF6B35]",
+    pink: "from-primary to-[#FF6B35]",
     blue: "from-blue-500 to-cyan-400",
     green: "from-emerald-500 to-teal-400",
     purple: "from-purple-500 to-pink-400",
@@ -165,7 +165,7 @@ export function UpcomingAppointmentsWidget({
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-gray-900">Upcoming Appointments</h3>
         <Link href="/provider/calendar">
-          <Button variant="ghost" size="sm" className="text-[#FF0077] hover:text-[#D60565]">
+          <Button variant="ghost" size="sm" className="text-primary hover:text-primary-hover">
             View Calendar
             <ChevronRight className="w-4 h-4 ml-1" />
           </Button>
@@ -196,7 +196,7 @@ export function UpcomingAppointmentsWidget({
               >
                 <Avatar className="w-10 h-10 flex-shrink-0">
                   <AvatarImage src={apt.client_avatar} />
-                  <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077] text-sm font-medium">
+                  <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
                     {apt.client_name.charAt(0)}
                   </AvatarFallback>
                 </Avatar>
@@ -206,7 +206,7 @@ export function UpcomingAppointmentsWidget({
                       {apt.client_name}
                     </p>
                     {isAppointmentToday && (
-                      <Badge variant="secondary" className="bg-[#FF0077]/10 text-[#FF0077] text-[10px]">
+                      <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px]">
                         TODAY
                       </Badge>
                     )}
@@ -232,7 +232,7 @@ export function UpcomingAppointmentsWidget({
         <div className="mt-3 pt-3 border-t">
           <Button
             variant="ghost"
-            className="w-full text-[#FF0077] hover:bg-[#FF0077]/5"
+            className="w-full text-primary hover:bg-primary/5"
             onClick={onViewAll}
           >
             View All ({appointments.length})
@@ -262,7 +262,7 @@ export function QuickActionsWidget({
     {
       label: "New Appointment",
       icon: CalendarPlus,
-      color: "bg-[#FF0077] hover:bg-[#D60565]",
+      color: "bg-primary hover:bg-primary-hover",
       onClick: onNewAppointment,
       href: "/provider/calendar",
     },
@@ -413,7 +413,7 @@ export function TodaySummaryWidget({
   return (
     <div className="bg-gradient-to-br from-[#1a1f3c] to-[#2d3561] rounded-xl p-4 sm:p-5 text-white">
       <div className="flex items-center gap-2 mb-4">
-        <Sparkles className="w-5 h-5 text-[#FF0077]" />
+        <Sparkles className="w-5 h-5 text-primary" />
         <h3 className="text-lg font-bold">Today's Summary</h3>
       </div>
 
@@ -429,7 +429,7 @@ export function TodaySummaryWidget({
           <p className="text-sm text-gray-400">Completed</p>
         </div>
         <div>
-          <p className="text-2xl font-bold text-[#FF0077]">
+          <p className="text-2xl font-bold text-primary">
             {formatCurrency(revenueToday)}
           </p>
           <p className="text-sm text-gray-400">Revenue</p>
@@ -472,7 +472,7 @@ export function WelcomeBanner({
     hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   return (
-    <div className="relative overflow-hidden bg-gradient-to-r from-[#FF0077] via-[#FF4D6D] to-[#FF6B35] rounded-xl p-5 sm:p-6 text-white mb-6">
+    <div className="relative overflow-hidden bg-gradient-to-r from-primary via-[#FF4D6D] to-[#FF6B35] rounded-xl p-5 sm:p-6 text-white mb-6">
       {/* Background pattern */}
       <div className="absolute inset-0 opacity-10">
         <div

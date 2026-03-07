@@ -7,6 +7,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 type Booking = {
   id: string;
@@ -20,22 +21,22 @@ type Booking = {
   currency?: string;
 };
 
-function statusColor(status: string): string {
+function statusBgColor(status: string): string {
   switch (status) {
     case "confirmed":
     case "booked":
-      return "bg-blue-100";
+      return "#dbeafe";
     case "in_progress":
     case "started":
-      return "bg-amber-100";
+      return "#fef3c7";
     case "completed":
-      return "bg-green-100";
+      return "#dcfce7";
     case "cancelled":
-      return "bg-gray-100";
+      return Colors.gray[100];
     case "no_show":
-      return "bg-red-100";
+      return "#fee2e2";
     default:
-      return "bg-gray-100";
+      return Colors.gray[100];
   }
 }
 
@@ -65,7 +66,7 @@ export default function BookingsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Bookings" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -76,7 +77,7 @@ export default function BookingsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Bookings" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -87,43 +88,43 @@ export default function BookingsScreen() {
     <ScreenContainer>
       <ScreenHeader title="Bookings & calendar" subtitle="Appointments & schedule" onBack={() => router.back()} />
       <ScrollView
-        className="flex-1"
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
         {bookings.length === 0 ? (
-          <View className="py-12 px-4 items-center">
+          <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="calendar-outline" size={48} color="#9ca3af" />
-            <Text className="mt-4 text-center text-gray-600">No bookings yet</Text>
-            <Text className="mt-2 text-center text-sm text-gray-500">
+            <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>No bookings yet</Text>
+            <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
               Appointments will appear here
             </Text>
           </View>
         ) : (
-          <View className="pb-4">
+          <View style={{ paddingBottom: 16 }}>
             {bookings.map((b) => (
               <TouchableOpacity
                 key={b.id}
                 onPress={() => onBookingPress(b.id)}
                 activeOpacity={0.7}
-                className="mb-3 rounded-xl border border-gray-200 bg-white p-4"
+                style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
                 accessibilityLabel={`Booking: ${b.customer_name || "Guest"}, ${b.scheduled_at ? new Date(b.scheduled_at).toLocaleString() : "no date"}, ${b.status}`}
                 accessibilityRole="button"
               >
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="font-semibold text-gray-900" numberOfLines={1}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
                     {b.customer_name || "Guest"}
                   </Text>
-                  <View className={`rounded-full px-2 py-0.5 ${statusColor(b.status)}`}>
-                    <Text className="text-xs font-medium text-gray-800">{b.status}</Text>
+                  <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: statusBgColor(b.status) }}>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[800] }}>{b.status}</Text>
                   </View>
                 </View>
-                <Text className="text-sm text-gray-600">
+                <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
                   {b.scheduled_at ? new Date(b.scheduled_at).toLocaleString() : "—"}
                 </Text>
                 {(b.location_name || b.staff_name) && (
-                  <Text className="mt-1 text-xs text-gray-500">
+                  <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
                     {[b.location_name, b.staff_name].filter(Boolean).join(" · ")}
                   </Text>
                 )}

@@ -154,11 +154,11 @@ export default function StepVenueChoice({
   const getAddressIcon = (label: string) => {
     const lowerLabel = label.toLowerCase();
     if (lowerLabel.includes("home") || lowerLabel === "home") {
-      return <Home className="w-5 h-5 text-[#FF0077] flex-shrink-0 mt-0.5" />;
+      return <Home className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />;
     } else if (lowerLabel.includes("work") || lowerLabel.includes("office")) {
-      return <Briefcase className="w-5 h-5 text-[#FF0077] flex-shrink-0 mt-0.5" />;
+      return <Briefcase className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />;
     }
-    return <MapPin className="w-5 h-5 text-[#FF0077] flex-shrink-0 mt-0.5" />;
+    return <MapPin className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />;
   };
 
   const handleSaveAddress = async () => {
@@ -437,14 +437,14 @@ export default function StepVenueChoice({
           onClick={() => handleModeSelect("salon")}
           className={`p-6 rounded-xl border-2 transition-all touch-target ${
             bookingState.mode === "salon"
-              ? "border-[#FF0077] bg-pink-50"
+              ? "border-primary bg-pink-50"
               : "border-gray-200 bg-white hover:border-gray-300"
           }`}
           aria-label="Book at salon"
         >
           <Building2
             className={`w-8 h-8 mx-auto mb-3 ${
-              bookingState.mode === "salon" ? "text-[#FF0077]" : "text-gray-400"
+              bookingState.mode === "salon" ? "text-primary" : "text-gray-400"
             }`}
           />
           <h3 className="font-semibold text-gray-900 mb-1">At the Salon</h3>
@@ -459,7 +459,7 @@ export default function StepVenueChoice({
           disabled={offersMobileServices === false || isLoadingProviderInfo}
           className={`p-6 rounded-xl border-2 transition-all touch-target ${
             bookingState.mode === "mobile"
-              ? "border-[#FF0077] bg-pink-50"
+              ? "border-primary bg-pink-50"
               : offersMobileServices === false
               ? "border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed"
               : "border-gray-200 bg-white hover:border-gray-300"
@@ -468,7 +468,7 @@ export default function StepVenueChoice({
         >
           <Home
             className={`w-8 h-8 mx-auto mb-3 ${
-              bookingState.mode === "mobile" ? "text-[#FF0077]" : offersMobileServices === false ? "text-gray-300" : "text-gray-400"
+              bookingState.mode === "mobile" ? "text-primary" : offersMobileServices === false ? "text-gray-300" : "text-gray-400"
             }`}
           />
           <h3 className="font-semibold text-gray-900 mb-1">At My Home/Office</h3>
@@ -506,17 +506,17 @@ export default function StepVenueChoice({
                     onClick={() => updateBookingState({ selectedLocationId: location.id })}
                     className={`w-full p-4 text-left border-2 rounded-lg transition-all touch-target ${
                       bookingState.selectedLocationId === location.id
-                        ? "border-[#FF0077] bg-pink-50"
+                        ? "border-primary bg-pink-50"
                         : "border-gray-200 bg-white hover:border-gray-300"
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <MapPin className="w-5 h-5 text-[#FF0077] flex-shrink-0 mt-0.5" />
+                      <MapPin className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <p className="font-medium text-gray-900">{location.name}</p>
                           {location.is_primary && (
-                            <span className="text-xs bg-[#FF0077] text-white px-2 py-0.5 rounded">
+                            <span className="text-xs bg-primary text-white px-2 py-0.5 rounded">
                               Primary
                             </span>
                           )}
@@ -530,7 +530,7 @@ export default function StepVenueChoice({
                         </p>
                       </div>
                       {bookingState.selectedLocationId === location.id && (
-                        <Check className="w-5 h-5 text-[#FF0077] flex-shrink-0" />
+                        <Check className="w-5 h-5 text-primary flex-shrink-0" />
                       )}
                     </div>
                   </motion.button>
@@ -632,7 +632,7 @@ export default function StepVenueChoice({
                       key={address.id}
                       onClick={() => handleAddressSelect(address)}
                       disabled={isValidating}
-                      className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-[#FF0077] hover:bg-pink-50 transition-all touch-target disabled:opacity-50"
+                      className="w-full p-4 text-left border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-pink-50 transition-all touch-target disabled:opacity-50"
                     >
                       <div className="flex items-start gap-3">
                         {getAddressIcon(address.label || "Home")}
@@ -642,7 +642,7 @@ export default function StepVenueChoice({
                               {address.label || "Home"}
                             </p>
                             {address.is_default && (
-                              <Star className="w-4 h-4 text-[#FF0077] fill-[#FF0077]" />
+                              <Star className="w-4 h-4 text-primary fill-primary" />
                             )}
                           </div>
                           <p className="text-sm text-gray-600">
@@ -650,7 +650,7 @@ export default function StepVenueChoice({
                           </p>
                         </div>
                         {bookingState.address?.id === address.id && (
-                          <Check className="w-5 h-5 text-[#FF0077] flex-shrink-0" />
+                          <Check className="w-5 h-5 text-primary flex-shrink-0" />
                         )}
                       </div>
                     </button>
@@ -990,7 +990,7 @@ export default function StepVenueChoice({
                 </Button>
                 <Button
                   onClick={handleSaveAddress}
-                  className="bg-[#FF0077] hover:bg-[#E6006A] text-white"
+                  className="bg-primary hover:bg-primary-hover text-white"
                 >
                   Save Address
                 </Button>

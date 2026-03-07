@@ -2438,7 +2438,7 @@ export function AppointmentSidebar({
                     <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-2" />
                     Confirmed
                     {mangomintStatus === AppointmentStatus.CONFIRMED && (
-                      <Check className="w-4 h-4 ml-auto text-[#FF0077]" />
+                      <Check className="w-4 h-4 ml-auto text-primary" />
                     )}
                   </DropdownMenuItem>
                   <DropdownMenuItem 
@@ -2451,7 +2451,7 @@ export function AppointmentSidebar({
                     <div className="w-2.5 h-2.5 rounded-full bg-amber-500 mr-2" />
                     Pending
                     {mangomintStatus === AppointmentStatus.UNCONFIRMED && (
-                      <Check className="w-4 h-4 ml-auto text-[#FF0077]" />
+                      <Check className="w-4 h-4 ml-auto text-primary" />
                     )}
                   </DropdownMenuItem>
                   <DropdownMenuItem 
@@ -2464,7 +2464,7 @@ export function AppointmentSidebar({
                     <div className="w-2.5 h-2.5 rounded-full bg-purple-500 mr-2" />
                     Waiting
                     {mangomintStatus === AppointmentStatus.WAITING && (
-                      <Check className="w-4 h-4 ml-auto text-[#FF0077]" />
+                      <Check className="w-4 h-4 ml-auto text-primary" />
                     )}
                   </DropdownMenuItem>
                   <DropdownMenuItem 
@@ -2477,7 +2477,7 @@ export function AppointmentSidebar({
                     <div className="w-2.5 h-2.5 rounded-full bg-pink-500 mr-2" />
                     In Service
                     {mangomintStatus === AppointmentStatus.IN_SERVICE && (
-                      <Check className="w-4 h-4 ml-auto text-[#FF0077]" />
+                      <Check className="w-4 h-4 ml-auto text-primary" />
                     )}
                   </DropdownMenuItem>
                   <DropdownMenuItem 
@@ -2490,7 +2490,7 @@ export function AppointmentSidebar({
                     <div className="w-2.5 h-2.5 rounded-full bg-blue-500 mr-2" />
                     Completed
                     {mangomintStatus === AppointmentStatus.COMPLETED && (
-                      <Check className="w-4 h-4 ml-auto text-[#FF0077]" />
+                      <Check className="w-4 h-4 ml-auto text-primary" />
                     )}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
@@ -2504,7 +2504,7 @@ export function AppointmentSidebar({
                     <div className="w-2.5 h-2.5 rounded-full bg-gray-400 mr-2" />
                     Cancelled
                     {mangomintStatus === AppointmentStatus.CANCELED && (
-                      <Check className="w-4 h-4 ml-auto text-[#FF0077]" />
+                      <Check className="w-4 h-4 ml-auto text-primary" />
                     )}
                   </DropdownMenuItem>
                   <DropdownMenuItem 
@@ -2517,7 +2517,7 @@ export function AppointmentSidebar({
                     <div className="w-2.5 h-2.5 rounded-full bg-red-500 mr-2" />
                     No Show
                     {mangomintStatus === AppointmentStatus.NO_SHOW && (
-                      <Check className="w-4 h-4 ml-auto text-[#FF0077]" />
+                      <Check className="w-4 h-4 ml-auto text-primary" />
                     )}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -2657,7 +2657,7 @@ export function AppointmentSidebar({
                   <button
                     type="button"
                     onClick={() => setShowNewClientDialog(true)}
-                    className="flex items-center gap-1.5 text-xs text-[#FF0077] hover:text-[#E6006B] font-medium transition-colors"
+                    className="flex items-center gap-1.5 text-xs text-primary hover:text-primary-hover font-medium transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     Add new client
@@ -2734,8 +2734,8 @@ export function AppointmentSidebar({
                                 onClick={() => handleSelectClient(client)}
                                 className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3"
                               >
-                                <div className="w-8 h-8 rounded-full bg-[#FF0077]/10 flex items-center justify-center flex-shrink-0">
-                                  <span className="text-xs font-semibold text-[#FF0077]">
+                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                  <span className="text-xs font-semibold text-primary">
                                     {client.full_name.charAt(0).toUpperCase()}
                                   </span>
                                 </div>
@@ -2755,7 +2755,7 @@ export function AppointmentSidebar({
                               <button
                                 type="button"
                                 onClick={() => setShowNewClientDialog(true)}
-                                className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 text-[#FF0077]"
+                                className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 text-primary"
                               >
                                 <Plus className="w-4 h-4" />
                                 <span className="text-sm font-medium">Create new client</span>
@@ -2768,7 +2768,7 @@ export function AppointmentSidebar({
                             <button
                               type="button"
                               onClick={() => setShowNewClientDialog(true)}
-                              className="text-sm text-[#FF0077] font-medium hover:underline"
+                              className="text-sm text-primary font-medium hover:underline"
                             >
                               Create new client
                             </button>
@@ -3960,7 +3960,7 @@ export function AppointmentSidebar({
                             className={cn(
                               "min-h-[32px] min-w-[36px] px-2.5 py-1 rounded-full text-[11px] font-medium transition-all touch-manipulation",
                               isSelected
-                                ? "bg-[#FF0077] text-white border border-[#FF0077] shadow-sm"
+                                ? "bg-primary text-white border border-primary shadow-sm"
                                 : "bg-gray-100 text-gray-700 border border-transparent hover:bg-gray-200 hover:border-gray-300"
                             )}
                           >

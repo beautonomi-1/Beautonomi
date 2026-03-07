@@ -15,6 +15,7 @@ import {
   type YocoPaymentResult,
 } from "@/hooks/useYoco";
 import { formatCurrency } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface YocoPaymentSheetProps {
   visible: boolean;
@@ -94,45 +95,45 @@ export function YocoPaymentSheet({
       snapHeight="half"
     >
       {/* Amount display */}
-      <View className="mb-6 items-center rounded-2xl bg-gray-50 py-6">
-        <Text className="text-sm text-gray-500">Amount to charge</Text>
-        <Text className="mt-1 text-3xl font-bold text-gray-900">{displayAmount}</Text>
+      <View style={twStyle("mb-6 items-center rounded-2xl bg-gray-50 py-6")}>
+        <Text style={twStyle("text-sm text-gray-500")}>Amount to charge</Text>
+        <Text style={twStyle("mt-1 text-3xl font-bold text-gray-900")}>{displayAmount}</Text>
       </View>
 
       {/* Device selection */}
-      <Text className="mb-2 text-sm font-semibold text-gray-700">Select Device</Text>
+      <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Select Device</Text>
       {devicesLoading ? (
-        <View className="items-center py-8">
+        <View style={twStyle("items-center py-8")}>
           <ActivityIndicator size="small" color="#6366f1" />
-          <Text className="mt-2 text-xs text-gray-500">Loading devices…</Text>
+          <Text style={twStyle("mt-2 text-xs text-gray-500")}>Loading devices…</Text>
         </View>
       ) : activeDevices.length === 0 ? (
-        <View className="items-center rounded-2xl border border-dashed border-gray-200 py-8">
+        <View style={twStyle("items-center rounded-2xl border border-dashed border-gray-200 py-8")}>
           <Ionicons name="card-outline" size={32} color="#9ca3af" />
-          <Text className="mt-2 text-sm text-gray-500">No Yoco devices configured</Text>
-          <Text className="mt-1 text-xs text-gray-400">
+          <Text style={twStyle("mt-2 text-sm text-gray-500")}>No Yoco devices configured</Text>
+          <Text style={twStyle("mt-1 text-xs text-gray-400")}>
             Add a device in Settings → Payment Settings
           </Text>
         </View>
       ) : (
-        <View className="mb-6 gap-2">
-          {activeDevices.map((device) => {
+        <View style={twStyle("mb-6")}>
+          {activeDevices.map((device, idx) => {
             const isSelected = selectedDevice?.id === device.id;
             return (
               <TouchableOpacity
                 key={device.id}
                 onPress={() => setSelectedDevice(device)}
-                className={`flex-row items-center rounded-xl border p-3 ${
+                style={[twStyle(`flex-row items-center rounded-xl border p-3 ${
                   isSelected ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-white"
-                }`}
+                }`), idx > 0 ? { marginTop: 8 } : undefined]}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: isSelected }}
                 accessibilityLabel={`${device.name} ${device.device_type === "web_pos" ? "Web POS" : "Card Machine"}`}
               >
                 <View
-                  className={`h-10 w-10 items-center justify-center rounded-lg ${
+                  style={twStyle(`h-10 w-10 items-center justify-center rounded-lg ${
                     isSelected ? "bg-indigo-100" : "bg-gray-100"
-                  }`}
+                  }`)}
                 >
                   <Ionicons
                     name={device.device_type === "web_pos" ? "phone-portrait-outline" : "card-outline"}
@@ -140,13 +141,13 @@ export function YocoPaymentSheet({
                     color={isSelected ? "#6366f1" : "#6b7280"}
                   />
                 </View>
-                <View className="ml-3 flex-1">
+                <View style={twStyle("ml-3 flex-1")}>
                   <Text
-                    className={`text-sm font-medium ${isSelected ? "text-indigo-700" : "text-gray-900"}`}
+                    style={twStyle(`text-sm font-medium ${isSelected ? "text-indigo-700" : "text-gray-900"}`)}
                   >
                     {device.name}
                   </Text>
-                  <Text className="text-xs text-gray-500">
+                  <Text style={twStyle("text-xs text-gray-500")}>
                     {device.device_type === "web_pos" ? "Web POS" : "Card Machine"}
                     {device.serial_number ? ` · ${device.serial_number}` : ""}
                   </Text>

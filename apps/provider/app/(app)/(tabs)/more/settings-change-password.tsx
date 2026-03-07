@@ -16,6 +16,7 @@ import { useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { Colors } from "@/constants/colors";
 
 export default function SettingsChangePasswordScreen() {
   const router = useRouter();
@@ -70,14 +71,14 @@ export default function SettingsChangePasswordScreen() {
           <TouchableOpacity
             onPress={handleSave}
             disabled={saving}
-            className="min-h-[40px] flex-row items-center justify-center rounded-full bg-indigo-600 px-4"
+            style={{ minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#4f46e6", paddingHorizontal: 16 }}
             accessibilityLabel="Save new password"
             accessibilityRole="button"
           >
             {saving ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text className="font-medium text-white">Save</Text>
+              <Text style={{ fontWeight: "500", color: Colors.white }}>Save</Text>
             )}
           </TouchableOpacity>
         }
@@ -85,19 +86,19 @@ export default function SettingsChangePasswordScreen() {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        className="flex-1"
+        style={{ flex: 1 }}
       >
         <ScrollView
-          className="flex-1"
+          style={{ flex: 1 }}
           contentContainerStyle={{ paddingBottom: 100 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="px-2 pt-2">
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Current password</Text>
+          <View style={{ paddingHorizontal: 8, paddingTop: 8 }}>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Current password</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 placeholder="Enter current password"
                 placeholderTextColor="#9ca3af"
                 value={currentPassword}
@@ -107,10 +108,10 @@ export default function SettingsChangePasswordScreen() {
                 autoCorrect={false}
               />
             </View>
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">New password</Text>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>New password</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 placeholder="At least 8 characters"
                 placeholderTextColor="#9ca3af"
                 value={newPassword}
@@ -120,10 +121,10 @@ export default function SettingsChangePasswordScreen() {
                 autoCorrect={false}
               />
             </View>
-            <View className="mb-3">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Confirm new password</Text>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Confirm new password</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 placeholder="Confirm new password"
                 placeholderTextColor="#9ca3af"
                 value={confirmPassword}
@@ -133,7 +134,7 @@ export default function SettingsChangePasswordScreen() {
                 autoCorrect={false}
               />
             </View>
-            <View className="mt-4">
+            <View style={{ marginTop: 16 }}>
               <ActionButton
                 label={saving ? "Updating..." : "Update password"}
                 onPress={handleSave}

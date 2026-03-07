@@ -255,7 +255,7 @@ export function WaitingRoomEntryDialog({
             <Button
               type="submit"
               disabled={isLoading}
-              className="bg-[#FF0077] hover:bg-[#D60565]"
+              className="bg-primary hover:bg-primary-hover"
             >
               {isLoading ? "Saving..." : entry ? "Update" : "Add to Waiting Room"}
             </Button>

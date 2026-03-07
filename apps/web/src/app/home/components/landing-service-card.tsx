@@ -44,7 +44,7 @@ const LandingServiceCard: React.FC<ServiceCardProps> = ({
           {/* Top Rated Badge */}
           {topRated && (
             <div className="absolute top-2 left-2 md:top-3 md:left-3">
-              <span className="bg-[#FF0077] text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full">
+              <span className="bg-primary text-white text-[10px] md:text-xs font-medium px-2 md:px-3 py-1 rounded-full">
                 Top Rated
               </span>
             </div>

@@ -12,6 +12,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
+import { twStyle } from "@/lib/twStyle";
 
 export interface CustomOfferSheetProps {
   visible: boolean;
@@ -167,11 +168,11 @@ export function CustomOfferSheet({
       showHandle={true}
     >
       <View style={isTablet ? { maxWidth: 480, alignSelf: "center", width: "100%" } : undefined}>
-        <Text className="mb-1 text-sm font-medium text-gray-700">
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
           Service name (optional)
         </Text>
         <TextInput
-          className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={serviceName}
           onChangeText={setServiceName}
           placeholder="e.g. Haircut & Styling"
@@ -180,17 +181,17 @@ export function CustomOfferSheet({
 
         {globalCategories.length > 0 && (
           <>
-            <Text className="mb-1 text-sm font-medium text-gray-700">Service category (optional)</Text>
-            <View className="mb-3 flex-row flex-wrap gap-2">
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Service category (optional)</Text>
+            <View style={twStyle("mb-3 flex-row flex-wrap")}>
               {globalCategories.map((cat) => (
                 <TouchableOpacity
                   key={cat.id}
                   onPress={() => setServiceCategoryId(serviceCategoryId === cat.id ? null : cat.id)}
-                  className={`rounded-xl border px-3 py-2 ${
+                  style={[twStyle(`rounded-xl border px-3 py-2 ${
                     serviceCategoryId === cat.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
-                  }`}
+                  }`), { marginRight: 8, marginBottom: 8 }]}
                 >
-                  <Text className={`text-sm ${serviceCategoryId === cat.id ? "text-primary font-medium" : "text-gray-600"}`}>
+                  <Text style={twStyle(`text-sm ${serviceCategoryId === cat.id ? "text-primary font-medium" : "text-gray-600"}`)}>
                     {cat.name}
                   </Text>
                 </TouchableOpacity>
@@ -199,11 +200,11 @@ export function CustomOfferSheet({
           </>
         )}
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">
-          Service description <Text className="text-red-500">*</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+          Service description <Text style={twStyle("text-red-500")}>*</Text>
         </Text>
         <TextInput
-          className="mb-3 min-h-[100px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-3 min-h-[100px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={description}
           onChangeText={setDescription}
           placeholder="Describe the service (10–4000 characters)"
@@ -211,15 +212,15 @@ export function CustomOfferSheet({
           multiline
           textAlignVertical="top"
         />
-        <Text className="mb-1 text-xs text-gray-500">
+        <Text style={twStyle("mb-1 text-xs text-gray-500")}>
           {description.trim().length} / 10–4000 characters
         </Text>
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">
-          Price (ZAR) <Text className="text-red-500">*</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+          Price (ZAR) <Text style={twStyle("text-red-500")}>*</Text>
         </Text>
         <TextInput
-          className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={price}
           onChangeText={setPrice}
           keyboardType="decimal-pad"
@@ -227,11 +228,11 @@ export function CustomOfferSheet({
           placeholderTextColor="#9ca3af"
         />
 
-        <View className="mb-3 flex-row gap-3">
-          <View className="flex-1">
-            <Text className="mb-1 text-sm font-medium text-gray-700">Duration (min)</Text>
+        <View style={twStyle("mb-3 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Duration (min)</Text>
             <TextInput
-              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={duration}
               onChangeText={setDuration}
               keyboardType="number-pad"
@@ -239,10 +240,10 @@ export function CustomOfferSheet({
               placeholderTextColor="#9ca3af"
             />
           </View>
-          <View className="flex-1">
-            <Text className="mb-1 text-sm font-medium text-gray-700">Expires (days)</Text>
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Expires (days)</Text>
             <TextInput
-              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={expirationDays}
               onChangeText={setExpirationDays}
               keyboardType="number-pad"
@@ -252,22 +253,22 @@ export function CustomOfferSheet({
           </View>
         </View>
 
-        <Text className="mb-2 text-sm font-medium text-gray-700">Location</Text>
-        <View className="mb-3 flex-row gap-2">
-          {LOCATION_OPTIONS.map((opt) => (
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Location</Text>
+        <View style={twStyle("mb-3 flex-row")}>
+          {LOCATION_OPTIONS.map((opt, i) => (
             <TouchableOpacity
               key={opt.value}
               onPress={() => setLocationType(opt.value)}
-              className={`flex-1 items-center rounded-xl border py-2.5 ${
+              style={[twStyle(`flex-1 items-center rounded-xl border py-2.5 ${
                 locationType === opt.value
                   ? "border-primary bg-primary/10"
                   : "border-gray-200 bg-gray-50"
-              }`}
+              }`), i < LOCATION_OPTIONS.length - 1 ? { marginRight: 8 } : undefined]}
             >
               <Text
-                className={`text-sm font-medium ${
+                style={twStyle(`text-sm font-medium ${
                   locationType === opt.value ? "text-primary" : "text-gray-600"
-                }`}
+                }`)}
               >
                 {opt.label}
               </Text>
@@ -277,17 +278,17 @@ export function CustomOfferSheet({
 
         {locationType === "at_salon" && locations.length > 0 && (
           <>
-            <Text className="mb-1 text-sm font-medium text-gray-700">Venue (optional)</Text>
-            <View className="mb-3 flex-row flex-wrap gap-2">
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Venue (optional)</Text>
+            <View style={twStyle("mb-3 flex-row flex-wrap")}>
               {locations.map((loc) => (
                 <TouchableOpacity
                   key={loc.id}
                   onPress={() => setLocationId(locationId === loc.id ? null : loc.id)}
-                  className={`rounded-xl border px-3 py-2 ${
+                  style={[twStyle(`rounded-xl border px-3 py-2 ${
                     locationId === loc.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
-                  }`}
+                  }`), { marginRight: 8, marginBottom: 8 }]}
                 >
-                  <Text className={`text-sm ${locationId === loc.id ? "text-primary font-medium" : "text-gray-600"}`}>
+                  <Text style={twStyle(`text-sm ${locationId === loc.id ? "text-primary font-medium" : "text-gray-600"}`)}>
                     {loc.name}
                   </Text>
                 </TouchableOpacity>
@@ -298,17 +299,17 @@ export function CustomOfferSheet({
 
         {staffList.length > 0 && (
           <>
-            <Text className="mb-1 text-sm font-medium text-gray-700">Assigned staff (optional)</Text>
-            <View className="mb-3 flex-row flex-wrap gap-2">
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Assigned staff (optional)</Text>
+            <View style={twStyle("mb-3 flex-row flex-wrap")}>
               {staffList.map((s) => (
                 <TouchableOpacity
                   key={s.id}
                   onPress={() => setStaffId(staffId === s.id ? null : s.id)}
-                  className={`rounded-xl border px-3 py-2 ${
+                  style={[twStyle(`rounded-xl border px-3 py-2 ${
                     staffId === s.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
-                  }`}
+                  }`), { marginRight: 8, marginBottom: 8 }]}
                 >
-                  <Text className={`text-sm ${staffId === s.id ? "text-primary font-medium" : "text-gray-600"}`}>
+                  <Text style={twStyle(`text-sm ${staffId === s.id ? "text-primary font-medium" : "text-gray-600"}`)}>
                     {s.name}
                   </Text>
                 </TouchableOpacity>
@@ -317,8 +318,8 @@ export function CustomOfferSheet({
           </>
         )}
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">Appointment date & time</Text>
-        <View className="mb-3">
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Appointment date & time</Text>
+        <View style={twStyle("mb-3")}>
           <DateTimePicker
             value={scheduledAt}
             mode="datetime"
@@ -330,46 +331,46 @@ export function CustomOfferSheet({
 
         {locationType === "at_home" && (
           <>
-            <Text className="mb-1 text-sm font-medium text-gray-700">Address (for at home)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Address (for at home)</Text>
             <TextInput
-              className="mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={addressLine1}
               onChangeText={setAddressLine1}
               placeholder="Street address"
               placeholderTextColor="#9ca3af"
             />
-            <View className="mb-2 flex-row gap-2">
+            <View style={twStyle("mb-2 flex-row")}>
               <TextInput
-                className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"), { marginRight: 8 }]}
                 value={addressCity}
                 onChangeText={setAddressCity}
                 placeholder="City"
                 placeholderTextColor="#9ca3af"
               />
               <TextInput
-                className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={addressCountry}
                 onChangeText={setAddressCountry}
                 placeholder="Country"
                 placeholderTextColor="#9ca3af"
               />
             </View>
-            <Text className="mb-1 text-sm font-medium text-gray-700">Travel fee (optional, ZAR)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Travel fee (optional, ZAR)</Text>
             <TextInput
-              className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={travelFee}
               onChangeText={setTravelFee}
               keyboardType="decimal-pad"
               placeholder="e.g. 50"
               placeholderTextColor="#9ca3af"
             />
-            <Text className="mb-3 text-xs text-gray-500">Add a travel fee for this house call. Leave empty for no fee.</Text>
+            <Text style={twStyle("mb-3 text-xs text-gray-500")}>Add a travel fee for this house call. Leave empty for no fee.</Text>
           </>
         )}
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">Notes (optional)</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes (optional)</Text>
         <TextInput
-          className="mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={notes}
           onChangeText={setNotes}
           placeholder="Additional details..."

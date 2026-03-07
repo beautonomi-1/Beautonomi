@@ -13,9 +13,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { Colors } from "@/constants/colors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 
-const PRIMARY = "#FF0077";
+const PRIMARY = Colors.primary;
 
 interface ShippingConfig {
   offers_delivery: boolean;
@@ -29,6 +31,7 @@ interface ShippingConfig {
 
 export default function ShippingConfigScreen() {
   const router = useRouter();
+  const { contentMaxWidth, isTablet, screenPadding } = useResponsive();
   const [config, setConfig] = useState<ShippingConfig>({
     offers_delivery: false,
     offers_collection: true,
@@ -96,7 +99,7 @@ export default function ShippingConfigScreen() {
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 16,
+          paddingHorizontal: screenPadding,
           paddingVertical: 14,
           backgroundColor: "#fff",
           borderBottomWidth: 1,
@@ -114,7 +117,7 @@ export default function ShippingConfigScreen() {
       <ScrollView
         contentContainerStyle={{
           paddingBottom: 40,
-          ...(Platform.OS === "web" ? { maxWidth: 500, alignSelf: "center", width: "100%" } as any : {}),
+          ...((isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {}),
         }}
       >
         {/* Collection */}
@@ -301,7 +304,7 @@ export default function ShippingConfigScreen() {
         </View>
 
         {/* Save button */}
-        <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
+        <View style={{ paddingHorizontal: screenPadding, paddingTop: 8 }}>
           <TouchableOpacity
             onPress={handleSave}
             disabled={saving}

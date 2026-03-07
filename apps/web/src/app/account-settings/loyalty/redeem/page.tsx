@@ -131,7 +131,7 @@ export default function LoyaltyRedeemPage() {
 
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 text-[#FF0077] animate-spin" />
+                <Loader2 className="w-8 h-8 text-primary animate-spin" />
               </div>
             ) : (
               <div className="space-y-6">
@@ -139,7 +139,7 @@ export default function LoyaltyRedeemPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <Sparkles className="w-5 h-5 text-[#FF0077]" />
+                      <Sparkles className="w-5 h-5 text-primary" />
                       Your Points Balance
                     </CardTitle>
                     <CardDescription>
@@ -187,7 +187,7 @@ export default function LoyaltyRedeemPage() {
                           <span className="text-sm font-medium text-gray-600">
                             You will receive:
                           </span>
-                          <span className="text-2xl font-bold text-[#FF0077]">
+                          <span className="text-2xl font-bold text-primary">
                             {format(redemptionValue)}
                           </span>
                         </div>
@@ -214,7 +214,7 @@ export default function LoyaltyRedeemPage() {
                           parseInt(pointsToRedeem) < 1 ||
                           parseInt(pointsToRedeem) > pointsBalance
                         }
-                        className="flex-1 bg-[#FF0077] hover:bg-[#D60565]"
+                        className="flex-1 bg-primary hover:bg-primary-hover"
                       >
                         {isRedeeming ? (
                           <>

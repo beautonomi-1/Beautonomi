@@ -105,19 +105,19 @@ export function getStatusColor(status: string): { bg: string; text: string; dot:
   switch (status) {
     case "confirmed":
     case "completed":
-      return { bg: "bg-green-50", text: "text-green-700", dot: "bg-green-500" };
+      return { bg: "#f0fdf4", text: "#15803d", dot: "#22c55e" };
     case "pending":
     case "booked":
-      return { bg: "bg-yellow-50", text: "text-yellow-700", dot: "bg-yellow-500" };
+      return { bg: "#fefce8", text: "#a16207", dot: "#eab308" };
     case "in_progress":
     case "started":
-      return { bg: "bg-blue-50", text: "text-blue-700", dot: "bg-blue-500" };
+      return { bg: "#eff6ff", text: "#1d4ed8", dot: "#3b82f6" };
     case "cancelled":
-      return { bg: "bg-red-50", text: "text-red-700", dot: "bg-red-500" };
+      return { bg: "#fef2f2", text: "#b91c1c", dot: "#ef4444" };
     case "no_show":
-      return { bg: "bg-gray-100", text: "text-gray-600", dot: "bg-gray-400" };
+      return { bg: "#f3f4f6", text: "#4b5563", dot: "#9ca3af" };
     default:
-      return { bg: "bg-gray-50", text: "text-gray-600", dot: "bg-gray-400" };
+      return { bg: "#f9fafb", text: "#4b5563", dot: "#9ca3af" };
   }
 }
 

@@ -18,6 +18,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { StatCard } from "@/components/ui/StatCard";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { twStyle } from "@/lib/twStyle";
 
 interface TwilioIntegration {
   id?: string;
@@ -217,9 +218,9 @@ export default function TwilioIntegrationScreen() {
 
       {/* Connection status */}
       {integration?.connected_date && (
-        <View className="mb-4 flex-row items-center rounded-lg bg-green-50 px-3 py-2">
+        <View style={twStyle("mb-4 flex-row items-center rounded-lg bg-green-50 px-3 py-2")}>
           <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
-          <Text className="ml-2 text-xs text-green-700">
+          <Text style={twStyle("ml-2 text-xs text-green-700")}>
             Connected since {new Date(integration.connected_date).toLocaleDateString()}
           </Text>
         </View>
@@ -227,18 +228,18 @@ export default function TwilioIntegrationScreen() {
 
       {/* Balance card */}
       {balanceInfo?.hasIntegration && balanceInfo.balance != null && (
-        <View className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
-          <View className="flex-row items-center justify-between">
+        <View style={twStyle("mb-4 rounded-xl border border-blue-100 bg-blue-50 p-4")}>
+          <View style={twStyle("flex-row items-center justify-between")}>
             <View>
-              <Text className="text-xs text-blue-600">Account Balance</Text>
-              <Text className="text-xl font-bold text-blue-700">
+              <Text style={twStyle("text-xs text-blue-600")}>Account Balance</Text>
+              <Text style={twStyle("text-xl font-bold text-blue-700")}>
                 ${balanceInfo.balance.toFixed(2)} {balanceInfo.currency}
               </Text>
             </View>
             {balanceInfo.estimatedMessagesRemaining != null && (
-              <View className="items-end">
-                <Text className="text-xs text-blue-600">Est. messages</Text>
-                <Text className="text-lg font-bold text-blue-700">
+              <View style={twStyle("items-end")}>
+                <Text style={twStyle("text-xs text-blue-600")}>Est. messages</Text>
+                <Text style={twStyle("text-lg font-bold text-blue-700")}>
                   ~{balanceInfo.estimatedMessagesRemaining.toLocaleString()}
                 </Text>
               </View>
@@ -251,8 +252,8 @@ export default function TwilioIntegrationScreen() {
       {messageStats && integration?.id && (
         <>
           <SectionHeader title="Message Stats" />
-          <View className="mb-4 flex-row gap-2">
-            <View className="flex-1">
+          <View style={twStyle("mb-4 flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
               <StatCard
                 title="SMS Today"
                 value={String(messageStats.sms_sent_today)}
@@ -262,7 +263,7 @@ export default function TwilioIntegrationScreen() {
                 compact
               />
             </View>
-            <View className="flex-1">
+            <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
               <StatCard
                 title="WA Today"
                 value={String(messageStats.whatsapp_sent_today)}
@@ -272,7 +273,7 @@ export default function TwilioIntegrationScreen() {
                 compact
               />
             </View>
-            <View className="flex-1">
+            <View style={twStyle("flex-1")}>
               <StatCard
                 title="Delivery"
                 value={`${messageStats.delivery_rate}%`}
@@ -283,14 +284,14 @@ export default function TwilioIntegrationScreen() {
               />
             </View>
           </View>
-          <View className="mb-4 flex-row gap-3 rounded-xl bg-gray-50 p-3">
-            <View className="flex-1">
-              <Text className="text-[10px] text-gray-500">SMS this month</Text>
-              <Text className="text-sm font-bold text-gray-900">{messageStats.sms_sent_month}</Text>
+          <View style={twStyle("mb-4 flex-row rounded-xl bg-gray-50 p-3")}>
+            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+              <Text style={twStyle("text-[10px] text-gray-500")}>SMS this month</Text>
+              <Text style={twStyle("text-sm font-bold text-gray-900")}>{messageStats.sms_sent_month}</Text>
             </View>
-            <View className="flex-1">
-              <Text className="text-[10px] text-gray-500">WA this month</Text>
-              <Text className="text-sm font-bold text-gray-900">{messageStats.whatsapp_sent_month}</Text>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("text-[10px] text-gray-500")}>WA this month</Text>
+              <Text style={twStyle("text-sm font-bold text-gray-900")}>{messageStats.whatsapp_sent_month}</Text>
             </View>
           </View>
         </>
@@ -298,10 +299,10 @@ export default function TwilioIntegrationScreen() {
 
       {/* Credentials */}
       <SectionHeader title="Credentials" />
-      <View className="mb-5">
-        <Text className="mb-1 text-sm font-medium text-gray-700">Account SID</Text>
+      <View style={twStyle("mb-5")}>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Account SID</Text>
         <TextInput
-          className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={form.accountSid}
           onChangeText={(t) => update("accountSid", t)}
           placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
@@ -309,9 +310,9 @@ export default function TwilioIntegrationScreen() {
           autoCapitalize="none"
         />
 
-        <Text className="mb-1 text-sm font-medium text-gray-700">Auth Token</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Auth Token</Text>
         <TextInput
-          className="mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           value={form.authToken}
           onChangeText={(t) => update("authToken", t)}
           placeholder="Auth token"
@@ -323,9 +324,9 @@ export default function TwilioIntegrationScreen() {
 
       {/* SMS */}
       <SectionHeader title="SMS" />
-      <View className="mb-5">
-        <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4">
-          <Text className="text-sm font-medium text-gray-900">Enable SMS</Text>
+      <View style={twStyle("mb-5")}>
+        <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4")}>
+          <Text style={twStyle("text-sm font-medium text-gray-900")}>Enable SMS</Text>
           <Switch
             value={form.smsEnabled}
             onValueChange={(v) => update("smsEnabled", v)}
@@ -335,9 +336,9 @@ export default function TwilioIntegrationScreen() {
         </View>
         {form.smsEnabled && (
           <>
-            <Text className="mb-1 text-sm font-medium text-gray-700">SMS From Number</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>SMS From Number</Text>
             <TextInput
-              className="mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={form.smsFrom}
               onChangeText={(t) => update("smsFrom", t)}
               placeholder="+27..."
@@ -350,9 +351,9 @@ export default function TwilioIntegrationScreen() {
 
       {/* WhatsApp */}
       <SectionHeader title="WhatsApp" />
-      <View className="mb-5">
-        <View className="mb-3 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4">
-          <Text className="text-sm font-medium text-gray-900">Enable WhatsApp</Text>
+      <View style={twStyle("mb-5")}>
+        <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4")}>
+          <Text style={twStyle("text-sm font-medium text-gray-900")}>Enable WhatsApp</Text>
           <Switch
             value={form.whatsappEnabled}
             onValueChange={(v) => update("whatsappEnabled", v)}
@@ -362,11 +363,11 @@ export default function TwilioIntegrationScreen() {
         </View>
         {form.whatsappEnabled && (
           <>
-            <Text className="mb-1 text-sm font-medium text-gray-700">
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
               WhatsApp From Number
             </Text>
             <TextInput
-              className="mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={form.whatsappFrom}
               onChangeText={(t) => update("whatsappFrom", t)}
               placeholder="+27..."
@@ -389,30 +390,30 @@ export default function TwilioIntegrationScreen() {
       {integration?.id && templates && templates.length > 0 && (
         <>
           <SectionHeader title="Notification Templates" />
-          <View className="mb-4 rounded-2xl border border-gray-100 bg-white">
+          <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white")}>
             {templates.map((tmpl, idx) => {
               const ti = templateTypeIcon(tmpl.type);
               return (
                 <View
                   key={tmpl.id}
-                  className={`flex-row items-center px-4 py-3 ${
+                  style={twStyle(`flex-row items-center px-4 py-3 ${
                     idx < templates.length - 1 ? "border-b border-gray-50" : ""
-                  }`}
+                  }`)}
                 >
-                  <View className={`h-9 w-9 items-center justify-center rounded-lg ${ti.bg}`}>
+                  <View style={twStyle(`h-9 w-9 items-center justify-center rounded-lg ${ti.bg}`)}>
                     <Ionicons name={ti.icon} size={16} color={ti.color} />
                   </View>
                   <TouchableOpacity
-                    className="ml-3 flex-1"
+                    style={twStyle("ml-3 flex-1")}
                     onPress={() => {
                       setSelectedTemplate(tmpl);
                       setTemplateText(tmpl.template);
                     }}
                   >
-                    <Text className="text-sm font-medium text-gray-900">
+                    <Text style={twStyle("text-sm font-medium text-gray-900")}>
                       {tmpl.name || templateTypeLabel(tmpl.type)}
                     </Text>
-                    <Text className="text-[11px] text-gray-400 capitalize">
+                    <Text style={twStyle("text-[11px] text-gray-400 capitalize")}>
                       {tmpl.channel} • {templateTypeLabel(tmpl.type)}
                     </Text>
                   </TouchableOpacity>
@@ -431,20 +432,20 @@ export default function TwilioIntegrationScreen() {
 
       {/* Test section */}
       {integration?.id && (
-        <View className="mt-2">
+        <View style={twStyle("mt-2")}>
           <SectionHeader title="Test Integration" />
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={testPhone}
             onChangeText={setTestPhone}
             placeholder="Phone number (+27...)"
             placeholderTextColor="#9ca3af"
             keyboardType="phone-pad"
           />
-          <View className="flex-row gap-3">
+          <View style={twStyle("flex-row")}>
             {form.smsEnabled && (
               <TouchableOpacity
-                className="flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3"
+                style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3"), { marginRight: 12 }]}
                 onPress={() => handleTest("sms")}
                 disabled={!!testingChannel}
               >
@@ -453,14 +454,14 @@ export default function TwilioIntegrationScreen() {
                 ) : (
                   <Ionicons name="chatbubble-outline" size={16} color="#6366f1" />
                 )}
-                <Text className="ml-2 text-sm font-medium text-indigo-700">
+                <Text style={twStyle("ml-2 text-sm font-medium text-indigo-700")}>
                   Send Test SMS
                 </Text>
               </TouchableOpacity>
             )}
             {form.whatsappEnabled && (
               <TouchableOpacity
-                className="flex-1 flex-row items-center justify-center rounded-xl bg-green-50 py-3"
+                style={twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-green-50 py-3")}
                 onPress={() => handleTest("whatsapp")}
                 disabled={!!testingChannel}
               >
@@ -469,7 +470,7 @@ export default function TwilioIntegrationScreen() {
                 ) : (
                   <Ionicons name="logo-whatsapp" size={16} color="#22c55e" />
                 )}
-                <Text className="ml-2 text-sm font-medium text-green-700">
+                <Text style={twStyle("ml-2 text-sm font-medium text-green-700")}>
                   Send Test WhatsApp
                 </Text>
               </TouchableOpacity>
@@ -478,7 +479,7 @@ export default function TwilioIntegrationScreen() {
         </View>
       )}
 
-      <View className="h-24" />
+      <View style={twStyle("h-24")} />
 
       {/* Template editor */}
       <BottomSheet
@@ -488,31 +489,31 @@ export default function TwilioIntegrationScreen() {
       >
         {selectedTemplate && (
           <View>
-            <View className="mb-3 flex-row items-center">
-              <View className={`h-9 w-9 items-center justify-center rounded-lg ${templateTypeIcon(selectedTemplate.type).bg}`}>
+            <View style={twStyle("mb-3 flex-row items-center")}>
+              <View style={twStyle(`h-9 w-9 items-center justify-center rounded-lg ${templateTypeIcon(selectedTemplate.type).bg}`)}>
                 <Ionicons
                   name={templateTypeIcon(selectedTemplate.type).icon}
                   size={16}
                   color={templateTypeIcon(selectedTemplate.type).color}
                 />
               </View>
-              <View className="ml-3">
-                <Text className="text-sm font-semibold text-gray-900">
+              <View style={twStyle("ml-3")}>
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                   {selectedTemplate.name || templateTypeLabel(selectedTemplate.type)}
                 </Text>
-                <Text className="text-xs text-gray-400 capitalize">
+                <Text style={twStyle("text-xs text-gray-400 capitalize")}>
                   {selectedTemplate.channel}
                 </Text>
               </View>
             </View>
 
-            <Text className="mb-1 text-xs text-gray-500">
+            <Text style={twStyle("mb-1 text-xs text-gray-500")}>
               Available variables: {"{client_name}"}, {"{service_name}"}, {"{date}"},{" "}
               {"{time}"}, {"{provider_name}"}
             </Text>
 
             <TextInput
-              className="mb-4 min-h-[120px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-4 min-h-[120px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={templateText}
               onChangeText={setTemplateText}
               placeholder="Message template..."

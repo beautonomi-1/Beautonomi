@@ -9,6 +9,7 @@ import {
   Pressable,
   Alert,
   Share,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router } from "expo-router";
@@ -19,6 +20,7 @@ import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { StaticMapImage } from "@/components/StaticMapImage";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import { haptic } from "@/lib/haptics";
@@ -43,6 +45,8 @@ function formatTime(s: string) {
 export default function BookingDetailScreen() {
   useScreenTracking("Booking Detail");
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const { user } = useAuth();
   const onDemandConfig = useModuleConfig("on_demand");
   const { pay, loading: payLoading, error: payError } = usePaystackPayment();
@@ -186,7 +190,7 @@ export default function BookingDetailScreen() {
     return (
       <>
         <Stack.Screen options={{ title: "Booking", headerBackTitle: "Back" }} />
-        <View className="flex-1 bg-white items-center justify-center">
+        <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
       </>
@@ -197,10 +201,10 @@ export default function BookingDetailScreen() {
     return (
       <>
         <Stack.Screen options={{ title: "Booking", headerBackTitle: "Back" }} />
-        <View className="flex-1 bg-white p-6 items-center justify-center">
-          <Text className="text-gray-600 mb-4">{error}</Text>
-          <TouchableOpacity onPress={load} className="bg-primary px-6 py-3 rounded-xl">
-            <Text className="text-white font-semibold">Retry</Text>
+        <View style={{ flex: 1, backgroundColor: Colors.white, padding: 24, alignItems: "center", justifyContent: "center" }}>
+          <Text style={{ color: Colors.gray[600], marginBottom: 16 }}>{error}</Text>
+          <TouchableOpacity onPress={load} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
           </TouchableOpacity>
         </View>
       </>
@@ -234,52 +238,45 @@ export default function BookingDetailScreen() {
           headerBackTitle: "Back",
         }}
       />
-      <ScrollView className="flex-1 bg-white" contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
+      <ScrollView style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
         {/* Acceptance / confirmation strip (for confirmed/pending/started) */}
         {isActive && (
-          <View className="mb-4 rounded-2xl bg-green-50 border border-green-100 p-4">
-            <View className="flex-row items-center">
-              <View className="w-10 h-10 rounded-full bg-green-100 items-center justify-center mr-3">
+          <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#F0FDF4", borderWidth: 1, borderColor: "#BBF7D0", padding: 16 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#DCFCE7", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
                 <Ionicons name="checkmark-circle" size={24} color="#16a34a" />
               </View>
-              <View className="flex-1">
-                <Text className="font-semibold text-gray-900">
-                  Booking confirmed {formatTime(booking.selected_datetime)}
-                </Text>
-                <Text className="text-sm text-gray-600 mt-0.5">
-                  Your booking with {provider?.business_name || "your provider"} is confirmed.
-                </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Booking confirmed {formatTime(booking.selected_datetime)}</Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>Your booking with {provider?.business_name || "your provider"} is confirmed.</Text>
               </View>
             </View>
             {helpUrl ? (
               <TouchableOpacity
                 onPress={() => Linking.openURL(helpUrl)}
-                className="mt-3 flex-row items-center"
+                style={{ marginTop: 12, flexDirection: "row", alignItems: "center" }}
                 accessibilityRole="link"
                 accessibilityLabel="Help"
               >
                 <Ionicons name="help-circle-outline" size={18} color="#16a34a" />
-                <Text className="ml-2 text-sm font-medium text-green-700">Help</Text>
+                <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: "500", color: "#15803d" }}>Help</Text>
               </TouchableOpacity>
             ) : null}
           </View>
         )}
 
         {/* Tabs: Tracking | Receipt | Details */}
-        <View className="flex-row border-b border-gray-200 mb-4">
+        <View style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], marginBottom: 16 }}>
           {(["tracking", "receipt", "details"] as const).map((tab) => (
             <TouchableOpacity
               key={tab}
               onPress={() => { haptic.light(); setActiveTab(tab); }}
-              className="flex-1 py-3 items-center border-b-2 border-transparent"
-              style={{ borderBottomColor: activeTab === tab ? Colors.primary : "transparent" }}
+              style={{ flex: 1, paddingVertical: 12, alignItems: "center", borderBottomWidth: 2, borderBottomColor: activeTab === tab ? Colors.primary : "transparent" }}
               accessibilityRole="tab"
               accessibilityState={{ selected: activeTab === tab }}
               accessibilityLabel={tab === "tracking" ? "Tracking" : tab === "receipt" ? "Receipt" : "Details"}
             >
-              <Text
-                className={`text-sm font-medium ${activeTab === tab ? "text-primary" : "text-gray-500"}`}
-              >
+              <Text style={{ fontSize: 14, fontWeight: "500", color: activeTab === tab ? Colors.primary : Colors.gray[500] }}>
                 {tab === "tracking" ? "Tracking" : tab === "receipt" ? "Receipt" : "Details"}
               </Text>
             </TouchableOpacity>
@@ -289,8 +286,8 @@ export default function BookingDetailScreen() {
         {activeTab === "tracking" && (
           <>
             {/* Status block */}
-            <View className="mb-4 rounded-2xl bg-slate-50 border border-slate-100 p-5">
-              <Text className="text-lg font-semibold text-gray-900">
+            <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#F8FAFC", borderWidth: 1, borderColor: "#E2E8F0", padding: 20 }}>
+              <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>
                 {booking.status === "completed"
                   ? "Service completed"
                   : booking.status === "started" || booking.status === "in_progress"
@@ -303,23 +300,23 @@ export default function BookingDetailScreen() {
                           ? "Provider on the way"
                           : "Your visit is confirmed"}
               </Text>
-              <View className="flex-row flex-wrap gap-3 mt-3">
-                <View className="w-10 h-10 rounded-full bg-primary/10 items-center justify-center">
+              <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 12, marginBottom: 12 }}>
                   <Ionicons name="cut-outline" size={20} color={Colors.primary} />
                 </View>
-                <View className="w-10 h-10 rounded-full bg-primary/10 items-center justify-center">
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 12, marginBottom: 12 }}>
                   <Ionicons name="brush-outline" size={20} color={Colors.primary} />
                 </View>
-                <View className="w-10 h-10 rounded-full bg-primary/10 items-center justify-center">
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
                   <Ionicons name="sparkles-outline" size={20} color={Colors.primary} />
                 </View>
               </View>
             </View>
             {/* ETA (at-home, when provider en route and backend provides it) */}
             {isAtHome && isProviderEnRoute && estimatedArrival && (
-              <View className="mb-4 rounded-2xl bg-blue-50 border border-blue-100 p-4">
-                <Text className="text-sm font-medium text-blue-900">Estimated arrival</Text>
-                <Text className="text-base text-blue-800 mt-0.5">
+              <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#BFDBFE", padding: 16 }}>
+                <Text style={{ fontSize: 14, fontWeight: "500", color: "#1E3A8A" }}>Estimated arrival</Text>
+                <Text style={{ fontSize: 16, color: "#1E40AF", marginTop: 2 }}>
                   {formatTime(estimatedArrival.toISOString())}
                   {" · "}
                   Arriving in ~
@@ -328,7 +325,7 @@ export default function BookingDetailScreen() {
               </View>
             )}
             {/* Milestones (at-home: en route / arrived; at-salon: preparing / in progress) */}
-            <View className="mb-4">
+            <View style={{ marginBottom: 16 }}>
               {(
                 booking.status === "cancelled"
                   ? [
@@ -350,31 +347,25 @@ export default function BookingDetailScreen() {
                         { key: "completed", label: "Completed", done: booking.status === "completed" },
                       ]
               ).map((step: { key: string; label: string; done: boolean }) => (
-                <View key={step.key} className="flex-row items-center py-2">
-                  <View
-                    className={`w-6 h-6 rounded-full items-center justify-center mr-3 ${
-                      step.done ? "bg-green-100" : "bg-gray-100"
-                    }`}
-                  >
+                <View key={step.key} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
+                  <View style={{ width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", marginRight: 12, backgroundColor: step.done ? "#DCFCE7" : Colors.gray[100] }}>
                     {step.done ? (
                       <Ionicons name="checkmark" size={14} color="#16a34a" />
                     ) : (
-                      <View className="w-2 h-2 rounded-full bg-gray-300" />
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.gray[300] }} />
                     )}
                   </View>
-                  <Text className={step.done ? "text-gray-900 font-medium" : "text-gray-400"}>
-                    {step.label}
-                  </Text>
+                  <Text style={{ color: step.done ? Colors.gray[900] : Colors.gray[400], fontWeight: step.done ? "500" : "400" }}>{step.label}</Text>
                 </View>
               ))}
             </View>
             {/* Scheduled time */}
-            <View className="rounded-2xl bg-gray-50 p-4 mb-4">
-              <Text className="text-xs text-gray-500 mb-1">Scheduled for</Text>
-              <Text className="text-base font-semibold text-gray-900">{formatDate(booking.selected_datetime)}</Text>
-              <Text className="text-sm text-gray-600 mt-0.5">{formatTime(booking.selected_datetime)}</Text>
+            <View style={{ borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16, marginBottom: 16 }}>
+              <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>Scheduled for</Text>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{formatDate(booking.selected_datetime)}</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>{formatTime(booking.selected_datetime)}</Text>
               {provider?.business_name ? (
-                <Text className="text-sm text-gray-500 mt-2">at {provider.business_name}</Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 8 }}>at {provider.business_name}</Text>
               ) : null}
             </View>
           </>
@@ -382,51 +373,50 @@ export default function BookingDetailScreen() {
 
         {activeTab === "receipt" && (
           <>
-            <View className="mb-4 rounded-2xl bg-gray-50 p-4">
-              <Text className="text-sm font-semibold text-gray-900 mb-2">Payment</Text>
+            <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16 }}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Payment</Text>
               {booking.subtotal != null && (
-                <View className="flex-row justify-between mb-1">
-                  <Text className="text-sm text-gray-500">Subtotal</Text>
-                  <Text className="text-sm text-gray-700">{booking.currency} {Number(booking.subtotal).toFixed(2)}</Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Subtotal</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number(booking.subtotal).toFixed(2)}</Text>
                 </View>
               )}
               {booking.tax_amount > 0 && (
-                <View className="flex-row justify-between mb-1">
-                  <Text className="text-sm text-gray-500">Tax</Text>
-                  <Text className="text-sm text-gray-700">{booking.currency} {Number(booking.tax_amount).toFixed(2)}</Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Tax</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number(booking.tax_amount).toFixed(2)}</Text>
                 </View>
               )}
               {booking.discount_amount > 0 && (
-                <View className="flex-row justify-between mb-1">
-                  <Text className="text-sm text-gray-500">Discount</Text>
-                  <Text className="text-sm text-green-600">-{booking.currency} {Number(booking.discount_amount).toFixed(2)}</Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Discount</Text>
+                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number(booking.discount_amount).toFixed(2)}</Text>
                 </View>
               )}
-              <View className="flex-row justify-between border-t border-gray-200 pt-2 mt-1">
-                <Text className="text-base font-bold text-gray-900">Total</Text>
-                <Text className="text-base font-bold text-gray-900">
-                  {booking.currency} {Number(booking.total_amount || 0).toFixed(2)}
-                </Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: Colors.gray[200], paddingTop: 8, marginTop: 4 }}>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{booking.currency} {Number(booking.total_amount || 0).toFixed(2)}</Text>
               </View>
               {booking.payment_status && (
-                <View className="mt-2 flex-row items-center">
-                  <View className={`h-2 w-2 rounded-full mr-2 ${booking.payment_status === "paid" ? "bg-green-500" : "bg-amber-500"}`} />
-                  <Text className="text-xs text-gray-500 capitalize">{booking.payment_status}</Text>
+                <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center" }}>
+                  <View style={{ height: 8, width: 8, borderRadius: 4, marginRight: 8, backgroundColor: booking.payment_status === "paid" ? "#22C55E" : "#F59E0B" }} />
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], textTransform: "capitalize" }}>{booking.payment_status}</Text>
                 </View>
               )}
             </View>
             {payError && (
-              <View className="bg-red-50 rounded-xl p-3 mb-4">
-                <Text className="text-red-700">{payError}</Text>
+              <View style={{ backgroundColor: "#FEF2F2", borderRadius: 12, padding: 12, marginBottom: 16 }}>
+                <Text style={{ color: "#B91C1C" }}>{payError}</Text>
               </View>
             )}
             {needsPayment && (
-              <Pressable onPress={handlePay} disabled={payLoading} className="bg-primary py-4 rounded-xl items-center mb-3" accessibilityRole="button" accessibilityLabel="Pay now">
-                {payLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text className="text-white font-semibold text-base">Pay Now</Text>}
+              <Pressable onPress={handlePay} disabled={payLoading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginBottom: 12 }} accessibilityRole="button" accessibilityLabel="Pay now">
+                {payLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>Pay Now</Text>}
               </Pressable>
             )}
-            <View className="flex-row gap-3">
+            <View style={{ flexDirection: "row" }}>
               <TouchableOpacity
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginRight: 12 }}
                 onPress={() => {
                   haptic.light();
                   const lines = [
@@ -446,21 +436,20 @@ export default function BookingDetailScreen() {
                   ];
                   Share.share({ message: lines.join("\n"), title: "Booking" });
                 }}
-                className="flex-1 flex-row items-center justify-center py-3.5 rounded-xl border border-gray-200"
                 accessibilityRole="button"
                 accessibilityLabel="Share"
               >
-                <Ionicons name="share-outline" size={16} color="#374151" />
-                <Text className="ml-2 font-medium text-gray-700">Share</Text>
+                <Ionicons name="share-outline" size={16} color={Colors.gray[700]} />
+                <Text style={{ marginLeft: 8, fontWeight: "500", color: Colors.gray[700] }}>Share</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => { haptic.light(); Linking.openURL(`${APP_URL}/account-settings/bookings/${booking.id}?print=1`); }}
-                className="flex-1 flex-row items-center justify-center py-3.5 rounded-xl border border-gray-200"
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
                 accessibilityRole="button"
                 accessibilityLabel="Download"
               >
-                <Ionicons name="download-outline" size={16} color="#374151" />
-                <Text className="ml-2 font-medium text-gray-700">Download</Text>
+                <Ionicons name="download-outline" size={16} color={Colors.gray[700]} />
+                <Text style={{ marginLeft: 8, fontWeight: "500", color: Colors.gray[700] }}>Download</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -469,42 +458,34 @@ export default function BookingDetailScreen() {
         {activeTab === "details" && (
           <>
         {/* Provider & Status */}
-        <View className="mb-4 rounded-2xl bg-gray-50 p-4">
+        <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16 }}>
           {booking.is_group_booking && booking.group_booking_ref && (
-            <View className="mb-2 pb-2 border-b border-gray-200">
-              <Text className="text-xs text-gray-500">Group booking</Text>
-              <Text className="text-sm font-medium text-gray-700">{booking.group_booking_ref}</Text>
+            <View style={{ marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[200] }}>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Group booking</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{booking.group_booking_ref}</Text>
             </View>
           )}
-          <View className="flex-row justify-between items-start">
-            <View className="flex-1">
-              <Text className="text-lg font-semibold text-gray-900">
-                {provider?.business_name || "Provider"}
-              </Text>
-              <Text className="text-gray-600 mt-1">{formatDate(booking.selected_datetime)}</Text>
-              <Text className="text-gray-500 text-sm">{formatTime(booking.selected_datetime)}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>{provider?.business_name || "Provider"}</Text>
+              <Text style={{ color: Colors.gray[600], marginTop: 4 }}>{formatDate(booking.selected_datetime)}</Text>
+              <Text style={{ color: Colors.gray[500], fontSize: 14 }}>{formatTime(booking.selected_datetime)}</Text>
             </View>
             <View
-              className={`px-3 py-1 rounded-full ${
-                booking.status === "confirmed"
-                  ? "bg-green-100"
-                  : booking.status === "cancelled"
-                    ? "bg-red-100"
-                    : booking.status === "completed"
-                      ? "bg-blue-100"
-                      : "bg-amber-100"
-              }`}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 4,
+                borderRadius: 9999,
+                backgroundColor: booking.status === "confirmed" ? "#DCFCE7" : booking.status === "cancelled" ? "#FEE2E2" : booking.status === "completed" ? "#DBEAFE" : "#FEF3C7",
+              }}
             >
               <Text
-                className={`text-xs font-semibold capitalize ${
-                  booking.status === "confirmed"
-                    ? "text-green-700"
-                    : booking.status === "cancelled"
-                      ? "text-red-700"
-                      : booking.status === "completed"
-                        ? "text-blue-700"
-                        : "text-amber-700"
-                }`}
+                style={{
+                  fontSize: 12,
+                  fontWeight: "600",
+                  textTransform: "capitalize",
+                  color: booking.status === "confirmed" ? "#15803d" : booking.status === "cancelled" ? "#B91C1C" : booking.status === "completed" ? "#1D4ED8" : "#B45309",
+                }}
               >
                 {booking.status}
               </Text>
@@ -514,8 +495,8 @@ export default function BookingDetailScreen() {
 
         {/* Services */}
         {services.length > 0 && (
-          <View className="mb-4">
-            <Text className="text-sm font-semibold text-gray-900 mb-2">Services</Text>
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Services</Text>
             {services.map((svc: Record<string, unknown>, i: number) => {
               const svcName = String(svc.offering_name ?? svc.service_name ?? svc.title ?? svc.name ?? `Service ${i + 1}`);
               const duration = svc.duration_minutes ? Number(svc.duration_minutes) : null;
@@ -523,17 +504,17 @@ export default function BookingDetailScreen() {
               const guestName = svc.guest_name ? String(svc.guest_name) : null;
               const price = Number(svc.price ?? 0);
               return (
-                <View key={i} className="flex-row justify-between items-center py-2 border-b border-gray-100">
-                  <View className="flex-1">
-                    <Text className="text-sm text-gray-800">{svcName}{guestName ? ` (${guestName})` : ""}</Text>
+                <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{svcName}{guestName ? ` (${guestName})` : ""}</Text>
                     {duration != null && (
-                      <Text className="text-xs text-gray-500">{duration} min</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{duration} min</Text>
                     )}
                     {staffName && (
-                      <Text className="text-xs text-gray-400">with {staffName}</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[400] }}>with {staffName}</Text>
                     )}
                   </View>
-                  <Text className="text-sm font-medium text-gray-900">
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
                     {booking.currency} {price.toFixed(2)}
                   </Text>
                 </View>
@@ -544,18 +525,18 @@ export default function BookingDetailScreen() {
 
         {/* Location & Map */}
         {location && (
-          <View className="mb-4">
-            <Text className="text-sm font-semibold text-gray-900 mb-2">Location</Text>
-            <View className="flex-row items-start">
-              <Ionicons name="location-outline" size={16} color="#6b7280" style={{ marginTop: 2 }} />
-              <Text className="ml-2 text-sm text-gray-600 flex-1">
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Location</Text>
+            <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+              <Ionicons name="location-outline" size={16} color={Colors.gray[600]} style={{ marginTop: 2 }} />
+              <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[600], flex: 1 }}>
                 {(location as { address?: string }).address ||
                   [location.name, (location as { address_line1?: string }).address_line1, (location as { city?: string }).city].filter(Boolean).join(", ") ||
                   "—"}
               </Text>
             </View>
             {(location as { latitude?: number; longitude?: number }).latitude != null && (location as { longitude?: number }).longitude != null && (
-              <View className="mt-2 overflow-hidden rounded-xl">
+              <View style={{ marginTop: 8, overflow: "hidden", borderRadius: 12 }}>
                 <StaticMapImage
                   latitude={Number((location as { latitude?: number }).latitude)}
                   longitude={Number((location as { longitude?: number }).longitude)}
@@ -572,20 +553,20 @@ export default function BookingDetailScreen() {
         <SafetyPanicButton bookingId={id ?? null} />
 
         {canCancel && (
-          <View className="flex-row gap-3 mb-3">
+          <View style={{ flexDirection: "row", marginBottom: 12 }}>
             <TouchableOpacity
               onPress={handleReschedule}
-              className="flex-1 flex-row items-center justify-center py-3.5 rounded-xl border border-gray-200"
+              style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginRight: 12 }}
               accessibilityRole="button"
               accessibilityLabel="Reschedule booking"
             >
-              <Ionicons name="calendar-outline" size={16} color="#374151" />
-              <Text className="ml-2 font-medium text-gray-700">Reschedule</Text>
+              <Ionicons name="calendar-outline" size={16} color={Colors.gray[700]} />
+              <Text style={{ marginLeft: 8, fontWeight: "500", color: Colors.gray[700] }}>Reschedule</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleCancel}
               disabled={cancelling}
-              className="flex-1 flex-row items-center justify-center py-3.5 rounded-xl border border-red-200"
+              style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: "#FECACA" }}
               accessibilityRole="button"
               accessibilityLabel="Cancel booking"
             >
@@ -593,8 +574,8 @@ export default function BookingDetailScreen() {
                 <ActivityIndicator size="small" color="#ef4444" />
               ) : (
                 <>
-                  <Ionicons name="close-circle-outline" size={16} color="#ef4444" />
-                  <Text className="ml-2 font-medium text-red-600">Cancel</Text>
+                  <Ionicons name="close-circle-outline" size={16} color="#ef4444" style={{ marginRight: 8 }} />
+                  <Text style={{ fontWeight: "500", color: "#B91C1C" }}>Cancel</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -607,31 +588,30 @@ export default function BookingDetailScreen() {
               haptic.light();
               router.push({ pathname: "/(app)/review-write", params: { bookingId: booking.id } });
             }}
-            className="py-4 border border-primary rounded-xl items-center mb-3"
+            style={{ paddingVertical: 16, borderWidth: 1, borderColor: Colors.primary, borderRadius: 12, alignItems: "center", marginBottom: 12 }}
             accessibilityRole="button"
             accessibilityLabel="Write a review"
           >
-            <Text className="text-primary font-semibold">Write a Review</Text>
+            <Text style={{ color: Colors.primary, fontWeight: "600" }}>Write a Review</Text>
           </TouchableOpacity>
         )}
 
-        {/* Rebook for completed bookings */}
         {booking.status === "completed" && provider?.slug && (
           <TouchableOpacity
             onPress={() => {
               haptic.light();
               router.push({ pathname: "/(app)/book", params: { slug: provider.slug } });
             }}
-            className="py-4 bg-gray-50 rounded-xl items-center mb-3"
+            style={{ paddingVertical: 16, backgroundColor: Colors.gray[50], borderRadius: 12, alignItems: "center", marginBottom: 12 }}
             accessibilityRole="button"
             accessibilityLabel="Book again with this provider"
           >
-            <Text className="font-medium text-gray-700">Book Again</Text>
+            <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Book Again</Text>
           </TouchableOpacity>
         )}
 
         {/* Share / Download actions */}
-        <View className="flex-row gap-3 mb-3">
+        <View style={{ flexDirection: "row", marginBottom: 12 }}>
           <TouchableOpacity
             onPress={() => {
               haptic.light();
@@ -658,34 +638,35 @@ export default function BookingDetailScreen() {
                 title: "Booking Confirmation",
               });
             }}
-            className="flex-1 flex-row items-center justify-center py-3.5 rounded-xl border border-gray-200"
+            style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginRight: 12 }}
             accessibilityRole="button"
             accessibilityLabel="Share booking details"
           >
-            <Ionicons name="share-outline" size={16} color="#374151" />
-            <Text className="ml-2 font-medium text-gray-700">Share</Text>
+            <Ionicons name="share-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 8 }} />
+            <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Share</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
               haptic.light();
               Linking.openURL(`${APP_URL}/account-settings/bookings/${booking.id}?print=1`);
             }}
-            className="flex-1 flex-row items-center justify-center py-3.5 rounded-xl border border-gray-200"
+            style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
             accessibilityRole="button"
             accessibilityLabel="Download booking receipt"
           >
-            <Ionicons name="download-outline" size={16} color="#374151" />
-            <Text className="ml-2 font-medium text-gray-700">Download</Text>
+            <Ionicons name="download-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 8 }} />
+            <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Download</Text>
           </TouchableOpacity>
         </View>
 
-        <View className="flex-row items-center justify-center gap-6 py-3">
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12 }}>
           <TouchableOpacity
             onPress={openInBrowser}
+            style={{ marginRight: 24 }}
             accessibilityRole="link"
             accessibilityLabel="Open full details in browser"
           >
-            <Text className="text-sm text-gray-500 underline">Open in browser</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500], textDecorationLine: "underline" }}>Open in browser</Text>
           </TouchableOpacity>
           {helpUrl ? (
             <TouchableOpacity
@@ -693,7 +674,7 @@ export default function BookingDetailScreen() {
               accessibilityRole="link"
               accessibilityLabel="Help"
             >
-              <Text className="text-sm text-primary font-medium">Help</Text>
+              <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "500" }}>Help</Text>
             </TouchableOpacity>
           ) : null}
         </View>

@@ -31,7 +31,7 @@ export default function ExploreSavedPage() {
           <p className="text-gray-600 mb-4">Sign in to view your saved posts.</p>
           <button
             onClick={() => setShowLogin(true)}
-            className="px-6 py-2 bg-[#FF0077] text-white rounded-lg font-medium hover:bg-[#D60565] transition-colors"
+            className="px-6 py-2 bg-primary text-white rounded-lg font-medium hover:bg-primary-hover transition-colors"
           >
             Sign in
           </button>

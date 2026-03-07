@@ -25,6 +25,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { formatDuration } from "@/lib/format";
 import { api } from "@/lib/api-client";
+import { twStyle } from "@/lib/twStyle";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -111,9 +112,9 @@ const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof
 
 function SectionLabel({ label, required }: { label: string; required?: boolean }) {
   return (
-    <Text className="mb-1.5 text-sm font-semibold text-gray-700">
+    <Text style={twStyle("mb-1.5 text-sm font-semibold text-gray-700")}>
       {label}
-      {required && <Text className="text-red-500"> *</Text>}
+      {required && <Text style={twStyle("text-red-500")}> *</Text>}
     </Text>
   );
 }
@@ -445,7 +446,7 @@ export default function NewBookingScreen() {
 
   return (
     <KeyboardAvoidingView
-      className="flex-1 bg-white"
+      style={twStyle("flex-1 bg-white")}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScreenContainer>
@@ -467,40 +468,40 @@ export default function NewBookingScreen() {
             onBack={() => setShowConfirmation(false)}
           />
         ) : (
-          <View className={isTablet ? "flex-row gap-6" : ""}>
-            <View className={isTablet ? "flex-1" : ""}>
+          <View style={twStyle(isTablet ? "flex-row" : "")}>
+            <View style={[twStyle(isTablet ? "flex-1" : ""), isTablet ? { marginRight: 24 } : undefined]}>
               {/* -------- CLIENT -------- */}
               <SectionLabel label="Client" required />
-              <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-                <View className="mb-3 flex-row gap-2">
+              <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+                <View style={twStyle("mb-3 flex-row")}>
                   <TouchableOpacity
-                    className={`flex-1 items-center rounded-lg py-2 ${
+                    style={[twStyle(`flex-1 items-center rounded-lg py-2 ${
                       clientMode === "search" ? "bg-gray-900" : "bg-gray-100"
-                    }`}
+                    }`), { marginRight: 8 }]}
                     onPress={() => setClientMode("search")}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: clientMode === "search" }}
                   >
                     <Text
-                      className={`text-sm font-medium ${
+                      style={twStyle(`text-sm font-medium ${
                         clientMode === "search" ? "text-white" : "text-gray-600"
-                      }`}
+                      }`)}
                     >
                       Existing Client
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    className={`flex-1 items-center rounded-lg py-2 ${
+                    style={twStyle(`flex-1 items-center rounded-lg py-2 ${
                       clientMode === "new" ? "bg-gray-900" : "bg-gray-100"
-                    }`}
+                    }`)}
                     onPress={() => setClientMode("new")}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: clientMode === "new" }}
                   >
                     <Text
-                      className={`text-sm font-medium ${
+                      style={twStyle(`text-sm font-medium ${
                         clientMode === "new" ? "text-white" : "text-gray-600"
-                      }`}
+                      }`)}
                     >
                       New Client
                     </Text>
@@ -510,13 +511,13 @@ export default function NewBookingScreen() {
                 {clientMode === "search" ? (
                   <View>
                     {selectedClient ? (
-                      <View className="flex-row items-center rounded-xl border border-indigo-200 bg-indigo-50 p-3">
+                      <View style={twStyle("flex-row items-center rounded-xl border border-indigo-200 bg-indigo-50 p-3")}>
                         <Avatar name={selectedClient.full_name} imageUrl={selectedClient.avatar_url} size="sm" />
-                        <View className="ml-2 flex-1">
-                          <Text className="text-sm font-medium text-gray-900">
+                        <View style={twStyle("ml-2 flex-1")}>
+                          <Text style={twStyle("text-sm font-medium text-gray-900")}>
                             {selectedClient.full_name}
                           </Text>
-                          <Text className="text-xs text-gray-500">{selectedClient.phone || selectedClient.email}</Text>
+                          <Text style={twStyle("text-xs text-gray-500")}>{selectedClient.phone || selectedClient.email}</Text>
                         </View>
                         <TouchableOpacity
                           onPress={() => setSelectedClient(null)}
@@ -527,10 +528,10 @@ export default function NewBookingScreen() {
                       </View>
                     ) : (
                       <>
-                        <View className="flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                        <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5")}>
                           <Ionicons name="search-outline" size={16} color="#9ca3af" />
                           <TextInput
-                            className="ml-2 flex-1 text-base text-gray-900"
+                            style={twStyle("ml-2 flex-1 text-base text-gray-900")}
                             placeholder="Search by name or phone..."
                             placeholderTextColor="#9ca3af"
                             value={clientSearch}
@@ -540,15 +541,15 @@ export default function NewBookingScreen() {
                           />
                         </View>
                         {clientsLoading && (
-                          <ActivityIndicator size="small" color="#111" className="mt-2" />
+                          <ActivityIndicator size="small" color="#111" style={twStyle("mt-2")} />
                         )}
                         {searchedClients && searchedClients.length > 0 && (
-                          <View className="mt-2 max-h-40 rounded-xl border border-gray-100 bg-white">
+                          <View style={twStyle("mt-2 max-h-40 rounded-xl border border-gray-100 bg-white")}>
                             <ScrollView nestedScrollEnabled>
                               {searchedClients.map((c) => (
                                 <TouchableOpacity
                                   key={c.id}
-                                  className="flex-row items-center border-b border-gray-50 px-3 py-2.5"
+                                  style={twStyle("flex-row items-center border-b border-gray-50 px-3 py-2.5")}
                                   onPress={() => {
                                     setSelectedClient(c);
                                     setClientSearch("");
@@ -556,9 +557,9 @@ export default function NewBookingScreen() {
                                   accessibilityLabel={`Select ${c.full_name}`}
                                 >
                                   <Avatar name={c.full_name} size="sm" />
-                                  <View className="ml-2 flex-1">
-                                    <Text className="text-sm font-medium text-gray-900">{c.full_name}</Text>
-                                    <Text className="text-xs text-gray-500">
+                                  <View style={twStyle("ml-2 flex-1")}>
+                                    <Text style={twStyle("text-sm font-medium text-gray-900")}>{c.full_name}</Text>
+                                    <Text style={twStyle("text-xs text-gray-500")}>
                                       {c.phone || c.email}
                                     </Text>
                                   </View>
@@ -570,7 +571,7 @@ export default function NewBookingScreen() {
                         {clientSearch.length >= 2 &&
                           !clientsLoading &&
                           searchedClients?.length === 0 && (
-                            <Text className="mt-2 text-center text-xs text-gray-400">
+                            <Text style={twStyle("mt-2 text-center text-xs text-gray-400")}>
                               No clients found. Switch to &quot;New Client&quot; to create one.
                             </Text>
                           )}
@@ -578,12 +579,12 @@ export default function NewBookingScreen() {
                     )}
                   </View>
                 ) : (
-                  <View className="gap-3">
-                    <View className="flex-row gap-3">
-                      <View className="flex-1">
-                        <Text className="mb-1 text-xs text-gray-500">First Name *</Text>
+                  <View>
+                    <View style={twStyle("flex-row")}>
+                      <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+                        <Text style={twStyle("mb-1 text-xs text-gray-500")}>First Name *</Text>
                         <TextInput
-                          className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                          style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                           placeholder="First name"
                           placeholderTextColor="#9ca3af"
                           value={newClientFirst}
@@ -591,10 +592,10 @@ export default function NewBookingScreen() {
                           accessibilityLabel="Client first name"
                         />
                       </View>
-                      <View className="flex-1">
-                        <Text className="mb-1 text-xs text-gray-500">Last Name</Text>
+                      <View style={twStyle("flex-1")}>
+                        <Text style={twStyle("mb-1 text-xs text-gray-500")}>Last Name</Text>
                         <TextInput
-                          className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                          style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                           placeholder="Last name"
                           placeholderTextColor="#9ca3af"
                           value={newClientLast}
@@ -603,10 +604,10 @@ export default function NewBookingScreen() {
                         />
                       </View>
                     </View>
-                    <View>
-                      <Text className="mb-1 text-xs text-gray-500">Phone</Text>
+                    <View style={{ marginTop: 12 }}>
+                      <Text style={twStyle("mb-1 text-xs text-gray-500")}>Phone</Text>
                       <TextInput
-                        className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                        style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                         placeholder="+27 xxx xxx xxxx"
                         placeholderTextColor="#9ca3af"
                         value={newClientPhone}
@@ -615,10 +616,10 @@ export default function NewBookingScreen() {
                         accessibilityLabel="Client phone"
                       />
                     </View>
-                    <View>
-                      <Text className="mb-1 text-xs text-gray-500">Email</Text>
+                    <View style={{ marginTop: 12 }}>
+                      <Text style={twStyle("mb-1 text-xs text-gray-500")}>Email</Text>
                       <TextInput
-                        className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                        style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                         placeholder="email@example.com"
                         placeholderTextColor="#9ca3af"
                         value={newClientEmail}
@@ -637,8 +638,8 @@ export default function NewBookingScreen() {
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                className="mb-4"
-                contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
+                style={twStyle("mb-4")}
+                contentContainerStyle={{ paddingVertical: 4 }}
               >
                 {dateOptions.map((d) => {
                   const isActive = isSameDay(d, selectedDate);
@@ -646,29 +647,28 @@ export default function NewBookingScreen() {
                   return (
                     <TouchableOpacity
                       key={d.toISOString()}
-                      className={`items-center rounded-xl px-3 py-2.5 ${
+                      style={[twStyle(`items-center rounded-xl px-3 py-2.5 ${
                         isActive ? "bg-gray-900" : "border border-gray-200 bg-white"
-                      }`}
-                      style={{ minWidth: 54 }}
+                      }`), { minWidth: 54, marginRight: 8 }]}
                       onPress={() => setSelectedDate(d)}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: isActive }}
                       accessibilityLabel={format(d, "EEEE, MMMM d")}
                     >
                       <Text
-                        className={`text-[10px] ${isActive ? "text-gray-300" : "text-gray-500"}`}
+                        style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : "text-gray-500"}`)}
                       >
                         {isToday ? "Today" : format(d, "EEE")}
                       </Text>
                       <Text
-                        className={`text-base font-bold ${
+                        style={twStyle(`text-base font-bold ${
                           isActive ? "text-white" : "text-gray-900"
-                        }`}
+                        }`)}
                       >
                         {format(d, "d")}
                       </Text>
                       <Text
-                        className={`text-[10px] ${isActive ? "text-gray-300" : "text-gray-500"}`}
+                        style={twStyle(`text-[10px] ${isActive ? "text-gray-300" : "text-gray-500"}`)}
                       >
                         {format(d, "MMM")}
                       </Text>
@@ -680,14 +680,14 @@ export default function NewBookingScreen() {
               {/* -------- TIME -------- */}
               <SectionLabel label="Time" required />
               <TouchableOpacity
-                className="mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
                 onPress={() => setShowTimePicker(true)}
                 accessibilityRole="button"
                 accessibilityLabel={selectedTime ? `Selected time ${selectedTime}` : "Select time"}
               >
-                <View className="flex-row items-center">
+                <View style={twStyle("flex-row items-center")}>
                   <Ionicons name="time-outline" size={18} color="#6b7280" />
-                  <Text className={`ml-2 text-base ${selectedTime ? "font-medium text-gray-900" : "text-gray-400"}`}>
+                  <Text style={twStyle(`ml-2 text-base ${selectedTime ? "font-medium text-gray-900" : "text-gray-400"}`)}>
                     {selectedTime || "Select time slot"}
                   </Text>
                 </View>
@@ -696,7 +696,7 @@ export default function NewBookingScreen() {
 
               {/* -------- LOCATION -------- */}
               <SectionLabel label="Location" />
-              <View className="mb-4 flex-row gap-3">
+              <View style={twStyle("mb-4 flex-row")}>
                 {(
                   [
                     { val: "at_salon", label: "At Salon", icon: "business-outline" },
@@ -705,11 +705,11 @@ export default function NewBookingScreen() {
                 ).map((loc) => (
                   <TouchableOpacity
                     key={loc.val}
-                    className={`flex-1 flex-row items-center justify-center rounded-xl border py-3 ${
+                    style={[twStyle(`flex-1 flex-row items-center justify-center rounded-xl border py-3 ${
                       locationType === loc.val
                         ? "border-gray-900 bg-gray-900"
                         : "border-gray-200 bg-white"
-                    }`}
+                    }`), loc.val === "at_salon" ? { marginRight: 12 } : undefined]}
                     onPress={() => setLocationType(loc.val)}
                     accessibilityRole="radio"
                     accessibilityState={{ checked: locationType === loc.val }}
@@ -720,9 +720,9 @@ export default function NewBookingScreen() {
                       color={locationType === loc.val ? "#fff" : "#6b7280"}
                     />
                     <Text
-                      className={`ml-2 font-medium ${
+                      style={twStyle(`ml-2 font-medium ${
                         locationType === loc.val ? "text-white" : "text-gray-700"
-                      }`}
+                      }`)}
                     >
                       {loc.label}
                     </Text>
@@ -730,25 +730,25 @@ export default function NewBookingScreen() {
                 ))}
               </View>
               {locationType === "at_home" && (
-                <View className="mb-4 gap-3">
-                  <Text className="text-xs text-gray-500">Address (for at home)</Text>
+                <View style={twStyle("mb-4")}>
+                  <Text style={twStyle("text-xs text-gray-500")}>Address (for at home)</Text>
                   <TextInput
-                    className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                    style={[twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"), { marginTop: 8 }]}
                     placeholder="Street address"
                     placeholderTextColor="#9ca3af"
                     value={addressLine1}
                     onChangeText={setAddressLine1}
                   />
-                  <View className="flex-row gap-2">
+                  <View style={[twStyle("flex-row"), { marginTop: 12 }]}>
                     <TextInput
-                      className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                      style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"), { marginRight: 8 }]}
                       placeholder="City"
                       placeholderTextColor="#9ca3af"
                       value={addressCity}
                       onChangeText={setAddressCity}
                     />
                     <TextInput
-                      className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                      style={twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                       placeholder="Country"
                       placeholderTextColor="#9ca3af"
                       value={addressCountry}
@@ -756,9 +756,9 @@ export default function NewBookingScreen() {
                     />
                   </View>
                   <View>
-                    <Text className="mb-1 text-xs text-gray-500">Travel fee (ZAR, optional)</Text>
+                    <Text style={twStyle("mb-1 text-xs text-gray-500")}>Travel fee (ZAR, optional)</Text>
                     <TextInput
-                      className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                      style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                       placeholder="0"
                       placeholderTextColor="#9ca3af"
                       value={travelFee}
@@ -772,7 +772,7 @@ export default function NewBookingScreen() {
               {/* -------- TIP -------- */}
               <SectionLabel label="Tip (optional, ZAR)" />
               <TextInput
-                className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 placeholder="0"
                 placeholderTextColor="#9ca3af"
                 value={tipAmount}
@@ -781,55 +781,55 @@ export default function NewBookingScreen() {
               />
             </View>
 
-            <View className={isTablet ? "flex-1" : ""}>
+            <View style={twStyle(isTablet ? "flex-1" : "")}>
               {/* -------- SERVICES -------- */}
               <SectionLabel label="Services" required />
               {servicesLoading ? (
                 <LoadingState fullScreen={false} message="Loading services..." />
               ) : (
-                <View className="mb-4 gap-2">
-                  {services?.map((service) => {
+                <View style={twStyle("mb-4")}>
+                  {services?.map((service, svcIdx) => {
                     const sel = selectedServices.find((s) => s.serviceId === service.id);
                     const isSelected = !!sel;
                     const staffName = staffList?.find((s) => s.id === sel?.staffId)?.name;
 
                     return (
-                      <View key={service.id}>
+                      <View key={service.id} style={svcIdx > 0 ? { marginTop: 8 } : undefined}>
                         <TouchableOpacity
-                          className={`flex-row items-center justify-between rounded-xl border p-4 ${
+                          style={twStyle(`flex-row items-center justify-between rounded-xl border p-4 ${
                             isSelected
                               ? "border-indigo-500 bg-indigo-50"
                               : "border-gray-100 bg-white"
-                          }`}
+                          }`)}
                           onPress={() => toggleService(service.id)}
                           accessibilityRole="checkbox"
                           accessibilityState={{ checked: isSelected }}
                           accessibilityLabel={`${service.title}, ${service.duration_minutes} minutes, R${service.price}`}
                         >
-                          <View className="flex-1">
+                          <View style={twStyle("flex-1")}>
                             <Text
-                              className={`text-sm font-medium ${
+                              style={twStyle(`text-sm font-medium ${
                                 isSelected ? "text-indigo-900" : "text-gray-900"
-                              }`}
+                              }`)}
                             >
                               {service.title}
                             </Text>
-                            <Text className="text-xs text-gray-500">
+                            <Text style={twStyle("text-xs text-gray-500")}>
                               {formatDuration(service.duration_minutes)}
                             </Text>
                           </View>
-                          <View className="flex-row items-center">
+                          <View style={twStyle("flex-row items-center")}>
                             <Text
-                              className={`mr-3 text-sm font-semibold ${
+                              style={twStyle(`mr-3 text-sm font-semibold ${
                                 isSelected ? "text-indigo-700" : "text-gray-900"
-                              }`}
+                              }`)}
                             >
                               R{service.price.toFixed(2)}
                             </Text>
                             <View
-                              className={`h-5 w-5 items-center justify-center rounded-md ${
+                              style={twStyle(`h-5 w-5 items-center justify-center rounded-md ${
                                 isSelected ? "bg-indigo-600" : "border border-gray-300"
-                              }`}
+                              }`)}
                             >
                               {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
                             </View>
@@ -838,15 +838,15 @@ export default function NewBookingScreen() {
 
                         {/* Staff + Add-ons for selected service */}
                         {isSelected && (
-                          <View className="ml-4 mt-1 mb-1 flex-row gap-2">
+                          <View style={twStyle("ml-4 mt-1 mb-1 flex-row")}>
                             {/* Staff picker button */}
                             <TouchableOpacity
-                              className="flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5"
+                              style={[twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5"), { marginRight: 8 }]}
                               onPress={() => setStaffPickerService(service.id)}
                               accessibilityLabel={`Assign staff for ${service.title}`}
                             >
                               <Ionicons name="person-outline" size={14} color="#6b7280" />
-                              <Text className="ml-1 text-xs text-gray-600">
+                              <Text style={twStyle("ml-1 text-xs text-gray-600")}>
                                 {staffName ?? "Assign Staff"}
                               </Text>
                             </TouchableOpacity>
@@ -854,12 +854,12 @@ export default function NewBookingScreen() {
                             {/* Add-on picker button */}
                             {service.add_ons && service.add_ons.length > 0 && (
                               <TouchableOpacity
-                                className="flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5"
+                                style={twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5")}
                                 onPress={() => setAddOnPickerService(service.id)}
                                 accessibilityLabel={`Add-ons for ${service.title}`}
                               >
                                 <Ionicons name="add-circle-outline" size={14} color="#6b7280" />
-                                <Text className="ml-1 text-xs text-gray-600">
+                                <Text style={twStyle("ml-1 text-xs text-gray-600")}>
                                   Add-ons ({sel?.addOnIds.length ?? 0})
                                 </Text>
                               </TouchableOpacity>
@@ -874,10 +874,10 @@ export default function NewBookingScreen() {
 
               {/* -------- DISCOUNT -------- */}
               <SectionLabel label="Discount" />
-              <View className="mb-4 flex-row items-center gap-2">
-                <View className="flex-1 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3">
+              <View style={twStyle("mb-4 flex-row items-center")}>
+                <View style={[twStyle("flex-1 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3"), { marginRight: 8 }]}>
                   <TextInput
-                    className="flex-1 py-3 text-base text-gray-900"
+                    style={twStyle("flex-1 py-3 text-base text-gray-900")}
                     placeholder="0"
                     placeholderTextColor="#9ca3af"
                     value={discountValue}
@@ -887,31 +887,31 @@ export default function NewBookingScreen() {
                   />
                 </View>
                 <TouchableOpacity
-                  className={`rounded-lg px-3 py-3 ${
+                  style={[twStyle(`rounded-lg px-3 py-3 ${
                     discountType === "percentage" ? "bg-gray-900" : "border border-gray-200 bg-white"
-                  }`}
+                  }`), { marginRight: 8 }]}
                   onPress={() => setDiscountType("percentage")}
                   accessibilityLabel="Percentage discount"
                 >
                   <Text
-                    className={`text-sm font-semibold ${
+                    style={twStyle(`text-sm font-semibold ${
                       discountType === "percentage" ? "text-white" : "text-gray-600"
-                    }`}
+                    }`)}
                   >
                     %
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  className={`rounded-lg px-3 py-3 ${
+                  style={twStyle(`rounded-lg px-3 py-3 ${
                     discountType === "fixed" ? "bg-gray-900" : "border border-gray-200 bg-white"
-                  }`}
+                  }`)}
                   onPress={() => setDiscountType("fixed")}
                   accessibilityLabel="Fixed amount discount"
                 >
                   <Text
-                    className={`text-sm font-semibold ${
+                    style={twStyle(`text-sm font-semibold ${
                       discountType === "fixed" ? "text-white" : "text-gray-600"
-                    }`}
+                    }`)}
                   >
                     R
                   </Text>
@@ -920,15 +920,15 @@ export default function NewBookingScreen() {
 
               {/* -------- PAYMENT METHOD -------- */}
               <SectionLabel label="Payment Method" />
-              <View className="mb-4 flex-row gap-2">
-                {PAYMENT_METHODS.map((pm) => (
+              <View style={twStyle("mb-4 flex-row")}>
+                {PAYMENT_METHODS.map((pm, idx) => (
                   <TouchableOpacity
                     key={pm.value}
-                    className={`flex-1 flex-row items-center justify-center rounded-xl border py-3 ${
+                    style={[twStyle(`flex-1 flex-row items-center justify-center rounded-xl border py-3 ${
                       paymentMethod === pm.value
                         ? "border-gray-900 bg-gray-900"
                         : "border-gray-200 bg-white"
-                    }`}
+                    }`), idx < PAYMENT_METHODS.length - 1 ? { marginRight: 8 } : undefined]}
                     onPress={() => setPaymentMethod(pm.value)}
                     accessibilityRole="radio"
                     accessibilityState={{ checked: paymentMethod === pm.value }}
@@ -939,9 +939,9 @@ export default function NewBookingScreen() {
                       color={paymentMethod === pm.value ? "#fff" : "#6b7280"}
                     />
                     <Text
-                      className={`ml-1.5 text-sm font-medium ${
+                      style={twStyle(`ml-1.5 text-sm font-medium ${
                         paymentMethod === pm.value ? "text-white" : "text-gray-700"
-                      }`}
+                      }`)}
                     >
                       {pm.label}
                     </Text>
@@ -953,26 +953,26 @@ export default function NewBookingScreen() {
               {referralSources.length > 0 && (
                 <>
                   <SectionLabel label="Where did this client come from?" />
-                  <View className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-2">
+                  <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 p-2")}>
                     <TouchableOpacity
-                      className={`rounded-lg px-3 py-2.5 ${!referralSourceId ? "bg-gray-900" : ""}`}
+                      style={twStyle(`rounded-lg px-3 py-2.5 ${!referralSourceId ? "bg-gray-900" : ""}`)}
                       onPress={() => setReferralSourceId("")}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: !referralSourceId }}
                     >
-                      <Text className={`text-sm font-medium ${!referralSourceId ? "text-white" : "text-gray-700"}`}>
+                      <Text style={twStyle(`text-sm font-medium ${!referralSourceId ? "text-white" : "text-gray-700"}`)}>
                         — None / Not specified —
                       </Text>
                     </TouchableOpacity>
                     {referralSources.map((s) => (
                       <TouchableOpacity
                         key={s.id}
-                        className={`mt-1 rounded-lg px-3 py-2.5 ${referralSourceId === s.id ? "bg-gray-900" : ""}`}
+                        style={twStyle(`mt-1 rounded-lg px-3 py-2.5 ${referralSourceId === s.id ? "bg-gray-900" : ""}`)}
                         onPress={() => setReferralSourceId(s.id)}
                         accessibilityRole="radio"
                         accessibilityState={{ checked: referralSourceId === s.id }}
                       >
-                        <Text className={`text-sm font-medium ${referralSourceId === s.id ? "text-white" : "text-gray-700"}`}>
+                        <Text style={twStyle(`text-sm font-medium ${referralSourceId === s.id ? "text-white" : "text-gray-700"}`)}>
                           {s.name}
                         </Text>
                       </TouchableOpacity>
@@ -984,7 +984,7 @@ export default function NewBookingScreen() {
               {/* -------- NOTES -------- */}
               <SectionLabel label="Special Requests" />
               <TextInput
-                className="mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 placeholder="Any special requests or notes..."
                 placeholderTextColor="#9ca3af"
                 value={notes}
@@ -999,49 +999,49 @@ export default function NewBookingScreen() {
 
         {/* -------- SUMMARY -------- */}
         {!showConfirmation && selectedServices.length > 0 && (
-          <View className="mb-4 rounded-2xl border border-gray-100 bg-gray-50 p-4">
-            <Text className="mb-2 text-sm font-semibold text-gray-700">Summary</Text>
+          <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-gray-50 p-4")}>
+            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Summary</Text>
             {summary.items.map((item, i) => (
-              <View key={i} className="flex-row justify-between py-0.5">
-                <Text className="flex-1 text-sm text-gray-600" numberOfLines={1}>
+              <View key={i} style={twStyle("flex-row justify-between py-0.5")}>
+                <Text style={twStyle("flex-1 text-sm text-gray-600")} numberOfLines={1}>
                   {item.name}
                   {item.staffName ? ` (${item.staffName})` : ""}
                 </Text>
-                <Text className="text-sm text-gray-600">R{item.price.toFixed(2)}</Text>
+                <Text style={twStyle("text-sm text-gray-600")}>R{item.price.toFixed(2)}</Text>
               </View>
             ))}
-            <View className="my-2 h-px bg-gray-200" />
-            <View className="flex-row justify-between">
-              <Text className="text-sm text-gray-500">Subtotal</Text>
-              <Text className="text-sm text-gray-700">R{summary.subtotal.toFixed(2)}</Text>
+            <View style={twStyle("my-2 h-px bg-gray-200")} />
+            <View style={twStyle("flex-row justify-between")}>
+              <Text style={twStyle("text-sm text-gray-500")}>Subtotal</Text>
+              <Text style={twStyle("text-sm text-gray-700")}>R{summary.subtotal.toFixed(2)}</Text>
             </View>
             {summary.discountAmt > 0 && (
-              <View className="flex-row justify-between">
-                <Text className="text-sm text-green-600">Discount</Text>
-                <Text className="text-sm text-green-600">-R{summary.discountAmt.toFixed(2)}</Text>
+              <View style={twStyle("flex-row justify-between")}>
+                <Text style={twStyle("text-sm text-green-600")}>Discount</Text>
+                <Text style={twStyle("text-sm text-green-600")}>-R{summary.discountAmt.toFixed(2)}</Text>
               </View>
             )}
-            <View className="flex-row justify-between">
-              <Text className="text-sm text-gray-500">VAT (15%)</Text>
-              <Text className="text-sm text-gray-700">R{summary.tax.toFixed(2)}</Text>
+            <View style={twStyle("flex-row justify-between")}>
+              <Text style={twStyle("text-sm text-gray-500")}>VAT (15%)</Text>
+              <Text style={twStyle("text-sm text-gray-700")}>R{summary.tax.toFixed(2)}</Text>
             </View>
             {summary.travelFeeNum > 0 && (
-              <View className="flex-row justify-between">
-                <Text className="text-sm text-gray-500">Travel fee</Text>
-                <Text className="text-sm text-gray-700">R{summary.travelFeeNum.toFixed(2)}</Text>
+              <View style={twStyle("flex-row justify-between")}>
+                <Text style={twStyle("text-sm text-gray-500")}>Travel fee</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>R{summary.travelFeeNum.toFixed(2)}</Text>
               </View>
             )}
             {summary.tipNum > 0 && (
-              <View className="flex-row justify-between">
-                <Text className="text-sm text-gray-500">Tip</Text>
-                <Text className="text-sm text-gray-700">R{summary.tipNum.toFixed(2)}</Text>
+              <View style={twStyle("flex-row justify-between")}>
+                <Text style={twStyle("text-sm text-gray-500")}>Tip</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>R{summary.tipNum.toFixed(2)}</Text>
               </View>
             )}
-            <View className="mt-1 flex-row justify-between">
-              <Text className="text-base font-bold text-gray-900">Total</Text>
-              <Text className="text-base font-bold text-gray-900">R{summary.total.toFixed(2)}</Text>
+            <View style={twStyle("mt-1 flex-row justify-between")}>
+              <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
+              <Text style={twStyle("text-base font-bold text-gray-900")}>R{summary.total.toFixed(2)}</Text>
             </View>
-            <Text className="mt-1 text-xs text-gray-400">
+            <Text style={twStyle("mt-1 text-xs text-gray-400")}>
               {formatDuration(summary.totalMinutes)} total duration
             </Text>
           </View>
@@ -1056,7 +1056,7 @@ export default function NewBookingScreen() {
           />
         )}
 
-        <View className="h-8" />
+        <View style={twStyle("h-8")} />
 
         {/* -------- TIME PICKER SHEET -------- */}
         <BottomSheet
@@ -1065,15 +1065,15 @@ export default function NewBookingScreen() {
           title="Select Time"
           snapHeight="half"
         >
-          <View className="flex-row flex-wrap gap-2">
+          <View style={twStyle("flex-row flex-wrap")}>
             {timeSlotsToShow.map((slot) => {
               const isActive = selectedTime === slot;
               return (
                 <TouchableOpacity
                   key={slot}
-                  className={`rounded-lg px-3 py-2 ${
+                  style={[twStyle(`rounded-lg px-3 py-2 ${
                     isActive ? "bg-gray-900" : "border border-gray-200 bg-white"
-                  }`}
+                  }`), { marginRight: 8, marginBottom: 8 }]}
                   onPress={() => {
                     setSelectedTime(slot);
                     setShowTimePicker(false);
@@ -1082,9 +1082,9 @@ export default function NewBookingScreen() {
                   accessibilityState={{ checked: isActive }}
                 >
                   <Text
-                    className={`text-sm font-medium ${
+                    style={twStyle(`text-sm font-medium ${
                       isActive ? "text-white" : "text-gray-700"
-                    }`}
+                    }`)}
                   >
                     {slot}
                   </Text>
@@ -1100,23 +1100,23 @@ export default function NewBookingScreen() {
           onClose={() => setStaffPickerService(null)}
           title="Assign Staff"
         >
-          <View className="gap-2">
-            {staffList?.map((s) => (
+          <View>
+            {staffList?.map((s, idx) => (
               <TouchableOpacity
                 key={s.id}
-                className="flex-row items-center rounded-xl border border-gray-100 bg-white p-3"
+                style={[twStyle("flex-row items-center rounded-xl border border-gray-100 bg-white p-3"), idx > 0 ? { marginTop: 8 } : undefined]}
                 onPress={() => setStaffForService(staffPickerService!, s.id)}
                 accessibilityLabel={`Assign ${s.name}`}
               >
                 <Avatar name={s.name} imageUrl={s.avatar_url} size="sm" />
-                <View className="ml-3 flex-1">
-                  <Text className="text-sm font-medium text-gray-900">{s.name}</Text>
-                  {s.role && <Text className="text-xs text-gray-500">{s.role}</Text>}
+                <View style={twStyle("ml-3 flex-1")}>
+                  <Text style={twStyle("text-sm font-medium text-gray-900")}>{s.name}</Text>
+                  {s.role && <Text style={twStyle("text-xs text-gray-500")}>{s.role}</Text>}
                 </View>
               </TouchableOpacity>
             ))}
             {(!staffList || staffList.length === 0) && (
-              <Text className="py-4 text-center text-sm text-gray-400">No staff members found</Text>
+              <Text style={twStyle("py-4 text-center text-sm text-gray-400")}>No staff members found</Text>
             )}
           </View>
         </BottomSheet>
@@ -1127,37 +1127,37 @@ export default function NewBookingScreen() {
           onClose={() => setAddOnPickerService(null)}
           title="Select Add-ons"
         >
-          <View className="gap-2">
+          <View>
             {(() => {
               const svc = services?.find((s) => s.id === addOnPickerService);
               const sel = selectedServices.find((s) => s.serviceId === addOnPickerService);
-              if (!svc?.add_ons) return <Text className="text-sm text-gray-400">No add-ons available</Text>;
-              return svc.add_ons.map((ao) => {
+              if (!svc?.add_ons) return <Text style={twStyle("text-sm text-gray-400")}>No add-ons available</Text>;
+              return svc.add_ons.map((ao, idx) => {
                 const isChecked = sel?.addOnIds.includes(ao.id) ?? false;
                 return (
                   <TouchableOpacity
                     key={ao.id}
-                    className={`flex-row items-center justify-between rounded-xl border p-3 ${
+                    style={[twStyle(`flex-row items-center justify-between rounded-xl border p-3 ${
                       isChecked ? "border-indigo-400 bg-indigo-50" : "border-gray-100 bg-white"
-                    }`}
+                    }`), idx > 0 ? { marginTop: 8 } : undefined]}
                     onPress={() => toggleAddOn(addOnPickerService!, ao.id)}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: isChecked }}
                   >
-                    <View className="flex-1">
-                      <Text className="text-sm font-medium text-gray-900">{ao.name}</Text>
-                      <Text className="text-xs text-gray-500">
+                    <View style={twStyle("flex-1")}>
+                      <Text style={twStyle("text-sm font-medium text-gray-900")}>{ao.name}</Text>
+                      <Text style={twStyle("text-xs text-gray-500")}>
                         {formatDuration(ao.duration_minutes)}
                       </Text>
                     </View>
-                    <View className="flex-row items-center">
-                      <Text className="mr-2 text-sm font-semibold text-gray-800">
+                    <View style={twStyle("flex-row items-center")}>
+                      <Text style={twStyle("mr-2 text-sm font-semibold text-gray-800")}>
                         R{ao.price.toFixed(2)}
                       </Text>
                       <View
-                        className={`h-5 w-5 items-center justify-center rounded-md ${
+                        style={twStyle(`h-5 w-5 items-center justify-center rounded-md ${
                           isChecked ? "bg-indigo-600" : "border border-gray-300"
-                        }`}
+                        }`)}
                       >
                         {isChecked && <Ionicons name="checkmark" size={14} color="#fff" />}
                       </View>
@@ -1209,15 +1209,15 @@ function ConfirmationView({
 }) {
   return (
     <View accessibilityLabel="Booking confirmation">
-      <View className="mb-4 items-center">
-        <View className="mb-2 h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100">
+      <View style={twStyle("mb-4 items-center")}>
+        <View style={twStyle("mb-2 h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100")}>
           <Ionicons name="checkmark-circle-outline" size={30} color="#6366f1" />
         </View>
-        <Text className="text-lg font-bold text-gray-900">Confirm Booking</Text>
-        <Text className="text-sm text-gray-500">Review the details below</Text>
+        <Text style={twStyle("text-lg font-bold text-gray-900")}>Confirm Booking</Text>
+        <Text style={twStyle("text-sm text-gray-500")}>Review the details below</Text>
       </View>
 
-      <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
         <ConfirmRow label="Client" value={clientName} />
         <ConfirmRow label="Date" value={format(selectedDate, "EEE, MMM d, yyyy")} />
         <ConfirmRow label="Time" value={selectedTime} />
@@ -1226,51 +1226,51 @@ function ConfirmationView({
         <ConfirmRow label="Duration" value={formatDuration(summary.totalMinutes)} />
       </View>
 
-      <View className="mb-4 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-gray-50 p-4")}>
         {summary.items.map((item, i) => (
-          <View key={i} className="flex-row justify-between py-0.5">
-            <Text className="flex-1 text-sm text-gray-600" numberOfLines={1}>
+          <View key={i} style={twStyle("flex-row justify-between py-0.5")}>
+            <Text style={twStyle("flex-1 text-sm text-gray-600")} numberOfLines={1}>
               {item.name}{item.staffName ? ` (${item.staffName})` : ""}
             </Text>
-            <Text className="text-sm text-gray-600">R{item.price.toFixed(2)}</Text>
+            <Text style={twStyle("text-sm text-gray-600")}>R{item.price.toFixed(2)}</Text>
           </View>
         ))}
-        <View className="my-2 h-px bg-gray-200" />
-        <View className="flex-row justify-between">
-          <Text className="text-sm text-gray-500">Subtotal</Text>
-          <Text className="text-sm text-gray-700">R{summary.subtotal.toFixed(2)}</Text>
+        <View style={twStyle("my-2 h-px bg-gray-200")} />
+        <View style={twStyle("flex-row justify-between")}>
+          <Text style={twStyle("text-sm text-gray-500")}>Subtotal</Text>
+          <Text style={twStyle("text-sm text-gray-700")}>R{summary.subtotal.toFixed(2)}</Text>
         </View>
         {summary.discountAmt > 0 && (
-          <View className="flex-row justify-between">
-            <Text className="text-sm text-green-600">Discount</Text>
-            <Text className="text-sm text-green-600">-R{summary.discountAmt.toFixed(2)}</Text>
+          <View style={twStyle("flex-row justify-between")}>
+            <Text style={twStyle("text-sm text-green-600")}>Discount</Text>
+            <Text style={twStyle("text-sm text-green-600")}>-R{summary.discountAmt.toFixed(2)}</Text>
           </View>
         )}
-        <View className="flex-row justify-between">
-          <Text className="text-sm text-gray-500">VAT (15%)</Text>
-          <Text className="text-sm text-gray-700">R{summary.tax.toFixed(2)}</Text>
+        <View style={twStyle("flex-row justify-between")}>
+          <Text style={twStyle("text-sm text-gray-500")}>VAT (15%)</Text>
+          <Text style={twStyle("text-sm text-gray-700")}>R{summary.tax.toFixed(2)}</Text>
         </View>
         {(summary.travelFeeNum ?? 0) > 0 && (
-          <View className="flex-row justify-between">
-            <Text className="text-sm text-gray-500">Travel fee</Text>
-            <Text className="text-sm text-gray-700">R{(summary.travelFeeNum ?? 0).toFixed(2)}</Text>
+          <View style={twStyle("flex-row justify-between")}>
+            <Text style={twStyle("text-sm text-gray-500")}>Travel fee</Text>
+            <Text style={twStyle("text-sm text-gray-700")}>R{(summary.travelFeeNum ?? 0).toFixed(2)}</Text>
           </View>
         )}
         {(summary.tipNum ?? 0) > 0 && (
-          <View className="flex-row justify-between">
-            <Text className="text-sm text-gray-500">Tip</Text>
-            <Text className="text-sm text-gray-700">R{(summary.tipNum ?? 0).toFixed(2)}</Text>
+          <View style={twStyle("flex-row justify-between")}>
+            <Text style={twStyle("text-sm text-gray-500")}>Tip</Text>
+            <Text style={twStyle("text-sm text-gray-700")}>R{(summary.tipNum ?? 0).toFixed(2)}</Text>
           </View>
         )}
-        <View className="mt-2 flex-row justify-between">
-          <Text className="text-lg font-bold text-gray-900">Total</Text>
-          <Text className="text-lg font-bold text-gray-900">R{summary.total.toFixed(2)}</Text>
+        <View style={twStyle("mt-2 flex-row justify-between")}>
+          <Text style={twStyle("text-lg font-bold text-gray-900")}>Total</Text>
+          <Text style={twStyle("text-lg font-bold text-gray-900")}>R{summary.total.toFixed(2)}</Text>
         </View>
       </View>
 
       <ActionButton label="Confirm & Create Booking" onPress={onConfirm} loading={creating} fullWidth />
-      <TouchableOpacity className="mt-3 items-center py-2" onPress={onBack}>
-        <Text className="text-sm font-medium text-gray-600">Back to Edit</Text>
+      <TouchableOpacity style={twStyle("mt-3 items-center py-2")} onPress={onBack}>
+        <Text style={twStyle("text-sm font-medium text-gray-600")}>Back to Edit</Text>
       </TouchableOpacity>
     </View>
   );
@@ -1278,9 +1278,9 @@ function ConfirmationView({
 
 function ConfirmRow({ label, value }: { label: string; value: string }) {
   return (
-    <View className="flex-row justify-between border-b border-gray-50 py-2">
-      <Text className="text-sm text-gray-500">{label}</Text>
-      <Text className="text-sm font-medium text-gray-900">{value}</Text>
+    <View style={twStyle("flex-row justify-between border-b border-gray-50 py-2")}>
+      <Text style={twStyle("text-sm text-gray-500")}>{label}</Text>
+      <Text style={twStyle("text-sm font-medium text-gray-900")}>{value}</Text>
     </View>
   );
 }

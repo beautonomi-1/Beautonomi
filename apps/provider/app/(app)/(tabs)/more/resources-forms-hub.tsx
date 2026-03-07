@@ -7,6 +7,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 type Form = {
   id: string;
@@ -37,7 +38,7 @@ export default function ResourcesFormsHubScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Resources & forms" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -48,7 +49,7 @@ export default function ResourcesFormsHubScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Resources & forms" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -63,43 +64,43 @@ export default function ResourcesFormsHubScreen() {
         onBack={() => router.back()}
       />
       <ScrollView
-        className="flex-1"
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
         {forms.length === 0 ? (
-          <View className="py-12 px-4 items-center">
+          <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="document-text-outline" size={48} color="#9ca3af" />
-            <Text className="mt-4 text-center text-gray-600">No forms yet</Text>
-            <Text className="mt-2 text-center text-sm text-gray-500 mb-4">
+            <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>No forms yet</Text>
+            <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500], marginBottom: 16 }}>
               Add intake and consent forms in the app
             </Text>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/forms" as never)}
-              className="rounded-xl bg-teal-600 px-6 py-3"
+              style={{ borderRadius: 12, backgroundColor: "#0d9488", paddingHorizontal: 24, paddingVertical: 12 }}
               activeOpacity={0.8}
             >
-              <Text className="font-semibold text-white">Manage forms</Text>
+              <Text style={{ fontWeight: "600", color: Colors.white }}>Manage forms</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <View className="pb-4">
+          <View style={{ paddingBottom: 16 }}>
             {forms.map((f) => (
               <View
                 key={f.id}
-                className="mb-3 rounded-xl border border-gray-200 bg-white p-4"
+                style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               >
-                <Text className="font-semibold text-gray-900">{f.title}</Text>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{f.title}</Text>
                 {f.form_type && (
-                  <Text className="mt-0.5 text-xs text-gray-500 capitalize">{f.form_type.replace(/_/g, " ")}</Text>
+                  <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500], textTransform: "capitalize" }}>{f.form_type.replace(/_/g, " ")}</Text>
                 )}
                 {f.fields?.length != null && (
-                  <Text className="mt-2 text-sm text-gray-600">{f.fields.length} field(s)</Text>
+                  <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>{f.fields.length} field(s)</Text>
                 )}
                 {f.is_required && (
-                  <View className="mt-1 self-start rounded bg-amber-100 px-2 py-0.5">
-                    <Text className="text-xs text-amber-800">Required</Text>
+                  <View style={{ marginTop: 4, alignSelf: "flex-start", borderRadius: 4, backgroundColor: "#fef3c2", paddingHorizontal: 8, paddingVertical: 2 }}>
+                    <Text style={{ fontSize: 12, color: "#92400e" }}>Required</Text>
                   </View>
                 )}
               </View>

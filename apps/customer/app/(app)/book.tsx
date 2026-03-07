@@ -20,6 +20,7 @@ import { useLocation } from "@/hooks/useLocation";
 import { useAddresses, type SavedAddress } from "@/hooks/useAddresses";
 import { AddressPicker } from "@/components/AddressPicker";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
@@ -100,13 +101,13 @@ function BookingSummaryHeader({ provider, service, variant }: {
 
   return (
     <View style={{
-      flexDirection: "row", alignItems: "center", gap: 12,
+      flexDirection: "row", alignItems: "center",
       backgroundColor: "#F9FAFB", borderRadius: 16, padding: 12, marginBottom: 12,
     }}>
       {provider.thumbnail_url ? (
-        <Image source={{ uri: provider.thumbnail_url }} style={{ width: 44, height: 44, borderRadius: 22 }} contentFit="cover" cachePolicy="memory-disk" />
+        <Image source={{ uri: provider.thumbnail_url }} style={{ width: 44, height: 44, borderRadius: 22, marginRight: 12 }} contentFit="cover" cachePolicy="memory-disk" />
       ) : (
-        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center" }}>
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 12 }}>
           <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 18 }}>{(provider.business_name || "P").charAt(0).toUpperCase()}</Text>
         </View>
       )}
@@ -162,6 +163,8 @@ function DateCell({ date, isSelected, isToday, onPress }: {
    ═══════════════════════════════════════════ */
 export default function BookScreen() {
   useScreenTracking("Book");
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const { slug, service_id, duration_minutes } = useLocalSearchParams<{
     slug: string;
     service_id?: string;
@@ -348,29 +351,29 @@ export default function BookScreen() {
         <Stack.Screen options={{ headerShown: false }} />
         <View style={{ flex: 1, backgroundColor: "#fff" }}>
           {/* Custom header skeleton */}
-          <View style={{ flexDirection: "row", alignItems: "center", paddingTop: 52, paddingHorizontal: 16, paddingBottom: 12, gap: 12, backgroundColor: "#fff" }}>
-            <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: "#F3F4F6" }} />
+          <View style={{ flexDirection: "row", alignItems: "center", paddingTop: 52, paddingHorizontal: contentPadding, paddingBottom: 12, backgroundColor: "#fff" }}>
+            <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: "#F3F4F6", marginRight: 12 }} />
             <Skeleton width="40%" height={18} />
           </View>
-          <View style={{ paddingHorizontal: 16, gap: 12 }}>
+          <View style={{ paddingHorizontal: contentPadding }}>
             {/* Step indicator skeleton */}
-            <View style={{ flexDirection: "row", gap: 8, paddingVertical: 12 }}>
-              {[1, 2, 3, 4].map((i) => <Skeleton key={i} width={28} height={28} borderRadius={14} />)}
+            <View style={{ flexDirection: "row", paddingVertical: 12 }}>
+              {[1, 2, 3, 4].map((i) => <Skeleton key={i} width={28} height={28} borderRadius={14} style={i < 4 ? { marginRight: 8 } : undefined} />)}
             </View>
             {/* Provider summary skeleton */}
-            <View style={{ flexDirection: "row", gap: 12, backgroundColor: "#F9FAFB", borderRadius: 16, padding: 12 }}>
+            <View style={{ flexDirection: "row", backgroundColor: "#F9FAFB", borderRadius: 16, padding: 12 }}>
               <Skeleton width={44} height={44} borderRadius={22} />
-              <View style={{ flex: 1, gap: 6 }}>
+              <View style={{ flex: 1, marginLeft: 12 }}>
                 <Skeleton width="60%" height={16} />
-                <Skeleton width="80%" height={12} />
+                <Skeleton width="80%" height={12} style={{ marginTop: 6 }} />
               </View>
             </View>
             {/* Service list skeleton */}
-            <Skeleton width="30%" height={20} />
+            <Skeleton width="30%" height={20} style={{ marginTop: 12 }} />
             {[1, 2, 3, 4].map((i) => (
-              <View key={i} style={{ paddingVertical: 14, borderBottomWidth: 1, borderColor: "#F3F4F6", gap: 6 }}>
+              <View key={i} style={{ paddingVertical: 14, borderBottomWidth: 1, borderColor: "#F3F4F6" }}>
                 <Skeleton width="70%" height={16} />
-                <Skeleton width="40%" height={12} />
+                <Skeleton width="40%" height={12} style={{ marginTop: 6 }} />
               </View>
             ))}
           </View>
@@ -384,7 +387,7 @@ export default function BookScreen() {
     return (
       <>
         <Stack.Screen options={{ headerShown: false }} />
-        <View style={{ flex: 1, backgroundColor: "#fff", padding: 24, alignItems: "center", justifyContent: "center" }}>
+        <View style={{ flex: 1, backgroundColor: "#fff", padding: contentPadding, alignItems: "center", justifyContent: "center" }}>
           <Ionicons name="alert-circle-outline" size={48} color="#9CA3AF" />
           <Text style={{ color: "#6B7280", marginTop: 12, textAlign: "center", fontSize: 15 }}>{error}</Text>
           <TouchableOpacity
@@ -412,7 +415,7 @@ export default function BookScreen() {
       <View style={{ flex: 1, backgroundColor: "#fff" }}>
         {/* ═══ Custom Header ═══ */}
         <View style={{
-          flexDirection: "row", alignItems: "center", paddingTop: 52, paddingHorizontal: 16, paddingBottom: 8,
+          flexDirection: "row", alignItems: "center", paddingTop: 52, paddingHorizontal: contentPadding, paddingBottom: 8,
           backgroundColor: "#fff", borderBottomWidth: 1, borderColor: "#F3F4F6",
         }}>
           <TouchableOpacity
@@ -439,7 +442,7 @@ export default function BookScreen() {
         >
           <ScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
+            contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
@@ -490,16 +493,16 @@ export default function BookScreen() {
                           </Text>
                         </View>
                         {!hasVariants && (
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                            {isSelected && <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />}
+                          <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            {isSelected && <Ionicons name="checkmark-circle" size={20} color={Colors.primary} style={{ marginRight: 4 }} />}
                             <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
                           </View>
                         )}
                         {hasVariants && <Ionicons name="chevron-down" size={18} color="#9CA3AF" />}
                       </Pressable>
                       {hasVariants && (
-                        <View style={{ paddingLeft: 12, gap: 6, marginBottom: 8 }}>
-                          {svc.variants!.map((v) => {
+                        <View style={{ paddingLeft: 12, marginBottom: 8 }}>
+                          {svc.variants!.map((v, vi) => {
                             const vSelected = selectedVariant?.id === v.id;
                             return (
                               <Pressable
@@ -515,6 +518,7 @@ export default function BookScreen() {
                                   borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12,
                                   backgroundColor: vSelected ? Colors.primaryLight : "#F9FAFB",
                                   borderColor: vSelected ? Colors.primary : "#E5E7EB",
+                                  marginTop: vi === 0 ? 0 : 6,
                                 }}
                                 accessibilityRole="button"
                                 accessibilityLabel={`${v.title ?? svc.title} ${v.duration_minutes} minutes ${svc.currency} ${v.price}`}
@@ -523,8 +527,8 @@ export default function BookScreen() {
                                   <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{v.title ?? `${v.duration_minutes} min`}</Text>
                                   <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{v.duration_minutes} min</Text>
                                 </View>
-                                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                                  <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.primary }}>{svc.currency} {v.price.toFixed(2)}</Text>
+                                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                  <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.primary, marginRight: 6 }}>{svc.currency} {v.price.toFixed(2)}</Text>
                                   {vSelected && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
                                 </View>
                               </Pressable>
@@ -551,8 +555,8 @@ export default function BookScreen() {
                       setStep(staff.length ? "staff" : "date");
                     }}
                     style={{
-                      flexDirection: "row", alignItems: "center", gap: 14,
-                      padding: 16, borderRadius: 16, marginBottom: 10,
+                      flexDirection: "row", alignItems: "center",
+                      padding: contentPadding, borderRadius: 16, marginBottom: 10,
                       borderWidth: 1.5, borderColor: locationType === "at_salon" ? Colors.primary : "#E5E7EB",
                       backgroundColor: locationType === "at_salon" ? Colors.primaryLight : "#fff",
                     }}
@@ -560,7 +564,7 @@ export default function BookScreen() {
                   >
                     <View style={{
                       width: 48, height: 48, borderRadius: 12, backgroundColor: "#EDE9FE",
-                      alignItems: "center", justifyContent: "center",
+                      alignItems: "center", justifyContent: "center", marginRight: 14,
                     }}>
                       <Ionicons name="business-outline" size={24} color="#7C3AED" />
                     </View>
@@ -590,8 +594,8 @@ export default function BookScreen() {
                       }
                     }}
                     style={{
-                      flexDirection: "row", alignItems: "center", gap: 14,
-                      padding: 16, borderRadius: 16, marginBottom: 10,
+                      flexDirection: "row", alignItems: "center",
+                      padding: contentPadding, borderRadius: 16, marginBottom: 10,
                       borderWidth: 1.5, borderColor: locationType === "at_home" ? Colors.primary : "#E5E7EB",
                       backgroundColor: locationType === "at_home" ? Colors.primaryLight : "#fff",
                     }}
@@ -599,7 +603,7 @@ export default function BookScreen() {
                   >
                     <View style={{
                       width: 48, height: 48, borderRadius: 12, backgroundColor: "#ECFDF5",
-                      alignItems: "center", justifyContent: "center",
+                      alignItems: "center", justifyContent: "center", marginRight: 14,
                     }}>
                       <Ionicons name="home-outline" size={24} color="#059669" />
                     </View>
@@ -611,7 +615,7 @@ export default function BookScreen() {
                   </Pressable>
                 )}
                 {locationType === "at_home" && (
-                  <View style={{ marginTop: 8, gap: 10 }}>
+                  <View style={{ marginTop: 8 }}>
                     {user && savedAddresses.length > 0 && (
                       <View style={{ marginBottom: 4 }}>
                         <Text style={{ fontSize: 13, fontWeight: "600", color: "#6B7280", marginBottom: 8 }}>Saved addresses</Text>
@@ -634,14 +638,14 @@ export default function BookScreen() {
                                 );
                               }}
                               style={{
-                                flexDirection: "row", alignItems: "center", gap: 10,
+                                flexDirection: "row", alignItems: "center",
                                 paddingVertical: 12, paddingHorizontal: 14, marginBottom: 6,
                                 borderRadius: 12, borderWidth: 1.5,
                                 borderColor: isSelected ? Colors.primary : "#E5E7EB",
                                 backgroundColor: isSelected ? Colors.primaryLight : "#F9FAFB",
                               }}
                             >
-                              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#E5E7EB", alignItems: "center", justifyContent: "center" }}>
+                              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#E5E7EB", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
                                 <Ionicons name={addr.is_default ? "star" : "home-outline"} size={18} color={isSelected ? Colors.primary : "#6B7280"} />
                               </View>
                               <View style={{ flex: 1 }}>
@@ -654,9 +658,9 @@ export default function BookScreen() {
                         })}
                         <TouchableOpacity
                           onPress={() => { haptic.light(); setAddressPickerVisible(true); }}
-                          style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 10 }}
+                          style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10 }}
                         >
-                          <Ionicons name="search-outline" size={18} color={Colors.primary} />
+                          <Ionicons name="search-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
                           <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>Enter different address</Text>
                         </TouchableOpacity>
                       </View>
@@ -664,20 +668,20 @@ export default function BookScreen() {
                     {(!user || savedAddresses.length === 0) && (
                       <TouchableOpacity
                         onPress={() => { haptic.light(); setAddressPickerVisible(true); }}
-                        style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8, marginBottom: 4 }}
+                        style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8, marginBottom: 4, marginTop: 10 }}
                       >
-                        <Ionicons name="location-outline" size={18} color={Colors.primary} />
+                        <Ionicons name="location-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
                         <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>Search address</Text>
                       </TouchableOpacity>
                     )}
-                    <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>Or enter manually</Text>
+                    <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 10 }}>Or enter manually</Text>
                     <TextInput
                       placeholder="Street address"
                       value={atHomeAddress.line1}
                       onChangeText={(t) => { setAtHomeAddress((a) => ({ ...a, line1: t })); if (!atHomeCoords && coords) setAtHomeCoords({ latitude: coords.latitude, longitude: coords.longitude }); }}
                       style={{
-                        borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
-                        fontSize: 15, color: "#111827", backgroundColor: "#F9FAFB",
+                        borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingHorizontal: contentPadding, paddingVertical: 14,
+                        fontSize: 15, color: "#111827", backgroundColor: "#F9FAFB", marginTop: 10,
                       }}
                       placeholderTextColor="#9CA3AF"
                       accessibilityLabel="Street address"
@@ -687,8 +691,8 @@ export default function BookScreen() {
                       value={atHomeAddress.city}
                       onChangeText={(t) => setAtHomeAddress((a) => ({ ...a, city: t }))}
                       style={{
-                        borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
-                        fontSize: 15, color: "#111827", backgroundColor: "#F9FAFB",
+                        borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, paddingHorizontal: contentPadding, paddingVertical: 14,
+                        fontSize: 15, color: "#111827", backgroundColor: "#F9FAFB", marginTop: 10,
                       }}
                       placeholderTextColor="#9CA3AF"
                       accessibilityLabel="City"
@@ -698,7 +702,7 @@ export default function BookScreen() {
                       disabled={!atHomeAddress.line1.trim() || !atHomeAddress.city.trim()}
                       style={{
                         backgroundColor: (!atHomeAddress.line1.trim() || !atHomeAddress.city.trim()) ? "#D1D5DB" : Colors.primary,
-                        borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 4,
+                        borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 10,
                       }}
                       accessibilityRole="button" accessibilityLabel="Continue"
                     >
@@ -725,7 +729,7 @@ export default function BookScreen() {
                         setStep("date");
                       }}
                       style={{
-                        flexDirection: "row", alignItems: "center", gap: 12,
+                        flexDirection: "row", alignItems: "center",
                         padding: 14, borderRadius: 16, marginBottom: 8,
                         borderWidth: 1.5, borderColor: isSelected ? Colors.primary : "#F3F4F6",
                         backgroundColor: isSelected ? Colors.primaryLight : "#fff",
@@ -734,9 +738,9 @@ export default function BookScreen() {
                       accessibilityLabel={`Select ${s.name}`}
                     >
                       {s.avatar_url ? (
-                        <Image source={{ uri: s.avatar_url }} style={{ width: 48, height: 48, borderRadius: 24 }} contentFit="cover" cachePolicy="memory-disk" />
+                        <Image source={{ uri: s.avatar_url }} style={{ width: 48, height: 48, borderRadius: 24, marginRight: 12 }} contentFit="cover" cachePolicy="memory-disk" />
                       ) : (
-                        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center" }}>
+                        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
                           <Text style={{ color: "#6B7280", fontWeight: "700", fontSize: 18 }}>{initial}</Text>
                         </View>
                       )}
@@ -753,7 +757,7 @@ export default function BookScreen() {
 
             {/* ── Step: Date (no staff available fallback) ── */}
             {step === "date" && staff.length === 0 && (
-              <View style={{ backgroundColor: "#FFFBEB", borderRadius: 16, padding: 20, alignItems: "center" }}>
+              <View style={{ backgroundColor: "#FFFBEB", borderRadius: 16, padding: contentPadding, alignItems: "center" }}>
                 <Ionicons name="alert-circle-outline" size={32} color="#F59E0B" />
                 <Text style={{ color: "#92400E", marginTop: 8, textAlign: "center", fontSize: 14, lineHeight: 20 }}>
                   Online booking for this provider requires staff selection. Book via the website instead.
@@ -814,7 +818,7 @@ export default function BookScreen() {
                 </View>
 
                 {/* Quick jump: "Next week" chip */}
-                <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+                <View style={{ flexDirection: "row", marginTop: 12 }}>
                   {["Today", "Tomorrow", "Next week"].map((label, i) => {
                     const targetDate = i === 0 ? today : i === 1 ? addDays(today, 1) : addDays(today, 7);
                     return (
@@ -830,6 +834,7 @@ export default function BookScreen() {
                         style={{
                           backgroundColor: "#F3F4F6", borderRadius: 999,
                           paddingHorizontal: 14, paddingVertical: 8,
+                          marginRight: i < 2 ? 8 : 0,
                         }}
                       >
                         <Text style={{ fontSize: 13, fontWeight: "500", color: "#374151" }}>{label}</Text>
@@ -849,9 +854,9 @@ export default function BookScreen() {
                 </Text>
 
                 {loadingSlots ? (
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                     {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                      <Skeleton key={i} width={80} height={44} borderRadius={12} />
+                      <Skeleton key={i} width={80} height={44} borderRadius={12} style={{ marginRight: 8, marginBottom: 8 }} />
                     ))}
                   </View>
                 ) : slots.length === 0 ? (
@@ -860,13 +865,13 @@ export default function BookScreen() {
                     <Text style={{ color: "#6B7280", marginTop: 8, fontSize: 14 }}>No available slots for this date.</Text>
                     <TouchableOpacity
                       onPress={() => setStep("date")}
-                      style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, marginTop: 12 }}
+                      style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: contentPadding, paddingVertical: 10, marginTop: 12 }}
                     >
                       <Text style={{ color: "#fff", fontWeight: "600" }}>Try Another Date</Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                     {slots.map((slot, i) => {
                       const timeStr = new Date(slot.start).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
                       const isSelected = selectedSlot?.start === slot.start;
@@ -875,10 +880,12 @@ export default function BookScreen() {
                           key={i}
                           onPress={() => { haptic.light(); setSelectedSlot(slot); }}
                           style={{
-                            paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12,
+                            paddingHorizontal: contentPadding, paddingVertical: 12, borderRadius: 12,
                             borderWidth: 1.5,
                             backgroundColor: isSelected ? Colors.primary : "#fff",
                             borderColor: isSelected ? Colors.primary : "#E5E7EB",
+                            marginRight: 8,
+                            marginBottom: 8,
                           }}
                           accessibilityRole="button"
                           accessibilityLabel={`Select time ${timeStr}`}
@@ -902,7 +909,7 @@ export default function BookScreen() {
           {/* ═══ Sticky Bottom CTA ═══ */}
           {step === "time" && selectedSlot && (
             <View style={{
-              paddingHorizontal: 16, paddingVertical: 12, paddingBottom: 28,
+              paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
               borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
             }}>
               <TouchableOpacity
@@ -910,7 +917,7 @@ export default function BookScreen() {
                 disabled={creatingHold}
                 style={{
                   backgroundColor: Colors.primary, borderRadius: 14, paddingVertical: 16,
-                  alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8,
+                  alignItems: "center", flexDirection: "row", justifyContent: "center",
                   opacity: creatingHold ? 0.7 : 1,
                 }}
                 accessibilityRole="button"
@@ -918,13 +925,13 @@ export default function BookScreen() {
                 accessibilityState={{ disabled: creatingHold }}
               >
                 {creatingHold ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: "rgba(255,255,255,0.3)", borderTopColor: "#fff" }} />
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: "rgba(255,255,255,0.3)", borderTopColor: "#fff", marginRight: 8 }} />
                     <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Reserving...</Text>
                   </View>
                 ) : (
                   <>
-                    <Ionicons name="shield-checkmark-outline" size={20} color="#fff" />
+                    <Ionicons name="shield-checkmark-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                     <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
                       {user ? "Continue to Payment" : "Sign in to Continue"}
                     </Text>

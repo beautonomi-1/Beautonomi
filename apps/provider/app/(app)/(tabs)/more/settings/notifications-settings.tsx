@@ -7,6 +7,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { twStyle } from "@/lib/twStyle";
 
 interface ChannelPrefs {
   email: boolean;
@@ -196,11 +197,11 @@ export default function NotificationSettingsScreen() {
     );
 
     return (
-      <View className="mb-5">
-        <View className="mb-2 flex-row items-center justify-between">
-          <View className="flex-row items-center gap-2">
-            <Ionicons name={icon as any} size={14} color="#6b7280" />
-            <Text className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+      <View style={twStyle("mb-5")}>
+        <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row items-center")}>
+            <Ionicons name={icon as any} size={14} color="#6b7280" style={{ marginRight: 8 }} />
+            <Text style={twStyle("text-xs font-semibold uppercase tracking-wider text-gray-400")}>
               {title}
             </Text>
           </View>
@@ -211,30 +212,31 @@ export default function NotificationSettingsScreen() {
                 : enableAll(items, channel)
             }
           >
-            <Text className="text-[10px] font-medium text-indigo-600">
+            <Text style={twStyle("text-[10px] font-medium text-indigo-600")}>
               {allEnabled ? "Disable All" : "Enable All"}
             </Text>
           </TouchableOpacity>
         </View>
-        <View className="overflow-hidden rounded-2xl border border-gray-100 bg-white">
+        <View style={twStyle("overflow-hidden rounded-2xl border border-gray-100 bg-white")}>
           {items.map((item, idx) => {
             const value = (form[item.key] as ChannelPrefs)[channel];
             return (
               <TouchableOpacity
                 key={`${item.key}-${channel}`}
-                className={`flex-row items-center justify-between px-4 py-3.5 ${
+                style={twStyle(`flex-row items-center justify-between px-4 py-3.5 ${
                   idx < items.length - 1 ? "border-b border-gray-50" : ""
-                }`}
+                }`)}
                 onPress={() => toggleChannel(item.key, channel)}
                 activeOpacity={0.7}
               >
-                <View className="flex-row items-center gap-2.5">
+                <View style={twStyle("flex-row items-center")}>
                   <Ionicons
                     name={item.icon as any}
+                    style={{ marginRight: 10 }}
                     size={16}
                     color={value ? "#6366f1" : "#9ca3af"}
                   />
-                  <Text className="text-sm text-gray-700">{item.label}</Text>
+                  <Text style={twStyle("text-sm text-gray-700")}>{item.label}</Text>
                 </View>
                 <Switch
                   value={value}
@@ -263,23 +265,23 @@ export default function NotificationSettingsScreen() {
 
       {/* Test notification */}
       <TouchableOpacity
-        className="mb-4 flex-row items-center rounded-xl border border-indigo-100 bg-indigo-50 p-3"
+        style={twStyle("mb-4 flex-row items-center rounded-xl border border-indigo-100 bg-indigo-50 p-3")}
         onPress={handleTest}
         disabled={testing}
       >
-        <View className="h-8 w-8 items-center justify-center rounded-lg bg-indigo-100">
+        <View style={twStyle("h-8 w-8 items-center justify-center rounded-lg bg-indigo-100")}>
           <Ionicons name="paper-plane-outline" size={16} color="#6366f1" />
         </View>
-        <View className="ml-3 flex-1">
-          <Text className="text-sm font-medium text-indigo-700">
+        <View style={twStyle("ml-3 flex-1")}>
+          <Text style={twStyle("text-sm font-medium text-indigo-700")}>
             Send Test Notification
           </Text>
-          <Text className="text-[10px] text-indigo-500">
+          <Text style={twStyle("text-[10px] text-indigo-500")}>
             Verify your channels are working
           </Text>
         </View>
         {testing ? (
-          <Text className="text-xs text-indigo-400">Sending...</Text>
+          <Text style={twStyle("text-xs text-indigo-400")}>Sending...</Text>
         ) : (
           <Ionicons name="chevron-forward" size={16} color="#6366f1" />
         )}
@@ -305,15 +307,15 @@ export default function NotificationSettingsScreen() {
       )}
 
       {/* Marketing unsubscribe */}
-      <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row flex-1 items-center">
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row flex-1 items-center")}>
             <Ionicons name="megaphone-outline" size={18} color="#ef4444" />
-            <View className="ml-3 flex-1">
-              <Text className="text-sm font-medium text-gray-900">
+            <View style={twStyle("ml-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
                 Unsubscribe Marketing
               </Text>
-              <Text className="text-xs text-gray-500">
+              <Text style={twStyle("text-xs text-gray-500")}>
                 Stop all marketing communications
               </Text>
             </View>
@@ -337,7 +339,7 @@ export default function NotificationSettingsScreen() {
         disabled={!dirty}
         fullWidth
       />
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

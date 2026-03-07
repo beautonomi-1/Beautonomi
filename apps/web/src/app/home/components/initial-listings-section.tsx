@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import type { PublicProviderCard } from "@/types/beautonomi";
-import ProviderCard from "./provider-card";
+import ProviderCard from "./provider-card-dynamic";
 
 /**
  * Initial Service Listings Section

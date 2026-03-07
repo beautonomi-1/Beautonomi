@@ -98,7 +98,7 @@ const Navbar5: React.FC = () => {
         <div className="flex justify-between items-center py-3 mb-20">
           <div className="flex gap-8 items-center">
           <Link href="/" className="flex items-center gap-2">
-            <span className="text-xl font-bold" style={{ color: "#FF0077" }}>Beautonomi</span>
+            <span className="text-xl font-bold text-primary">Beautonomi</span>
           </Link>
           </div>
           <div className="md:hidden flex items-center">
@@ -172,7 +172,7 @@ const Navbar5: React.FC = () => {
         >
           <div className="flex justify-between items-center p-4 border-b">
             <Link href="/" className="flex items-center gap-2">
-              <span className="text-xl font-bold" style={{ color: "#FF0077" }}>Beautonomi</span>
+              <span className="text-xl font-bold text-primary">Beautonomi</span>
             </Link>
             <button onClick={() => setMobileMenuOpen(false)}>
               <Image src={CloseIcon} alt="Close Menu" />

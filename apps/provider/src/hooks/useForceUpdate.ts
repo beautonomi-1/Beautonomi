@@ -54,7 +54,7 @@ export function useForceUpdate() {
                     const storeUrl =
                       Platform.OS === "ios"
                         ? "https://apps.apple.com/app/beautonomi-provider/id0000000000"
-                        : "https://play.google.com/store/apps/details?id=com.beautonomi.provider";
+                        : "https://play.google.com/store/apps/details?id=com.beautonomi.partner";
                     Linking.openURL(storeUrl);
                   }
                 },
@@ -76,7 +76,7 @@ export function useForceUpdate() {
                     data.updateUrl ??
                     (Platform.OS === "ios"
                       ? "https://apps.apple.com/app/beautonomi-provider/id0000000000"
-                      : "https://play.google.com/store/apps/details?id=com.beautonomi.provider");
+                      : "https://play.google.com/store/apps/details?id=com.beautonomi.partner");
                   Linking.openURL(storeUrl);
                 },
               },

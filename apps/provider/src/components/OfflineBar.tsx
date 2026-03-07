@@ -22,12 +22,19 @@ export function OfflineBar() {
 
   return (
     <View
-      className="bg-gray-900 flex-row items-center justify-center py-2 px-4 gap-2"
-      style={Platform.OS === "android" ? { paddingTop: 4, paddingBottom: 4 } : undefined}
+      style={{
+        backgroundColor: "#111827",
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        ...(Platform.OS === "android" ? { paddingTop: 4, paddingBottom: 4 } : {}),
+      }}
       accessibilityRole="alert"
       accessibilityLabel="No internet connection"
     >
-      <Text className="text-white text-sm font-medium">
+      <Text style={{ color: "#fff", fontSize: 14, fontWeight: "500" }}>
         No internet connection
       </Text>
     </View>

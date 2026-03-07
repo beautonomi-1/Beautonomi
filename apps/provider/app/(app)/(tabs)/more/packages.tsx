@@ -21,6 +21,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
+import { Colors } from "@/constants/colors";
 
 interface PackageItem {
   id: string;
@@ -243,7 +244,7 @@ export default function PackagesScreen() {
         subtitle={`${packages.length} packages`}
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-900"
+            style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: Colors.gray[900] }}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); openCreate(); }}
           >
             <Ionicons name="add" size={20} color="#fff" />
@@ -254,7 +255,7 @@ export default function PackagesScreen() {
       <View style={{ flex: 1, minHeight: 0 }}>
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search packages..." />
 
-      <View className="my-3">
+      <View style={{ marginVertical: 12 }}>
         <FilterChipGroup
           options={[
             { label: "All", value: "all" },
@@ -282,57 +283,54 @@ export default function PackagesScreen() {
           showsVerticalScrollIndicator={true}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 10 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={!isTablet ? () => <View style={{ height: 10 }} /> : undefined}
           numColumns={isTablet ? 2 : 1}
-          columnWrapperStyle={isTablet ? { gap: 12 } : undefined}
-          renderItem={({ item: pkg }: { item: ServicePackage }) => (
+          columnWrapperStyle={isTablet ? { marginBottom: 12 } : undefined}
+          renderItem={({ item: pkg, index }: { item: ServicePackage; index: number }) => (
+            <View style={isTablet && index % 2 === 0 ? { marginRight: 12 } : undefined}>
             <TouchableOpacity
-              className={`rounded-xl border border-gray-100 bg-white p-4 ${isTablet ? "flex-1" : ""}`}
+              style={[ { borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }, isTablet && { flex: 1 } ]}
               onPress={() => openEdit(pkg)}
               activeOpacity={0.7}
             >
-              <View className="flex-row items-start justify-between">
-                <View className="flex-1">
-                  <Text className="text-base font-semibold text-gray-900">{pkg.name}</Text>
+              <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{pkg.name}</Text>
                   {pkg.description && (
-                    <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={2}>{pkg.description}</Text>
+                    <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }} numberOfLines={2}>{pkg.description}</Text>
                   )}
                 </View>
-                <View className="items-end">
-                  <Text className="text-base font-bold text-gray-900">{formatCurrency(pkg.price)}</Text>
+                <View style={{ alignItems: "flex-end" }}>
+                  <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{formatCurrency(pkg.price)}</Text>
                   {pkg.discount_percentage != null && pkg.discount_percentage > 0 && (
-                    <Text className="text-xs text-green-600">{pkg.discount_percentage}% off</Text>
+                    <Text style={{ fontSize: 12, color: "#16a34a" }}>{pkg.discount_percentage}% off</Text>
                   )}
                 </View>
               </View>
 
-              {/* Items list */}
-              <View className="mt-3 rounded-lg bg-gray-50 p-3">
+              <View style={{ marginTop: 12, borderRadius: 8, backgroundColor: Colors.gray[50], padding: 12 }}>
                 {pkg.items.map((item: PackageItem, i: number) => (
-                  <View key={item.id} className={`flex-row items-center justify-between ${i > 0 ? "mt-1.5" : ""}`}>
-                    <View className="flex-row items-center flex-1">
-                      <Ionicons
-                        name={item.offering_id ? "cut-outline" : "cube-outline"}
-                        size={14}
-                        color="#6b7280"
-                      />
-                      <Text className="ml-1.5 text-xs text-gray-700" numberOfLines={1}>
+                  <View key={item.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: i > 0 ? 6 : 0 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                      <Ionicons name={item.offering_id ? "cut-outline" : "cube-outline"} size={14} color="#6b7280" />
+                      <Text style={{ marginLeft: 6, fontSize: 12, color: Colors.gray[700] }} numberOfLines={1}>
                         {item.offering?.title ?? item.product?.name ?? "Item"}
                       </Text>
                     </View>
                     {item.quantity > 1 && (
-                      <Text className="text-xs text-gray-500">×{item.quantity}</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[500] }}>×{item.quantity}</Text>
                     )}
                   </View>
                 ))}
                 {pkg.items.length === 0 && (
-                  <Text className="text-xs text-gray-400">No items</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[400] }}>No items</Text>
                 )}
               </View>
 
-              <View className="mt-3 flex-row items-center justify-between">
-                <View className={`rounded-full px-2.5 py-0.5 ${pkg.is_active ? "bg-green-50" : "bg-gray-100"}`}>
-                  <Text className={`text-[10px] font-medium ${pkg.is_active ? "text-green-700" : "text-gray-500"}`}>
+              <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <View style={{ borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 2, backgroundColor: pkg.is_active ? "#dcfce7" : Colors.gray[100] }}>
+                  <Text style={{ fontSize: 10, fontWeight: "500", color: pkg.is_active ? "#15803d" : Colors.gray[500] }}>
                     {pkg.is_active ? "Active" : "Inactive"}
                   </Text>
                 </View>
@@ -341,6 +339,7 @@ export default function PackagesScreen() {
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>
+            </View>
           )}
         />
       )}
@@ -354,18 +353,18 @@ export default function PackagesScreen() {
         title={editingPkg ? "Edit Package" : "New Package"}
       >
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">Package Name *</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Package Name *</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
             placeholder="e.g. Luxury Pamper Package"
             placeholderTextColor="#9ca3af"
           />
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Description</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Description</Text>
           <TextInput
-            className="mb-3 min-h-[60px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={{ marginBottom: 12, minHeight: 60, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.description}
             onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
             placeholder="Brief description..."
@@ -374,11 +373,11 @@ export default function PackagesScreen() {
             textAlignVertical="top"
           />
 
-          <View className="mb-3 flex-row gap-3">
-            <View className="flex-1">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Price (R) *</Text>
+          <View style={{ marginBottom: 12, flexDirection: "row" }}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Price (R) *</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={form.price}
                 onChangeText={(t) => setForm((p) => ({ ...p, price: t }))}
                 placeholder="0.00"
@@ -386,10 +385,10 @@ export default function PackagesScreen() {
                 keyboardType="decimal-pad"
               />
             </View>
-            <View className="flex-1">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Discount %</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Discount %</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={form.discount_percentage}
                 onChangeText={(t) => setForm((p) => ({ ...p, discount_percentage: t }))}
                 placeholder="0"
@@ -399,37 +398,43 @@ export default function PackagesScreen() {
             </View>
           </View>
 
-          {/* Package items */}
-          <View className="mb-3 flex-row items-center justify-between">
-            <Text className="text-sm font-medium text-gray-700">Items ({form.items.length})</Text>
+          <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Items ({form.items.length})</Text>
             <TouchableOpacity
-              className="flex-row items-center rounded-full bg-indigo-50 px-3 py-1.5"
+              style={{ flexDirection: "row", alignItems: "center", borderRadius: 9999, backgroundColor: "#eef2ff", paddingHorizontal: 12, paddingVertical: 6 }}
               onPress={() => setShowItemPicker(true)}
             >
               <Ionicons name="add" size={16} color="#6366f1" />
-              <Text className="ml-1 text-xs font-medium text-indigo-600">Add Item</Text>
+              <Text style={{ marginLeft: 4, fontSize: 12, fontWeight: "500", color: "#4f46e5" }}>Add Item</Text>
             </TouchableOpacity>
           </View>
 
           {form.items.length > 0 && (
-            <View className="mb-3 rounded-xl border border-gray-200 bg-gray-50">
+            <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50] }}>
               {form.items.map((item, idx) => (
                 <View
                   key={idx}
-                  className={`flex-row items-center px-4 py-3 ${idx < form.items.length - 1 ? "border-b border-gray-200" : ""}`}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderBottomWidth: idx < form.items.length - 1 ? 1 : 0,
+                    borderBottomColor: Colors.gray[200],
+                  }}
                 >
-                  <View className="flex-1">
-                    <Text className="text-sm text-gray-900">{item.label}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{item.label}</Text>
                   </View>
-                  <View className="flex-row items-center gap-2">
-                    <TouchableOpacity onPress={() => updateItemQty(idx, item.quantity - 1)}>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <TouchableOpacity onPress={() => updateItemQty(idx, item.quantity - 1)} style={{ marginRight: 8 }}>
                       <Ionicons name="remove-circle-outline" size={22} color="#6b7280" />
                     </TouchableOpacity>
-                    <Text className="w-6 text-center text-sm font-semibold">{item.quantity}</Text>
-                    <TouchableOpacity onPress={() => updateItemQty(idx, item.quantity + 1)}>
+                    <Text style={{ width: 24, textAlign: "center", fontSize: 14, fontWeight: "600", marginRight: 8 }}>{item.quantity}</Text>
+                    <TouchableOpacity onPress={() => updateItemQty(idx, item.quantity + 1)} style={{ marginRight: 8 }}>
                       <Ionicons name="add-circle-outline" size={22} color="#6b7280" />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => removeItem(idx)} className="ml-2">
+                    <TouchableOpacity onPress={() => removeItem(idx)} style={{ marginLeft: 8 }}>
                       <Ionicons name="close-circle" size={20} color="#ef4444" />
                     </TouchableOpacity>
                   </View>
@@ -438,9 +443,8 @@ export default function PackagesScreen() {
             </View>
           )}
 
-          {/* Active toggle */}
-          <View className="mb-4 flex-row items-center justify-between">
-            <Text className="text-sm font-medium text-gray-700">Active</Text>
+          <View style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Active</Text>
             <Switch
               value={form.is_active}
               onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}
@@ -461,36 +465,38 @@ export default function PackagesScreen() {
       {/* Item picker sheet */}
       <BottomSheet visible={showItemPicker} onClose={() => setShowItemPicker(false)} title="Add Item">
         <View>
-          <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">Services</Text>
+          <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Services</Text>
           {(services ?? []).map((svc) => (
             <TouchableOpacity
               key={svc.id}
-              className="flex-row items-center justify-between rounded-lg px-3 py-3 active:bg-gray-50"
+              style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12 }}
               onPress={() => addServiceItem(svc)}
+              activeOpacity={0.7}
             >
-              <View className="flex-row items-center flex-1">
+              <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                 <Ionicons name="cut-outline" size={18} color="#6366f1" />
-                <View className="ml-2.5">
-                  <Text className="text-sm text-gray-900">{svc.title}</Text>
-                  <Text className="text-xs text-gray-500">{svc.duration_minutes}min · R{svc.price}</Text>
+                <View style={{ marginLeft: 10 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{svc.title}</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{svc.duration_minutes}min · R{svc.price}</Text>
                 </View>
               </View>
               <Ionicons name="add-circle-outline" size={22} color="#6366f1" />
             </TouchableOpacity>
           ))}
 
-          <Text className="mb-2 mt-4 text-xs font-semibold uppercase text-gray-400">Products</Text>
+          <Text style={{ marginBottom: 8, marginTop: 16, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Products</Text>
           {products.map((prod) => (
             <TouchableOpacity
               key={prod.id}
-              className="flex-row items-center justify-between rounded-lg px-3 py-3 active:bg-gray-50"
+              style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12 }}
               onPress={() => addProductItem(prod)}
+              activeOpacity={0.7}
             >
-              <View className="flex-row items-center flex-1">
+              <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                 <Ionicons name="cube-outline" size={18} color="#8b5cf6" />
-                <View className="ml-2.5">
-                  <Text className="text-sm text-gray-900">{prod.name}</Text>
-                  <Text className="text-xs text-gray-500">R{prod.retail_price}</Text>
+                <View style={{ marginLeft: 10 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{prod.name}</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>R{prod.retail_price}</Text>
                 </View>
               </View>
               <Ionicons name="add-circle-outline" size={22} color="#8b5cf6" />

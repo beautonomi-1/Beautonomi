@@ -8,11 +8,13 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { Colors } from "@/constants/colors";
 
 interface Milestone {
   id: string;
@@ -46,6 +48,7 @@ interface GamificationResponse {
 
 /** Content-only for use in Rewards hub (Badges tab). */
 export function GamificationBadgesContent() {
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<GamificationResponse>(
     "/api/provider/gamification"
@@ -70,14 +73,14 @@ export function GamificationBadgesContent() {
 
   if (loading && !data) {
     return (
-      <View className="flex-1 items-center justify-center py-12">
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
         <LoadingState />
       </View>
     );
   }
   if (error && !data) {
     return (
-      <View className="flex-1 justify-center px-4">
+      <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
         <ErrorState message={error} onRetry={refresh} />
       </View>
     );
@@ -85,68 +88,65 @@ export function GamificationBadgesContent() {
 
   return (
     <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
       >
-        <View className="mb-6 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
-          <View className="flex-row items-center justify-between">
+        <View style={{ marginBottom: 24, borderRadius: 16, borderWidth: 1, borderColor: "#a7f3d0", backgroundColor: "rgba(236,253,245,0.5)", padding: 16 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <View>
-              <Text className="text-sm font-medium text-gray-600">Total points</Text>
-              <Text className="text-2xl font-bold text-gray-900">{points.total}</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>Total points</Text>
+              <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{points.total}</Text>
             </View>
             {badge && (
-              <View
-                className="flex-row items-center rounded-xl px-3 py-2"
-                style={{ backgroundColor: badge.color ? `${badge.color}25` : "#d1fae5" }}
-              >
+              <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: badge.color ? `${badge.color}25` : "#d1fae5" }}>
                 <Ionicons name="ribbon" size={20} color={badge.color ?? "#059669"} />
-                <Text className="ml-2 font-semibold text-gray-800">{badge.name}</Text>
+                <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.gray[800] }}>{badge.name}</Text>
               </View>
             )}
           </View>
         </View>
 
         {progress && (
-          <View className="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
-            <Text className="mb-2 text-sm font-semibold text-gray-700">Progress to next badge</Text>
-            <Text className="text-sm text-gray-600">
+          <View style={{ marginBottom: 24, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Progress to next badge</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
               {progress.badge.name} — {progress.current_points} / {progress.required_points} pts
             </Text>
-            <View className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
-              <View
-                className="h-full rounded-full bg-emerald-500"
-                style={{ width: `${Math.min(100, progress.progress_percentage)}%` }}
-              />
+            <View style={{ marginTop: 8, height: 8, overflow: "hidden", borderRadius: 9999, backgroundColor: Colors.gray[100] }}>
+              <View style={{ height: "100%", borderRadius: 9999, backgroundColor: "#10b981", width: `${Math.min(100, progress.progress_percentage)}%` }} />
             </View>
-            <Text className="mt-1 text-xs text-gray-500">
-              {progress.points_needed} points to go
-            </Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>{progress.points_needed} points to go</Text>
           </View>
         )}
 
         {milestones.length > 0 && (
-          <View className="mb-6">
-            <Text className="mb-2 text-sm font-semibold text-gray-700">Milestones</Text>
-            <View className="rounded-xl border border-gray-200 bg-white">
-              {milestones.slice(0, 15).map((m) => (
+          <View style={{ marginBottom: 24 }}>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Milestones</Text>
+            <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white }}>
+              {milestones.slice(0, 15).map((m, idx) => (
                 <View
                   key={m.id}
-                  className="flex-row items-center border-b border-gray-100 px-4 py-3 last:border-b-0"
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    borderBottomWidth: idx < Math.min(15, milestones.length) - 1 ? 1 : 0,
+                    borderBottomColor: Colors.gray[100],
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                  }}
                 >
-                  <View className="h-9 w-9 items-center justify-center rounded-full bg-emerald-100">
+                  <View style={{ height: 36, width: 36, alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#d1fae5" }}>
                     <Ionicons name="flag-outline" size={18} color="#059669" />
                   </View>
-                  <View className="ml-3 flex-1">
-                    <Text className="font-medium text-gray-900 capitalize">
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={{ fontWeight: "500", color: Colors.gray[900], textTransform: "capitalize" }}>
                       {String(m.milestone_type).replace(/_/g, " ")}
                     </Text>
-                    <Text className="text-xs text-gray-500">
-                      {new Date(m.achieved_at).toLocaleDateString()}
-                    </Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{new Date(m.achieved_at).toLocaleDateString()}</Text>
                   </View>
                 </View>
               ))}
@@ -155,12 +155,12 @@ export function GamificationBadgesContent() {
         )}
 
         {!badge && points.total === 0 && milestones.length === 0 && (
-          <View className="mb-6 rounded-2xl border border-gray-100 bg-gray-50/50 p-6">
-            <View className="mb-3 h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
+          <View style={{ marginBottom: 24, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: "rgba(249,250,251,0.5)", padding: 24 }}>
+            <View style={{ marginBottom: 12, height: 56, width: 56, alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#d1fae5" }}>
               <Ionicons name="ribbon-outline" size={28} color="#10b981" />
             </View>
-            <Text className="text-center font-medium text-gray-900">No badges yet</Text>
-            <Text className="mt-1 text-center text-sm text-gray-500">
+            <Text style={{ textAlign: "center", fontWeight: "500", color: Colors.gray[900] }}>No badges yet</Text>
+            <Text style={{ marginTop: 4, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
               Earn points from bookings and reviews to unlock badges and milestones.
             </Text>
           </View>

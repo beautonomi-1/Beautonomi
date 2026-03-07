@@ -209,7 +209,7 @@ const Navbar: React.FC = () => {
                         </Button>
                         <Button 
                           variant="secondary" 
-                          className="w-full bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#D60565] hover:to-[#FF0077] text-white" 
+                          className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white" 
                           size="lg"
                           onClick={() => {
                             setIsSideMenuOpen(false);
@@ -277,7 +277,7 @@ const Navbar: React.FC = () => {
                           </Button>
                           <Button 
                             variant="secondary" 
-                            className="w-full bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#D60565] hover:to-[#FF0077] text-white" 
+                            className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white" 
                             size="lg"
                           >
                             Sign Up
@@ -543,7 +543,7 @@ const Navbar: React.FC = () => {
                       </li>
                       <li className="pr-20 pl-5">
                         <button
-                          className="bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#D60565] hover:to-[#FF0077] text-white px-4 py-2 rounded-md text-base font-normal transition-colors"
+                          className="bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white px-4 py-2 rounded-md text-base font-normal transition-colors"
                           onClick={() => {
                             setLoginModalMode("signup");
                             setIsLoginModalOpen(true);

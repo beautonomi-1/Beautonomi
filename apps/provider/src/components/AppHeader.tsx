@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Platform, ActionSheetIOS, Modal, Pressabl
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useResponsive } from "@/hooks/useResponsive";
 import * as Haptics from "expo-haptics";
 import { BeautonomiLogo } from "@/components/ui/BeautonomiLogo";
 import { LocationSwitcher } from "@/components/ui/LocationSwitcher";
@@ -20,6 +21,7 @@ const QUICK_ACTION_ITEMS: { label: string; route: string; icon: keyof typeof Ion
 export function AppHeader() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { screenPadding } = useResponsive();
   const { provider } = useProvider();
   const hasMultipleLocations = (provider?.locations?.length ?? 0) > 1;
   const [quickActionsVisible, setQuickActionsVisible] = useState(false);
@@ -60,7 +62,7 @@ export function AppHeader() {
       style={{
         paddingTop: insets.top,
         paddingBottom: 10,
-        paddingHorizontal: 16,
+        paddingHorizontal: screenPadding,
         backgroundColor: "#ffffff",
         borderBottomWidth: 1,
         borderBottomColor: "#f3f4f6",
@@ -88,7 +90,7 @@ export function AppHeader() {
         </TouchableOpacity>
 
         {/* Right: search, notification, quick action, location */}
-        <View style={{ flexDirection: "row", alignItems: "center", gap: Platform.OS === "web" ? 16 : 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
           <TouchableOpacity
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -97,6 +99,7 @@ export function AppHeader() {
             hitSlop={hitSlop}
             accessibilityLabel="Search clients, appointments, services"
             accessibilityRole="button"
+            style={{ marginRight: Platform.OS === "web" ? 16 : 12 }}
           >
             <Ionicons name="search-outline" size={iconSize} color={iconColor} />
           </TouchableOpacity>
@@ -108,7 +111,7 @@ export function AppHeader() {
             hitSlop={hitSlop}
             accessibilityLabel={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
             accessibilityRole="button"
-            style={{ position: "relative" }}
+            style={{ position: "relative", marginRight: Platform.OS === "web" ? 16 : 12 }}
           >
             <Ionicons name="notifications-outline" size={iconSize} color={iconColor} />
             {unreadCount > 0 && (
@@ -140,6 +143,7 @@ export function AppHeader() {
             hitSlop={hitSlop}
             accessibilityLabel="Quick actions menu"
             accessibilityRole="button"
+            style={hasMultipleLocations ? undefined : { marginRight: Platform.OS === "web" ? 16 : 12 }}
           >
             <Ionicons name="add-circle-outline" size={iconSize} color={iconColor} />
           </TouchableOpacity>
@@ -185,12 +189,11 @@ export function AppHeader() {
                     flexDirection: "row",
                     alignItems: "center",
                     paddingVertical: 12,
-                    paddingHorizontal: 16,
-                    gap: 12,
+                    paddingHorizontal: screenPadding,
                   }}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name={item.icon} size={20} color="#374151" />
+                  <Ionicons name={item.icon} size={20} color="#374151" style={{ marginRight: 12 }} />
                   <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{item.label}</Text>
                 </TouchableOpacity>
               ))}

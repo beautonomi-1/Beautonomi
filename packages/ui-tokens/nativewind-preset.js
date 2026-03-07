@@ -1,31 +1,38 @@
 /**
  * NativeWind preset for Expo/React Native
- * Self-contained tokens - no runtime deps on built package.
+ * Aligned with @beautonomi/ui-tokens design system (see src/colors.ts).
  * Use: presets: [require("nativewind/preset"), require("@beautonomi/ui-tokens/nativewind-preset")]
+ *
+ * Semantic tokens:
+ * - primary = brand accent (hot pink) — CTAs, links
+ * - secondary = dark neutral — headings, body
+ * - muted = soft gray — backgrounds, borders
+ * - tertiary = teal — secondary CTAs
  */
 
 const colors = {
   background: "#ffffff",
-  foreground: "hsl(0, 0%, 3.9%)",
-  primary: "#f7f7f7",
-  primaryForeground: "hsl(0, 0%, 3.9%)",
+  foreground: "#0a0a0a",
+  primary: "#FF0077",
+  primaryHover: "#D60565",
+  primaryForeground: "#ffffff",
   secondary: "#222222",
-  secondaryForeground: "hsl(0, 0%, 98%)",
+  secondaryForeground: "#fafafa",
   tertiary: "#008489",
-  accent: "#dddddd",
-  accentForeground: "hsl(0, 0%, 9%)",
-  muted: "#FF0077",
-  mutedForeground: "hsl(0, 0%, 45.1%)",
-  destructive: "#6A6A6A",
-  destructiveForeground: "hsl(0, 0%, 98%)",
-  border: "hsl(0, 0%, 89.8%)",
-  input: "hsl(0, 0%, 89.8%)",
-  ring: "hsl(0, 0%, 63.9%)",
+  accent: "#f5f5f5",
+  accentForeground: "#171717",
+  muted: "#f5f5f5",
+  mutedForeground: "#737373",
+  destructive: "#ef4444",
+  destructiveForeground: "#fafafa",
+  border: "#e5e5e5",
+  input: "#e5e5e5",
+  ring: "#a3a3a3",
   card: "#ffffff",
-  cardForeground: "hsl(0, 0%, 3.9%)",
-  popover: "#717171",
-  popoverForeground: "hsl(0, 0%, 98%)",
-  brand: { primary: "#008489", secondary: "#222222" },
+  cardForeground: "#0a0a0a",
+  popover: "#ffffff",
+  popoverForeground: "#0a0a0a",
+  brand: { primary: "#FF0077", secondary: "#008489", dark: "#222222" },
 };
 
 const spacing = {
@@ -56,7 +63,7 @@ module.exports = {
         ring: colors.ring,
         background: colors.background,
         foreground: colors.foreground,
-        primary: { DEFAULT: colors.primary, foreground: colors.primaryForeground },
+        primary: { DEFAULT: colors.primary, hover: colors.primaryHover, foreground: colors.primaryForeground },
         secondary: { DEFAULT: colors.secondary, foreground: colors.secondaryForeground },
         destructive: { DEFAULT: colors.destructive, foreground: colors.destructiveForeground },
         muted: { DEFAULT: colors.muted, foreground: colors.mutedForeground },

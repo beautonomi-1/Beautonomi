@@ -9,6 +9,9 @@ overrides:
   react-dom: 19.1.0
   react-native: 0.81.5
   '@react-native-async-storage/async-storage': 2.2.0
+  '@amplitude/analytics-react-native>react': 19.1.0
+  '@amplitude/analytics-react-native>react-native': 0.81.5
+  '@amplitude/plugin-engagement-react-native>react': 19.1.0
 
 importers:
 
@@ -48,7 +51,7 @@ importers:
         specifier: ^11.4.1
         version: 11.4.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))
       '@sentry/react-native':
-        specifier: ^7.2.0
+        specifier: ~7.2.0
         version: 7.2.0(expo@54.0.33)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       '@supabase/supabase-js':
         specifier: ^2.47.10
@@ -235,8 +238,8 @@ importers:
         specifier: 11.4.1
         version: 11.4.1(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))
       '@react-native-community/slider':
-        specifier: ^5.1.2
-        version: 5.1.2
+        specifier: 5.0.1
+        version: 5.0.1
       '@sentry/react-native':
         specifier: ~7.2.0
         version: 7.2.0(expo@54.0.33)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -628,13 +631,19 @@ importers:
     dependencies:
       '@amplitude/analytics-react-native':
         specifier: ^1.5.0
-        version: 1.5.38(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))(react@19.2.4)
+        version: 1.5.38(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       '@amplitude/plugin-engagement-react-native':
         specifier: ^3.0.0
-        version: 3.1.0(@react-native-async-storage/async-storage@2.2.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4)))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))(react@19.2.4)
+        version: 3.1.0(@react-native-async-storage/async-storage@2.2.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       '@beautonomi/types':
         specifier: workspace:*
         version: link:../types
+      react:
+        specifier: 19.1.0
+        version: 19.1.0
+      react-native:
+        specifier: 0.81.5
+        version: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
     devDependencies:
       tsup:
         specifier: ^8.3.5
@@ -3096,8 +3105,8 @@ packages:
     peerDependencies:
       react-native: 0.81.5
 
-  '@react-native-community/slider@5.1.2':
-    resolution: {integrity: sha512-UV/MjCyCtSjS5BQDrrGIMmCXm309xEG6XbR0Dj65kzTraJSVDxSjQS2uBUXgX+5SZUOCzCxzv3OufOZBdtQY4w==}
+  '@react-native-community/slider@5.0.1':
+    resolution: {integrity: sha512-K3JRWkIW4wQ79YJ6+BPZzp1SamoikxfPRw7Yw4B4PElEQmqZFrmH9M5LxvIo460/3QSrZF/wCgi3qizJt7g/iw==}
 
   '@react-native/assets-registry@0.81.5':
     resolution: {integrity: sha512-705B6x/5Kxm1RKRvSv0ADYWm5JOnoiQ1ufW7h8uu2E6G9Of/eE6hP/Ivw3U5jI16ERqZxiKQwk34VJbB0niX9w==}
@@ -7759,10 +7768,6 @@ packages:
     resolution: {integrity: sha512-FS+XFBNvn3GTAWq26joslQgWNoFu08F4kl0J4CgdNKADkdSGXQyTCnKteIAJy96Br6YbpEU1LSzV5dYtjMkMDg==}
     engines: {node: '>=0.10.0'}
 
-  react@19.2.4:
-    resolution: {integrity: sha512-9nfp2hYpCwOjAN+8TZFGhtWEwgvWHXqESH8qT89AT/lWklpLON22Lc8pEtnpsZz7VmawabSU0gCjnj8aC0euHQ==}
-    engines: {node: '>=0.10.0'}
-
   read-cache@1.0.0:
     resolution: {integrity: sha512-Owdv/Ft7IjOgm/i0xvNDZ1LrRANRfew4b2prF3OWMQLxLfu3bS8FVhCsrSCMK4lR56Y9ya+AThoTpDCTxCmpRA==}
 
@@ -9063,13 +9068,13 @@ snapshots:
       tslib: 2.8.1
       zen-observable-ts: 1.1.0
 
-  '@amplitude/analytics-react-native@1.5.38(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))(react@19.2.4)':
+  '@amplitude/analytics-react-native@1.5.38(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@amplitude/analytics-core': 2.38.0
       '@amplitude/ua-parser-js': 0.7.33
-      '@react-native-async-storage/async-storage': 2.2.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))
-      react: 19.2.4
-      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4)
+      '@react-native-async-storage/async-storage': 2.2.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))
+      react: 19.1.0
+      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
       tslib: 2.8.1
 
   '@amplitude/plugin-autocapture-browser@1.20.0':
@@ -9077,12 +9082,12 @@ snapshots:
       '@amplitude/analytics-core': 2.38.0
       tslib: 2.8.1
 
-  '@amplitude/plugin-engagement-react-native@3.1.0(@react-native-async-storage/async-storage@2.2.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4)))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))(react@19.2.4)':
+  '@amplitude/plugin-engagement-react-native@3.1.0(@react-native-async-storage/async-storage@2.2.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@amplitude/analytics-core': 2.38.0
-      '@react-native-async-storage/async-storage': 2.2.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))
-      react: 19.2.4
-      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4)
+      '@react-native-async-storage/async-storage': 2.2.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))
+      react: 19.1.0
+      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
 
   '@amplitude/plugin-network-capture-browser@1.7.9':
     dependencies:
@@ -11624,11 +11629,6 @@ snapshots:
       merge-options: 3.0.4
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
 
-  '@react-native-async-storage/async-storage@2.2.0(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))':
-    dependencies:
-      merge-options: 3.0.4
-      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4)
-
   '@react-native-community/datetimepicker@8.4.4(expo@54.0.33)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)':
     dependencies:
       invariant: 2.2.4
@@ -11641,7 +11641,7 @@ snapshots:
     dependencies:
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
 
-  '@react-native-community/slider@5.1.2': {}
+  '@react-native-community/slider@5.0.1': {}
 
   '@react-native/assets-registry@0.81.5': {}
 
@@ -11762,15 +11762,6 @@ snapshots:
       nullthrows: 1.1.1
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
-    optionalDependencies:
-      '@types/react': 19.1.17
-
-  '@react-native/virtualized-lists@0.81.5(@types/react@19.1.17)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))(react@19.2.4)':
-    dependencies:
-      invariant: 2.2.4
-      nullthrows: 1.1.1
-      react: 19.2.4
-      react-native: 0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4)
     optionalDependencies:
       '@types/react': 19.1.17
 
@@ -17179,53 +17170,6 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4):
-    dependencies:
-      '@jest/create-cache-key-function': 29.7.0
-      '@react-native/assets-registry': 0.81.5
-      '@react-native/codegen': 0.81.5(@babel/core@7.29.0)
-      '@react-native/community-cli-plugin': 0.81.5
-      '@react-native/gradle-plugin': 0.81.5
-      '@react-native/js-polyfills': 0.81.5
-      '@react-native/normalize-colors': 0.81.5
-      '@react-native/virtualized-lists': 0.81.5(@types/react@19.1.17)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.2.4))(react@19.2.4)
-      abort-controller: 3.0.0
-      anser: 1.4.10
-      ansi-regex: 5.0.1
-      babel-jest: 29.7.0(@babel/core@7.29.0)
-      babel-plugin-syntax-hermes-parser: 0.29.1
-      base64-js: 1.5.1
-      commander: 12.1.0
-      flow-enums-runtime: 0.0.6
-      glob: 7.2.3
-      invariant: 2.2.4
-      jest-environment-node: 29.7.0
-      memoize-one: 5.2.1
-      metro-runtime: 0.83.3
-      metro-source-map: 0.83.3
-      nullthrows: 1.1.1
-      pretty-format: 29.7.0
-      promise: 8.3.0
-      react: 19.2.4
-      react-devtools-core: 6.1.5
-      react-refresh: 0.14.2
-      regenerator-runtime: 0.13.11
-      scheduler: 0.26.0
-      semver: 7.7.4
-      stacktrace-parser: 0.1.11
-      whatwg-fetch: 3.6.20
-      ws: 6.2.3
-      yargs: 17.7.2
-    optionalDependencies:
-      '@types/react': 19.1.17
-    transitivePeerDependencies:
-      - '@babel/core'
-      - '@react-native-community/cli'
-      - '@react-native/metro-config'
-      - bufferutil
-      - supports-color
-      - utf-8-validate
-
   react-quill@2.0.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
     dependencies:
       '@types/quill': 1.3.10
@@ -17299,8 +17243,6 @@ snapshots:
       react-dom: 19.1.0(react@19.1.0)
 
   react@19.1.0: {}
-
-  react@19.2.4: {}
 
   read-cache@1.0.0:
     dependencies:

@@ -75,21 +75,20 @@ export default function LoginAndSecurityScreen() {
   };
 
   return (
-    <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
     <ScreenFrame loading={loading} error={error} onRetry={load}>
       {profile && (
-        <View className="gap-6">
-          {/* Biometric Login Section */}
-          <View className="rounded-xl border border-gray-300 bg-white px-4 py-4">
-            <View className="flex-row items-center justify-between">
-              <View className="flex-1 mr-3">
-                <Text className="text-base font-semibold text-gray-900">Biometric Login</Text>
+        <View>
+          <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 16 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>Biometric Login</Text>
                 {biometric.isAvailable ? (
-                  <Text className="text-sm text-gray-500 mt-1">
+                  <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
                     Use {biometricLabel} to sign in quickly
                   </Text>
                 ) : (
-                  <Text className="text-sm text-gray-400 mt-1">
+                  <Text style={{ fontSize: 14, color: Colors.gray[400], marginTop: 4 }}>
                     Biometric authentication is not available on this device
                   </Text>
                 )}
@@ -107,34 +106,35 @@ export default function LoginAndSecurityScreen() {
             </View>
           </View>
 
-          {/* Password Change Section */}
-          <View className="gap-4">
+          <View style={{ marginTop: 24 }}>
             <View>
-              <Text className="text-sm font-medium text-gray-700 mb-1">New password</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>New password</Text>
               <TextInput
-                className="rounded-xl border border-gray-300 bg-white px-4 py-3 text-base text-gray-900"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={password}
                 onChangeText={setPassword}
                 placeholder="••••••••"
+                placeholderTextColor={Colors.gray[400]}
                 secureTextEntry
               />
             </View>
-            <View>
-              <Text className="text-sm font-medium text-gray-700 mb-1">Confirm password</Text>
+            <View style={{ marginTop: 16 }}>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Confirm password</Text>
               <TextInput
-                className="rounded-xl border border-gray-300 bg-white px-4 py-3 text-base text-gray-900"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 placeholder="••••••••"
+                placeholderTextColor={Colors.gray[400]}
                 secureTextEntry
               />
             </View>
             <TouchableOpacity
               onPress={updatePassword}
               disabled={updating}
-              className="bg-primary py-3 rounded-xl items-center mt-4"
+              style={{ backgroundColor: Colors.primary, paddingVertical: 12, borderRadius: 12, alignItems: "center", marginTop: 16 }}
             >
-              <Text className="text-white font-semibold">{updating ? "Updating..." : "Update password"}</Text>
+              <Text style={{ color: Colors.white, fontWeight: "600" }}>{updating ? "Updating..." : "Update password"}</Text>
             </TouchableOpacity>
           </View>
         </View>

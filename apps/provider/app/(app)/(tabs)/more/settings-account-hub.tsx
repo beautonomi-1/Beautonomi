@@ -14,6 +14,7 @@ import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { twStyle } from "@/lib/twStyle";
 
 type SettingsItem = {
   title: string;
@@ -207,33 +208,33 @@ export default function SettingsAccountHubScreen() {
         onBack={() => router.back()}
       />
 
-      <View className="px-2 pb-2">
-        <View className="mb-3 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
-          <Text className="text-sm text-gray-700">
+      <View style={twStyle("px-2 pb-2")}>
+        <View style={twStyle("mb-3 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3")}>
+          <Text style={twStyle("text-sm text-gray-700")}>
             All screens are native. Manage your business settings here.
           </Text>
         </View>
       </View>
 
       <ScrollView
-        className="flex-1"
+        style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
         {isFreelancer && (
           <TouchableOpacity
             onPress={() => router.push("/(app)/(tabs)/more/upgrade-info" as never)}
-            className="mb-3 flex-row items-center rounded-xl border border-pink-200 bg-pink-50/80 p-4"
+            style={twStyle("mb-3 flex-row items-center rounded-xl border border-pink-200 bg-pink-50/80 p-4")}
             activeOpacity={0.7}
             accessibilityLabel="Upgrade to Salon, unlock team, locations and advanced features"
             accessibilityRole="button"
           >
-            <View className="mr-3 h-10 w-10 items-center justify-center rounded-full bg-pink-100">
+            <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-pink-100")}>
               <Ionicons name="sparkles" size={22} color="#ec4899" />
             </View>
-            <View className="flex-1">
-              <Text className="font-semibold text-pink-800">Upgrade to Salon</Text>
-              <Text className="mt-0.5 text-sm text-pink-700">
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("font-semibold text-pink-800")}>Upgrade to Salon</Text>
+              <Text style={twStyle("mt-0.5 text-sm text-pink-700")}>
                 Unlock team, locations & advanced features
               </Text>
             </View>
@@ -247,15 +248,15 @@ export default function SettingsAccountHubScreen() {
             ? [{ title: "Upgrade to Salon", description: "Unlock team management and more", href: "/provider/settings/upgrade-to-salon", isUpgrade: true as const }, ...category.items]
             : category.items;
           return (
-            <View key={category.id} className="mb-2">
+            <View key={category.id} style={twStyle("mb-2")}>
               <TouchableOpacity
                 onPress={() => toggleSection(category.id)}
-                className="flex-row items-center justify-between rounded-t-xl border border-gray-200 bg-white px-4 py-3.5"
+                style={twStyle("flex-row items-center justify-between rounded-t-xl border border-gray-200 bg-white px-4 py-3.5")}
                 activeOpacity={0.7}
                 accessibilityLabel={`${category.title}, ${isExpanded ? "collapse" : "expand"} section`}
                 accessibilityRole="button"
               >
-                <Text className="text-base font-semibold text-gray-900">
+                <Text style={twStyle("text-base font-semibold text-gray-900")}>
                   {category.title}
                 </Text>
                 <Ionicons
@@ -265,9 +266,9 @@ export default function SettingsAccountHubScreen() {
                 />
               </TouchableOpacity>
               {isExpanded && (
-                <View className="rounded-b-xl border border-t-0 border-gray-200 bg-white overflow-hidden">
-                  <View className="px-3 pb-2">
-                    <Text className="text-sm text-gray-500 mb-2">
+                <View style={twStyle("rounded-b-xl border border-t-0 border-gray-200 bg-white overflow-hidden")}>
+                  <View style={twStyle("px-3 pb-2")}>
+                    <Text style={twStyle("text-sm text-gray-500 mb-2")}>
                       {category.description}
                     </Text>
                   </View>
@@ -279,23 +280,23 @@ export default function SettingsAccountHubScreen() {
                       <TouchableOpacity
                         key={idx}
                         onPress={() => handleItemPress(item)}
-                        className={`flex-row items-center justify-between px-4 py-3.5 ${idx < items.length - 1 ? "border-b border-gray-100" : ""} ${item.isUpgrade ? "bg-pink-50/50" : ""} ${isDestructive ? "bg-red-50/50" : ""} ${isSubtle ? "bg-gray-50/50" : ""}`}
+                        style={twStyle(`flex-row items-center justify-between px-4 py-3.5 ${idx < items.length - 1 ? "border-b border-gray-100" : ""} ${item.isUpgrade ? "bg-pink-50/50" : ""} ${isDestructive ? "bg-red-50/50" : ""} ${isSubtle ? "bg-gray-50/50" : ""}`)}
                         activeOpacity={0.6}
                         accessibilityLabel={item.description ? `${item.title}, ${item.description}` : item.title}
                         accessibilityRole="button"
                       >
-                        <View className="flex-1 pr-3">
+                        <View style={twStyle("flex-1 pr-3")}>
                           {item.isUpgrade && (
                             <Ionicons name="sparkles" size={16} color="#ec4899" style={{ position: "absolute", left: 0, top: 2 }} />
                           )}
-                          <Text className={`text-[15px] font-medium ${item.isUpgrade ? "text-pink-800" : isDestructive ? "text-red-700" : isSubtle ? "text-gray-500" : "text-gray-900"}`}>
+                          <Text style={twStyle(`text-[15px] font-medium ${item.isUpgrade ? "text-pink-800" : isDestructive ? "text-red-700" : isSubtle ? "text-gray-500" : "text-gray-900"}`)}>
                             {item.title}
                           </Text>
-                          <Text className={`mt-0.5 text-xs ${isDestructive ? "text-red-600/90" : isSubtle ? "text-gray-400" : "text-gray-500"}`} numberOfLines={1}>
+                          <Text style={twStyle(`mt-0.5 text-xs ${isDestructive ? "text-red-600/90" : isSubtle ? "text-gray-400" : "text-gray-500"}`)} numberOfLines={1}>
                             {item.description}
                           </Text>
                         </View>
-                        <View className="flex-row items-center gap-1">
+                        <View style={twStyle("flex-row items-center")}>
                           {isSignOut ? (
                             <Ionicons name="log-out-outline" size={18} color="#dc2626" />
                           ) : (

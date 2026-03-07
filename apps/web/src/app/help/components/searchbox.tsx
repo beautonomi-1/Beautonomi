@@ -38,7 +38,7 @@ export default function SearchBox() {
           {!isSearchActive && (
             <div className="absolute inset-y-0 right-0 flex items-center pr-2">
               <Button
-                className="flex items-center justify-center h-11 w-11 rounded-full bg-gradient-to-r from-[#FF0077] to-[#D60565] p-2"
+                className="flex items-center justify-center h-11 w-11 rounded-full bg-gradient-to-r from-primary to-primary-hover p-2"
                 onClick={() => setIsSearchActive(true)}
               >
                 <SearchIcon className="w-5 h-5 text-white" />
@@ -47,7 +47,7 @@ export default function SearchBox() {
           )}
           {isSearchActive && (
             <div className="absolute inset-y-0 right-0 flex items-center pr-2">
-              <div className="h-11 w-28 flex items-center gap-2 justify-center rounded-full bg-gradient-to-r from-[#FF0077] to-[#D60565]">
+              <div className="h-11 w-28 flex items-center gap-2 justify-center rounded-full bg-gradient-to-r from-primary to-primary-hover">
                 <Button
                   className="flex items-center gap-2 rounded-full bg-transparent"
                   onClick={() => {
@@ -72,7 +72,7 @@ export default function SearchBox() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center gap-4 pb-2 border-b border-gray-100">
-                <Link href="/learn" className="flex items-center gap-4 w-full text-[#FF0077] hover:underline font-medium text-sm">
+                <Link href="/learn" className="flex items-center gap-4 w-full text-primary hover:underline font-medium text-sm">
                   <div className="p-2 bg-gray-200 rounded-xl">
                     <FileTextIcon className="w-6 h-6" />
                   </div>

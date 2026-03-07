@@ -17,10 +17,10 @@ export default function ScheduleHubScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Schedule" showBack subtitle="Time blocks & staff days off" />
-      <View className="mb-4">
+      <View style={{ marginBottom: 16 }}>
         <SegmentTabs tabs={TABS} activeKey={activeKey} onSelect={setActiveKey} />
       </View>
-      <View className="flex-1 min-h-0">
+      <View style={{ flex: 1, minHeight: 0 }}>
         {activeKey === "blocks" && <TimeBlocksContent />}
         {activeKey === "daysoff" && <DaysOffContent />}
       </View>

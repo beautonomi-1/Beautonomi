@@ -180,10 +180,10 @@ export default function OnDemandWaitingScreen() {
 
   if (!requestId) {
     return (
-      <SafeAreaView className="flex-1 bg-white" edges={["top", "bottom"]}>
-        <View className="flex-1 items-center justify-center p-4">
-          <Text className="text-gray-600">Missing request ID</Text>
-          <TouchableOpacity onPress={() => router.back()} className="mt-4 px-4 py-2 bg-gray-200 rounded-lg">
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={["top", "bottom"]}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <Text style={{ color: Colors.gray[600] }}>Missing request ID</Text>
+          <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: Colors.gray[200], borderRadius: 8 }}>
             <Text>Back</Text>
           </TouchableOpacity>
         </View>
@@ -193,8 +193,8 @@ export default function OnDemandWaitingScreen() {
 
   if (loading && !request) {
     return (
-      <SafeAreaView className="flex-1 bg-white" edges={["top", "bottom"]}>
-        <View className="flex-1 items-center justify-center">
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={["top", "bottom"]}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
       </SafeAreaView>
@@ -203,11 +203,11 @@ export default function OnDemandWaitingScreen() {
 
   if (error && !request) {
     return (
-      <SafeAreaView className="flex-1 bg-white" edges={["top", "bottom"]}>
-        <View className="flex-1 items-center justify-center p-4">
-          <Text className="text-gray-600 mb-4">{error}</Text>
-          <TouchableOpacity onPress={() => { setLoading(true); load(); }} className="px-4 py-2 bg-primary rounded-lg">
-            <Text className="text-white">Retry</Text>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={["top", "bottom"]}>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <Text style={{ color: Colors.gray[600], marginBottom: 16 }}>{error}</Text>
+          <TouchableOpacity onPress={() => { setLoading(true); load(); }} style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: Colors.primary, borderRadius: 8 }}>
+            <Text style={{ color: Colors.white }}>Retry</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -219,55 +219,44 @@ export default function OnDemandWaitingScreen() {
   };
 
   return (
-    <SafeAreaView
-      className="flex-1 bg-slate-50"
-      edges={["top", "bottom"]}
-    >
-      <View className="flex-1 px-6 pt-4">
-        {/* Header: title, request ID, optional Help */}
-        <View className="flex-row items-center justify-between mb-2">
-          <Text className="text-lg font-semibold text-gray-900">{title}</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F8FAFC" }} edges={["top", "bottom"]}>
+      <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 16 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>{title}</Text>
           {shortRequestId ? (
-            <Text className="text-sm font-mono text-gray-500">{shortRequestId}</Text>
+            <Text style={{ fontSize: 14, fontFamily: "monospace", color: Colors.gray[500] }}>{shortRequestId}</Text>
           ) : null}
         </View>
         {helpUrl ? (
-          <TouchableOpacity onPress={openHelp} className="self-start mb-4">
-            <Text className="text-sm text-primary font-medium">Help</Text>
+          <TouchableOpacity onPress={openHelp} style={{ alignSelf: "flex-start", marginBottom: 16 }}>
+            <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "500" }}>Help</Text>
           </TouchableOpacity>
         ) : null}
 
-        {/* Illustration + waiting animation */}
         <WaitingIllustration />
 
-        {/* Headline and provider message */}
-        <Text className="text-xl font-semibold text-gray-900 text-center mt-2">
-          {headline}
-        </Text>
-        <Text className="text-gray-600 text-center mt-3 px-2">
-          {providerMessage}
-        </Text>
+        <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], textAlign: "center", marginTop: 8 }}>{headline}</Text>
+        <Text style={{ color: Colors.gray[600], textAlign: "center", marginTop: 12, paddingHorizontal: 8 }}>{providerMessage}</Text>
 
         {secondsLeft !== null && (
-          <View className="items-center py-8">
-            <Text className="text-3xl font-mono font-semibold text-gray-900">
-              {Math.floor(secondsLeft / 60)}:
-              {(secondsLeft % 60).toString().padStart(2, "0")}
+          <View style={{ alignItems: "center", paddingVertical: 32 }}>
+            <Text style={{ fontSize: 30, fontFamily: "monospace", fontWeight: "600", color: Colors.gray[900] }}>
+              {Math.floor(secondsLeft / 60)}:{(secondsLeft % 60).toString().padStart(2, "0")}
             </Text>
-            <Text className="text-gray-500 text-sm mt-1">{timerLabel}</Text>
+            <Text style={{ color: Colors.gray[500], fontSize: 14, marginTop: 4 }}>{timerLabel}</Text>
           </View>
         )}
 
-        <View className="flex-1 justify-end pb-6">
+        <View style={{ flex: 1, justifyContent: "flex-end", paddingBottom: 24 }}>
           <TouchableOpacity
             onPress={handleCancel}
             disabled={cancelling}
-            className="border border-gray-300 rounded-2xl py-4 items-center bg-white"
+            style={{ borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 16, paddingVertical: 16, alignItems: "center", backgroundColor: Colors.white }}
           >
             {cancelling ? (
               <ActivityIndicator size="small" color="#666" />
             ) : (
-              <Text className="text-gray-700 font-medium">{cancelCta}</Text>
+              <Text style={{ color: Colors.gray[700], fontWeight: "500" }}>{cancelCta}</Text>
             )}
           </TouchableOpacity>
         </View>

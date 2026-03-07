@@ -4,12 +4,13 @@
  * Route: (app)/(tabs)/more/in-app-browser?url=<encoded>&title=Invoice
  */
 import { useState } from "react";
-import { View, Text, ActivityIndicator } from "react-native";
+import { View, Text, ActivityIndicator, TouchableOpacity } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { WebView } from "react-native-webview";
 import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { Colors } from "@/constants/colors";
 
 export default function InAppBrowserScreen() {
   const router = useRouter();
@@ -25,17 +26,17 @@ export default function InAppBrowserScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title={displayTitle} onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center p-6">
-          <Text className="text-center text-gray-600">Invalid or missing link.</Text>
-          <Text
-            className="mt-4 text-center text-sm font-medium text-indigo-600"
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <Text style={{ textAlign: "center", color: Colors.gray[600] }}>Invalid or missing link.</Text>
+          <TouchableOpacity
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.back();
             }}
+            style={{ marginTop: 16 }}
           >
-            Go back
-          </Text>
+            <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: "#4f46e6" }}>Go back</Text>
+          </TouchableOpacity>
         </View>
       </ScreenContainer>
     );
@@ -50,7 +51,7 @@ export default function InAppBrowserScreen() {
           router.back();
         }}
       />
-      <View className="flex-1">
+      <View style={{ flex: 1 }}>
         <WebView
           source={{ uri: rawUrl }}
           style={{ flex: 1 }}
@@ -58,21 +59,18 @@ export default function InAppBrowserScreen() {
           onHttpError={(e) => setLoadError(`HTTP ${e.nativeEvent.statusCode}`)}
           startInLoadingState
           renderLoading={() => (
-            <View className="absolute inset-0 items-center justify-center bg-white">
+            <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
               <ActivityIndicator size="large" color="#6366f1" />
-              <Text className="mt-3 text-gray-500">Loading…</Text>
+              <Text style={{ marginTop: 12, color: Colors.gray[500] }}>Loading…</Text>
             </View>
           )}
         />
         {loadError ? (
-          <View className="absolute inset-0 items-center justify-center bg-white p-6">
-            <Text className="text-center text-gray-600">{loadError}</Text>
-            <Text
-              className="mt-4 text-center text-sm font-medium text-indigo-600"
-              onPress={() => router.back()}
-            >
-              Go back
-            </Text>
+          <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white, padding: 24 }}>
+            <Text style={{ textAlign: "center", color: Colors.gray[600] }}>{loadError}</Text>
+            <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
+              <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: "#4f46e6" }}>Go back</Text>
+            </TouchableOpacity>
           </View>
         ) : null}
       </View>

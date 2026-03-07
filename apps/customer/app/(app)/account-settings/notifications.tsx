@@ -44,29 +44,29 @@ export default function NotificationsScreen() {
 
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load}>
-      <View className="gap-4">
-        <View className="flex-row justify-between items-center bg-white rounded-xl p-4 border border-gray-100">
-          <Text className="font-medium text-gray-900">Email notifications</Text>
+      <View>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: Colors.white, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: Colors.gray[100] }}>
+          <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>Email notifications</Text>
           <Switch
             value={prefs.email_notifications !== false}
             onValueChange={(v) => toggle("email_notifications", v)}
-            trackColor={{ false: "#d1d5db", true: Colors.primary }}
+            trackColor={{ false: Colors.gray[300], true: Colors.primary }}
           />
         </View>
-        <View className="flex-row justify-between items-center bg-white rounded-xl p-4 border border-gray-100">
-          <Text className="font-medium text-gray-900">SMS notifications</Text>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: Colors.white, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: Colors.gray[100], marginTop: 16 }}>
+          <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>SMS notifications</Text>
           <Switch
             value={prefs.sms_notifications === true}
             onValueChange={(v) => toggle("sms_notifications", v)}
-            trackColor={{ false: "#d1d5db", true: Colors.primary }}
+            trackColor={{ false: Colors.gray[300], true: Colors.primary }}
           />
         </View>
-        <View className="flex-row justify-between items-center bg-white rounded-xl p-4 border border-gray-100">
-          <Text className="font-medium text-gray-900">Booking reminders</Text>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: Colors.white, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: Colors.gray[100], marginTop: 16 }}>
+          <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>Booking reminders</Text>
           <Switch
             value={prefs.booking_reminders !== false}
             onValueChange={(v) => toggle("booking_reminders", v)}
-            trackColor={{ false: "#d1d5db", true: Colors.primary }}
+            trackColor={{ false: Colors.gray[300], true: Colors.primary }}
           />
         </View>
       </View>

@@ -182,7 +182,7 @@ export default function ApiKeysPage() {
             <h1 className="text-2xl font-bold">API Keys</h1>
             <p className="text-gray-600 mt-1">Manage API keys for external integrations</p>
           </div>
-          <Button onClick={handleCreate} className="bg-[#FF0077] hover:bg-[#D60565]">
+          <Button onClick={handleCreate} className="bg-primary hover:bg-primary-hover">
             <Plus className="w-4 h-4 mr-2" />
             Create API Key
           </Button>
@@ -430,7 +430,7 @@ export default function ApiKeysPage() {
               <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleSave} className="bg-[#FF0077] hover:bg-[#D60565]">
+              <Button onClick={handleSave} className="bg-primary hover:bg-primary-hover">
                 {editingKey ? "Update" : "Create"} API Key
               </Button>
             </DialogFooter>

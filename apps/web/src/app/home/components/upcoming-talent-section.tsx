@@ -6,7 +6,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { PublicProviderCard } from "@/types/beautonomi";
-import ProviderCard from "./provider-card";
+import ProviderCard from "./provider-card-dynamic";
 
 const UpcomingTalentSection = () => {
   const [providers, setProviders] = useState<PublicProviderCard[]>([]);
@@ -96,10 +96,10 @@ const UpcomingTalentSection = () => {
       <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
         <div className="flex justify-between items-center mb-4 md:mb-6">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-6 w-6 md:h-8 md:w-8 text-[#FF0077]" />
+            <Sparkles className="h-6 w-6 md:h-8 md:w-8 text-primary" />
             <h2 className="text-xl md:text-2xl lg:text-3xl font-normal">Rising Star</h2>
           </div>
-          <Link href="/more-rising-star-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-[#FF0077]">
+          <Link href="/more-rising-star-cards" className="flex items-center text-xs md:text-sm font-normal underline hover:text-primary">
             View More
             <ArrowRight className="ml-1 h-3 w-3 md:h-4 md:w-4" />
           </Link>

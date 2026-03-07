@@ -25,7 +25,8 @@ function getEnv(key: string): string {
   return fromExtra ?? (isPlaceholder ? undefined : fromProcess) ?? "";
 }
 
-function requireEnv(key: string): string {
+/** Use when you need to enforce env; throws if missing. */
+export function requireEnv(key: string): string {
   const val = getEnv(key);
   if (
     !val ||
@@ -40,8 +41,10 @@ function requireEnv(key: string): string {
   return val;
 }
 
-export const SUPABASE_URL = requireEnv("EXPO_PUBLIC_SUPABASE_URL");
-export const SUPABASE_ANON_KEY = requireEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY");
+/** Supabase URL – may be empty if env not loaded (avoids throw at bundle load). */
+export const SUPABASE_URL = getEnv("EXPO_PUBLIC_SUPABASE_URL") ?? "";
+/** Supabase anon key – may be empty if env not loaded. */
+export const SUPABASE_ANON_KEY = getEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY") ?? "";
 
 /** Backend (Next.js) URL. Optional for API; required for forgot-password (reset link opens APP_URL/auth/callback). */
 export const APP_URL = getEnv("EXPO_PUBLIC_APP_URL") ?? "";

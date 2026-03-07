@@ -165,7 +165,7 @@ export default function BookingConfirmationPage() {
             <p className="text-gray-600 mb-6">{error || "Unable to load booking details"}</p>
             <Button
               onClick={() => router.push("/")}
-              className="bg-[#FF0077] hover:bg-[#D60565]"
+              className="bg-primary hover:bg-primary-hover"
             >
               Go Home
             </Button>
@@ -219,7 +219,7 @@ export default function BookingConfirmationPage() {
             {/* Date & Time */}
             <div className="flex items-start gap-4">
               <div className="p-3 bg-pink-50 rounded-lg">
-                <Calendar className="w-6 h-6 text-[#FF0077]" />
+                <Calendar className="w-6 h-6 text-primary" />
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-gray-900 mb-1">Date & Time</h3>
@@ -231,7 +231,7 @@ export default function BookingConfirmationPage() {
             {/* Location */}
             <div className="flex items-start gap-4">
               <div className="p-3 bg-pink-50 rounded-lg">
-                <MapPin className="w-6 h-6 text-[#FF0077]" />
+                <MapPin className="w-6 h-6 text-primary" />
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-gray-900 mb-1">
@@ -294,7 +294,7 @@ export default function BookingConfirmationPage() {
             <div className="border-t pt-4">
               <div className="flex justify-between items-center">
                 <span className="text-lg font-semibold text-gray-900">Total</span>
-                <span className="text-2xl font-bold text-[#FF0077]">
+                <span className="text-2xl font-bold text-primary">
                   {formatCurrency(booking.total_amount, booking.currency)}
                 </span>
               </div>
@@ -385,7 +385,7 @@ export default function BookingConfirmationPage() {
           </Button>
           <Button
             onClick={() => router.push("/trips")}
-            className="flex-1 bg-[#FF0077] hover:bg-[#D60565] touch-target"
+            className="flex-1 bg-primary hover:bg-primary-hover touch-target"
           >
             View My Bookings
           </Button>

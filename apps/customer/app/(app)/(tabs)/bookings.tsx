@@ -6,14 +6,16 @@ import {
   RefreshControl,
   TouchableOpacity,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useBookings } from "@/features/bookings/useBookings";
 import { haptic } from "@/lib/haptics";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import type { Booking } from "@/types/api";
-import { SCREEN_PADDING, TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 import { Colors, Shadows } from "@/constants/colors";
 import { BookingCardSkeleton } from "@/components/Skeleton";
 
@@ -37,9 +39,9 @@ function formatTime(s: string) {
 }
 
 const STATUS_STYLES: Record<string, { bg: string; text: string }> = {
-  confirmed: { bg: "bg-green-100", text: "text-green-700" },
-  pending: { bg: "bg-yellow-100", text: "text-yellow-700" },
-  cancelled: { bg: "bg-red-100", text: "text-red-700" },
+  confirmed: { bg: "#DCFCE7", text: "#15803D" },
+  pending: { bg: "#FEF9C3", text: "#A16207" },
+  cancelled: { bg: "#FEE2E2", text: "#B91C1C" },
 };
 
 function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => void }) {
@@ -47,54 +49,56 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
     (booking as unknown as Record<string, unknown>).provider_name as string | undefined ||
     booking.services?.[0]?.offering_name ||
     "Beauty Service";
-  const style = STATUS_STYLES[booking.status] ?? { bg: "bg-gray-100", text: "text-gray-700" };
+  const statusStyle = STATUS_STYLES[booking.status] ?? { bg: Colors.gray[100], text: Colors.gray[700] };
   const statusLabel = booking.status.charAt(0).toUpperCase() + booking.status.slice(1);
 
   return (
     <AnimatedPressable
       scaleValue={0.98}
       onPress={onPress}
-      className="bg-white border border-gray-200 rounded-2xl p-5 mb-4"
-      style={Shadows.cardSmall}
+      style={[
+        { backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 16, padding: 20, marginBottom: 16 },
+        Shadows.cardSmall,
+      ]}
       accessibilityRole="button"
       accessibilityLabel={`Booking with ${name}, ${statusLabel}, ${formatDate(booking.scheduled_at)}`}
       accessibilityHint="View booking details"
     >
-      <View className="flex-row justify-between items-start mb-3">
-        <Text className="font-semibold text-lg text-gray-900 flex-1 mr-2" numberOfLines={1}>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+        <Text style={{ fontWeight: "600", fontSize: 18, color: Colors.gray[900], flex: 1, marginRight: 8 }} numberOfLines={1}>
           {name}
         </Text>
-        <View className={`px-3 py-1 rounded-full ${style.bg}`}>
-          <Text className={`text-xs font-semibold ${style.text}`}>{statusLabel}</Text>
+        <View style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 9999, backgroundColor: statusStyle.bg }}>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: statusStyle.text }}>{statusLabel}</Text>
         </View>
       </View>
 
-      <Text className="text-gray-700 font-medium">{formatDate(booking.scheduled_at)}</Text>
-      <Text className="text-gray-600 text-sm mt-1">{formatTime(booking.scheduled_at)}</Text>
+      <Text style={{ color: Colors.gray[700], fontWeight: "500" }}>{formatDate(booking.scheduled_at)}</Text>
+      <Text style={{ color: Colors.gray[600], fontSize: 14, marginTop: 4 }}>{formatTime(booking.scheduled_at)}</Text>
       {booking.location_type === "at_salon" && (
-        <Text className="text-gray-500 text-sm mt-1">At Salon</Text>
+        <Text style={{ color: Colors.gray[500], fontSize: 14, marginTop: 4 }}>At Salon</Text>
       )}
       {booking.location_type === "at_home" && (
-        <Text className="text-gray-500 text-sm mt-1">At your location</Text>
+        <Text style={{ color: Colors.gray[500], fontSize: 14, marginTop: 4 }}>At your location</Text>
       )}
 
-      <View className="mt-4 pt-4 border-t border-gray-100">
-        <Text className="text-xl font-semibold text-gray-900">
+      <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: Colors.gray[100] }}>
+        <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900] }}>
           {booking.currency} {booking.total_amount?.toFixed(2)}
         </Text>
-        <Text className="text-xs text-gray-500 mt-0.5">#{booking.booking_number}</Text>
+        <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>#{booking.booking_number}</Text>
         {booking.is_group_booking && booking.group_booking_ref && (
-          <Text className="text-xs text-gray-500 mt-0.5">Group: {booking.group_booking_ref}</Text>
+          <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>Group: {booking.group_booking_ref}</Text>
         )}
       </View>
 
       <TouchableOpacity
         onPress={onPress}
-        className="mt-4 py-2.5 border border-gray-300 rounded-xl items-center"
+        style={{ marginTop: 16, paddingVertical: 10, borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 12, alignItems: "center" }}
         accessibilityRole="button"
         accessibilityLabel={`View details for booking with ${name}`}
       >
-        <Text className="font-medium text-gray-900">View Details</Text>
+        <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>View Details</Text>
       </TouchableOpacity>
     </AnimatedPressable>
   );
@@ -103,6 +107,7 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
 export default function BookingsScreen() {
   useScreenTracking("Bookings");
   const { user } = useAuth();
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const [tab, setTab] = useState<TabType>("upcoming");
   const { data: bookings, loading, refreshing, error, refetch } = useBookings(tab);
 
@@ -130,51 +135,68 @@ export default function BookingsScreen() {
 
   if (!user) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-8">
-        <Text className="text-xl font-semibold text-gray-900 mb-2 text-center">
-          Your appointments
-        </Text>
-        <Text className="text-gray-600 text-center mb-6">
-          Log in to view and manage your bookings
-        </Text>
-        <TouchableOpacity
-          onPress={() => router.replace("/(auth)/login")}
-          className="bg-primary px-8 py-4 rounded-xl"
-          accessibilityRole="button"
-          accessibilityLabel="Log in"
-          accessibilityHint="Navigate to the login screen"
-        >
-          <Text className="text-white font-semibold">Log in</Text>
-        </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: Colors.white }}>
+        <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.white }} />
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 32 }}>
+          <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginBottom: 8, textAlign: "center" }}>
+            Your appointments
+          </Text>
+          <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>
+            Log in to view and manage your bookings
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.replace("/(auth)/login")}
+            style={{ backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Log in"
+            accessibilityHint="Navigate to the login screen"
+          >
+            <Text style={{ color: Colors.white, fontWeight: "600" }}>Log in</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
+  const contentContainerStyle = isTablet
+    ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
+    : {};
+  const contentWrapperStyle = { ...contentContainerStyle, flex: 1 };
+
   return (
-    <View className="flex-1 bg-gray-50">
-      <View className="bg-white px-4 pt-4 pb-2">
-        <Text className="text-2xl font-bold text-gray-900 mb-4">Bookings</Text>
-        <View className="flex-row gap-2">
-          {tabs.map((t) => (
-            <TouchableOpacity
-              key={t.key}
-              onPress={() => { haptic.selection(); setTab(t.key); }}
-              className={`px-4 py-2 rounded-full ${tab === t.key ? "bg-primary" : "bg-gray-100"}`}
-              accessibilityRole="button"
-              accessibilityLabel={`${t.label} bookings`}
-              accessibilityState={{ selected: tab === t.key }}
-              accessibilityHint={`Show ${t.label.toLowerCase()} bookings`}
-            >
-              <Text className={`font-medium ${tab === t.key ? "text-white" : "text-gray-700"}`}>
-                {t.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+    <View style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
+      <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.gray[50] }} />
+      <View style={[contentContainerStyle, { backgroundColor: Colors.white, paddingTop: contentPadding, paddingBottom: 8 }]}>
+        <View style={{ paddingHorizontal: contentPadding }}>
+          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900], marginBottom: 16 }}>Bookings</Text>
+          <View style={{ flexDirection: "row" }}>
+            {tabs.map((t) => (
+              <TouchableOpacity
+                key={t.key}
+                onPress={() => { haptic.selection(); setTab(t.key); }}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  borderRadius: 9999,
+                  backgroundColor: tab === t.key ? Colors.primary : Colors.gray[100],
+                  marginRight: 8,
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`${t.label} bookings`}
+                accessibilityState={{ selected: tab === t.key }}
+                accessibilityHint={`Show ${t.label.toLowerCase()} bookings`}
+              >
+                <Text style={{ fontWeight: "500", color: tab === t.key ? Colors.white : Colors.gray[700] }}>
+                  {t.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       </View>
 
       {loading && !bookings.length ? (
-        <View className="flex-1 p-4">
+        <View style={[contentWrapperStyle, { padding: contentPadding }]}>
           <BookingCardSkeleton />
           <BookingCardSkeleton />
           <BookingCardSkeleton />
@@ -184,7 +206,12 @@ export default function BookingsScreen() {
           data={bookings}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
-          contentContainerStyle={{ padding: SCREEN_PADDING, paddingBottom: TAB_CONTENT_PADDING_BOTTOM }}
+          style={contentWrapperStyle}
+          contentContainerStyle={{
+            paddingHorizontal: contentPadding,
+            paddingTop: contentPadding,
+            paddingBottom: TAB_CONTENT_PADDING_BOTTOM,
+          }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={Colors.primary} />
           }
@@ -192,36 +219,36 @@ export default function BookingsScreen() {
           accessibilityLabel={`${tab} bookings list`}
           ListHeaderComponent={
             error ? (
-              <View className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
-                <Text className="text-red-700 mb-3">{error}</Text>
+              <View style={{ backgroundColor: "#FEF2F2", borderWidth: 1, borderColor: "#FECACA", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                <Text style={{ color: "#B91C1C", marginBottom: 12 }}>{error}</Text>
                 <TouchableOpacity
                   onPress={() => refetch()}
-                  className="bg-primary py-2.5 rounded-xl items-center"
+                  style={{ backgroundColor: Colors.primary, paddingVertical: 10, borderRadius: 12, alignItems: "center" }}
                   accessibilityRole="button"
                   accessibilityLabel="Retry loading bookings"
                   accessibilityHint="Attempts to reload your bookings"
                 >
-                  <Text className="text-white font-semibold">Retry</Text>
+                  <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
                 </TouchableOpacity>
               </View>
             ) : null
           }
           ListEmptyComponent={
-            <View className="py-12 items-center">
-              <Text className="text-xl font-semibold text-gray-900 mb-2">
+            <View style={{ paddingVertical: 48, alignItems: "center" }}>
+              <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>
                 No appointments scheduled...yet!
               </Text>
-              <Text className="text-gray-600 text-center mb-6">
+              <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>
                 Unveil your radiance. It&apos;s time to pamper yourself with our expert care.
               </Text>
               <TouchableOpacity
                 onPress={() => router.push("/(app)/(tabs)/home")}
-                className="bg-primary px-8 py-4 rounded-xl"
+                style={{ backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 }}
                 accessibilityRole="button"
                 accessibilityLabel="Start searching for providers"
                 accessibilityHint="Navigate to the home screen to find providers"
               >
-                <Text className="text-white font-semibold">Start Searching</Text>
+                <Text style={{ color: Colors.white, fontWeight: "600" }}>Start Searching</Text>
               </TouchableOpacity>
             </View>
           }

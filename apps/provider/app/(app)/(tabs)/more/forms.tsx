@@ -19,6 +19,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { Colors } from "@/constants/colors";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -95,9 +96,9 @@ const SUGGESTED_FORMS = [
 
 function getTypeColor(type: FormType): { color: string; bg: string } {
   switch (type) {
-    case "intake": return { color: "#3b82f6", bg: "bg-blue-50" };
-    case "consent": return { color: "#22c55e", bg: "bg-green-50" };
-    case "waiver": return { color: "#f59e0b", bg: "bg-amber-50" };
+    case "intake": return { color: "#3b82f6", bg: "#eff6ff" };
+    case "consent": return { color: "#22c55e", bg: "#f0fdf4" };
+    case "waiver": return { color: "#f59e0b", bg: "#fffbeb" };
   }
 }
 
@@ -287,20 +288,20 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
     <>
       {/* Add button */}
       <TouchableOpacity
-        className="mb-3 flex-row items-center justify-center rounded-xl bg-gray-900 py-3"
+        style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: Colors.gray[900], paddingVertical: 12 }}
         onPress={openAddForm}
         accessibilityLabel="Add new form"
         accessibilityRole="button"
       >
         <Ionicons name="add" size={20} color="#fff" />
-        <Text className="ml-2 font-semibold text-white">Add Form</Text>
+        <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.white }}>Add Form</Text>
       </TouchableOpacity>
 
       {/* Form list */}
       {loading && !forms ? (
         <LoadingState />
       ) : !forms || forms.length === 0 ? (
-        <View className="flex-1">
+        <View style={{ flex: 1 }}>
           <EmptyState
             icon="document-text-outline"
             title="No forms yet"
@@ -308,25 +309,25 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
           />
 
           {/* Suggestions */}
-          <View className="mt-4">
+          <View style={{ marginTop: 16 }}>
             <SectionHeader title="Quick Start" />
-            <View className="gap-2">
-              {SUGGESTED_FORMS.map((s) => {
+            <View>
+              {SUGGESTED_FORMS.map((s, i) => {
                 const typeStyle = getTypeColor(s.type);
                 return (
                   <TouchableOpacity
                     key={s.title}
-                    className="flex-row items-center rounded-xl border border-gray-100 bg-white p-4"
+                    style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, marginTop: i === 0 ? 0 : 8 }}
                     onPress={() => handleSuggestion(s)}
                     accessibilityLabel={`Create ${s.title}`}
                     accessibilityRole="button"
                   >
-                    <View className={`${typeStyle.bg} h-10 w-10 items-center justify-center rounded-xl`}>
+                    <View style={{ backgroundColor: typeStyle.bg, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12 }}>
                       <Ionicons name={getTypeIcon(s.type)} size={20} color={typeStyle.color} />
                     </View>
-                    <View className="ml-3 flex-1">
-                      <Text className="text-sm font-semibold text-gray-900">{s.title}</Text>
-                      <Text className="text-xs text-gray-500">{s.description}</Text>
+                    <View style={{ marginLeft: 12, flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{s.title}</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{s.description}</Text>
                     </View>
                     <Ionicons name="add-circle-outline" size={20} color="#6366f1" />
                   </TouchableOpacity>
@@ -342,20 +343,25 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: template }: { item: FormTemplate }) => {
             const typeStyle = getTypeColor(template.form_type);
             const isExpanded = expandedForm === template.id;
 
             return (
               <View
-                className={`rounded-xl border border-gray-100 bg-white ${
-                  !template.is_active ? "opacity-60" : ""
-                }`}
+                style={{
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: Colors.gray[100],
+                  backgroundColor: Colors.white,
+                  opacity: template.is_active ? 1 : 0.6,
+                }}
               >
                 {/* Header */}
                 <TouchableOpacity
-                  className="flex-row items-center p-4"
+                  style={{ flexDirection: "row", alignItems: "center", padding: 16 }}
                   onPress={() =>
                     setExpandedForm(isExpanded ? null : template.id)
                   }
@@ -364,7 +370,7 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                   accessibilityRole="button"
                 >
                   <View
-                    className={`${typeStyle.bg} h-10 w-10 items-center justify-center rounded-xl`}
+                    style={{ backgroundColor: typeStyle.bg, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12 }}
                   >
                     <Ionicons
                       name={getTypeIcon(template.form_type)}
@@ -372,41 +378,51 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                       color={typeStyle.color}
                     />
                   </View>
-                  <View className="ml-3 flex-1">
-                    <Text className="text-base font-semibold text-gray-900">
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
                       {template.title}
                     </Text>
-                    <View className="flex-row items-center gap-2 mt-0.5">
+                    <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
                       <Text
-                        className="text-xs capitalize"
-                        style={{ color: typeStyle.color }}
+                        style={{ fontSize: 12, textTransform: "capitalize", color: typeStyle.color, marginRight: 8 }}
                       >
                         {template.form_type}
                       </Text>
                       {template.is_required && (
-                        <Text className="text-xs text-red-500">Required</Text>
+                        <Text style={{ fontSize: 12, color: "#ef4444", marginRight: 8 }}>Required</Text>
                       )}
-                      <Text className="text-xs text-gray-400">
+                      <Text style={{ fontSize: 12, color: Colors.gray[400] }}>
                         {template.fields?.length ?? 0} fields
                       </Text>
                     </View>
                   </View>
-                  <View className="flex-row items-center gap-2">
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
                     <TouchableOpacity
                       hitSlop={8}
                       onPress={() => handleToggleActive(template)}
                       accessibilityLabel={`Toggle ${template.title} active status`}
                       accessibilityRole="switch"
+                      style={{ marginRight: 8 }}
                     >
                       <View
-                        className={`h-6 w-10 items-center justify-center rounded-full ${
-                          template.is_active ? "bg-green-500" : "bg-gray-300"
-                        }`}
+                        style={{
+                          height: 24,
+                          width: 40,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: 9999,
+                          backgroundColor: template.is_active ? "#22c55e" : Colors.gray[300],
+                        }}
                       >
                         <View
-                          className={`h-4 w-4 rounded-full bg-white ${
-                            template.is_active ? "ml-4" : "mr-4"
-                          }`}
+                          style={{
+                            height: 16,
+                            width: 16,
+                            borderRadius: 8,
+                            backgroundColor: Colors.white,
+                            marginLeft: template.is_active ? 16 : 0,
+                            marginRight: template.is_active ? 0 : 16,
+                          }}
                         />
                       </View>
                     </TouchableOpacity>
@@ -420,40 +436,40 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
 
                 {/* Expanded: fields */}
                 {isExpanded && (
-                  <View className="border-t border-gray-50 px-4 pb-4">
+                  <View style={{ borderTopWidth: 1, borderTopColor: Colors.gray[50], paddingHorizontal: 16, paddingBottom: 16 }}>
                     {template.description && (
-                      <Text className="mt-3 text-sm text-gray-500">
+                      <Text style={{ marginTop: 12, fontSize: 14, color: Colors.gray[500] }}>
                         {template.description}
                       </Text>
                     )}
 
                     {/* Fields list */}
                     {template.fields && template.fields.length > 0 ? (
-                      <View className="mt-3 gap-2">
-                        {template.fields.map((field: FormField) => {
+                      <View style={{ marginTop: 12 }}>
+                        {template.fields.map((field: FormField, fi: number) => {
                           const fieldMeta = FIELD_TYPES.find(
                             (ft) => ft.value === field.field_type
                           );
                           return (
                             <View
                               key={field.id}
-                              className="flex-row items-center justify-between rounded-lg bg-gray-50 px-3 py-2.5"
+                              style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 8, backgroundColor: Colors.gray[50], paddingHorizontal: 12, paddingVertical: 10, marginTop: fi === 0 ? 0 : 8 }}
                             >
-                              <View className="flex-row items-center flex-1">
+                              <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                                 <Ionicons
                                   name={fieldMeta?.icon ?? "text-outline"}
                                   size={16}
                                   color="#6b7280"
                                 />
-                                <Text className="ml-2 text-sm text-gray-700">
+                                <Text style={{ marginLeft: 8, fontSize: 14, color: Colors.gray[700] }}>
                                   {field.name}
                                 </Text>
                                 {field.is_required && (
-                                  <Text className="ml-1 text-xs text-red-500">*</Text>
+                                  <Text style={{ marginLeft: 4, fontSize: 12, color: "#ef4444" }}>*</Text>
                                 )}
                               </View>
-                              <View className="flex-row items-center gap-2">
-                                <Text className="text-xs text-gray-400 capitalize">
+                              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                <Text style={{ fontSize: 12, color: Colors.gray[400], textTransform: "capitalize", marginRight: 8 }}>
                                   {field.field_type}
                                 </Text>
                                 <TouchableOpacity
@@ -476,32 +492,32 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                         })}
                       </View>
                     ) : (
-                      <Text className="mt-3 text-sm text-gray-400 italic">
+                      <Text style={{ marginTop: 12, fontSize: 14, color: Colors.gray[400], fontStyle: "italic" }}>
                         No fields added yet
                       </Text>
                     )}
 
                     {/* Actions */}
-                    <View className="mt-3 flex-row gap-2">
+                    <View style={{ marginTop: 12, flexDirection: "row" }}>
                       <TouchableOpacity
-                        className="flex-1 flex-row items-center justify-center rounded-lg bg-indigo-50 py-2.5"
+                        style={{ flex: 1, marginRight: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#eef2ff", paddingVertical: 10 }}
                         onPress={() => openAddField(template.id)}
                         accessibilityLabel="Add field"
                         accessibilityRole="button"
                       >
                         <Ionicons name="add" size={16} color="#6366f1" />
-                        <Text className="ml-1 text-sm font-medium text-indigo-600">
+                        <Text style={{ marginLeft: 4, fontSize: 14, fontWeight: "500", color: "#4f46e5" }}>
                           Add Field
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        className="flex-1 flex-row items-center justify-center rounded-lg bg-gray-100 py-2.5"
+                        style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingVertical: 10 }}
                         onPress={() => openEditForm(template)}
                         accessibilityLabel="Edit form"
                         accessibilityRole="button"
                       >
                         <Ionicons name="pencil" size={14} color="#6b7280" />
-                        <Text className="ml-1 text-sm font-medium text-gray-600">
+                        <Text style={{ marginLeft: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>
                           Edit
                         </Text>
                       </TouchableOpacity>
@@ -520,11 +536,11 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
         onClose={() => setShowFormModal(false)}
         title={editingForm ? "Edit Form" : "New Form"}
       >
-        <View className="gap-3">
-          <View>
-            <Text className="mb-1 text-xs font-medium text-gray-500">Title *</Text>
+        <View>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Title *</Text>
             <TextInput
-              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
               placeholder="Form title"
               placeholderTextColor="#9ca3af"
               value={form.title}
@@ -533,10 +549,10 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
             />
           </View>
 
-          <View>
-            <Text className="mb-1 text-xs font-medium text-gray-500">Description</Text>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Description</Text>
             <TextInput
-              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
               placeholder="Describe this form"
               placeholderTextColor="#9ca3af"
               value={form.description}
@@ -546,25 +562,28 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
             />
           </View>
 
-          <View>
-            <Text className="mb-1 text-xs font-medium text-gray-500">Form Type</Text>
-            <View className="flex-row gap-2">
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Form Type</Text>
+            <View style={{ flexDirection: "row" }}>
               {FORM_TYPES.map((t) => (
                 <TouchableOpacity
                   key={t.value}
-                  className={`flex-1 items-center rounded-xl py-3 ${
-                    form.form_type === t.value
-                      ? "bg-gray-900"
-                      : "border border-gray-200 bg-white"
-                  }`}
+                  style={{
+                    flex: 1,
+                    alignItems: "center",
+                    borderRadius: 12,
+                    paddingVertical: 12,
+                    marginRight: 8,
+                    backgroundColor: form.form_type === t.value ? Colors.gray[900] : Colors.white,
+                    borderWidth: form.form_type === t.value ? 0 : 1,
+                    borderColor: Colors.gray[200],
+                  }}
                   onPress={() => updateForm("form_type", t.value)}
                   accessibilityLabel={`Set form type to ${t.label}`}
                   accessibilityRole="button"
                 >
                   <Text
-                    className={`text-sm font-medium ${
-                      form.form_type === t.value ? "text-white" : "text-gray-600"
-                    }`}
+                    style={{ fontSize: 14, fontWeight: "500", color: form.form_type === t.value ? Colors.white : Colors.gray[600] }}
                   >
                     {t.label}
                   </Text>
@@ -573,8 +592,8 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
             </View>
           </View>
 
-          <View className="flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-            <Text className="text-base text-gray-700">Required for all clients</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12 }}>
+            <Text style={{ fontSize: 16, color: Colors.gray[700] }}>Required for all clients</Text>
             <Switch
               value={form.is_required}
               onValueChange={(v) => updateForm("is_required", v)}
@@ -598,11 +617,11 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
         onClose={() => setShowFieldModal(false)}
         title="Add Field"
       >
-        <View className="gap-3">
-          <View>
-            <Text className="mb-1 text-xs font-medium text-gray-500">Field Name *</Text>
+        <View>
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Field Name *</Text>
             <TextInput
-              className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
               placeholder="e.g. Full Name, Date of Birth"
               placeholderTextColor="#9ca3af"
               value={fieldForm.name}
@@ -611,17 +630,24 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
             />
           </View>
 
-          <View>
-            <Text className="mb-1 text-xs font-medium text-gray-500">Field Type</Text>
-            <View className="flex-row flex-wrap gap-2">
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ marginBottom: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Field Type</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
               {FIELD_TYPES.map((ft) => (
                 <TouchableOpacity
                   key={ft.value}
-                  className={`flex-row items-center rounded-xl px-4 py-3 ${
-                    fieldForm.field_type === ft.value
-                      ? "bg-gray-900"
-                      : "border border-gray-200 bg-white"
-                  }`}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    borderRadius: 12,
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    marginRight: 8,
+                    marginBottom: 8,
+                    backgroundColor: fieldForm.field_type === ft.value ? Colors.gray[900] : Colors.white,
+                    borderWidth: fieldForm.field_type === ft.value ? 0 : 1,
+                    borderColor: Colors.gray[200],
+                  }}
                   onPress={() => updateFieldForm("field_type", ft.value)}
                   accessibilityLabel={`Set field type to ${ft.label}`}
                   accessibilityRole="button"
@@ -632,9 +658,7 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                     color={fieldForm.field_type === ft.value ? "#fff" : "#6b7280"}
                   />
                   <Text
-                    className={`ml-2 text-sm font-medium ${
-                      fieldForm.field_type === ft.value ? "text-white" : "text-gray-600"
-                    }`}
+                    style={{ marginLeft: 8, fontSize: 14, fontWeight: "500", color: fieldForm.field_type === ft.value ? Colors.white : Colors.gray[600] }}
                   >
                     {ft.label}
                   </Text>
@@ -643,8 +667,8 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
             </View>
           </View>
 
-          <View className="flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-            <Text className="text-base text-gray-700">Required</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12 }}>
+            <Text style={{ fontSize: 16, color: Colors.gray[700] }}>Required</Text>
             <Switch
               value={fieldForm.is_required}
               onValueChange={(v) => updateFieldForm("is_required", v)}
@@ -658,7 +682,7 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
       </BottomSheet>
     </>
   );
-  if (embedded) return <View className="flex-1 min-h-0">{inner}</View>;
+  if (embedded) return <View style={{ flex: 1, minHeight: 0 }}>{inner}</View>;
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader

@@ -2,7 +2,7 @@
 import React from "react";
 import Link from "next/link";
 import PageHeader from "@/components/ui/page-header";
-import ProviderCard from "@/app/home/components/provider-card";
+import ProviderCard from "@/app/home/components/provider-card-dynamic";
 import EmptyState from "@/components/ui/empty-state";
 import type { Category, PublicProviderCard } from "@/types/beautonomi";
 

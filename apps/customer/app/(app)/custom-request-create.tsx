@@ -17,12 +17,16 @@ import { api } from "@/lib/api-client";
 import { useAuth } from "@/providers/AuthProvider";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { haptic } from "@/lib/haptics";
+import { Colors } from "@/constants/colors";
 
 export default function CustomRequestCreateScreen() {
   useScreenTracking("Custom Request Create");
   const { provider_id } = useLocalSearchParams<{ provider_id: string }>();
   const { user } = useAuth();
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const { pickFromLibrary } = useImagePicker();
   const [description, setDescription] = useState("");
   const [budgetMin, setBudgetMin] = useState("");
@@ -117,8 +121,8 @@ export default function CustomRequestCreateScreen() {
 
   if (!user) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-6">
-        <Text className="text-gray-600">Log in to make a custom request</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Text style={{ color: Colors.gray[600] }}>Log in to make a custom request</Text>
       </View>
     );
   }
@@ -126,88 +130,52 @@ export default function CustomRequestCreateScreen() {
   return (
     <>
       <Stack.Screen options={{ title: "Custom Request" }} />
-      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
-      <ScrollView className="flex-1 bg-white" contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
-        <Text className="text-sm text-gray-600 mb-2">Describe what you&apos;re looking for (min 10 characters)</Text>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
+      <ScrollView style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
+        <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Describe what you&apos;re looking for (min 10 characters)</Text>
         <TextInput
-          className="border border-gray-200 rounded-xl px-4 py-3 min-h-[100] text-base"
+          style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, minHeight: 100, fontSize: 16 }}
           placeholder="E.g. I need a bridal makeup look for my wedding in 2 weeks. I'd like a natural glow with soft pink tones..."
+          placeholderTextColor={Colors.gray[400]}
           value={description}
           onChangeText={setDescription}
           multiline
           maxLength={4000}
         />
-
-        <Text className="text-sm text-gray-600 mt-4 mb-2">Budget (optional)</Text>
-        <View className="flex-row gap-3">
-          <TextInput
-            className="flex-1 border border-gray-200 rounded-xl px-4 py-3"
-            placeholder="Min"
-            value={budgetMin}
-            onChangeText={setBudgetMin}
-            keyboardType="numeric"
-          />
-          <TextInput
-            className="flex-1 border border-gray-200 rounded-xl px-4 py-3"
-            placeholder="Max"
-            value={budgetMax}
-            onChangeText={setBudgetMax}
-            keyboardType="numeric"
-          />
+        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Budget (optional)</Text>
+        <View style={{ flexDirection: "row" }}>
+          <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginRight: 12 }} placeholder="Min" placeholderTextColor={Colors.gray[400]} value={budgetMin} onChangeText={setBudgetMin} keyboardType="numeric" />
+          <TextInput style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder="Max" placeholderTextColor={Colors.gray[400]} value={budgetMax} onChangeText={setBudgetMax} keyboardType="numeric" />
         </View>
-
-        <Text className="text-sm text-gray-600 mt-4 mb-2">Duration (minutes)</Text>
-        <TextInput
-          className="border border-gray-200 rounded-xl px-4 py-3"
-          placeholder="60"
-          value={duration}
-          onChangeText={setDuration}
-          keyboardType="numeric"
-        />
-
-        <Text className="text-sm text-gray-600 mt-4 mb-2">Where?</Text>
-        <View className="flex-row gap-3">
-          <TouchableOpacity
-            onPress={() => setLocationType("at_salon")}
-            className={`flex-1 py-3 rounded-xl border ${locationType === "at_salon" ? "border-primary bg-primary-light" : "border-gray-200"}`}
-          >
-            <Text className={`text-center font-medium ${locationType === "at_salon" ? "text-primary" : "text-gray-700"}`}>At salon</Text>
+        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Duration (minutes)</Text>
+        <TextInput style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 }} placeholder="60" placeholderTextColor={Colors.gray[400]} value={duration} onChangeText={setDuration} keyboardType="numeric" />
+        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Where?</Text>
+        <View style={{ flexDirection: "row" }}>
+          <TouchableOpacity onPress={() => setLocationType("at_salon")} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: locationType === "at_salon" ? Colors.primary : Colors.gray[200], backgroundColor: locationType === "at_salon" ? Colors.primaryLight : "transparent", marginRight: 12 }}>
+            <Text style={{ textAlign: "center", fontWeight: "500", color: locationType === "at_salon" ? Colors.primary : Colors.gray[700] }}>At salon</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setLocationType("at_home")}
-            className={`flex-1 py-3 rounded-xl border ${locationType === "at_home" ? "border-primary bg-primary-light" : "border-gray-200"}`}
-          >
-            <Text className={`text-center font-medium ${locationType === "at_home" ? "text-primary" : "text-gray-700"}`}>At home</Text>
+          <TouchableOpacity onPress={() => setLocationType("at_home")} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: locationType === "at_home" ? Colors.primary : Colors.gray[200], backgroundColor: locationType === "at_home" ? Colors.primaryLight : "transparent" }}>
+            <Text style={{ textAlign: "center", fontWeight: "500", color: locationType === "at_home" ? Colors.primary : Colors.gray[700] }}>At home</Text>
           </TouchableOpacity>
         </View>
-
-        <Text className="text-sm text-gray-600 mt-4 mb-2">Inspiration photos (optional, max 6)</Text>
-        <View className="flex-row flex-wrap gap-2">
+        <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 16, marginBottom: 8 }}>Inspiration photos (optional, max 6)</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
           {imageUrls.map((url, i) => (
-            <View key={i} className="relative">
+            <View key={i} style={{ position: "relative", marginRight: 8, marginBottom: 8 }}>
               <Image source={{ uri: url }} style={{ width: 80, height: 80, borderRadius: 8 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
-              <Pressable onPress={() => removeImage(i)} className="absolute -top-1 -right-1 bg-red-500 w-5 h-5 rounded-full items-center justify-center">
-                <Text className="text-white text-xs">×</Text>
+              <Pressable onPress={() => removeImage(i)} style={{ position: "absolute", top: -4, right: -4, width: 20, height: 20, backgroundColor: "#EF4444", borderRadius: 10, alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ color: Colors.white, fontSize: 12 }}>×</Text>
               </Pressable>
             </View>
           ))}
           {imageUrls.length < 6 && (
-            <TouchableOpacity
-              onPress={addImage}
-              disabled={uploading}
-              className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 items-center justify-center"
-            >
-              {uploading ? <ActivityIndicator size="small" /> : <Text className="text-gray-500 text-2xl">+</Text>}
+            <TouchableOpacity onPress={addImage} disabled={uploading} style={{ width: 80, height: 80, borderRadius: 8, borderWidth: 2, borderStyle: "dashed", borderColor: Colors.gray[300], alignItems: "center", justifyContent: "center", marginRight: 8, marginBottom: 8 }}>
+              {uploading ? <ActivityIndicator size="small" /> : <Text style={{ color: Colors.gray[500], fontSize: 24 }}>+</Text>}
             </TouchableOpacity>
           )}
         </View>
-
-        <TouchableOpacity
-          onPress={submit}
-          disabled={submitting}
-          className="bg-primary py-4 rounded-xl items-center mt-6"
-        >
-          {submitting ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-semibold text-lg">Submit request</Text>}
+        <TouchableOpacity onPress={submit} disabled={submitting} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginTop: 24 }}>
+          {submitting ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>Submit request</Text>}
         </TouchableOpacity>
       </ScrollView>
       </KeyboardAvoidingView>

@@ -117,7 +117,7 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
               ) : heroTitle.toLowerCase().includes("salon and spa") ? (
                 <>
                   {heroTitle.replace(/salon and spa/gi, "").trim()}{" "}
-                  <span className="text-[#FF0077]">salon and spa</span>
+                  <span className="text-primary">salon and spa</span>
                 </>
               ) : (
                 heroTitle
@@ -138,7 +138,7 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
               <Button
                 size="lg"
                 onClick={handleSignUp}
-                className="bg-[#FF0077] hover:bg-[#D60565] text-white px-6 md:px-8 py-4 md:py-6 text-base md:text-lg font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
+                className="bg-primary hover:bg-primary-hover text-white px-6 md:px-8 py-4 md:py-6 text-base md:text-lg font-semibold rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
               >
                 Sign up
               </Button>
@@ -146,7 +146,7 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
                 size="lg"
                 variant="outline"
                 onClick={handleBookDemo}
-                className="border-2 border-[#FF0077] text-[#FF0077] hover:bg-[#FF0077] hover:text-white px-6 md:px-8 py-4 md:py-6 text-base md:text-lg font-semibold rounded-full transition-all duration-300"
+                className="border-2 border-primary text-primary hover:bg-primary hover:text-white px-6 md:px-8 py-4 md:py-6 text-base md:text-lg font-semibold rounded-full transition-all duration-300"
               >
                 Book a demo
               </Button>
@@ -158,9 +158,9 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
                 size="lg"
                 variant="ghost"
                 onClick={handleVideoTour}
-                className="text-[#FF0077] hover:text-[#D60565] hover:bg-pink-50 px-6 md:px-8 py-4 md:py-6 text-base md:text-lg font-semibold rounded-full transition-all duration-300 flex items-center gap-2 md:gap-3"
+                className="text-primary hover:text-primary-hover hover:bg-pink-50 px-6 md:px-8 py-4 md:py-6 text-base md:text-lg font-semibold rounded-full transition-all duration-300 flex items-center gap-2 md:gap-3"
               >
-                <Play className="w-5 h-5 md:w-6 md:h-6 fill-[#FF0077]" />
+                <Play className="w-5 h-5 md:w-6 md:h-6 fill-primary" />
                 <span className="hidden sm:inline">WATCH A VIDEO TOUR</span>
                 <span className="sm:hidden">VIDEO TOUR</span>
               </Button>
@@ -206,8 +206,8 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
                 onClick={() => setActiveTab(feature)}
                 className={`px-4 sm:px-5 md:px-6 py-2.5 md:py-3 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
                   activeTab === feature
-                    ? "bg-[#FF0077] text-white border-2 border-[#FF0077] shadow-md"
-                    : "bg-white border-2 border-pink-200 text-gray-700 hover:border-[#FF0077] hover:text-[#FF0077] shadow-sm hover:shadow-md"
+                    ? "bg-primary text-white border-2 border-primary shadow-md"
+                    : "bg-white border-2 border-pink-200 text-gray-700 hover:border-primary hover:text-primary shadow-sm hover:shadow-md"
                 }`}
               >
                 {feature}

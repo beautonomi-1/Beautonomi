@@ -79,9 +79,17 @@ export default function Index() {
 
   if (loading || (session && portalState === "idle") || portalState === "loading") {
     return (
-      <View className="flex-1 items-center justify-center bg-white">
-        <ActivityIndicator size="large" />
-        <Text className="mt-4 text-base text-gray-600">Loading…</Text>
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#fff",
+          minHeight: 400,
+        }}
+      >
+        <ActivityIndicator size="large" color="#4B5563" />
+        <Text style={{ marginTop: 16, fontSize: 16, color: "#4B5563" }}>Loading…</Text>
       </View>
     );
   }

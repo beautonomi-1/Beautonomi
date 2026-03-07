@@ -17,9 +17,11 @@ import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
+import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { twStyle } from "@/lib/twStyle";
 
 const IMAGE_CONSTRAINTS = { maxSizeBytes: 2 * 1024 * 1024 }; // 2MB
 
@@ -176,9 +178,9 @@ export default function ProfileScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Profile" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#FF0077" />
-          <Text className="mt-3 text-gray-500">Loading profile…</Text>
+        <View style={twStyle("flex-1 items-center justify-center")}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={twStyle("mt-3 text-gray-500")}>Loading profile…</Text>
         </View>
       </ScreenContainer>
     );
@@ -188,10 +190,10 @@ export default function ProfileScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Profile" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center px-6">
-          <Text className="text-center text-gray-600">{error}</Text>
-          <TouchableOpacity onPress={load} className="mt-4 rounded-xl bg-gray-900 px-6 py-3">
-            <Text className="font-medium text-white">Retry</Text>
+        <View style={twStyle("flex-1 items-center justify-center px-6")}>
+          <Text style={twStyle("text-center text-gray-600")}>{error}</Text>
+          <TouchableOpacity onPress={load} style={twStyle("mt-4 rounded-xl bg-gray-900 px-6 py-3")}>
+            <Text style={twStyle("font-medium text-white")}>Retry</Text>
           </TouchableOpacity>
         </View>
       </ScreenContainer>
@@ -210,17 +212,17 @@ export default function ProfileScreen() {
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Profile" subtitle="Manage your personal information" onBack={() => router.back()} />
       <ScrollView
-        className="flex-1"
+        style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View className="px-2 pt-4">
+        <View style={twStyle("px-2 pt-4")}>
           {/* Profile Picture */}
-          <View className="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
-            <Text className="mb-3 text-sm font-semibold text-gray-900">Profile Picture</Text>
-            <View className="flex-row items-center gap-4">
-              <Pressable onPress={uploadAvatar} disabled={uploading}>
+          <View style={twStyle("mb-6 rounded-2xl border border-gray-200 bg-white p-4")}>
+            <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>Profile Picture</Text>
+            <View style={twStyle("flex-row items-center")}>
+              <Pressable onPress={uploadAvatar} disabled={uploading} style={{ marginRight: 16 }}>
                 {profile.avatar_url ? (
                   <Image
                     source={{ uri: profile.avatar_url }}
@@ -228,52 +230,52 @@ export default function ProfileScreen() {
                     contentFit="cover"
                   />
                 ) : (
-                  <View className="h-24 w-24 items-center justify-center rounded-full bg-[#FF0077]/10">
-                    <Text className="text-2xl font-medium text-[#FF0077]">{getInitials()}</Text>
+                  <View style={twStyle("h-24 w-24 items-center justify-center rounded-full bg-primary/10")}>
+                    <Text style={twStyle("text-2xl font-medium text-primary")}>{getInitials()}</Text>
                   </View>
                 )}
               </Pressable>
-              <View className="flex-1">
+              <View style={twStyle("flex-1")}>
                 <TouchableOpacity
                   onPress={uploadAvatar}
                   disabled={uploading}
-                  className="rounded-xl border border-gray-200 bg-white py-2.5 px-4"
+                  style={twStyle("rounded-xl border border-gray-200 bg-white py-2.5 px-4")}
                 >
                   {uploading ? (
-                    <ActivityIndicator size="small" color="#FF0077" />
+                    <ActivityIndicator size="small" color={Colors.primary} />
                   ) : (
-                    <Text className="font-medium text-gray-900">Upload Photo</Text>
+                    <Text style={twStyle("font-medium text-gray-900")}>Upload Photo</Text>
                   )}
                 </TouchableOpacity>
-                <Text className="mt-1.5 text-xs text-gray-500">JPG, PNG or GIF. Max size 2MB</Text>
+                <Text style={twStyle("mt-1.5 text-xs text-gray-500")}>JPG, PNG or GIF. Max size 2MB</Text>
               </View>
             </View>
           </View>
 
           {/* Personal Information */}
-          <View className="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
-            <Text className="mb-3 text-sm font-semibold text-gray-900">Personal Information</Text>
-            <View className="gap-3">
+          <View style={twStyle("mb-6 rounded-2xl border border-gray-200 bg-white p-4")}>
+            <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>Personal Information</Text>
+            <View>
               <View>
-                <Text className="mb-1 text-xs font-medium text-gray-500">Email</Text>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Email</Text>
                 <TextInput
                   value={profile.email}
                   onChangeText={(email) => setProfile((p) => (p ? { ...p, email } : p))}
                   placeholder="Email"
                   placeholderTextColor="#9ca3af"
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
               </View>
-              <View>
-                <Text className="mb-1 text-xs font-medium text-gray-500">Phone</Text>
+              <View style={{ marginTop: 12 }}>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Phone</Text>
                 <TextInput
                   value={profile.phone}
                   onChangeText={(phone) => setProfile((p) => (p ? { ...p, phone } : p))}
                   placeholder="Phone"
                   placeholderTextColor="#9ca3af"
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   keyboardType="phone-pad"
                 />
               </View>
@@ -281,11 +283,11 @@ export default function ProfileScreen() {
           </View>
 
           {/* Address */}
-          <View className="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
-            <Text className="mb-3 text-sm font-semibold text-gray-900">Address</Text>
-            <View className="gap-3">
+          <View style={twStyle("mb-6 rounded-2xl border border-gray-200 bg-white p-4")}>
+            <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>Address</Text>
+            <View>
               <View>
-                <Text className="mb-1 text-xs font-medium text-gray-500">Address</Text>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Address</Text>
                 <TextInput
                   value={profile.address?.line1 ?? ""}
                   onChangeText={(line1) =>
@@ -295,11 +297,11 @@ export default function ProfileScreen() {
                   }
                   placeholder="Street address"
                   placeholderTextColor="#9ca3af"
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 />
               </View>
-              <View>
-                <Text className="mb-1 text-xs font-medium text-gray-500">Country</Text>
+              <View style={{ marginTop: 12 }}>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Country</Text>
                 <TextInput
                   value={profile.address?.country ?? ""}
                   onChangeText={(country) =>
@@ -309,11 +311,11 @@ export default function ProfileScreen() {
                   }
                   placeholder="Country"
                   placeholderTextColor="#9ca3af"
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 />
               </View>
               <View>
-                <Text className="mb-1 text-xs font-medium text-gray-500">State/Province</Text>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>State/Province</Text>
                 <TextInput
                   value={profile.address?.state ?? ""}
                   onChangeText={(state) =>
@@ -323,11 +325,11 @@ export default function ProfileScreen() {
                   }
                   placeholder="State / Province"
                   placeholderTextColor="#9ca3af"
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 />
               </View>
               <View>
-                <Text className="mb-1 text-xs font-medium text-gray-500">City</Text>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>City</Text>
                 <TextInput
                   value={profile.address?.city ?? ""}
                   onChangeText={(city) =>
@@ -337,11 +339,11 @@ export default function ProfileScreen() {
                   }
                   placeholder="City"
                   placeholderTextColor="#9ca3af"
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                 />
               </View>
               <View>
-                <Text className="mb-1 text-xs font-medium text-gray-500">Zip/Postal Code</Text>
+                <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Zip/Postal Code</Text>
                 <TextInput
                   value={profile.address?.postal_code ?? ""}
                   onChangeText={(postal_code) =>
@@ -351,7 +353,7 @@ export default function ProfileScreen() {
                   }
                   placeholder="Zip / Postal code"
                   placeholderTextColor="#9ca3af"
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900"
+                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
                   keyboardType="number-pad"
                 />
               </View>
@@ -359,22 +361,22 @@ export default function ProfileScreen() {
           </View>
 
           {/* Plan */}
-          <View className="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
-            <Text className="mb-3 text-sm font-semibold text-gray-900">Plan</Text>
+          <View style={twStyle("mb-6 rounded-2xl border border-gray-200 bg-white p-4")}>
+            <Text style={twStyle("mb-3 text-sm font-semibold text-gray-900")}>Plan</Text>
             <View>
-              <Text className="mb-1 text-xs font-medium text-gray-500">Current Plan</Text>
-              <View className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
-                <Text className="text-base text-gray-700">{plan}</Text>
+              <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Current Plan</Text>
+              <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 px-4 py-3")}>
+                <Text style={twStyle("text-base text-gray-700")}>{plan}</Text>
               </View>
-              <Text className="mt-2 text-xs text-gray-500">Contact support to change your plan.</Text>
+              <Text style={twStyle("mt-2 text-xs text-gray-500")}>Contact support to change your plan.</Text>
               <TouchableOpacity
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   router.push("/(app)/(tabs)/more/contact-support" as never);
                 }}
-                className="mt-2"
+                style={twStyle("mt-2")}
               >
-                <Text className="text-sm font-medium text-[#FF0077]">Contact Support</Text>
+                <Text style={twStyle("text-sm font-medium text-primary")}>Contact Support</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -382,12 +384,12 @@ export default function ProfileScreen() {
           <TouchableOpacity
             onPress={save}
             disabled={saving}
-            className="rounded-xl bg-gray-900 py-3.5 items-center"
+            style={twStyle("rounded-xl bg-gray-900 py-3.5 items-center")}
           >
             {saving ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text className="font-semibold text-white">Save changes</Text>
+              <Text style={twStyle("font-semibold text-white")}>Save changes</Text>
             )}
           </TouchableOpacity>
         </View>

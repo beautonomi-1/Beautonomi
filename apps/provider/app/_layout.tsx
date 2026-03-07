@@ -17,9 +17,13 @@ import { useForceUpdate } from "@/hooks/useForceUpdate";
 import { initSentry, Sentry } from "@/lib/sentry";
 import { initSingular } from "@/lib/singular";
 
-// Initialize Sentry before anything renders
-initSentry();
-initSingular();
+// Initialize Sentry and Singular before anything renders; catch so a failure doesn't crash the app
+try {
+  initSentry();
+} catch {}
+try {
+  initSingular();
+} catch {}
 
 if (Platform.OS !== "web") {
   SplashScreen.preventAutoHideAsync();
@@ -36,7 +40,7 @@ function SplashController() {
 function ForceUpdateGate({ children }: { children: React.ReactNode }) {
   const { updateRequired } = useForceUpdate();
   if (updateRequired) {
-    return <View className="flex-1 bg-white" />;
+    return <View style={{ flex: 1, backgroundColor: "#fff" }} />;
   }
   return <>{children}</>;
 }
@@ -53,7 +57,7 @@ function ThemedApp() {
           <Stack
             screenOptions={{
               headerShown: false,
-              contentStyle: { backgroundColor: "#ffffff" },
+              contentStyle: { flex: 1, backgroundColor: "#ffffff" },
             }}
           >
             <Stack.Screen name="index" />

@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, Alert, ScrollView } from "react-native";
+import { View, Text, TouchableOpacity, Alert, ScrollView, Platform } from "react-native";
 import { api } from "@/lib/api-client";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenFrame } from "@/components/ScreenFrame";
+import { Colors } from "@/constants/colors";
 
 export default function MembershipScreen() {
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,55 +67,55 @@ export default function MembershipScreen() {
 
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load}>
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
         {hasMembership ? (
-          <View className="gap-4">
-            <View className="bg-pink-50 rounded-2xl p-4">
-              <Text className="text-sm text-gray-600">Active membership</Text>
-              <Text className="text-xl font-bold text-gray-900 mt-1">{membership?.name}</Text>
+          <View>
+            <View style={{ backgroundColor: "#FDF2F8", borderRadius: 16, padding: 16 }}>
+              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Active membership</Text>
+              <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], marginTop: 4 }}>{membership?.name}</Text>
               {membership?.description && (
-                <Text className="text-gray-700 mt-2">{membership.description}</Text>
+                <Text style={{ color: Colors.gray[700], marginTop: 8 }}>{membership.description}</Text>
               )}
-              <Text className="text-sm text-gray-500 mt-2">
+              <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 8 }}>
                 {membership?.billing_cycle === "yearly" ? "Billed yearly" : "Billed monthly"}
                 {membership?.expires_at && ` · Renews ${new Date(membership.expires_at).toLocaleDateString()}`}
               </Text>
             </View>
             {benefits.length > 0 && (
-              <View>
-                <Text className="font-semibold text-gray-900 mb-2">Benefits</Text>
+              <View style={{ marginTop: 16 }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Benefits</Text>
                 {benefits.map((b: any, i: number) => (
-                  <View key={i} className="bg-gray-50 rounded-xl p-3 mb-2">
-                    <Text className="font-medium text-gray-900">{b.name}</Text>
-                    {b.description && <Text className="text-sm text-gray-600 mt-0.5">{b.description}</Text>}
+                  <View key={i} style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 12, marginBottom: 8 }}>
+                    <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{b.name}</Text>
+                    {b.description && <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>{b.description}</Text>}
                   </View>
                 ))}
               </View>
             )}
             {(savings.this_month > 0 || savings.lifetime > 0) && (
-              <View className="bg-green-50 rounded-xl p-4">
-                <Text className="font-semibold text-gray-900">Your savings</Text>
-                <Text className="text-gray-700 mt-1">
+              <View style={{ backgroundColor: "#F0FDF4", borderRadius: 12, padding: 16, marginTop: 16 }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Your savings</Text>
+                <Text style={{ color: Colors.gray[700], marginTop: 4 }}>
                   This month: ZAR {savings.this_month?.toFixed(2) ?? "0.00"}
                 </Text>
-                <Text className="text-gray-700">Lifetime: ZAR {savings.lifetime?.toFixed(2) ?? "0.00"}</Text>
+                <Text style={{ color: Colors.gray[700] }}>Lifetime: ZAR {savings.lifetime?.toFixed(2) ?? "0.00"}</Text>
               </View>
             )}
             {membership?.auto_renew !== false && (
               <TouchableOpacity
                 onPress={cancelMembership}
                 disabled={cancelling}
-                className="py-3 border border-red-500 rounded-xl items-center"
+                style={{ marginTop: 16, paddingVertical: 12, borderWidth: 1, borderColor: "#EF4444", borderRadius: 12, alignItems: "center" }}
               >
-                <Text className="text-red-600 font-medium">{cancelling ? "Cancelling..." : "Cancel membership"}</Text>
+                <Text style={{ color: "#DC2626", fontWeight: "500" }}>{cancelling ? "Cancelling..." : "Cancel membership"}</Text>
               </TouchableOpacity>
             )}
           </View>
         ) : (
-          <View className="gap-4">
-            <View className="bg-gray-50 rounded-2xl p-4">
-              <Text className="text-sm text-gray-600">No active membership</Text>
-              <Text className="text-gray-700 mt-1">
+          <View>
+            <View style={{ backgroundColor: Colors.gray[50], borderRadius: 16, padding: 16 }}>
+              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>No active membership</Text>
+              <Text style={{ color: Colors.gray[700], marginTop: 4 }}>
                 Browse provider profiles to see membership plans and subscribe.
               </Text>
             </View>

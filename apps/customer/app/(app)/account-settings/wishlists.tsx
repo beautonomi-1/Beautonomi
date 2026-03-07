@@ -6,7 +6,7 @@ import {
   ScrollView,
   RefreshControl,
   FlatList,
-  Dimensions,
+  Platform,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -14,19 +14,21 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 
 type Tab = "providers" | "posts";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const COLUMN_GAP = 8;
-const SIDE_PAD = 16;
 const COL_COUNT = 2;
-const TILE_WIDTH = (SCREEN_WIDTH - SIDE_PAD * 2 - COLUMN_GAP * (COL_COUNT - 1)) / COL_COUNT;
 
 export default function WishlistsScreen() {
   useScreenTracking("Wishlists");
   const params = useLocalSearchParams<{ tab?: string }>();
+  const { width, contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
+  const contentWidth = Math.min(width, contentMaxWidth) - contentPadding * 2;
+  const TILE_WIDTH = (contentWidth - COLUMN_GAP * (COL_COUNT - 1)) / COL_COUNT;
   const [activeTab, setActiveTab] = useState<Tab>(
     params.tab === "posts" ? "posts" : "providers"
   );
@@ -172,8 +174,8 @@ export default function WishlistsScreen() {
 
       {activeTab === "providers" ? (
         <ScrollView
-          className="flex-1"
-          contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -183,12 +185,12 @@ export default function WishlistsScreen() {
           }
         >
           {saved.length > 0 && (
-            <View className="mb-6">
-              <Text className="text-lg font-semibold text-gray-900 mb-3">
+            <View style={{ marginBottom: 24 }}>
+              <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>
                 Saved providers
               </Text>
-              <View className="gap-3">
-                {saved.map((p: any) => (
+              <View>
+                {saved.map((p: any, index: number) => (
                   <TouchableOpacity
                     key={p.id}
                     onPress={() =>
@@ -198,7 +200,7 @@ export default function WishlistsScreen() {
                         params: { slug: p.slug },
                       })
                     }
-                    className="flex-row items-center bg-gray-50 rounded-xl p-4"
+                    style={{ flexDirection: "row", alignItems: "center", backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginTop: index === 0 ? 0 : 12 }}
                   >
                     {(p.avatar_url || p.thumbnail_url) ? (
                       <Image
@@ -228,12 +230,12 @@ export default function WishlistsScreen() {
                         <Ionicons name="storefront-outline" size={20} color="#9ca3af" />
                       </View>
                     )}
-                    <View className="flex-1">
-                      <Text className="font-medium text-gray-900">
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
                         {p.business_name}
                       </Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+                    <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -241,11 +243,11 @@ export default function WishlistsScreen() {
           )}
           {recentlyViewed.length > 0 && (
             <View>
-              <Text className="text-lg font-semibold text-gray-900 mb-3">
+              <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>
                 Recently viewed
               </Text>
-              <View className="gap-3">
-                {recentlyViewed.map((p: any) => (
+              <View>
+                {recentlyViewed.map((p: any, idx: number) => (
                   <TouchableOpacity
                     key={p.id}
                     onPress={() =>
@@ -255,7 +257,7 @@ export default function WishlistsScreen() {
                         params: { slug: p.slug },
                       })
                     }
-                    className="flex-row items-center bg-gray-50 rounded-xl p-4"
+                    style={[{ flexDirection: "row", alignItems: "center", backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16 }, idx > 0 && { marginTop: 12 }]}
                   >
                     {(p.avatar_url || p.thumbnail_url) ? (
                       <Image
@@ -285,12 +287,12 @@ export default function WishlistsScreen() {
                         <Ionicons name="storefront-outline" size={20} color="#9ca3af" />
                       </View>
                     )}
-                    <View className="flex-1">
-                      <Text className="font-medium text-gray-900">
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
                         {p.business_name}
                       </Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+                    <Ionicons name="chevron-forward" size={18} color={Colors.gray[400]} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -302,8 +304,8 @@ export default function WishlistsScreen() {
           data={savedPosts}
           keyExtractor={(item) => item.id}
           numColumns={COL_COUNT}
-          contentContainerStyle={{ padding: SIDE_PAD, paddingBottom: 48 }}
-          columnWrapperStyle={{ gap: COLUMN_GAP, marginBottom: COLUMN_GAP }}
+          contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
+          columnWrapperStyle={{ marginBottom: COLUMN_GAP }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -313,8 +315,10 @@ export default function WishlistsScreen() {
           }
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.4}
-          renderItem={({ item }) => (
-            <SavedPostTile post={item} onUnsave={handleUnsave} />
+          renderItem={({ item, index }) => (
+            <View style={{ marginRight: index % 2 === 0 ? COLUMN_GAP : 0 }}>
+              <SavedPostTile post={item} onUnsave={handleUnsave} tileWidth={TILE_WIDTH} />
+            </View>
           )}
         />
       )}
@@ -368,9 +372,11 @@ function TabButton({
 function SavedPostTile({
   post,
   onUnsave,
+  tileWidth,
 }: {
   post: any;
   onUnsave: (id: string) => void;
+  tileWidth: number;
 }) {
   const mediaUrl = post.media_urls?.[0];
   const providerName = post.provider?.business_name || "";
@@ -384,13 +390,13 @@ function SavedPostTile({
         })
       }
       activeOpacity={0.8}
-      style={{ width: TILE_WIDTH }}
+      style={{ width: tileWidth }}
     >
       <View style={{ borderRadius: 12, overflow: "hidden", backgroundColor: "#f3f4f6" }}>
         {mediaUrl ? (
           <Image
             source={{ uri: mediaUrl }}
-            style={{ width: TILE_WIDTH, height: TILE_WIDTH * 1.2 }}
+            style={{ width: tileWidth, height: tileWidth * 1.2 }}
             contentFit="cover"
             cachePolicy="memory-disk"
             transition={200}
@@ -398,8 +404,8 @@ function SavedPostTile({
         ) : (
           <View
             style={{
-              width: TILE_WIDTH,
-              height: TILE_WIDTH * 1.2,
+              width: tileWidth,
+              height: tileWidth * 1.2,
               alignItems: "center",
               justifyContent: "center",
             }}

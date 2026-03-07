@@ -349,7 +349,7 @@ export default function ProviderGamificationPage() {
               <div className="flex items-baseline gap-2 mb-4">
                 <span className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-2">
                   {data.progress_to_next_badge.current_points.toLocaleString()}
-                  <Star className="w-5 h-5 sm:w-6 sm:h-6 text-[#FF0077] fill-[#FF0077]" />
+                  <Star className="w-5 h-5 sm:w-6 sm:h-6 text-primary fill-primary" />
                 </span>
                 <span className="text-base sm:text-lg text-gray-600">
                   / {data.progress_to_next_badge.required_points.toLocaleString()} points
@@ -363,7 +363,7 @@ export default function ProviderGamificationPage() {
               <div className="relative mt-4">
                 <div className="relative h-2 bg-gray-200 rounded-full overflow-hidden">
                   <div 
-                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-[#FF0077] to-[#D60565] rounded-full transition-all duration-500 ease-out"
+                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-primary to-primary-hover rounded-full transition-all duration-500 ease-out"
                     style={{ width: `${data.progress_to_next_badge.progress_percentage}%` }}
                   />
                 </div>
@@ -373,14 +373,14 @@ export default function ProviderGamificationPage() {
               {data.progress_to_next_badge.points_needed > 0 ? (
                 <div className="space-y-2">
                   <p className="text-sm sm:text-base text-gray-700">
-                    <span className="font-semibold text-[#FF0077]">{data.progress_to_next_badge.points_needed.toLocaleString()}</span> more points needed
+                    <span className="font-semibold text-primary">{data.progress_to_next_badge.points_needed.toLocaleString()}</span> more points needed
                   </p>
                   <p className="text-xs sm:text-sm text-gray-600 italic">
                     💡 Keep earning points by completing bookings and receiving great reviews!
                   </p>
                 </div>
               ) : (
-                <p className="text-sm sm:text-base text-[#FF0077] font-semibold">
+                <p className="text-sm sm:text-base text-primary font-semibold">
                   🎉 You've reached the requirements!
                 </p>
               )}
@@ -417,7 +417,7 @@ export default function ProviderGamificationPage() {
                       className="border rounded-lg p-4 hover:shadow-md transition-shadow"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF0077] to-[#4fd1c5] flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-[#4fd1c5] flex items-center justify-center">
                           <CheckCircle2 className="w-5 h-5 text-white" />
                         </div>
                         <div className="flex-1">

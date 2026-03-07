@@ -19,6 +19,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 interface ProductVariant {
   id?: string;
@@ -340,7 +341,7 @@ export function ProductsContent() {
 
   if (error && !productsData) {
     return (
-      <View className="flex-1 justify-center px-4">
+      <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
         <ErrorState message={error} onRetry={onRefresh} />
       </View>
     );
@@ -349,68 +350,66 @@ export function ProductsContent() {
   return (
     <>
       <ScrollView
-        className="flex-1"
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor="#1a1f3c" />
         }
       >
         {isLoading && displayProducts.length === 0 ? (
-          <View className="py-12">
+          <View style={{ paddingVertical: 48 }}>
             <LoadingState />
           </View>
         ) : displayProducts.length === 0 ? (
-          <View className="flex-1 items-center justify-center px-6 py-16">
-            <View className="mb-4 h-16 w-16 items-center justify-center rounded-full bg-violet-100">
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24, paddingVertical: 64 }}>
+            <View style={{ marginBottom: 16, height: 64, width: 64, alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#ede9fe" }}>
               <Ionicons name="cube-outline" size={32} color="#8b5cf6" />
             </View>
-            <Text className="text-center text-lg font-semibold text-gray-900">No products yet</Text>
-            <Text className="mt-2 text-center text-sm text-gray-500">
+            <Text style={{ textAlign: "center", fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>No products yet</Text>
+            <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
               Add your first product in one step. Name and price are all you need; the rest is optional.
             </Text>
             <TouchableOpacity
               onPress={openCreate}
-              className="mt-6 flex-row items-center justify-center rounded-xl bg-[#8b5cf6] px-6 py-3"
+              style={{ marginTop: 24, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#8b5cf6", paddingHorizontal: 24, paddingVertical: 12 }}
             >
               <Ionicons name="add" size={20} color="#fff" />
-              <Text className="ml-2 font-medium text-white">Add product</Text>
+              <Text style={{ marginLeft: 8, fontWeight: "500", color: Colors.white }}>Add product</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <View className="px-4">
+          <View style={{ paddingHorizontal: 16 }}>
             <TouchableOpacity
               onPress={openCreate}
-              className="mb-3 flex-row items-center justify-center rounded-xl border border-violet-200 bg-violet-50 py-3"
+              style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: "#c4b5fd", backgroundColor: "#f5f3ff", paddingVertical: 12 }}
             >
               <Ionicons name="add" size={18} color="#8b5cf6" />
-              <Text className="ml-2 font-medium text-violet-700">Add product</Text>
+              <Text style={{ marginLeft: 8, fontWeight: "500", color: "#6d28d9" }}>Add product</Text>
             </TouchableOpacity>
-            <Text className="mb-3 text-sm text-gray-500">
+            <Text style={{ marginBottom: 12, fontSize: 14, color: Colors.gray[500] }}>
               {displayProducts.length} product{displayProducts.length !== 1 ? "s" : ""}
             </Text>
             {displayProducts.map((p) => (
               <View
                 key={p.id}
-                className="mb-3 flex-row items-center rounded-xl border border-gray-100 bg-white p-4"
+                style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
               >
-                <View className="flex-1 min-w-0">
-                  <Text className="font-medium text-gray-900" numberOfLines={1}>
-                    {p.name}
-                  </Text>
-                  <Text className="mt-0.5 text-sm text-gray-600">
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>{p.name}</Text>
+                  <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }}>
                     {productDisplayPrice(p)}
                     {p.category ? ` · ${p.category}` : ""}
                   </Text>
                 </View>
                 <TouchableOpacity
                   onPress={() => openEdit(p)}
-                  className="mr-2 h-9 w-9 items-center justify-center rounded-lg bg-gray-100"
+                  style={{ marginRight: 8, height: 36, width: 36, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: Colors.gray[100] }}
                 >
                   <Ionicons name="create-outline" size={18} color="#6b7280" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => handleDelete(p)}
-                  className="h-9 w-9 items-center justify-center rounded-lg bg-red-50"
+                  style={{ height: 36, width: 36, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#fee2e2" }}
                 >
                   <Ionicons name="trash-outline" size={18} color="#ef4444" />
                 </TouchableOpacity>
@@ -424,34 +423,34 @@ export function ProductsContent() {
       <Modal visible={formOpen} animationType="slide" presentationStyle="pageSheet">
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          className="flex-1 bg-white"
+          style={{ flex: 1, backgroundColor: Colors.white }}
         >
-          <View className="border-b border-gray-100 px-4 py-3 flex-row items-center justify-between">
-            <Text className="text-lg font-semibold text-gray-900">
+          <View style={{ borderBottomWidth: 1, borderBottomColor: Colors.gray[100], paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>
               {editingProduct ? "Edit product" : "New product"}
             </Text>
-            <TouchableOpacity onPress={() => setFormOpen(false)} className="p-2">
+            <TouchableOpacity onPress={() => setFormOpen(false)} style={{ padding: 8 }}>
               <Ionicons name="close" size={24} color="#374151" />
             </TouchableOpacity>
           </View>
-          <ScrollView className="flex-1 px-4 py-4" keyboardShouldPersistTaps="handled">
+          <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 16 }} keyboardShouldPersistTaps="handled">
             {loadingProduct ? (
-              <View className="py-8 items-center">
+              <View style={{ paddingVertical: 32, alignItems: "center" }}>
                 <LoadingState />
               </View>
             ) : (
               <>
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Name *</Text>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Name *</Text>
             <TextInput
               value={form.name}
               onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
               placeholder="e.g. Shampoo 250ml"
               placeholderTextColor="#9ca3af"
-              className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             />
 
-            <View className="mb-4 flex-row items-center justify-between">
-              <Text className="text-sm font-medium text-gray-700">Has variants (e.g. sizes)</Text>
+            <View style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Has variants (e.g. sizes)</Text>
               <Switch
                 value={form.hasVariants}
                 onValueChange={(v) => setForm((f) => ({ ...f, hasVariants: v, variantRows: v ? f.variantRows : [] }))}
@@ -462,64 +461,61 @@ export function ProductsContent() {
 
             {!form.hasVariants && (
               <>
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Retail price (R) *</Text>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Retail price (R) *</Text>
             <TextInput
               value={form.retail_price}
               onChangeText={(v) => setForm((f) => ({ ...f, retail_price: v }))}
               placeholder="0.00"
               placeholderTextColor="#9ca3af"
               keyboardType="decimal-pad"
-              className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             />
-
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">SKU</Text>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>SKU</Text>
             <TextInput
               value={form.sku}
               onChangeText={(v) => setForm((f) => ({ ...f, sku: v }))}
               placeholder="Leave blank to auto-generate"
               placeholderTextColor="#9ca3af"
-              className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             />
-
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Quantity in stock</Text>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Quantity in stock</Text>
             <TextInput
               value={form.quantity}
               onChangeText={(v) => setForm((f) => ({ ...f, quantity: v }))}
               placeholder="0"
               placeholderTextColor="#9ca3af"
               keyboardType="number-pad"
-              className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             />
-
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Low stock alert at</Text>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Low stock alert at</Text>
             <TextInput
               value={form.low_stock_level}
               onChangeText={(v) => setForm((f) => ({ ...f, low_stock_level: v }))}
               placeholder="5"
               placeholderTextColor="#9ca3af"
               keyboardType="number-pad"
-              className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             />
               </>
             )}
 
             {form.hasVariants && (
-              <View className="mb-4">
-                <Text className="mb-1.5 text-sm font-medium text-gray-700">Option name (e.g. Size)</Text>
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Option name (e.g. Size)</Text>
                 <TextInput
                   value={form.variantOptionName}
                   onChangeText={(v) => setForm((f) => ({ ...f, variantOptionName: v }))}
                   placeholder="Size"
                   placeholderTextColor="#9ca3af"
-                  className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 />
-                <Text className="mb-1.5 text-sm font-medium text-gray-700">Option values (comma-separated)</Text>
+                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Option values (comma-separated)</Text>
                 <TextInput
                   value={form.variantOptionValues}
                   onChangeText={(v) => setForm((f) => ({ ...f, variantOptionValues: v }))}
                   placeholder="250ml, 500ml"
                   placeholderTextColor="#9ca3af"
-                  className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 />
                 <TouchableOpacity
                   onPress={() => {
@@ -539,20 +535,18 @@ export function ProductsContent() {
                     }));
                     setForm((f) => ({ ...f, variantRows: rows }));
                   }}
-                  className="mb-3 rounded-xl border border-violet-300 bg-violet-50 py-3 items-center"
+                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: "#c4b5fd", backgroundColor: "#f5f3ff", paddingVertical: 12, alignItems: "center" }}
                 >
-                  <Text className="font-medium text-violet-700">Generate variants</Text>
+                  <Text style={{ fontWeight: "500", color: "#6d28d9" }}>Generate variants</Text>
                 </TouchableOpacity>
                 {form.variantRows.length > 0 && (
-                  <View className="rounded-xl border border-gray-200 bg-gray-50 overflow-hidden">
+                  <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], overflow: "hidden" }}>
                     {form.variantRows.map((row, idx) => (
-                      <View key={idx} className="border-b border-gray-200 p-3 last:border-b-0">
-                        <Text className="text-xs font-medium text-gray-500 mb-2">
-                          {Object.values(row.option_values).join(", ")}
-                        </Text>
-                        <View className="flex-row flex-wrap gap-2">
-                          <View className="flex-1 min-w-[80]">
-                            <Text className="text-xs text-gray-500">SKU</Text>
+                      <View key={idx} style={{ borderBottomWidth: idx < form.variantRows.length - 1 ? 1 : 0, borderBottomColor: Colors.gray[200], padding: 12 }}>
+                        <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500], marginBottom: 8 }}>{Object.values(row.option_values).join(", ")}</Text>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                          <View style={{ flex: 1, minWidth: 80, marginRight: 8, marginBottom: 8 }}>
+                            <Text style={{ fontSize: 12, color: Colors.gray[500] }}>SKU</Text>
                             <TextInput
                               value={row.sku}
                               onChangeText={(v) => {
@@ -562,11 +556,11 @@ export function ProductsContent() {
                               }}
                               placeholder="Auto"
                               placeholderTextColor="#9ca3af"
-                              className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm"
+                              style={{ borderRadius: 8, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 8, paddingVertical: 8, fontSize: 14 }}
                             />
                           </View>
-                          <View className="w-16">
-                            <Text className="text-xs text-gray-500">Qty</Text>
+                          <View style={{ width: 64, marginRight: 8, marginBottom: 8 }}>
+                            <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Qty</Text>
                             <TextInput
                               value={String(row.quantity)}
                               onChangeText={(v) => {
@@ -576,11 +570,11 @@ export function ProductsContent() {
                               }}
                               keyboardType="number-pad"
                               placeholderTextColor="#9ca3af"
-                              className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm"
+                              style={{ borderRadius: 8, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 8, paddingVertical: 8, fontSize: 14 }}
                             />
                           </View>
-                          <View className="w-20">
-                            <Text className="text-xs text-gray-500">Supply R</Text>
+                          <View style={{ width: 80 }}>
+                            <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Supply R</Text>
                             <TextInput
                               value={row.supply_price ? String(row.supply_price) : ""}
                               onChangeText={(v) => {
@@ -591,11 +585,11 @@ export function ProductsContent() {
                               keyboardType="decimal-pad"
                               placeholder="0"
                               placeholderTextColor="#9ca3af"
-                              className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm"
+                              style={{ borderRadius: 8, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 8, paddingVertical: 8, fontSize: 14 }}
                             />
                           </View>
-                          <View className="w-20">
-                            <Text className="text-xs text-gray-500">Retail R *</Text>
+                          <View style={{ width: 80 }}>
+                            <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Retail R *</Text>
                             <TextInput
                               value={row.retail_price ? String(row.retail_price) : ""}
                               onChangeText={(v) => {
@@ -606,7 +600,7 @@ export function ProductsContent() {
                               keyboardType="decimal-pad"
                               placeholder="0"
                               placeholderTextColor="#9ca3af"
-                              className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-sm"
+                              style={{ borderRadius: 8, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 8, paddingVertical: 8, fontSize: 14 }}
                             />
                           </View>
                         </View>
@@ -617,16 +611,15 @@ export function ProductsContent() {
               </View>
             )}
 
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Category</Text>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Category</Text>
             <TextInput
               value={form.category}
               onChangeText={(v) => setForm((f) => ({ ...f, category: v }))}
               placeholder="e.g. Hair care"
               placeholderTextColor="#9ca3af"
-              className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             />
-
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Short description</Text>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Short description</Text>
             <TextInput
               value={form.short_description}
               onChangeText={(v) => setForm((f) => ({ ...f, short_description: v }))}
@@ -634,42 +627,38 @@ export function ProductsContent() {
               placeholderTextColor="#9ca3af"
               multiline
               numberOfLines={2}
-              className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 min-h-[80px]"
+              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900], minHeight: 80 }}
             />
-
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Barcode</Text>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Barcode</Text>
             <TextInput
               value={form.barcode}
               onChangeText={(v) => setForm((f) => ({ ...f, barcode: v }))}
               placeholder="Optional"
               placeholderTextColor="#9ca3af"
-              className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             />
-
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Brand</Text>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Brand</Text>
             <TextInput
               value={form.brand}
               onChangeText={(v) => setForm((f) => ({ ...f, brand: v }))}
               placeholder="Optional"
               placeholderTextColor="#9ca3af"
-              className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             />
-
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Supplier</Text>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Supplier</Text>
             <TextInput
               value={form.supplier}
               onChangeText={(v) => setForm((f) => ({ ...f, supplier: v }))}
               placeholder="Optional"
               placeholderTextColor="#9ca3af"
-              className="mb-6 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={{ marginBottom: 24, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             />
-
             <TouchableOpacity
               onPress={handleSave}
               disabled={isSaving}
-              className="items-center rounded-xl bg-[#8b5cf6] py-3.5"
+              style={{ alignItems: "center", borderRadius: 12, backgroundColor: "#8b5cf6", paddingVertical: 14 }}
             >
-              <Text className="font-semibold text-white">
+              <Text style={{ fontWeight: "600", color: Colors.white }}>
                 {isSaving ? "Saving…" : editingProduct ? "Update product" : "Create product"}
               </Text>
             </TouchableOpacity>

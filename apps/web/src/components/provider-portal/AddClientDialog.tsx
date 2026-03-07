@@ -897,7 +897,7 @@ export function AddClientDialog({
               type="button"
               onClick={handleSubmit}
               disabled={isLoading || !formData.first_name || !formData.last_name}
-              className="flex-1 h-14 text-base font-semibold bg-[#FF0077] hover:bg-[#D60565] text-white active:scale-95 transition-transform"
+              className="flex-1 h-14 text-base font-semibold bg-primary hover:bg-primary-hover text-white active:scale-95 transition-transform"
             >
               {isLoading ? (
                 "Creating..."

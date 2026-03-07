@@ -11,6 +11,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { twStyle } from "@/lib/twStyle";
 
 interface FormField {
   id: string;
@@ -62,22 +63,22 @@ export default function FormsScreen() {
         showBack
         subtitle="Intake, consent & waivers"
       />
-      <View className="mb-3 flex-row gap-2">
+      <View style={twStyle("mb-3 flex-row")}>
         <TouchableOpacity
-          className={`rounded-full px-4 py-2 ${!filter ? "bg-gray-900" : "bg-gray-100"}`}
+          style={[twStyle(`rounded-full px-4 py-2 ${!filter ? "bg-gray-900" : "bg-gray-100"}`), { marginRight: 8 }]}
           onPress={() => setFilter(null)}
         >
-          <Text className={`text-sm font-medium ${!filter ? "text-white" : "text-gray-600"}`}>
+          <Text style={twStyle(`text-sm font-medium ${!filter ? "text-white" : "text-gray-600"}`)}>
             All
           </Text>
         </TouchableOpacity>
         {["intake", "consent", "waiver"].map((t) => (
           <TouchableOpacity
             key={t}
-            className={`rounded-full px-4 py-2 ${filter === t ? "bg-gray-900" : "bg-gray-100"}`}
+            style={[twStyle(`rounded-full px-4 py-2 ${filter === t ? "bg-gray-900" : "bg-gray-100"}`), { marginRight: 8 }]}
             onPress={() => setFilter(t)}
           >
-            <Text className={`text-sm font-medium capitalize ${filter === t ? "text-white" : "text-gray-600"}`}>
+            <Text style={twStyle(`text-sm font-medium capitalize ${filter === t ? "text-white" : "text-gray-600"}`)}>
               {t}
             </Text>
           </TouchableOpacity>
@@ -97,28 +98,28 @@ export default function FormsScreen() {
           scrollEnabled={false}
           contentContainerStyle={{ paddingBottom: 120 }}
           renderItem={({ item }: { item: Form }) => (
-            <View className="mb-2 rounded-xl border border-gray-100 bg-white p-4">
-              <View className="flex-row items-center justify-between">
-                <Text className="font-medium text-gray-900">{item.title}</Text>
-                <View className="rounded-full bg-gray-100 px-2 py-0.5">
-                  <Text className="text-xs font-medium text-gray-600 capitalize">
+            <View style={twStyle("mb-2 rounded-xl border border-gray-100 bg-white p-4")}>
+              <View style={twStyle("flex-row items-center justify-between")}>
+                <Text style={twStyle("font-medium text-gray-900")}>{item.title}</Text>
+                <View style={twStyle("rounded-full bg-gray-100 px-2 py-0.5")}>
+                  <Text style={twStyle("text-xs font-medium text-gray-600 capitalize")}>
                     {item.form_type}
                   </Text>
                 </View>
               </View>
               {item.description ? (
-                <Text className="mt-1 text-sm text-gray-500" numberOfLines={2}>
+                <Text style={twStyle("mt-1 text-sm text-gray-500")} numberOfLines={2}>
                   {item.description}
                 </Text>
               ) : null}
-              <View className="mt-2 flex-row items-center gap-2">
-                <Ionicons name="list-outline" size={14} color="#9ca3af" />
-                <Text className="text-xs text-gray-500">
+              <View style={twStyle("mt-2 flex-row items-center")}>
+                <Ionicons name="list-outline" size={14} color="#9ca3af" style={{ marginRight: 8 }} />
+                <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 8 }]}>
                   {item.fields?.length ?? 0} field{(item.fields?.length ?? 0) !== 1 ? "s" : ""}
                 </Text>
                 {item.is_required && (
-                  <View className="rounded bg-amber-100 px-1.5 py-0.5">
-                    <Text className="text-[10px] font-medium text-amber-700">Required</Text>
+                  <View style={twStyle("rounded bg-amber-100 px-1.5 py-0.5")}>
+                    <Text style={twStyle("text-[10px] font-medium text-amber-700")}>Required</Text>
                   </View>
                 )}
               </View>
@@ -126,7 +127,7 @@ export default function FormsScreen() {
           )}
         />
       )}
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

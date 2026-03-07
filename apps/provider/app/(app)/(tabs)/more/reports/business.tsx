@@ -15,6 +15,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { formatCurrency } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface BusinessReport {
   revenue: {
@@ -106,7 +107,7 @@ export default function BusinessReportScreen() {
         subtitle="Performance dashboard"
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-100"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-100")}
             onPress={handleExport}
           >
             <Ionicons name="download-outline" size={18} color="#374151" />
@@ -114,14 +115,14 @@ export default function BusinessReportScreen() {
         }
       />
 
-      <View className="mb-4">
+      <View style={twStyle("mb-4")}>
         <FilterChipGroup options={PERIOD_FILTERS} selected={period} onSelect={setPeriod} />
       </View>
 
       {/* Revenue */}
       <SectionHeader title="Revenue" />
-      <View className="mb-4 flex-row gap-3">
-        <View className="flex-1">
+      <View style={twStyle("mb-4 flex-row")}>
+        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
           <StatCard
             title="Total Revenue"
             value={formatCurrency(r?.revenue.total ?? 0)}
@@ -131,7 +132,7 @@ export default function BusinessReportScreen() {
             compact
           />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard
             title="Growth"
             value={`${(r?.revenue.growth_percentage ?? 0) >= 0 ? "+" : ""}${(r?.revenue.growth_percentage ?? 0).toFixed(1)}%`}
@@ -144,20 +145,19 @@ export default function BusinessReportScreen() {
       </View>
 
       {r?.revenue.by_service && r.revenue.by_service.length > 0 && (
-        <View className="mb-4 rounded-xl border border-gray-100 bg-white p-4">
-          <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">Top Services</Text>
+        <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
+          <Text style={twStyle("mb-2 text-xs font-semibold uppercase text-gray-400")}>Top Services</Text>
           {r.revenue.by_service.slice(0, 5).map((s, i) => {
             const maxAmount = r.revenue.by_service[0]?.amount ?? 1;
             return (
-              <View key={i} className="mb-2">
-                <View className="flex-row items-center justify-between mb-1">
-                  <Text className="text-sm text-gray-700" numberOfLines={1}>{s.name}</Text>
-                  <Text className="text-sm font-semibold text-gray-900">{formatCurrency(s.amount)}</Text>
+              <View key={i} style={twStyle("mb-2")}>
+                <View style={twStyle("flex-row items-center justify-between mb-1")}>
+                  <Text style={twStyle("text-sm text-gray-700")} numberOfLines={1}>{s.name}</Text>
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(s.amount)}</Text>
                 </View>
-                <View className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <View style={twStyle("h-1.5 rounded-full bg-gray-100 overflow-hidden")}>
                   <View
-                    className="h-full rounded-full bg-indigo-500"
-                    style={{ width: `${(s.amount / maxAmount) * 100}%` }}
+                    style={[twStyle("h-full rounded-full bg-indigo-500"), { width: `${(s.amount / maxAmount) * 100}%` }]}
                   />
                 </View>
               </View>
@@ -167,20 +167,19 @@ export default function BusinessReportScreen() {
       )}
 
       {r?.revenue.by_staff && r.revenue.by_staff.length > 0 && (
-        <View className="mb-4 rounded-xl border border-gray-100 bg-white p-4">
-          <Text className="mb-2 text-xs font-semibold uppercase text-gray-400">Revenue by Staff</Text>
+        <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
+          <Text style={twStyle("mb-2 text-xs font-semibold uppercase text-gray-400")}>Revenue by Staff</Text>
           {r.revenue.by_staff.slice(0, 5).map((s, i) => {
             const maxAmount = r.revenue.by_staff[0]?.amount ?? 1;
             return (
-              <View key={i} className="mb-2">
-                <View className="flex-row items-center justify-between mb-1">
-                  <Text className="text-sm text-gray-700">{s.name}</Text>
-                  <Text className="text-sm font-semibold text-gray-900">{formatCurrency(s.amount)}</Text>
+              <View key={i} style={twStyle("mb-2")}>
+                <View style={twStyle("flex-row items-center justify-between mb-1")}>
+                  <Text style={twStyle("text-sm text-gray-700")}>{s.name}</Text>
+                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>{formatCurrency(s.amount)}</Text>
                 </View>
-                <View className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <View style={twStyle("h-1.5 rounded-full bg-gray-100 overflow-hidden")}>
                   <View
-                    className="h-full rounded-full bg-emerald-500"
-                    style={{ width: `${(s.amount / maxAmount) * 100}%` }}
+                    style={[twStyle("h-full rounded-full bg-emerald-500"), { width: `${(s.amount / maxAmount) * 100}%` }]}
                   />
                 </View>
               </View>
@@ -191,73 +190,73 @@ export default function BusinessReportScreen() {
 
       {/* Bookings */}
       <SectionHeader title="Bookings" />
-      <View className="mb-4 flex-row gap-3">
-        <View className="flex-1">
+      <View style={twStyle("mb-4 flex-row")}>
+        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
           <StatCard title="Total" value={String(r?.bookings.total ?? 0)} icon="calendar-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
           <StatCard title="Completed" value={String(r?.bookings.completed ?? 0)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard title="Rate" value={`${(r?.bookings.completion_rate ?? 0).toFixed(0)}%`} icon="analytics-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
         </View>
       </View>
 
-      <View className="mb-4 rounded-xl border border-gray-100 bg-white p-4">
-        <View className="flex-row justify-between mb-2">
-          <Text className="text-sm text-gray-500">Cancelled</Text>
-          <Text className="text-sm font-medium text-red-600">{r?.bookings.cancelled ?? 0}</Text>
+      <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row justify-between mb-2")}>
+          <Text style={twStyle("text-sm text-gray-500")}>Cancelled</Text>
+          <Text style={twStyle("text-sm font-medium text-red-600")}>{r?.bookings.cancelled ?? 0}</Text>
         </View>
-        <View className="flex-row justify-between mb-2">
-          <Text className="text-sm text-gray-500">No-Shows</Text>
-          <Text className="text-sm font-medium text-amber-600">{r?.bookings.no_show ?? 0}</Text>
+        <View style={twStyle("flex-row justify-between mb-2")}>
+          <Text style={twStyle("text-sm text-gray-500")}>No-Shows</Text>
+          <Text style={twStyle("text-sm font-medium text-amber-600")}>{r?.bookings.no_show ?? 0}</Text>
         </View>
-        <View className="flex-row justify-between">
-          <Text className="text-sm text-gray-500">Avg Per Day</Text>
-          <Text className="text-sm font-medium text-gray-700">{(r?.bookings.avg_per_day ?? 0).toFixed(1)}</Text>
+        <View style={twStyle("flex-row justify-between")}>
+          <Text style={twStyle("text-sm text-gray-500")}>Avg Per Day</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>{(r?.bookings.avg_per_day ?? 0).toFixed(1)}</Text>
         </View>
       </View>
 
       {/* Clients */}
       <SectionHeader title="Clients" />
-      <View className="mb-4 flex-row gap-3">
-        <View className="flex-1">
+      <View style={twStyle("mb-4 flex-row")}>
+        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
           <StatCard title="Total" value={String(r?.clients.total ?? 0)} icon="people-outline" iconColor="#ec4899" iconBg="bg-pink-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
           <StatCard title="New" value={String(r?.clients.new_this_period ?? 0)} icon="person-add-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard title="Retention" value={`${(r?.clients.retention_rate ?? 0).toFixed(0)}%`} icon="repeat-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
         </View>
       </View>
 
-      <View className="mb-4 rounded-xl border border-gray-100 bg-white p-4">
-        <View className="flex-row justify-between mb-2">
-          <Text className="text-sm text-gray-500">Returning Clients</Text>
-          <Text className="text-sm font-medium text-gray-700">{r?.clients.returning ?? 0}</Text>
+      <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row justify-between mb-2")}>
+          <Text style={twStyle("text-sm text-gray-500")}>Returning Clients</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700")}>{r?.clients.returning ?? 0}</Text>
         </View>
-        <View className="flex-row justify-between">
-          <Text className="text-sm text-gray-500">Avg Lifetime Value</Text>
-          <Text className="text-sm font-bold text-indigo-600">{formatCurrency(r?.clients.avg_lifetime_value ?? 0)}</Text>
+        <View style={twStyle("flex-row justify-between")}>
+          <Text style={twStyle("text-sm text-gray-500")}>Avg Lifetime Value</Text>
+          <Text style={twStyle("text-sm font-bold text-indigo-600")}>{formatCurrency(r?.clients.avg_lifetime_value ?? 0)}</Text>
         </View>
       </View>
 
       {/* Staff & Products */}
       <SectionHeader title="Staff & Products" />
-      <View className="mb-4 flex-row gap-3">
-        <View className="flex-1">
+      <View style={twStyle("mb-4 flex-row")}>
+        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
           <StatCard title="Staff Hours" value={`${(r?.staff.total_hours ?? 0).toFixed(0)}h`} icon="time-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
           <StatCard title="Products Sold" value={String(r?.products.total_sold ?? 0)} icon="cube-outline" iconColor="#8b5cf6" iconBg="bg-violet-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard title="Product Rev" value={formatCurrency(r?.products.product_revenue ?? 0)} icon="pricetag-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
         </View>
       </View>
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

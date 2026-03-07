@@ -729,16 +729,16 @@ export function NewSaleDialog({
                     variant="ghost"
                     size="sm"
                     onClick={() => setShowNewClientDialog(true)}
-                    className="h-8 text-xs text-[#FF0077] hover:text-[#D60565] hover:bg-[#FF0077]/10"
+                    className="h-8 text-xs text-primary hover:text-primary-hover hover:bg-primary/10"
                   >
                     <UserPlus className="w-3.5 h-3.5 mr-1.5" />
                     Add New Client
                   </Button>
                 </div>
                 {selectedClient ? (
-                  <div className="flex items-center justify-between p-3 md:p-3 bg-gradient-to-r from-[#FF0077]/5 to-[#FF0077]/10 rounded-xl md:rounded-lg border border-[#FF0077]/20">
+                  <div className="flex items-center justify-between p-3 md:p-3 bg-gradient-to-r from-primary/5 to-primary/10 rounded-xl md:rounded-lg border border-primary/20">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 md:w-8 md:h-8 rounded-full bg-[#FF0077] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                      <div className="w-10 h-10 md:w-8 md:h-8 rounded-full bg-primary flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
                         {(selectedClient.first_name?.charAt(0) || "") + (selectedClient.last_name?.charAt(0) || "") || "?"}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -753,7 +753,7 @@ export function NewSaleDialog({
                           </p>
                         )}
                         {selectedClient.id?.startsWith("walk-in") && (
-                          <p className="text-xs text-[#FF0077] font-medium">Walk-in</p>
+                          <p className="text-xs text-primary font-medium">Walk-in</p>
                         )}
                       </div>
                     </div>
@@ -822,8 +822,8 @@ export function NewSaleDialog({
                               className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3"
                               onClick={() => handleSelectClient(client)}
                             >
-                              <div className="w-8 h-8 rounded-full bg-[#FF0077]/10 flex items-center justify-center flex-shrink-0">
-                                <span className="text-xs font-semibold text-[#FF0077]">
+                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                <span className="text-xs font-semibold text-primary">
                                   {initials}
                                 </span>
                               </div>
@@ -878,14 +878,14 @@ export function NewSaleDialog({
                     className={cn(
                       "p-3 rounded-lg border-2 text-left transition-all",
                       serviceLocationType === "at-salon"
-                        ? "border-[#FF0077] bg-[#FF0077]/5"
+                        ? "border-primary bg-primary/5"
                         : "border-gray-200 hover:border-gray-300"
                     )}
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <Building2 className={cn(
                         "w-4 h-4",
-                        serviceLocationType === "at-salon" ? "text-[#FF0077]" : "text-gray-500"
+                        serviceLocationType === "at-salon" ? "text-primary" : "text-gray-500"
                       )} />
                       <p className="font-medium text-sm">At-Salon</p>
                     </div>
@@ -898,14 +898,14 @@ export function NewSaleDialog({
                       className={cn(
                         "p-3 rounded-lg border-2 text-left transition-all w-full",
                         serviceLocationType === "house-call"
-                          ? "border-[#FF0077] bg-[#FF0077]/5"
+                          ? "border-primary bg-primary/5"
                           : "border-gray-200 hover:border-gray-300"
                       )}
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <Home className={cn(
                           "w-4 h-4",
-                          serviceLocationType === "house-call" ? "text-[#FF0077]" : "text-gray-500"
+                          serviceLocationType === "house-call" ? "text-primary" : "text-gray-500"
                         )} />
                         <p className="font-medium text-sm">House Call</p>
                       </div>
@@ -1091,14 +1091,14 @@ export function NewSaleDialog({
                           className={cn(
                             "w-full p-2 text-left border rounded-lg text-sm transition-colors",
                             !selectedVariant
-                              ? "border-[#FF0077] bg-[#FF0077]/10"
+                              ? "border-primary bg-primary/10"
                               : "border-gray-200 hover:border-gray-300"
                           )}
                         >
                           <div className="flex items-center justify-between">
                             <span>Standard</span>
                             <Money amount={selectedService.price} />
-                            {!selectedVariant && <Check className="w-4 h-4 text-[#FF0077]" />}
+                            {!selectedVariant && <Check className="w-4 h-4 text-primary" />}
                           </div>
                         </button>
                         {serviceVariants.map((variant) => (
@@ -1109,7 +1109,7 @@ export function NewSaleDialog({
                             className={cn(
                               "w-full p-2 text-left border rounded-lg text-sm transition-colors",
                               selectedVariant?.id === variant.id
-                                ? "border-[#FF0077] bg-[#FF0077]/10"
+                                ? "border-primary bg-primary/10"
                                 : "border-gray-200 hover:border-gray-300"
                             )}
                           >
@@ -1117,7 +1117,7 @@ export function NewSaleDialog({
                               <span>{variant.variant_name || variant.name}</span>
                               <Money amount={variant.price} />
                               {selectedVariant?.id === variant.id && (
-                                <Check className="w-4 h-4 text-[#FF0077]" />
+                                <Check className="w-4 h-4 text-primary" />
                               )}
                             </div>
                           </button>
@@ -1147,7 +1147,7 @@ export function NewSaleDialog({
                                     setSelectedAddons(selectedAddons.filter(id => id !== addon.id));
                                   }
                                 }}
-                                className="w-4 h-4 text-[#FF0077] rounded"
+                                className="w-4 h-4 text-primary rounded"
                               />
                               <span className="text-sm">{addon.name}</span>
                               {addon.is_recommended && (
@@ -1163,7 +1163,7 @@ export function NewSaleDialog({
 
                   <Button
                     onClick={handleAddServiceWithOptions}
-                    className="w-full bg-[#FF0077] hover:bg-[#D60565]"
+                    className="w-full bg-primary hover:bg-primary-hover"
                   >
                     Add to Cart
                   </Button>
@@ -1179,13 +1179,13 @@ export function NewSaleDialog({
                 <TabsList className="grid w-full grid-cols-2 h-12 bg-gray-100 rounded-lg p-1">
                   <TabsTrigger 
                     value="services"
-                    className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-[#FF0077] rounded transition-all"
+                    className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-primary rounded transition-all"
                   >
                     Services
                   </TabsTrigger>
                   <TabsTrigger 
                     value="products"
-                    className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-[#FF0077] rounded transition-all"
+                    className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:text-primary rounded transition-all"
                   >
                     Products
                   </TabsTrigger>
@@ -1220,7 +1220,7 @@ export function NewSaleDialog({
                                   className={cn(
                                     "py-2.5 px-4 rounded-full text-sm font-medium whitespace-nowrap transition-colors flex-shrink-0",
                                     index === selectedCategoryIndex
-                                      ? "bg-[#FF0077] text-white shadow-sm"
+                                      ? "bg-primary text-white shadow-sm"
                                       : "bg-gray-100 text-gray-900 hover:bg-gray-200"
                                   )}
                                 >
@@ -1231,7 +1231,7 @@ export function NewSaleDialog({
                               <button
                                 type="button"
                                 onClick={() => setShowCustomServiceDialog(true)}
-                                className="py-2.5 px-4 rounded-full text-sm font-medium whitespace-nowrap transition-colors flex-shrink-0 border-2 border-dashed border-gray-300 text-gray-600 hover:border-[#FF0077] hover:text-[#FF0077] hover:bg-[#FF0077]/5"
+                                className="py-2.5 px-4 rounded-full text-sm font-medium whitespace-nowrap transition-colors flex-shrink-0 border-2 border-dashed border-gray-300 text-gray-600 hover:border-primary hover:text-primary hover:bg-primary/5"
                               >
                                 <Plus className="w-4 h-4 inline mr-1.5" />
                                 Custom Service
@@ -1280,7 +1280,7 @@ export function NewSaleDialog({
                               {serviceCategories[selectedCategoryIndex].services.map((service) => (
                                 <div
                                   key={service.id}
-                                  className="relative p-3 border-2 border-gray-200 rounded-lg hover:border-[#FF0077] hover:bg-[#FF0077]/5 transition-all bg-white group"
+                                  className="relative p-3 border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-all bg-white group"
                                 >
                                   <button
                                     type="button"
@@ -1292,7 +1292,7 @@ export function NewSaleDialog({
                                       <span className="text-xs text-gray-500">
                                         {service.duration_minutes} min
                                       </span>
-                                      <span className="text-sm font-bold text-[#FF0077]">
+                                      <span className="text-sm font-bold text-primary">
                                         <Money amount={service.price} />
                                       </span>
                                     </div>
@@ -1304,7 +1304,7 @@ export function NewSaleDialog({
                                       e.stopPropagation();
                                       handleQuickAddService(service);
                                     }}
-                                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-[#FF0077] text-white flex items-center justify-center hover:bg-[#D60565] opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-hover opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                                     title="Quick add to cart"
                                   >
                                     <Plus className="w-4 h-4" />
@@ -1321,7 +1321,7 @@ export function NewSaleDialog({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => setShowCustomServiceDialog(true)}
-                                className="mt-2 text-[#FF0077] hover:text-[#D60565]"
+                                className="mt-2 text-primary hover:text-primary-hover"
                               >
                                 Add Custom Service
                               </Button>
@@ -1353,7 +1353,7 @@ export function NewSaleDialog({
                       products.map((product) => (
                         <div
                           key={product.id}
-                          className="relative p-3 border-2 border-gray-200 rounded-lg hover:border-[#FF0077] hover:bg-[#FF0077]/5 transition-all bg-white group"
+                          className="relative p-3 border-2 border-gray-200 rounded-lg hover:border-primary hover:bg-primary/5 transition-all bg-white group"
                         >
                           <button
                             type="button"
@@ -1365,7 +1365,7 @@ export function NewSaleDialog({
                               <span className="text-xs text-gray-500">
                                 {product.quantity} in stock
                               </span>
-                              <span className="text-sm font-bold text-[#FF0077]">
+                              <span className="text-sm font-bold text-primary">
                                 <Money amount={product.retail_price} />
                               </span>
                             </div>
@@ -1377,7 +1377,7 @@ export function NewSaleDialog({
                               e.stopPropagation();
                               handleAddProduct(product);
                             }}
-                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-[#FF0077] text-white flex items-center justify-center hover:bg-[#D60565] opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-primary text-white flex items-center justify-center hover:bg-primary-hover opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                             title="Add to cart"
                           >
                             <Plus className="w-4 h-4" />
@@ -1398,8 +1398,8 @@ export function NewSaleDialog({
             {/* Cart Section - Now part of scrollable content */}
             <div className="border-t border-gray-200 pt-6 space-y-6">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-[#FF0077]/10 flex items-center justify-center">
-                  <ShoppingCart className="w-4 h-4 text-[#FF0077]" />
+                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                  <ShoppingCart className="w-4 h-4 text-primary" />
                 </div>
                 <div>
                   <h3 className="font-bold text-lg">Cart</h3>
@@ -1451,12 +1451,12 @@ export function NewSaleDialog({
                           <button
                             type="button"
                             onClick={() => handleUpdateQuantity(index, 1)}
-                            className="w-8 h-8 rounded-full border-2 border-[#FF0077] bg-[#FF0077] text-white flex items-center justify-center hover:bg-[#D60565]"
+                            className="w-8 h-8 rounded-full border-2 border-primary bg-primary text-white flex items-center justify-center hover:bg-primary-hover"
                           >
                             <Plus className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                        <span className="font-bold text-base text-[#FF0077]">
+                        <span className="font-bold text-base text-primary">
                           <Money amount={item.total} />
                         </span>
                       </div>
@@ -1555,12 +1555,12 @@ export function NewSaleDialog({
                           className={cn(
                             "relative p-3 rounded-xl border-2 text-left transition-all",
                             isSelected 
-                              ? "border-[#FF0077] bg-[#FF0077]/5 shadow-sm" 
+                              ? "border-primary bg-primary/5 shadow-sm" 
                               : "border-gray-200 hover:border-gray-300 bg-white"
                           )}
                         >
                           {isSelected && (
-                            <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-[#FF0077] flex items-center justify-center">
+                            <div className="absolute top-2 right-2 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
                               <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                               </svg>
@@ -1569,14 +1569,14 @@ export function NewSaleDialog({
                           <div className="flex items-start gap-3">
                             <div className={cn(
                               "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0",
-                              isSelected ? "bg-[#FF0077]/10 text-[#FF0077]" : "bg-gray-100 text-gray-500"
+                              isSelected ? "bg-primary/10 text-primary" : "bg-gray-100 text-gray-500"
                             )}>
                               <Icon className="w-4 h-4" />
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className={cn(
                                 "font-medium text-sm",
-                                isSelected ? "text-[#FF0077]" : "text-gray-900"
+                                isSelected ? "text-primary" : "text-gray-900"
                               )}>
                                 {method.label}
                               </p>
@@ -1600,14 +1600,14 @@ export function NewSaleDialog({
             <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-gray-500 mb-0.5">Total</p>
-                <p className="text-xl font-bold text-[#FF0077]">
+                <p className="text-xl font-bold text-primary">
                   <Money amount={total} />
                 </p>
               </div>
               <Button
                 onClick={handleSubmit}
                 disabled={isLoading || cart.length === 0}
-                className="h-12 px-6 text-base font-semibold bg-[#FF0077] hover:bg-[#D60565] text-white rounded-lg shadow-lg disabled:opacity-50 active:scale-95 transition-transform flex-shrink-0"
+                className="h-12 px-6 text-base font-semibold bg-primary hover:bg-primary-hover text-white rounded-lg shadow-lg disabled:opacity-50 active:scale-95 transition-transform flex-shrink-0"
               >
                 {isLoading ? (
                   <span className="flex items-center gap-2">
@@ -1722,7 +1722,7 @@ export function NewSaleDialog({
                     toast.error("Failed to create client");
                   }
                 }}
-                className="flex-1 bg-[#FF0077] hover:bg-[#D60565]"
+                className="flex-1 bg-primary hover:bg-primary-hover"
               >
                 Add Client
               </Button>
@@ -1843,7 +1843,7 @@ export function NewSaleDialog({
                   setCustomServiceForm({ name: "", price: "", duration_minutes: "30", category_id: "" });
                   toast.success("Custom service added to cart");
                 }}
-                className="flex-1 bg-[#FF0077] hover:bg-[#D60565]"
+                className="flex-1 bg-primary hover:bg-primary-hover"
               >
                 Add to Cart
               </Button>

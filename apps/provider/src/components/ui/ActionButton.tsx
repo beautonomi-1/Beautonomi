@@ -1,6 +1,7 @@
 import { TouchableOpacity, Text, ActivityIndicator, View, type ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { Colors } from "@/constants/colors";
 
 interface ActionButtonProps {
   label: string;
@@ -16,27 +17,29 @@ interface ActionButtonProps {
   style?: ViewStyle;
 }
 
-const variantStyles = {
-  primary: "bg-gray-900",
-  secondary: "bg-indigo-600",
-  danger: "bg-red-600",
-  outline: "border border-gray-200 bg-white",
-  ghost: "bg-transparent",
+const variantBg: Record<string, ViewStyle> = {
+  primary: { backgroundColor: Colors.gray[900] },
+  secondary: { backgroundColor: "#4f46e5" },
+  danger: { backgroundColor: "#dc2626" },
+  outline: { borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white },
+  ghost: { backgroundColor: "transparent" },
 };
 
-const textStyles = {
-  primary: "text-white",
-  secondary: "text-white",
-  danger: "text-white",
-  outline: "text-gray-900",
-  ghost: "text-gray-700",
+const variantTextColor: Record<string, string> = {
+  primary: Colors.white,
+  secondary: Colors.white,
+  danger: Colors.white,
+  outline: Colors.gray[900],
+  ghost: Colors.gray[700],
 };
 
-const sizeStyles = {
-  sm: "min-h-[36px] px-4 py-2",
-  md: "min-h-[48px] px-5 py-3",
-  lg: "min-h-[56px] px-6 py-4",
+const sizeStyles: Record<string, ViewStyle> = {
+  sm: { minHeight: 36, paddingHorizontal: 16, paddingVertical: 8 },
+  md: { minHeight: 48, paddingHorizontal: 20, paddingVertical: 12 },
+  lg: { minHeight: 56, paddingHorizontal: 24, paddingVertical: 16 },
 };
+
+const sizeFontSize: Record<string, number> = { sm: 14, md: 16, lg: 18 };
 
 export function ActionButton({
   label,
@@ -52,9 +55,7 @@ export function ActionButton({
   style,
 }: ActionButtonProps) {
   const handlePress = () => {
-    if (haptic) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    if (haptic) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onPress();
   };
 
@@ -63,13 +64,17 @@ export function ActionButton({
 
   return (
     <TouchableOpacity
-      className={`flex-row items-center justify-center rounded-xl ${variantStyles[variant]} ${sizeStyles[size]} ${
-        fullWidth ? "w-full" : ""
-      } ${disabled || loading ? "opacity-50" : ""}`}
+      style={[
+        { flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12 },
+        variantBg[variant],
+        sizeStyles[size],
+        fullWidth && { width: "100%" },
+        (disabled || loading) && { opacity: 0.5 },
+        style,
+      ]}
       onPress={handlePress}
       disabled={disabled || loading}
       activeOpacity={0.7}
-      style={style}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: disabled || loading }}
@@ -77,15 +82,11 @@ export function ActionButton({
       {loading ? (
         <ActivityIndicator color={iconColor} size="small" />
       ) : (
-        <View className="flex-row items-center gap-2">
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
           {icon && iconPosition === "left" && (
-            <Ionicons name={icon} size={iconSize} color={iconColor} />
+            <Ionicons name={icon} size={iconSize} color={iconColor} style={{ marginRight: 8 }} />
           )}
-          <Text
-            className={`text-center font-semibold ${textStyles[variant]} ${
-              size === "sm" ? "text-sm" : size === "lg" ? "text-lg" : "text-base"
-            }`}
-          >
+          <Text style={{ textAlign: "center", fontWeight: "600", fontSize: sizeFontSize[size], color: variantTextColor[variant], ...(icon && iconPosition === "right" ? { marginRight: 8 } : {}) }}>
             {label}
           </Text>
           {icon && iconPosition === "right" && (

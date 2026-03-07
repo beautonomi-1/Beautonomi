@@ -6,7 +6,6 @@ import {
   Pressable,
   ActivityIndicator,
   RefreshControl,
-  useWindowDimensions,
   TextInput,
   Animated,
   Keyboard,
@@ -18,17 +17,17 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useExploreFeed } from "@/features/explore/useExploreFeed";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
 import { MasonryList } from "@/components/MasonryList";
 import type { ExplorePost } from "@/types/api";
-import { SCREEN_PADDING, TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 import { Colors, Shadows } from "@/constants/colors";
 import { Skeleton } from "@/components/Skeleton";
 
-const COLS = 2;
 const GAP = 10;
 
 const BEAUTY_CATEGORIES = [
@@ -212,13 +211,13 @@ function PinCard({
                 left: 8,
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 6,
               }}
             >
               <View
                 style={{
                   width: 24,
                   height: 24,
+                  marginRight: 6,
                   borderRadius: 12,
                   backgroundColor: Colors.primary,
                   alignItems: "center",
@@ -259,24 +258,25 @@ function PinCard({
             ) : null}
 
             {/* Engagement row */}
-            <View style={{ flexDirection: "row", alignItems: "center", marginTop: post.caption ? 6 : 0, gap: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", marginTop: post.caption ? 6 : 0 }}>
               <TouchableOpacity
                 onPress={() => { haptic.light(); onLike(post); }}
-                style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+                style={{ flexDirection: "row", alignItems: "center", marginRight: 12 }}
                 hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
               >
                 <Ionicons
                   name={post.is_liked ? "heart" : "heart-outline"}
                   size={16}
                   color={post.is_liked ? Colors.primary : "#9CA3AF"}
+                  style={{ marginRight: 3 }}
                 />
                 <Text style={{ fontSize: 12, color: post.is_liked ? Colors.primary : "#9CA3AF", fontWeight: "500" }}>
                   {post.like_count > 0 ? post.like_count : ""}
                 </Text>
               </TouchableOpacity>
               {(post.comment_count ?? 0) > 0 ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-                  <Ionicons name="chatbubble-outline" size={14} color="#9CA3AF" />
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <Ionicons name="chatbubble-outline" size={14} color="#9CA3AF" style={{ marginRight: 3 }} />
                   <Text style={{ fontSize: 12, color: "#9CA3AF" }}>{post.comment_count}</Text>
                 </View>
               ) : null}
@@ -307,7 +307,6 @@ function CategoryChip({
       style={{
         flexDirection: "row",
         alignItems: "center",
-        gap: 5,
         paddingHorizontal: 14,
         paddingVertical: 8,
         borderRadius: 999,
@@ -315,7 +314,7 @@ function CategoryChip({
         marginRight: 8,
       }}
     >
-      <Ionicons name={icon} size={14} color={active ? "#fff" : "#6B7280"} />
+      <Ionicons name={icon} size={14} color={active ? "#fff" : "#6B7280"} style={{ marginRight: 5 }} />
       <Text style={{ fontSize: 13, fontWeight: "600", color: active ? "#fff" : "#374151" }}>
         {label}
       </Text>
@@ -376,28 +375,34 @@ function ExploreSearchBar({
 }
 
 /* ─── Masonry Skeleton ─── */
-function MasonrySkeleton({ cardWidth }: { cardWidth: number }) {
+function MasonrySkeleton({
+  cardWidth,
+  contentPadding,
+}: {
+  cardWidth: number;
+  contentPadding: number;
+}) {
   const heights = [1.1, 0.8, 0.9, 1.3, 0.7, 1.0];
   return (
-    <View style={{ flexDirection: "row", gap: GAP, paddingHorizontal: SCREEN_PADDING, paddingTop: 8 }}>
-      <View style={{ flex: 1, gap: GAP }}>
+    <View style={{ flexDirection: "row", paddingHorizontal: contentPadding, paddingTop: 8 }}>
+      <View style={{ flex: 1, marginRight: GAP }}>
         {[0, 2, 4].map((i) => (
-          <View key={i} style={{ borderRadius: 16, overflow: "hidden", backgroundColor: "#F3F4F6" }}>
+          <View key={i} style={{ borderRadius: 16, overflow: "hidden", backgroundColor: "#F3F4F6", marginBottom: i < 4 ? GAP : 0 }}>
             <Skeleton width={cardWidth} height={cardWidth * heights[i]} borderRadius={0} />
-            <View style={{ padding: 10, gap: 6 }}>
+            <View style={{ padding: 10 }}>
               <Skeleton width="70%" height={12} />
-              <Skeleton width="40%" height={10} />
+              <Skeleton width="40%" height={10} style={{ marginTop: 6 }} />
             </View>
           </View>
         ))}
       </View>
-      <View style={{ flex: 1, gap: GAP }}>
+      <View style={{ flex: 1 }}>
         {[1, 3, 5].map((i) => (
-          <View key={i} style={{ borderRadius: 16, overflow: "hidden", backgroundColor: "#F3F4F6" }}>
+          <View key={i} style={{ borderRadius: 16, overflow: "hidden", backgroundColor: "#F3F4F6", marginBottom: i < 5 ? GAP : 0 }}>
             <Skeleton width={cardWidth} height={cardWidth * heights[i]} borderRadius={0} />
-            <View style={{ padding: 10, gap: 6 }}>
+            <View style={{ padding: 10 }}>
               <Skeleton width="60%" height={12} />
-              <Skeleton width="50%" height={10} />
+              <Skeleton width="50%" height={10} style={{ marginTop: 6 }} />
             </View>
           </View>
         ))}
@@ -446,8 +451,12 @@ function EmptyState({ category }: { category: string }) {
 export default function ExploreScreen() {
   useScreenTracking("Explore");
   const { user } = useAuth();
-  const { width } = useWindowDimensions();
-  const cardWidth = (width - SCREEN_PADDING * 2 - GAP) / COLS;
+  const { width, columns, contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const contentWidth = Math.min(width, contentMaxWidth) - contentPadding * 2;
+  const cardWidth = (contentWidth - (columns - 1) * GAP) / columns;
+  const contentContainerStyle = isTablet
+    ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
+    : {};
 
   const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -579,8 +588,8 @@ export default function ExploreScreen() {
   if (loading && posts.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor: "#fff" }}>
-        <SafeAreaView edges={["top"]} style={{ backgroundColor: "#fff" }}>
-          <View style={{ paddingHorizontal: SCREEN_PADDING, paddingTop: 8 }}>
+        <SafeAreaView edges={["top"]} style={[contentContainerStyle, { backgroundColor: "#fff" }]}>
+          <View style={{ paddingHorizontal: contentPadding, paddingTop: 8 }}>
             <Text style={{ fontSize: 28, fontWeight: "800", color: "#111827", marginBottom: 16 }}>
               Explore
             </Text>
@@ -592,14 +601,14 @@ export default function ExploreScreen() {
                 marginBottom: 12,
               }}
             />
-            <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flexDirection: "row" }}>
               {[1, 2, 3, 4].map((i) => (
-                <Skeleton key={i} width={80} height={36} borderRadius={999} />
+                <Skeleton key={i} width={80} height={36} borderRadius={999} style={i < 4 ? { marginRight: 8 } : undefined} />
               ))}
             </View>
           </View>
         </SafeAreaView>
-        <MasonrySkeleton cardWidth={cardWidth} />
+        <MasonrySkeleton cardWidth={cardWidth} contentPadding={contentPadding} />
       </View>
     );
   }
@@ -608,29 +617,30 @@ export default function ExploreScreen() {
     <View style={{ flex: 1, backgroundColor: "#fff" }}>
       <SafeAreaView edges={["top"]} style={{ backgroundColor: "#fff" }} />
 
-      <MasonryList
-        data={posts}
-        numColumns={COLS}
-        gap={GAP}
-        columnWidth={cardWidth}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        getItemHeight={getItemHeight}
-        onEndReached={onEndReached}
-        onEndReachedThreshold={0.4}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={Colors.primary} />
-        }
-        contentContainerStyle={{
-          paddingHorizontal: SCREEN_PADDING,
-          paddingBottom: TAB_CONTENT_PADDING_BOTTOM,
-        }}
+      <View style={[{ flex: 1 }, contentContainerStyle]}>
+        <MasonryList
+          data={posts}
+          numColumns={columns}
+          gap={GAP}
+          columnWidth={cardWidth}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          getItemHeight={getItemHeight}
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.4}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={Colors.primary} />
+          }
+          contentContainerStyle={{
+            paddingHorizontal: contentPadding,
+            paddingBottom: TAB_CONTENT_PADDING_BOTTOM,
+          }}
         ListHeaderComponent={
           <View style={{ paddingTop: 4, paddingBottom: 4 }}>
             {/* Title row */}
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <Text style={{ fontSize: 28, fontWeight: "800", color: "#111827" }}>Explore</Text>
-              <View style={{ flexDirection: "row", gap: 12 }}>
+              <View style={{ flexDirection: "row" }}>
                 {user ? (
                   <TouchableOpacity
                     onPress={() => router.push({ pathname: "/(app)/account-settings/wishlists" as any, params: { tab: "posts" } })}
@@ -653,7 +663,7 @@ export default function ExploreScreen() {
 
             {/* Category chips */}
             <View style={{ marginBottom: 14 }}>
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 0 }}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                 {BEAUTY_CATEGORIES.map((cat) => (
                   <CategoryChip
                     key={cat.key}
@@ -707,7 +717,8 @@ export default function ExploreScreen() {
           ) : null
         }
         ListEmptyComponent={<EmptyState category={activeCategory} />}
-      />
+        />
+      </View>
     </View>
   );
 }

@@ -7,6 +7,7 @@ import { View, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { Colors } from "@/constants/colors";
 
 const SLUG_TO_SUBTITLE: Record<string, string> = {
   "resources-forms-hub": "Resources, intake & consent forms",
@@ -51,16 +52,16 @@ export default function MoreSlugScreen() {
   return (
     <ScreenContainer>
       <ScreenHeader title={title} onBack={() => router.back()} />
-      <View className="px-2 pt-4">
-        <View className="rounded-xl border border-gray-200 bg-gray-50 p-5">
-          <View className="mb-4 h-12 w-12 items-center justify-center rounded-full bg-gray-200">
+      <View style={{ paddingHorizontal: 8, paddingTop: 16 }}>
+        <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 20 }}>
+          <View style={{ marginBottom: 16, height: 48, width: 48, alignItems: "center", justifyContent: "center", borderRadius: 24, backgroundColor: Colors.gray[200] }}>
             <Ionicons name="desktop-outline" size={24} color="#6b7280" />
           </View>
-          <Text className="text-base font-medium text-gray-900">{title}</Text>
+          <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[900] }}>{title}</Text>
           {subtitle && (
-            <Text className="mt-1 text-sm text-gray-600">{subtitle}</Text>
+            <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[600] }}>{subtitle}</Text>
           )}
-          <Text className="mt-4 text-sm text-gray-600 leading-5">
+          <Text style={{ marginTop: 16, fontSize: 14, color: Colors.gray[600], lineHeight: 20 }}>
             Manage this in the provider dashboard on the web. Open the same account in your browser for full editing, reports, and setup.
           </Text>
         </View>

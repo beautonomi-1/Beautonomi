@@ -14,8 +14,10 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { Colors } from "@/constants/colors";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useNotificationsCount } from "@/providers/NotificationsCountContext";
+import { twStyle } from "@/lib/twStyle";
 
 type Notification = {
   id: string;
@@ -82,33 +84,32 @@ export function NotificationsDropdown({ visible, onClose, onSeeAll }: Notificati
       statusBarTranslucent
     >
       <Pressable
-        className="flex-1 bg-black/40"
+        style={twStyle("flex-1 bg-black/40")}
         onPress={onClose}
         accessibilityLabel="Close notifications"
         accessibilityRole="button"
       >
-        <View className="pt-16 px-4" style={{ maxHeight: "85%" }}>
+        <View style={[twStyle("pt-16 px-4"), { maxHeight: "85%" }]}>
           <Pressable
-            className="rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden"
-            style={{ maxHeight: MAX_HEIGHT }}
+            style={[twStyle("rounded-2xl border border-gray-200 bg-white overflow-hidden"), { maxHeight: MAX_HEIGHT }]}
             onPress={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <View className="flex-row items-center justify-between border-b border-gray-100 px-4 py-3">
-              <Text className="text-lg font-semibold text-gray-900">Notifications</Text>
-              <View className="flex-row items-center gap-2">
+            <View style={twStyle("flex-row items-center justify-between border-b border-gray-100 px-4 py-3")}>
+              <Text style={twStyle("text-lg font-semibold text-gray-900")}>Notifications</Text>
+              <View style={twStyle("flex-row items-center")}>
                 {hasUnread && (
                   <TouchableOpacity
                     onPress={handleMarkAllRead}
                     disabled={markingRead}
-                    className="rounded-lg bg-gray-100 px-3 py-1.5"
+                    style={[twStyle("rounded-lg bg-gray-100 px-3 py-1.5"), { marginRight: 8 }]}
                   >
-                    <Text className="text-sm font-medium text-gray-700">
+                    <Text style={twStyle("text-sm font-medium text-gray-700")}>
                       {markingRead ? "…" : "Mark all read"}
                     </Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={onClose} className="p-1.5">
+                <TouchableOpacity onPress={onClose} style={twStyle("p-1.5")}>
                   <Ionicons name="close" size={22} color="#6b7280" />
                 </TouchableOpacity>
               </View>
@@ -116,56 +117,56 @@ export function NotificationsDropdown({ visible, onClose, onSeeAll }: Notificati
 
             {/* List */}
             <ScrollView
-              className="max-h-[320px]"
+              style={twStyle("max-h-[320px]")}
               showsVerticalScrollIndicator={true}
               keyboardShouldPersistTaps="handled"
             >
               {loading && !data ? (
-                <View className="py-12 items-center">
-                  <ActivityIndicator size="small" color="#FF0077" />
-                  <Text className="mt-2 text-sm text-gray-500">Loading…</Text>
+                <View style={twStyle("py-12 items-center")}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                  <Text style={twStyle("mt-2 text-sm text-gray-500")}>Loading…</Text>
                 </View>
               ) : error ? (
-                <View className="py-8 px-4 items-center">
-                  <Text className="text-sm text-gray-500">Couldn’t load notifications</Text>
-                  <TouchableOpacity onPress={() => refresh()} className="mt-2">
-                    <Text className="text-sm font-medium text-[#FF0077]">Retry</Text>
+                <View style={twStyle("py-8 px-4 items-center")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Couldn’t load notifications</Text>
+                  <TouchableOpacity onPress={() => refresh()} style={twStyle("mt-2")}>
+                    <Text style={twStyle("text-sm font-medium text-primary")}>Retry</Text>
                   </TouchableOpacity>
                 </View>
               ) : notifications.length === 0 ? (
-                <View className="py-10 px-4 items-center">
+                <View style={twStyle("py-10 px-4 items-center")}>
                   <Ionicons name="notifications-outline" size={40} color="#9ca3af" />
-                  <Text className="mt-3 text-center text-gray-600">No notifications</Text>
-                  <Text className="mt-1 text-center text-sm text-gray-500">You’re all caught up</Text>
+                  <Text style={twStyle("mt-3 text-center text-gray-600")}>No notifications</Text>
+                  <Text style={twStyle("mt-1 text-center text-sm text-gray-500")}>You’re all caught up</Text>
                 </View>
               ) : (
-                <View className="pb-2">
+                <View style={twStyle("pb-2")}>
                   {notifications.map((n) => (
                     <View
                       key={n.id}
-                      className={`mx-3 mt-2 rounded-xl border p-3 ${n.read ? "border-gray-100 bg-gray-50/50" : "border-indigo-100 bg-indigo-50/30"}`}
+                      style={twStyle(`mx-3 mt-2 rounded-xl border p-3 ${n.read ? "border-gray-100 bg-gray-50/50" : "border-indigo-100 bg-indigo-50/30"}`)}
                     >
-                      <View className="flex-row items-start justify-between gap-2">
-                        <View className="flex-1 min-w-0">
+                      <View style={twStyle("flex-row items-start justify-between")}>
+                        <View style={[twStyle("flex-1 min-w-0"), { marginRight: 8 }]}>
                           <Text
-                            className={`font-medium ${n.read ? "text-gray-700" : "text-gray-900"}`}
+                            style={twStyle(`font-medium ${n.read ? "text-gray-700" : "text-gray-900"}`)}
                             numberOfLines={1}
                           >
                             {n.title ?? "Notification"}
                           </Text>
                           {n.message ? (
-                            <Text className="mt-0.5 text-sm text-gray-600" numberOfLines={2}>
+                            <Text style={twStyle("mt-0.5 text-sm text-gray-600")} numberOfLines={2}>
                               {n.message}
                             </Text>
                           ) : null}
                           {n.timestamp && (
-                            <Text className="mt-1.5 text-xs text-gray-400">
+                            <Text style={twStyle("mt-1.5 text-xs text-gray-400")}>
                               {new Date(n.timestamp).toLocaleString()}
                             </Text>
                           )}
                         </View>
                         {!n.read && (
-                          <View className="h-2 w-2 rounded-full bg-indigo-500 flex-shrink-0 mt-1.5" />
+                          <View style={twStyle("h-2 w-2 rounded-full bg-indigo-500 flex-shrink-0 mt-1.5")} />
                         )}
                       </View>
                     </View>
@@ -175,13 +176,13 @@ export function NotificationsDropdown({ visible, onClose, onSeeAll }: Notificati
             </ScrollView>
 
             {/* See all */}
-            <View className="border-t border-gray-100 px-4 py-3 bg-gray-50/50">
+            <View style={twStyle("border-t border-gray-100 px-4 py-3 bg-gray-50/50")}>
               <TouchableOpacity
                 onPress={handleSeeAll}
-                className="py-2.5 rounded-xl bg-gray-900"
+                style={twStyle("py-2.5 rounded-xl bg-gray-900")}
                 activeOpacity={0.8}
               >
-                <Text className="text-center font-medium text-white">See all notifications</Text>
+                <Text style={twStyle("text-center font-medium text-white")}>See all notifications</Text>
               </TouchableOpacity>
             </View>
           </Pressable>

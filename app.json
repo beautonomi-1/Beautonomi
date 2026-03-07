@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "76b17cb4-d313-4e3b-acec-b80cd43c4284"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.beautonomi.beautonomimonorepo",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}

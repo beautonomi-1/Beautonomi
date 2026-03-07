@@ -7,10 +7,12 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { Colors } from "@/constants/colors";
 
 interface PointsTransaction {
   id: string;
@@ -47,6 +49,7 @@ interface GamificationResponse {
 
 /** Content-only for use in Rewards hub (Points tab). */
 export function RewardsPointsContent() {
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<GamificationResponse>(
     "/api/provider/gamification?limit=30"
@@ -64,14 +67,14 @@ export function RewardsPointsContent() {
 
   if (loading && !data) {
     return (
-      <View className="flex-1 items-center justify-center py-12">
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
         <LoadingState />
       </View>
     );
   }
   if (error && !data) {
     return (
-      <View className="flex-1 justify-center px-4">
+      <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
         <ErrorState message={error} onRetry={refresh} />
       </View>
     );
@@ -79,49 +82,48 @@ export function RewardsPointsContent() {
 
   return (
     <ScrollView
-      className="flex-1"
-      contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+      style={{ flex: 1 }}
+      contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
       showsVerticalScrollIndicator={false}
     >
-      <View className="mb-6 flex-row gap-3">
-          <View className="flex-1 rounded-2xl border border-gray-200 bg-white p-4">
-            <View className="mb-1 h-8 w-8 items-center justify-center rounded-lg bg-amber-100">
+      <View style={{ marginBottom: 24, flexDirection: "row" }}>
+          <View style={{ flex: 1, marginRight: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
+            <View style={{ marginBottom: 4, height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#fef3c7" }}>
               <Ionicons name="trophy-outline" size={18} color="#f59e0b" />
             </View>
-            <Text className="text-2xl font-bold text-gray-900">{points.total}</Text>
-            <Text className="text-sm text-gray-500">Current points</Text>
+            <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{points.total}</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Current points</Text>
           </View>
-          <View className="flex-1 rounded-2xl border border-gray-200 bg-white p-4">
-            <View className="mb-1 h-8 w-8 items-center justify-center rounded-lg bg-emerald-100">
+          <View style={{ flex: 1, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
+            <View style={{ marginBottom: 4, height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#d1fae5" }}>
               <Ionicons name="flash-outline" size={18} color="#10b981" />
             </View>
-            <Text className="text-2xl font-bold text-gray-900">{points.lifetime}</Text>
-            <Text className="text-sm text-gray-500">Lifetime points</Text>
+            <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{points.lifetime}</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Lifetime points</Text>
           </View>
         </View>
 
         {badge && (
-          <View className="mb-6 rounded-2xl border border-amber-100 bg-amber-50/50 p-4">
-            <Text className="mb-2 text-sm font-semibold text-gray-700">Current badge</Text>
-            <View className="flex-row items-center">
+          <View style={{ marginBottom: 24, borderRadius: 16, borderWidth: 1, borderColor: "#fef3c7", backgroundColor: "rgba(255,251,235,0.5)", padding: 16 }}>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Current badge</Text>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
               <View
-                className="h-12 w-12 items-center justify-center rounded-xl"
-                style={{ backgroundColor: badge.color ? `${badge.color}30` : "#fef3c7" }}
+                style={{ height: 48, width: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: badge.color ? `${badge.color}30` : "#fef3c7" }}
               >
                 <Ionicons name="ribbon-outline" size={24} color={badge.color ?? "#f59e0b"} />
               </View>
-              <View className="ml-3 flex-1">
-                <Text className="font-semibold text-gray-900">{badge.name}</Text>
+              <View style={{ marginLeft: 12, flex: 1 }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{badge.name}</Text>
                 {badge.description ? (
-                  <Text className="mt-0.5 text-sm text-gray-600" numberOfLines={2}>
+                  <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }} numberOfLines={2}>
                     {badge.description}
                   </Text>
                 ) : null}
                 {badge.earned_at && (
-                  <Text className="mt-1 text-xs text-gray-500">
+                  <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
                     Earned {new Date(badge.earned_at).toLocaleDateString()}
                   </Text>
                 )}
@@ -131,54 +133,62 @@ export function RewardsPointsContent() {
         )}
 
         {stats && (stats.total_bookings > 0 || stats.review_count > 0) && (
-          <View className="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
-            <Text className="mb-3 text-sm font-semibold text-gray-700">Activity</Text>
-            <View className="flex-row flex-wrap gap-4">
-              <View>
-                <Text className="text-lg font-bold text-gray-900">{stats.total_bookings}</Text>
-                <Text className="text-xs text-gray-500">Bookings</Text>
+          <View style={{ marginBottom: 24, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}>
+            <Text style={{ marginBottom: 12, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Activity</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+              <View style={{ marginRight: 16, marginBottom: 16 }}>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{stats.total_bookings}</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Bookings</Text>
               </View>
-              <View>
-                <Text className="text-lg font-bold text-gray-900">{stats.review_count}</Text>
-                <Text className="text-xs text-gray-500">Reviews</Text>
+              <View style={{ marginRight: 16, marginBottom: 16 }}>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{stats.review_count}</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Reviews</Text>
               </View>
               {typeof stats.rating_average === "number" && stats.rating_average > 0 && (
-                <View>
-                  <Text className="text-lg font-bold text-gray-900">
+                <View style={{ marginRight: 16, marginBottom: 16 }}>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
                     {stats.rating_average.toFixed(1)}
                   </Text>
-                  <Text className="text-xs text-gray-500">Avg rating</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Avg rating</Text>
                 </View>
               )}
             </View>
           </View>
         )}
 
-        <Text className="mb-2 text-sm font-semibold text-gray-700">Recent points</Text>
+        <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Recent points</Text>
         {transactions.length === 0 ? (
-          <View className="rounded-xl border border-gray-100 bg-gray-50/50 p-4">
-            <Text className="text-sm text-gray-500">No point transactions yet.</Text>
-            <Text className="mt-1 text-xs text-gray-400">
+          <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: "rgba(249,250,251,0.5)", padding: 16 }}>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>No point transactions yet.</Text>
+            <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[400] }}>
               Complete bookings and get reviews to earn points.
             </Text>
           </View>
         ) : (
-          <View className="rounded-xl border border-gray-200 bg-white">
-            {transactions.slice(0, 20).map((t) => (
+          <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white }}>
+            {transactions.slice(0, 20).map((t, idx) => (
               <View
                 key={t.id}
-                className="flex-row items-center justify-between border-b border-gray-100 px-4 py-3 last:border-b-0"
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  borderBottomWidth: idx < 19 ? 1 : 0,
+                  borderBottomColor: Colors.gray[100],
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                }}
               >
-                <View className="flex-1 min-w-0">
-                  <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
                     {t.description ?? t.source ?? "Points"}
                   </Text>
-                  <Text className="text-xs text-gray-500">
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
                     {new Date(t.created_at).toLocaleDateString()}
                   </Text>
                 </View>
                 <Text
-                  className={`text-sm font-semibold ${Number(t.points) >= 0 ? "text-emerald-600" : "text-gray-600"}`}
+                  style={{ fontSize: 14, fontWeight: "600", color: Number(t.points) >= 0 ? "#059669" : Colors.gray[600] }}
                 >
                   {Number(t.points) >= 0 ? "+" : ""}{t.points}
                 </Text>

@@ -23,6 +23,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { useYocoDevices, useYocoIntegration, type YocoDevice } from "@/hooks/useYoco";
 import { useApi } from "@/hooks/useApi";
+import { twStyle } from "@/lib/twStyle";
 
 interface Location {
   id: string;
@@ -210,28 +211,28 @@ export default function YocoDevicesScreen() {
       {/* ─── Integration Status ─── */}
       <SectionHeader title="Integration" />
       <View
-        className="mb-4 rounded-2xl border border-gray-100 bg-white p-4"
+        style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}
         accessibilityLabel="Yoco integration status"
       >
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center">
-            <View className="h-10 w-10 items-center justify-center rounded-lg bg-blue-50">
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row items-center")}>
+            <View style={twStyle("h-10 w-10 items-center justify-center rounded-lg bg-blue-50")}>
               <Ionicons name="card-outline" size={20} color="#3b82f6" />
             </View>
-            <View className="ml-3">
-              <Text className="text-base font-semibold text-gray-900">Yoco</Text>
-              <Text className="text-xs text-gray-500">Card & tap-to-pay</Text>
+            <View style={twStyle("ml-3")}>
+              <Text style={twStyle("text-base font-semibold text-gray-900")}>Yoco</Text>
+              <Text style={twStyle("text-xs text-gray-500")}>Card & tap-to-pay</Text>
             </View>
           </View>
           <View
-            className={`rounded-full px-3 py-1 ${isConnected ? "bg-green-50" : "bg-gray-100"}`}
+            style={twStyle(`rounded-full px-3 py-1 ${isConnected ? "bg-green-50" : "bg-gray-100"}`)}
           >
-            <View className="flex-row items-center">
+            <View style={twStyle("flex-row items-center")}>
               <View
-                className={`mr-1.5 h-2 w-2 rounded-full ${isConnected ? "bg-green-500" : "bg-gray-400"}`}
+                style={twStyle(`mr-1.5 h-2 w-2 rounded-full ${isConnected ? "bg-green-500" : "bg-gray-400"}`)}
               />
               <Text
-                className={`text-xs font-medium ${isConnected ? "text-green-700" : "text-gray-500"}`}
+                style={twStyle(`text-xs font-medium ${isConnected ? "text-green-700" : "text-gray-500"}`)}
               >
                 {isConnected ? "Connected" : "Not connected"}
               </Text>
@@ -239,24 +240,24 @@ export default function YocoDevicesScreen() {
           </View>
         </View>
 
-        <View className="mt-3 flex-row gap-2">
+        <View style={twStyle("mt-3 flex-row")}>
           {isConnected ? (
             <TouchableOpacity
               onPress={handleDisconnect}
-              className="flex-1 items-center rounded-xl border border-red-200 bg-red-50 py-2.5"
+              style={[twStyle("flex-1 items-center rounded-xl border border-red-200 bg-red-50 py-2.5"), { marginRight: 8 }]}
               accessibilityRole="button"
               accessibilityLabel="Disconnect Yoco"
             >
-              <Text className="text-sm font-medium text-red-600">Disconnect</Text>
+              <Text style={twStyle("text-sm font-medium text-red-600")}>Disconnect</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
               onPress={() => setShowConnectSheet(true)}
-              className="flex-1 items-center rounded-xl bg-indigo-600 py-2.5"
+              style={twStyle("flex-1 items-center rounded-xl bg-indigo-600 py-2.5")}
               accessibilityRole="button"
               accessibilityLabel="Connect Yoco"
             >
-              <Text className="text-sm font-medium text-white">Connect Yoco</Text>
+              <Text style={twStyle("text-sm font-medium text-white")}>Connect Yoco</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -270,12 +271,12 @@ export default function YocoDevicesScreen() {
       />
 
       {!isConnected ? (
-        <View className="items-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-12">
+        <View style={twStyle("items-center rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-12")}>
           <Ionicons name="link-outline" size={36} color="#9ca3af" />
-          <Text className="mt-3 text-sm font-medium text-gray-500">
+          <Text style={twStyle("mt-3 text-sm font-medium text-gray-500")}>
             Connect Yoco first
           </Text>
-          <Text className="mt-1 text-xs text-gray-400">
+          <Text style={twStyle("mt-1 text-xs text-gray-400")}>
             Add your API keys to manage devices
           </Text>
         </View>
@@ -288,19 +289,19 @@ export default function YocoDevicesScreen() {
           onAction={openAdd}
         />
       ) : (
-        <View className="gap-3">
-          {devices.map((device) => (
+        <View>
+          {devices.map((device, idx) => (
             <View
               key={device.id}
-              className="rounded-2xl border border-gray-100 bg-white p-4"
+              style={[twStyle("rounded-2xl border border-gray-100 bg-white p-4"), idx > 0 ? { marginTop: 12 } : undefined]}
               accessibilityLabel={`${device.name} device`}
             >
-              <View className="flex-row items-center justify-between">
-                <View className="flex-row items-center flex-1">
+              <View style={twStyle("flex-row items-center justify-between")}>
+                <View style={twStyle("flex-row items-center flex-1")}>
                   <View
-                    className={`h-10 w-10 items-center justify-center rounded-lg ${
+                    style={twStyle(`h-10 w-10 items-center justify-center rounded-lg ${
                       device.is_active ? "bg-indigo-50" : "bg-gray-100"
-                    }`}
+                    }`)}
                   >
                     <Ionicons
                       name={device.device_type === "web_pos" ? "phone-portrait-outline" : "card-outline"}
@@ -308,29 +309,29 @@ export default function YocoDevicesScreen() {
                       color={device.is_active ? "#6366f1" : "#9ca3af"}
                     />
                   </View>
-                  <View className="ml-3 flex-1">
-                    <Text className="text-sm font-semibold text-gray-900">{device.name}</Text>
-                    <Text className="text-xs text-gray-500">
+                  <View style={twStyle("ml-3 flex-1")}>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>{device.name}</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>
                       {device.device_type === "web_pos" ? "Web POS" : "Card Machine"}
                       {device.serial_number ? ` · ${device.serial_number}` : ""}
                     </Text>
                     {device.location_name && (
-                      <Text className="text-xs text-gray-400">{device.location_name}</Text>
+                      <Text style={twStyle("text-xs text-gray-400")}>{device.location_name}</Text>
                     )}
                   </View>
                 </View>
 
-                <View className="flex-row items-center gap-2">
+                <View style={twStyle("flex-row items-center")}>
                   <View
-                    className={`rounded-full px-2 py-0.5 ${device.is_active ? "bg-green-50" : "bg-gray-100"}`}
+                    style={[twStyle(`rounded-full px-2 py-0.5 ${device.is_active ? "bg-green-50" : "bg-gray-100"}`), { marginRight: 8 }]}
                   >
-                    <Text className={`text-xs ${device.is_active ? "text-green-600" : "text-gray-400"}`}>
+                    <Text style={twStyle(`text-xs ${device.is_active ? "text-green-600" : "text-gray-400"}`)}>
                       {device.is_active ? "Active" : "Inactive"}
                     </Text>
                   </View>
                   <TouchableOpacity
                     onPress={() => openEdit(device)}
-                    className="min-h-[44px] min-w-[44px] items-center justify-center"
+                    style={[twStyle("min-h-[44px] min-w-[44px] items-center justify-center"), { marginRight: 8 }]}
                     accessibilityRole="button"
                     accessibilityLabel={`Edit ${device.name}`}
                   >
@@ -338,7 +339,7 @@ export default function YocoDevicesScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleDelete(device)}
-                    className="min-h-[44px] min-w-[44px] items-center justify-center"
+                    style={twStyle("min-h-[44px] min-w-[44px] items-center justify-center")}
                     accessibilityRole="button"
                     accessibilityLabel={`Delete ${device.name}`}
                   >
@@ -351,7 +352,7 @@ export default function YocoDevicesScreen() {
         </View>
       )}
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
 
       {/* ─── Add/Edit Device Sheet ─── */}
       <BottomSheet
@@ -360,10 +361,10 @@ export default function YocoDevicesScreen() {
         title={editDevice ? "Edit Device" : "Add Device"}
         snapHeight="auto"
       >
-        <View className="mb-4">
-          <Text className="mb-1.5 text-sm font-medium text-gray-700">Device Name *</Text>
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Device Name *</Text>
           <TextInput
-            className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"
+            style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
             value={formName}
             onChangeText={setFormName}
             placeholder="e.g. Front Desk Terminal"
@@ -372,10 +373,10 @@ export default function YocoDevicesScreen() {
           />
         </View>
 
-        <View className="mb-4">
-          <Text className="mb-1.5 text-sm font-medium text-gray-700">Serial Number</Text>
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Serial Number</Text>
           <TextInput
-            className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"
+            style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
             value={formSerial}
             onChangeText={setFormSerial}
             placeholder="e.g. YC123456"
@@ -384,18 +385,18 @@ export default function YocoDevicesScreen() {
           />
         </View>
 
-        <View className="mb-4">
-          <Text className="mb-1.5 text-sm font-medium text-gray-700">Device Type</Text>
-          <View className="flex-row gap-2">
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Device Type</Text>
+          <View style={twStyle("flex-row")}>
             {(["web_pos", "card_machine"] as const).map((type) => {
               const sel = formType === type;
               return (
                 <TouchableOpacity
                   key={type}
                   onPress={() => setFormType(type)}
-                  className={`flex-1 items-center rounded-xl border py-3 ${
+                  style={[twStyle(`flex-1 items-center rounded-xl border py-3 ${
                     sel ? "border-indigo-500 bg-indigo-50" : "border-gray-200 bg-gray-50"
-                  }`}
+                  }`), { marginRight: 8 }]}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: sel }}
                 >
@@ -405,7 +406,7 @@ export default function YocoDevicesScreen() {
                     color={sel ? "#6366f1" : "#6b7280"}
                   />
                   <Text
-                    className={`mt-1 text-xs font-medium ${sel ? "text-indigo-700" : "text-gray-600"}`}
+                    style={twStyle(`mt-1 text-xs font-medium ${sel ? "text-indigo-700" : "text-gray-600"}`)}
                   >
                     {type === "web_pos" ? "Web POS" : "Card Machine"}
                   </Text>
@@ -416,19 +417,19 @@ export default function YocoDevicesScreen() {
         </View>
 
         {Array.isArray(locations) && locations.length > 0 && (
-          <View className="mb-4">
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Location</Text>
-            <View className="flex-row flex-wrap gap-2">
+          <View style={twStyle("mb-4")}>
+            <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Location</Text>
+            <View style={twStyle("flex-row flex-wrap")}>
               <TouchableOpacity
                 onPress={() => setFormLocationId(null)}
-                className={`rounded-full px-3 py-1.5 ${
+                style={[twStyle(`rounded-full px-3 py-1.5 ${
                   !formLocationId ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"
-                }`}
+                }`), { marginRight: 8, marginBottom: 8 }]}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: !formLocationId }}
               >
                 <Text
-                  className={`text-xs font-medium ${!formLocationId ? "text-white" : "text-gray-600"}`}
+                  style={twStyle(`text-xs font-medium ${!formLocationId ? "text-white" : "text-gray-600"}`)}
                 >
                   All Locations
                 </Text>
@@ -439,14 +440,14 @@ export default function YocoDevicesScreen() {
                   <TouchableOpacity
                     key={loc.id}
                     onPress={() => setFormLocationId(loc.id)}
-                    className={`rounded-full px-3 py-1.5 ${
+                    style={[twStyle(`rounded-full px-3 py-1.5 ${
                       sel ? "bg-indigo-600" : "border border-gray-200 bg-gray-50"
-                    }`}
+                    }`), { marginRight: 8, marginBottom: 8 }]}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: sel }}
                   >
                     <Text
-                      className={`text-xs font-medium ${sel ? "text-white" : "text-gray-600"}`}
+                      style={twStyle(`text-xs font-medium ${sel ? "text-white" : "text-gray-600"}`)}
                     >
                       {loc.name}
                     </Text>
@@ -458,8 +459,8 @@ export default function YocoDevicesScreen() {
         )}
 
         {editDevice && (
-          <View className="mb-4 flex-row items-center justify-between">
-            <Text className="text-sm font-medium text-gray-700">Active</Text>
+          <View style={twStyle("mb-4 flex-row items-center justify-between")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
             <Switch
               value={formActive}
               onValueChange={setFormActive}
@@ -484,16 +485,16 @@ export default function YocoDevicesScreen() {
         subtitle="Enter your Yoco API credentials"
         snapHeight="auto"
       >
-        <View className="mb-2 rounded-xl bg-blue-50 p-3">
-          <Text className="text-xs text-blue-700">
+        <View style={twStyle("mb-2 rounded-xl bg-blue-50 p-3")}>
+          <Text style={twStyle("text-xs text-blue-700")}>
             Find your API keys in your Yoco dashboard under Settings → API Keys.
           </Text>
         </View>
 
-        <View className="mb-4">
-          <Text className="mb-1.5 text-sm font-medium text-gray-700">API Key *</Text>
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>API Key *</Text>
           <TextInput
-            className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"
+            style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
             value={apiKey}
             onChangeText={setApiKey}
             placeholder="pk_live_..."
@@ -504,10 +505,10 @@ export default function YocoDevicesScreen() {
           />
         </View>
 
-        <View className="mb-6">
-          <Text className="mb-1.5 text-sm font-medium text-gray-700">Secret Key *</Text>
+        <View style={twStyle("mb-6")}>
+          <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Secret Key *</Text>
           <TextInput
-            className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"
+            style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
             value={secretKey}
             onChangeText={setSecretKey}
             placeholder="sk_live_..."

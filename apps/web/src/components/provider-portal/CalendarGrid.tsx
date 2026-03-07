@@ -66,9 +66,9 @@ const getAppointmentStyle = (status: Appointment["status"]) => {
       };
     default:
       return {
-        bg: "bg-[#FF0077]",
-        hover: "hover:bg-[#D60565]",
-        border: "border-[#FF0077]/20",
+        bg: "bg-primary",
+        hover: "hover:bg-primary-hover",
+        border: "border-primary/20",
         text: "text-white",
         icon: CalendarIcon,
       };

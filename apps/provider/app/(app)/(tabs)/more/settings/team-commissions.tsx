@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
+import { twStyle } from "@/lib/twStyle";
 
 interface CommissionTier {
   id?: string;
@@ -160,8 +161,8 @@ export default function TeamCommissionsScreen() {
       />
 
       {staff && staff.length > 0 && (
-        <View className="mb-3 flex-row gap-2">
-          <View className="flex-1">
+        <View style={twStyle("mb-3 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
             <StatCard
               title="Average"
               value={`${avgCommission}%`}
@@ -171,7 +172,7 @@ export default function TeamCommissionsScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
             <StatCard
               title="Highest"
               value={`${maxCommission}%`}
@@ -181,7 +182,7 @@ export default function TeamCommissionsScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <StatCard
               title="Tiered"
               value={String(tieredCount)}
@@ -195,7 +196,7 @@ export default function TeamCommissionsScreen() {
       )}
 
       {staff && staff.length > 2 && (
-        <View className="mb-3">
+        <View style={twStyle("mb-3")}>
           <SearchBar
             value={search}
             onChangeText={setSearch}
@@ -223,34 +224,34 @@ export default function TeamCommissionsScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: member }: { item: StaffCommission }) => {
             const commColor = getCommissionColor(member.commissionPercentage);
             return (
               <TouchableOpacity
-                className="rounded-xl border border-gray-100 bg-white p-4"
+                style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
                 onPress={() => openEdit(member)}
                 activeOpacity={0.7}
               >
-                <View className="flex-row items-center">
+                <View style={twStyle("flex-row items-center")}>
                   <Avatar name={member.name} size="sm" />
-                  <View className="ml-3 flex-1">
-                    <Text className="text-sm font-semibold text-gray-900">
+                  <View style={twStyle("ml-3 flex-1")}>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                       {member.name}
                     </Text>
-                    <Text className="text-xs capitalize text-gray-500">
+                    <Text style={twStyle("text-xs capitalize text-gray-500")}>
                       {member.role}
                     </Text>
                   </View>
-                  <View className="items-end">
+                  <View style={twStyle("items-end")}>
                     <Text
-                      className="text-lg font-bold"
-                      style={{ color: commColor }}
+                      style={[twStyle("text-lg font-bold"), { color: commColor }]}
                     >
                       {member.commissionPercentage}%
                     </Text>
                     {member.tiers.length > 0 && (
-                      <Text className="text-[10px] text-gray-400">
+                      <Text style={twStyle("text-[10px] text-gray-400")}>
                         +{member.tiers.length} tier
                         {member.tiers.length > 1 ? "s" : ""}
                       </Text>
@@ -259,26 +260,25 @@ export default function TeamCommissionsScreen() {
                 </View>
 
                 {/* Commission bar */}
-                <View className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
+                <View style={twStyle("mt-3 h-2 overflow-hidden rounded-full bg-gray-100")}>
                   <View
-                    className="h-2 rounded-full"
-                    style={{
+                    style={[twStyle("h-2 rounded-full"), {
                       width: `${Math.min(member.commissionPercentage, 100)}%`,
                       backgroundColor: commColor,
-                    }}
+                    }]}
                   />
                 </View>
 
                 {member.tiers.length > 0 && (
-                  <View className="mt-2 flex-row flex-wrap gap-1">
+                  <View style={twStyle("mt-2 flex-row flex-wrap")}>
                     {member.tiers
                       .sort((a: CommissionTier, b: CommissionTier) => a.tierOrder - b.tierOrder)
                       .map((tier: CommissionTier, idx: number) => (
                         <View
                           key={idx}
-                          className="rounded-full bg-gray-100 px-2 py-0.5"
+                          style={[twStyle("rounded-full bg-gray-100 px-2 py-0.5"), { marginRight: 4, marginBottom: 4 }]}
                         >
-                          <Text className="text-[10px] text-gray-600">
+                          <Text style={twStyle("text-[10px] text-gray-600")}>
                             R{tier.minRevenue}+ → {tier.commissionRate}%
                           </Text>
                         </View>
@@ -298,23 +298,23 @@ export default function TeamCommissionsScreen() {
       >
         {selected && (
           <View>
-            <View className="mb-4 flex-row items-center rounded-xl bg-gray-50 p-3">
+            <View style={twStyle("mb-4 flex-row items-center rounded-xl bg-gray-50 p-3")}>
               <Avatar name={selected.name} size="sm" />
-              <View className="ml-3">
-                <Text className="text-sm font-semibold text-gray-900">
+              <View style={twStyle("ml-3")}>
+                <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                   {selected.name}
                 </Text>
-                <Text className="text-xs capitalize text-gray-500">
+                <Text style={twStyle("text-xs capitalize text-gray-500")}>
                   {selected.role} · {selected.email}
                 </Text>
               </View>
             </View>
 
-            <Text className="mb-1 text-sm font-medium text-gray-700">
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
               Base Commission Rate (%)
             </Text>
             <TextInput
-              className="mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+              style={twStyle("mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={baseRate}
               onChangeText={setBaseRate}
               keyboardType="decimal-pad"
@@ -322,30 +322,29 @@ export default function TeamCommissionsScreen() {
               placeholderTextColor="#9ca3af"
             />
             {baseRate && !isNaN(Number(baseRate)) && (
-              <View className="mb-4 h-2 overflow-hidden rounded-full bg-gray-100">
+              <View style={twStyle("mb-4 h-2 overflow-hidden rounded-full bg-gray-100")}>
                 <View
-                  className="h-2 rounded-full bg-indigo-500"
-                  style={{
+                  style={[twStyle("h-2 rounded-full bg-indigo-500"), {
                     width: `${Math.min(Number(baseRate), 100)}%`,
-                  }}
+                  }]}
                 />
               </View>
             )}
 
-            <View className="mb-2 flex-row items-center justify-between">
-              <Text className="text-xs font-semibold uppercase text-gray-400">
+            <View style={twStyle("mb-2 flex-row items-center justify-between")}>
+              <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>
                 Tiered Commissions
               </Text>
               <TouchableOpacity onPress={addTier}>
-                <Text className="text-xs font-medium text-indigo-600">
+                <Text style={twStyle("text-xs font-medium text-indigo-600")}>
                   + Add Tier
                 </Text>
               </TouchableOpacity>
             </View>
 
             {tiers.length === 0 && (
-              <View className="mb-3 rounded-lg bg-gray-50 p-3">
-                <Text className="text-xs text-gray-500">
+              <View style={twStyle("mb-3 rounded-lg bg-gray-50 p-3")}>
+                <Text style={twStyle("text-xs text-gray-500")}>
                   No tiers configured. Add tiers to offer higher rates at
                   revenue milestones.
                 </Text>
@@ -355,23 +354,23 @@ export default function TeamCommissionsScreen() {
             {tiers.map((tier, idx) => (
               <View
                 key={idx}
-                className="mb-2 flex-row items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 p-3"
+                style={twStyle("mb-2 flex-row items-center rounded-lg border border-gray-100 bg-gray-50 p-3")}
               >
-                <View className="flex-1">
-                  <Text className="text-[10px] text-gray-500">
+                <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+                  <Text style={twStyle("text-[10px] text-gray-500")}>
                     Min Revenue (R)
                   </Text>
                   <TextInput
-                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900"
+                    style={twStyle("rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900")}
                     value={String(tier.minRevenue)}
                     onChangeText={(v) => updateTier(idx, "minRevenue", v)}
                     keyboardType="decimal-pad"
                   />
                 </View>
-                <View className="flex-1">
-                  <Text className="text-[10px] text-gray-500">Rate (%)</Text>
+                <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
+                  <Text style={twStyle("text-[10px] text-gray-500")}>Rate (%)</Text>
                   <TextInput
-                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900"
+                    style={twStyle("rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900")}
                     value={String(tier.commissionRate)}
                     onChangeText={(v) =>
                       updateTier(idx, "commissionRate", v)
@@ -380,7 +379,7 @@ export default function TeamCommissionsScreen() {
                   />
                 </View>
                 <TouchableOpacity
-                  className="mt-3"
+                  style={twStyle("mt-3")}
                   onPress={() => removeTier(idx)}
                 >
                   <Ionicons name="close-circle" size={20} color="#ef4444" />
@@ -388,7 +387,7 @@ export default function TeamCommissionsScreen() {
               </View>
             ))}
 
-            <View className="mt-4">
+            <View style={twStyle("mt-4")}>
               <ActionButton
                 label="Save Commission"
                 onPress={handleSave}

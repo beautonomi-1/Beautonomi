@@ -8,11 +8,13 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
 } from "react-native";
 import { Image } from "expo-image";
 import { Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
+import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { Colors, Shadows } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
@@ -32,7 +34,9 @@ function linePrice(item: CartItem): number {
 
 export default function CartScreen() {
   const { user } = useAuth();
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const [items, setItems] = useState<CartItem[]>([]);
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -118,7 +122,7 @@ export default function CartScreen() {
     return (
       <>
         <Stack.Screen options={{ title: "Cart", headerShown: true }} />
-        <View style={{ flex: 1, backgroundColor: "#fff", padding: 24, justifyContent: "center", alignItems: "center" }}>
+        <View style={{ flex: 1, backgroundColor: "#fff", padding: contentPadding, justifyContent: "center", alignItems: "center" }}>
           <Ionicons name="cart-outline" size={56} color="#D1D5DB" />
           <Text style={{ fontSize: 16, color: "#6B7280", marginTop: 12, textAlign: "center" }}>
             Sign in to view your cart
@@ -159,11 +163,11 @@ export default function CartScreen() {
       <Stack.Screen options={{ title: "Cart", headerShown: true }} />
       <ScrollView
         style={{ flex: 1, backgroundColor: "#F9FAFB" }}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{ paddingBottom: 120, ...constraint }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchCart(true)} colors={[Colors.primary]} />}
       >
         {items.length === 0 ? (
-          <View style={{ padding: 32, alignItems: "center" }}>
+          <View style={{ padding: contentPadding * 2, alignItems: "center" }}>
             <Ionicons name="cart-outline" size={56} color="#D1D5DB" />
             <Text style={{ fontSize: 16, color: "#6B7280", marginTop: 12, textAlign: "center" }}>
               Your cart is empty
@@ -176,7 +180,7 @@ export default function CartScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={{ padding: 16 }}>
+          <View style={{ padding: contentPadding }}>
             {Object.values(groups).map((g) => (
               <View key={g.provider.id} style={{ marginBottom: 20 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
@@ -220,7 +224,7 @@ export default function CartScreen() {
                           {!item.in_stock && (
                             <Text style={{ fontSize: 11, color: "#EF4444", marginTop: 2 }}>Low stock</Text>
                           )}
-                          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8, gap: 8 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
                             <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8 }}>
                               <TouchableOpacity
                                 onPress={() => updateQuantity(item.id, item.quantity - 1)}
@@ -264,7 +268,7 @@ export default function CartScreen() {
               </View>
             ))}
 
-            <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: 16, marginTop: 8, ...Shadows.cardSmall }}>
+            <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: contentPadding, marginTop: 8, ...Shadows.cardSmall }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>Total</Text>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.primary }}>R{total.toFixed(2)}</Text>
@@ -275,12 +279,12 @@ export default function CartScreen() {
       </ScrollView>
 
       {items.length > 0 && (
-        <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: 16, paddingBottom: 34, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
+        <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: contentPadding, paddingBottom: 34, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
           <TouchableOpacity
             onPress={openCheckout}
-            style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, ...Shadows.cardSmall }}
+            style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: "center", flexDirection: "row", justifyContent: "center", ...Shadows.cardSmall }}
           >
-            <Ionicons name="open-outline" size={20} color="#fff" />
+            <Ionicons name="open-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
             <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Checkout on web</Text>
           </TouchableOpacity>
           <Text style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center", marginTop: 8 }}>

@@ -4,10 +4,12 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Colors } from "@/constants/colors";
 
 interface SearchSuggestion {
   type: "client" | "appointment" | "service";
@@ -65,6 +67,7 @@ const DEBOUNCE_MS = 300;
 
 export default function SearchScreen() {
   const router = useRouter();
+  const { screenPadding } = useResponsive();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -110,7 +113,7 @@ export default function SearchScreen() {
   return (
     <ScreenContainer scrollable={false}>
       <ScreenHeader title="Search" showBack />
-      <View className="px-4 pb-2">
+      <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
         <SearchBar
           placeholder="Search clients, appointments, services..."
           value={query}
@@ -119,7 +122,7 @@ export default function SearchScreen() {
           returnKeyType="search"
         />
         {showHint && (
-          <Text className="mt-2 text-xs text-gray-500">
+          <Text style={{ marginTop: 8, fontSize: 12, color: Colors.gray[500] }}>
             Type at least 2 characters to search
           </Text>
         )}
@@ -137,33 +140,33 @@ export default function SearchScreen() {
         <FlatList
           data={suggestions}
           keyExtractor={(item: SearchSuggestion) => `${item.type}-${item.id}`}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+          contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
           renderItem={({ item }: { item: SearchSuggestion }) => (
             <TouchableOpacity
-              className="flex-row items-center border-b border-gray-100 py-3"
+              style={{ flexDirection: "row", alignItems: "center", borderBottomWidth: 1, borderBottomColor: Colors.gray[100], paddingVertical: 12 }}
               onPress={() => handleSelect(item)}
               accessibilityLabel={`${item.type}: ${item.title}`}
               accessibilityRole="button"
             >
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-gray-100">
+              <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: Colors.gray[100] }}>
                 <Ionicons
                   name={getSuggestionIcon(item.type)}
                   size={20}
                   color="#6366f1"
                 />
               </View>
-              <View className="ml-3 flex-1">
-                <Text className="font-medium text-gray-900" numberOfLines={1}>
+              <View style={{ marginLeft: 12, flex: 1 }}>
+                <Text style={{ fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
                   {item.title}
                 </Text>
                 {item.subtitle ? (
-                  <Text className="mt-0.5 text-sm text-gray-500" numberOfLines={1}>
+                  <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }} numberOfLines={1}>
                     {item.subtitle}
                   </Text>
                 ) : null}
-                <View className="mt-1 flex-row">
-                  <View className="rounded-full bg-primary/10 px-2 py-0.5">
-                    <Text className="text-[10px] font-medium text-primary capitalize">
+                <View style={{ marginTop: 4, flexDirection: "row" }}>
+                  <View style={{ borderRadius: 9999, backgroundColor: Colors.primaryLight, paddingHorizontal: 8, paddingVertical: 2 }}>
+                    <Text style={{ fontSize: 10, fontWeight: "500", color: Colors.primary, textTransform: "capitalize" }}>
                       {item.type}
                     </Text>
                   </View>
@@ -176,8 +179,8 @@ export default function SearchScreen() {
       )}
 
       {loading && debouncedQuery.length >= 2 && (
-        <View className="py-8 items-center">
-          <Text className="text-sm text-gray-500">Searching...</Text>
+        <View style={{ paddingVertical: 32, alignItems: "center" }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Searching...</Text>
         </View>
       )}
     </ScreenContainer>

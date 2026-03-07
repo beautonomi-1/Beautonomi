@@ -42,7 +42,7 @@ const Page = () => {
       <div className="text-center pt-4 pb-0">
         <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Help centre</p>
         <p className="mt-1 text-sm text-gray-600">
-          <Link href="/learn" className="text-[#FF0077] hover:underline">Browse guides and articles</Link>
+          <Link href="/learn" className="text-primary hover:underline">Browse guides and articles</Link>
         </p>
       </div>
       <SearchBox />

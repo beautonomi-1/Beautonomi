@@ -126,7 +126,7 @@ export default function ServiceZoneAnalyticsPage() {
                 onChange={(e) => setEndDate(e.target.value)}
               />
             </div>
-            <Button onClick={loadAnalytics} className="bg-[#FF0077] hover:bg-[#D60565]">
+            <Button onClick={loadAnalytics} className="bg-primary hover:bg-primary-hover">
               <Calendar className="w-4 h-4 mr-2" />
               Apply Filter
             </Button>
@@ -146,7 +146,7 @@ export default function ServiceZoneAnalyticsPage() {
                       {analytics.summary.active_zones} active
                     </p>
                   </div>
-                  <MapPin className="w-8 h-8 text-[#FF0077]" />
+                  <MapPin className="w-8 h-8 text-primary" />
                 </div>
               </SectionCard>
 
@@ -215,7 +215,7 @@ export default function ServiceZoneAnalyticsPage() {
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-lg font-bold text-[#FF0077]">
+                          <p className="text-lg font-bold text-primary">
                             {formatCurrency(zone.total_revenue)}
                           </p>
                           <p className="text-xs text-gray-500">Total Revenue</p>

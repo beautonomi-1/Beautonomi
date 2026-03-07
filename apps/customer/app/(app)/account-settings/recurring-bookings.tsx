@@ -7,10 +7,12 @@ import {
   RefreshControl,
   Alert,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { api } from "@/lib/api-client";
+import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
-import { SCREEN_PADDING, STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -44,19 +46,16 @@ function formatDate(iso: string): string {
   });
 }
 
-function statusColor(status: RecurringBooking["status"]): {
-  bg: string;
-  text: string;
-} {
+function statusStyle(status: RecurringBooking["status"]): { bg: string; text: string } {
   switch (status) {
     case "active":
-      return { bg: "bg-green-100", text: "text-green-800" };
+      return { bg: "#DCFCE7", text: "#166534" };
     case "paused":
-      return { bg: "bg-yellow-100", text: "text-yellow-800" };
+      return { bg: "#FEF9C3", text: "#854D0E" };
     case "cancelled":
-      return { bg: "bg-red-100", text: "text-red-800" };
+      return { bg: "#FEE2E2", text: "#991B1B" };
     default:
-      return { bg: "bg-gray-100", text: "text-gray-800" };
+      return { bg: Colors.gray[100], text: Colors.gray[800] };
   }
 }
 
@@ -65,6 +64,8 @@ function statusColor(status: RecurringBooking["status"]): {
 /* ------------------------------------------------------------------ */
 
 export default function RecurringBookingsScreen() {
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
   const [bookings, setBookings] = useState<RecurringBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -166,55 +167,40 @@ export default function RecurringBookingsScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: RecurringBooking }) => {
-      const badge = statusColor(item.status);
+      const badge = statusStyle(item.status);
       const isCancelling = cancellingId === item.id;
 
       return (
-        <View className="bg-white rounded-xl p-4 mb-3 border border-gray-100">
-          {/* Header: service name + status */}
-          <View className="flex-row justify-between items-start mb-2">
-            <Text className="font-semibold text-gray-900 flex-1 mr-2">
-              {item.service_name}
-            </Text>
-            <View className={`px-2.5 py-0.5 rounded-full ${badge.bg}`}>
-              <Text className={`text-xs font-medium capitalize ${badge.text}`}>
-                {item.status}
-              </Text>
+        <View style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.gray[100] }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900], flex: 1, marginRight: 8 }}>{item.service_name}</Text>
+            <View style={{ paddingHorizontal: 10, paddingVertical: 2, borderRadius: 9999, backgroundColor: badge.bg }}>
+              <Text style={{ fontSize: 12, fontWeight: "500", color: badge.text, textTransform: "capitalize" }}>{item.status}</Text>
             </View>
           </View>
-
-          {/* Provider */}
-          <Text className="text-sm text-gray-600 mb-1">{item.provider_name}</Text>
-
-          {/* Frequency + next date */}
-          <View className="flex-row justify-between items-center mt-2">
+          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 4 }}>{item.provider_name}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
             <View>
-              <Text className="text-xs text-gray-500">Frequency</Text>
-              <Text className="text-sm font-medium text-gray-800">{item.frequency}</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Frequency</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{item.frequency}</Text>
             </View>
-            <View className="items-end">
-              <Text className="text-xs text-gray-500">Next appointment</Text>
-              <Text className="text-sm font-medium text-gray-800">
-                {formatDate(item.next_date)}
-              </Text>
+            <View style={{ alignItems: "flex-end" }}>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Next appointment</Text>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{formatDate(item.next_date)}</Text>
             </View>
           </View>
-
-          {/* Price + cancel */}
-          <View className="flex-row justify-between items-center mt-3 pt-3 border-t border-gray-100">
-            <Text className="font-semibold text-gray-900">
-              {item.currency ?? "ZAR"} {item.price?.toFixed(2)}
-            </Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.gray[100] }}>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.currency ?? "ZAR"} {item.price?.toFixed(2)}</Text>
             {item.status !== "cancelled" && (
               <TouchableOpacity
                 onPress={() => cancelBooking(item)}
                 disabled={isCancelling}
-                className="px-4 py-2 rounded-lg border border-red-200 bg-red-50"
+                style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: "#FECACA", backgroundColor: "#FEF2F2" }}
               >
                 {isCancelling ? (
                   <ActivityIndicator size="small" color={Colors.error} />
                 ) : (
-                  <Text className="text-sm font-medium text-red-600">Cancel</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: "#DC2626" }}>Cancel</Text>
                 )}
               </TouchableOpacity>
             )}
@@ -225,55 +211,45 @@ export default function RecurringBookingsScreen() {
     [cancellingId, cancelBooking],
   );
 
-  /* ---- Loading state ---- */
   if (loading && bookings.length === 0) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-6">
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text className="text-gray-600 mt-4">Loading...</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>Loading...</Text>
       </View>
     );
   }
 
-  /* ---- Error state ---- */
   if (error && bookings.length === 0) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-6">
-        <Text className="text-center text-gray-700 mb-4">{error}</Text>
-        <TouchableOpacity
-          onPress={() => load()}
-          className="bg-primary px-6 py-3 rounded-xl"
-        >
-          <Text className="text-white font-semibold">Retry</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Text style={{ textAlign: "center", color: Colors.gray[700], marginBottom: 16 }}>{error}</Text>
+        <TouchableOpacity onPress={() => load()} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  /* ---- Empty state ---- */
   if (bookings.length === 0) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-6">
-        <Text className="text-center font-semibold text-gray-900 mb-2">
-          No recurring bookings yet
-        </Text>
-        <Text className="text-center text-gray-500">
-          Set up recurring appointments from any booking detail page
-        </Text>
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>No recurring bookings yet</Text>
+        <Text style={{ textAlign: "center", color: Colors.gray[500] }}>Set up recurring appointments from any booking detail page</Text>
       </View>
     );
   }
 
-  /* ---- List ---- */
   return (
-    <View className="flex-1 bg-white">
+    <View style={{ flex: 1, backgroundColor: Colors.white }}>
       <FlatList
         data={bookings}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={{
-          padding: SCREEN_PADDING,
+          padding: contentPadding,
           paddingBottom: STACK_CONTENT_PADDING_BOTTOM,
+          ...constraint,
         }}
         refreshControl={
           <RefreshControl

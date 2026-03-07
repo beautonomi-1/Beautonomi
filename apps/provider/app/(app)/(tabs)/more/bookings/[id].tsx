@@ -17,6 +17,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
+import { twStyle } from "@/lib/twStyle";
 
 type BookingDetail = {
   id: string;
@@ -104,7 +105,7 @@ export default function BookingDetailScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Booking" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -115,7 +116,7 @@ export default function BookingDetailScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Booking" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error ?? "Booking not found"} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -186,47 +187,47 @@ export default function BookingDetailScreen() {
         onBack={() => router.back()}
       />
       <ScrollView
-        className="flex-1"
+        style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
-        <View className="rounded-xl border border-gray-200 bg-white p-4 mb-3">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="font-semibold text-gray-900">{customerName}</Text>
-            <View className={`rounded-full px-2 py-1 ${statusColor(b.status)}`}>
-              <Text className="text-xs font-medium text-gray-800">{b.status}</Text>
+        <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
+          <View style={twStyle("flex-row items-center justify-between mb-3")}>
+            <Text style={twStyle("font-semibold text-gray-900")}>{customerName}</Text>
+            <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(b.status)}`)}>
+              <Text style={twStyle("text-xs font-medium text-gray-800")}>{b.status}</Text>
             </View>
           </View>
-          <Text className="text-sm text-gray-600">
+          <Text style={twStyle("text-sm text-gray-600")}>
             {b.scheduled_at ? new Date(b.scheduled_at).toLocaleString() : "—"}
           </Text>
           {addressLine ? (
-            <Text className="mt-2 text-sm text-gray-500">{addressLine}</Text>
+            <Text style={twStyle("mt-2 text-sm text-gray-500")}>{addressLine}</Text>
           ) : null}
           {typeof b.total_amount === "number" && (
-            <Text className="mt-2 text-base font-medium text-gray-900">
+            <Text style={twStyle("mt-2 text-base font-medium text-gray-900")}>
               {b.currency ?? "ZAR"} {b.total_amount.toLocaleString()}
             </Text>
           )}
         </View>
 
         {isAtHome && (canStartJourney || isEnRoute || isArrived) && (
-          <View className="rounded-xl border border-gray-200 bg-white p-4 mb-3">
-            <Text className="text-sm font-medium text-gray-700 mb-3">At-home visit</Text>
+          <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-3")}>At-home visit</Text>
             {isArrived && (
-              <View className="rounded-lg bg-green-50 border border-green-100 py-2 px-3">
-                <Text className="text-sm font-medium text-green-800">Provider arrived</Text>
+              <View style={twStyle("rounded-lg bg-green-50 border border-green-100 py-2 px-3")}>
+                <Text style={twStyle("text-sm font-medium text-green-800")}>Provider arrived</Text>
               </View>
             )}
             {isEnRoute && !isArrived && (
-              <View className="rounded-lg bg-blue-50 border border-blue-100 py-2 px-3 mb-3">
-                <Text className="text-sm font-medium text-blue-800">En route</Text>
+              <View style={twStyle("rounded-lg bg-blue-50 border border-blue-100 py-2 px-3 mb-3")}>
+                <Text style={twStyle("text-sm font-medium text-blue-800")}>En route</Text>
               </View>
             )}
             {canStartJourney && (
               <>
-                <Text className="text-xs text-gray-500 mb-2">Optional: I will arrive in</Text>
-                <View className="flex-row flex-wrap gap-2 mb-3">
+                <Text style={twStyle("text-xs text-gray-500 mb-2")}>Optional: I will arrive in</Text>
+                <View style={twStyle("flex-row flex-wrap mb-3")}>
                   {ETA_OPTIONS.map((min) => (
                     <TouchableOpacity
                       key={min}
@@ -234,19 +235,19 @@ export default function BookingDetailScreen() {
                         Haptics.selectionAsync();
                         setEtaMinutes((prev) => (prev === min ? null : min));
                       }}
-                      className={`rounded-lg border px-3 py-2 ${
+                      style={[twStyle(`rounded-lg border px-3 py-2 ${
                         etaMinutes === min
                           ? "bg-primary border-primary"
                           : "bg-white border-gray-300"
-                      }`}
+                      }`), { marginRight: 8, marginBottom: 8 }]}
                       accessibilityRole="button"
                       accessibilityLabel={`${min} minutes`}
                       accessibilityState={{ selected: etaMinutes === min }}
                     >
                       <Text
-                        className={`text-sm font-medium ${
+                        style={twStyle(`text-sm font-medium ${
                           etaMinutes === min ? "text-white" : "text-gray-700"
-                        }`}
+                        }`)}
                       >
                         {min} min
                       </Text>
@@ -256,14 +257,14 @@ export default function BookingDetailScreen() {
                 <TouchableOpacity
                   onPress={handleStartJourney}
                   disabled={mutating}
-                  className="rounded-xl bg-primary py-3 items-center mb-2"
+                  style={twStyle("rounded-xl bg-primary py-3 items-center mb-2")}
                   accessibilityRole="button"
                   accessibilityLabel="Start journey"
                 >
                   {mutating ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
-                    <Text className="text-white font-semibold">Start journey</Text>
+                    <Text style={twStyle("text-white font-semibold")}>Start journey</Text>
                   )}
                 </TouchableOpacity>
               </>
@@ -272,14 +273,14 @@ export default function BookingDetailScreen() {
               <TouchableOpacity
                 onPress={handleMarkArrived}
                 disabled={mutating}
-                className="rounded-xl border border-primary py-3 items-center"
+                style={twStyle("rounded-xl border border-primary py-3 items-center")}
                 accessibilityRole="button"
                 accessibilityLabel="Mark arrived"
               >
                 {mutating ? (
                   <ActivityIndicator size="small" color="#000" />
                 ) : (
-                  <Text className="text-primary font-semibold">Mark arrived</Text>
+                  <Text style={twStyle("text-primary font-semibold")}>Mark arrived</Text>
                 )}
               </TouchableOpacity>
             )}
@@ -287,24 +288,24 @@ export default function BookingDetailScreen() {
         )}
 
         {services.length > 0 && (
-          <View className="mb-3">
-            <Text className="text-sm font-medium text-gray-700 mb-2">Services</Text>
+          <View style={twStyle("mb-3")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Services</Text>
             {services.map((s, i) => (
-              <View key={i} className="rounded-xl border border-gray-200 bg-white p-3 mb-2">
-                <Text className="font-medium text-gray-900">
+              <View key={i} style={twStyle("rounded-xl border border-gray-200 bg-white p-3 mb-2")}>
+                <Text style={twStyle("font-medium text-gray-900")}>
                   {s.offering_name ?? "Service"}
                 </Text>
                 {s.staff_name && (
-                  <Text className="text-sm text-gray-500">{s.staff_name}</Text>
+                  <Text style={twStyle("text-sm text-gray-500")}>{s.staff_name}</Text>
                 )}
                 {s.scheduled_start_at && (
-                  <Text className="text-xs text-gray-500 mt-1">
+                  <Text style={twStyle("text-xs text-gray-500 mt-1")}>
                     {new Date(s.scheduled_start_at).toLocaleTimeString()}
                     {s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}
                   </Text>
                 )}
                 {typeof s.price === "number" && (
-                  <Text className="text-sm text-gray-600 mt-1">ZAR {s.price.toLocaleString()}</Text>
+                  <Text style={twStyle("text-sm text-gray-600 mt-1")}>ZAR {s.price.toLocaleString()}</Text>
                 )}
               </View>
             ))}
@@ -312,9 +313,9 @@ export default function BookingDetailScreen() {
         )}
 
         {b.special_requests && (
-          <View className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-            <Text className="text-sm font-medium text-gray-700 mb-1">Special requests</Text>
-            <Text className="text-sm text-gray-600">{b.special_requests}</Text>
+          <View style={twStyle("rounded-xl border border-gray-200 bg-gray-50 p-3")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Special requests</Text>
+            <Text style={twStyle("text-sm text-gray-600")}>{b.special_requests}</Text>
           </View>
         )}
       </ScrollView>

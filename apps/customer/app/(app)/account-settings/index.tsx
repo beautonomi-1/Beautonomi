@@ -1,8 +1,9 @@
-import { View, Text, ScrollView, TouchableOpacity, Share, Linking } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Share, Linking, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
@@ -74,6 +75,8 @@ const GROUPS: SettingsGroup[] = [
 export default function AccountSettingsScreen() {
   useScreenTracking("Account Settings");
   const { user } = useAuth();
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
 
   const handleShare = () => {
     getAnalyticsClient()?.track("share_app", { source: "account_settings" });
@@ -93,43 +96,41 @@ export default function AccountSettingsScreen() {
 
   return (
     <ScrollView
-      className="flex-1 bg-gray-50"
-      contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
+      style={{ flex: 1, backgroundColor: Colors.gray[50] }}
+      contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
     >
       {user && (
-        <View className="mb-5">
-          <Text className="text-lg font-bold text-gray-900">
+        <View style={{ marginBottom: 20 }}>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>
             {user.user_metadata?.full_name || user.email || "Account"}
           </Text>
-          <Text className="text-sm text-gray-500 mt-1">
+          <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
             {user.email || user.phone || ""}
           </Text>
         </View>
       )}
 
       {GROUPS.map((group) => (
-        <View key={group.heading} className="mb-5">
-          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">
+        <View key={group.heading} style={{ marginBottom: 20 }}>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, paddingHorizontal: 4 }}>
             {group.heading}
           </Text>
-          <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <View style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], overflow: "hidden" }}>
             {group.items.map((item, idx) => (
               <TouchableOpacity
                 key={item.id}
                 onPress={() => handleNavigate(item.route)}
-                className="flex-row items-center px-4 py-3.5"
-                style={
-                  idx < group.items.length - 1
-                    ? { borderBottomWidth: 1, borderBottomColor: "#f3f4f6" }
-                    : undefined
-                }
+                style={[
+                  { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14 },
+                  idx < group.items.length - 1 ? { borderBottomWidth: 1, borderBottomColor: Colors.gray[100] } : undefined,
+                ]}
               >
                 <View
                   style={{
                     width: 36,
                     height: 36,
                     borderRadius: 10,
-                    backgroundColor: "#f9fafb",
+                    backgroundColor: Colors.gray[50],
                     alignItems: "center",
                     justifyContent: "center",
                     marginRight: 12,
@@ -137,13 +138,11 @@ export default function AccountSettingsScreen() {
                 >
                   <Ionicons name={item.icon} size={18} color={Colors.primary} />
                 </View>
-                <View className="flex-1">
-                  <Text className="text-sm font-medium text-gray-900">
-                    {item.title}
-                  </Text>
-                  <Text className="text-xs text-gray-400 mt-0.5">{item.desc}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{item.title}</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>{item.desc}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+                <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
               </TouchableOpacity>
             ))}
           </View>
@@ -151,111 +150,61 @@ export default function AccountSettingsScreen() {
       ))}
 
       {/* Footer actions */}
-      <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden mb-5">
+      <View style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], overflow: "hidden", marginBottom: 20 }}>
         <TouchableOpacity
           onPress={handleShare}
-          className="flex-row items-center px-4 py-3.5"
-          style={{ borderBottomWidth: 1, borderBottomColor: "#f3f4f6" }}
+          style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
         >
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              backgroundColor: "#f9fafb",
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: 12,
-            }}
-          >
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginRight: 12 }}>
             <Ionicons name="share-social-outline" size={18} color={Colors.primary} />
           </View>
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900">Share Beautonomi</Text>
-            <Text className="text-xs text-gray-400 mt-0.5">
-              Invite friends and family
-            </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>Share Beautonomi</Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>Invite friends and family</Text>
           </View>
-          <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+          <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => router.push("/(app)/help")}
-          className="flex-row items-center px-4 py-3.5"
-          style={{ borderBottomWidth: 1, borderBottomColor: "#f3f4f6" }}
+          style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
         >
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              backgroundColor: "#f9fafb",
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: 12,
-            }}
-          >
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginRight: 12 }}>
             <Ionicons name="help-circle-outline" size={18} color={Colors.primary} />
           </View>
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900">Help & support</Text>
-            <Text className="text-xs text-gray-400 mt-0.5">FAQs and contact us</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>Help & support</Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>FAQs and contact us</Text>
           </View>
-          <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+          <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => router.push("/(app)/about")}
-          className="flex-row items-center px-4 py-3.5"
+          style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14 }}
         >
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              backgroundColor: "#f9fafb",
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: 12,
-            }}
-          >
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.gray[50], alignItems: "center", justifyContent: "center", marginRight: 12 }}>
             <Ionicons name="information-circle-outline" size={18} color={Colors.primary} />
           </View>
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900">About Beautonomi</Text>
-            <Text className="text-xs text-gray-400 mt-0.5">Our mission and story</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>About Beautonomi</Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>Our mission and story</Text>
           </View>
-          <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+          <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
         </TouchableOpacity>
       </View>
 
       {user && (
         <TouchableOpacity
-          onPress={() =>
-            Linking.openURL(`${APP_URL}/provider/onboarding`)
-          }
-          className="bg-white rounded-2xl border border-gray-100 px-4 py-4 flex-row items-center mb-4"
+          onPress={() => Linking.openURL(`${APP_URL}/provider/onboarding`)}
+          style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], paddingHorizontal: 16, paddingVertical: 16, flexDirection: "row", alignItems: "center", marginBottom: 16 }}
         >
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              backgroundColor: Colors.primaryLight || "#fce7f3",
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: 12,
-            }}
-          >
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.primaryLight || "#fce7f3", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
             <Ionicons name="storefront-outline" size={18} color={Colors.primary} />
           </View>
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900">
-              Become a provider
-            </Text>
-            <Text className="text-xs text-gray-400 mt-0.5">
-              Offer your beauty services on Beautonomi
-            </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>Become a provider</Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>Offer your beauty services on Beautonomi</Text>
           </View>
-          <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+          <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
         </TouchableOpacity>
       )}
     </ScrollView>

@@ -8,11 +8,13 @@ import {
   Alert,
   RefreshControl,
   TextInput,
+  type ImageStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -21,6 +23,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { twStyle } from "@/lib/twStyle";
 
 interface ExplorePost {
   id: string;
@@ -49,6 +52,7 @@ interface ExploreComment {
 type PickedAsset = { uri: string; mimeType?: string; fileName?: string };
 
 export default function ExplorePostsScreen() {
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState<PickedAsset[]>([]);
@@ -218,7 +222,7 @@ export default function ExplorePostsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Explore" showBack subtitle="Posts for Explore feed" />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -229,7 +233,7 @@ export default function ExplorePostsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Explore" showBack subtitle="Posts for Explore feed" />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -245,12 +249,12 @@ export default function ExplorePostsScreen() {
         rightAction={
           <TouchableOpacity
             onPress={openCreate}
-            className="flex-row items-center rounded-xl bg-[#ec4899] px-4 py-2"
+            style={twStyle("flex-row items-center rounded-xl bg-[#ec4899] px-4 py-2")}
             accessibilityLabel="Create post"
             accessibilityRole="button"
           >
             <Ionicons name="add" size={18} color="#fff" />
-            <Text className="ml-1.5 text-sm font-semibold text-white">
+            <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>
               Create post
             </Text>
           </TouchableOpacity>
@@ -258,8 +262,8 @@ export default function ExplorePostsScreen() {
       />
 
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={twStyle("flex-1")}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -275,69 +279,69 @@ export default function ExplorePostsScreen() {
           />
         ) : (
           <>
-            <View className="mb-3 mt-1 flex-row items-center rounded-xl bg-pink-50 p-3">
+            <View style={twStyle("mb-3 mt-1 flex-row items-center rounded-xl bg-pink-50 p-3")}>
               <Ionicons name="gift-outline" size={20} color="#be185d" />
-              <Text className="ml-2 flex-1 text-sm text-pink-900">
+              <Text style={twStyle("ml-2 flex-1 text-sm text-pink-900")}>
                 Earn reward points when you post to Explore.
               </Text>
             </View>
-            <View className="gap-4">
-              {posts.map((post) => {
+            <View>
+              {posts.map((post, idx) => {
                 const thumb = post.media_urls?.[0];
                 const isVideo =
                   thumb &&
                   /\.(mp4|webm|mov)$/i.test(thumb);
                 return (
-                  <TouchableOpacity
+                <TouchableOpacity
                     key={post.id}
                     onPress={() => openView(post)}
                     activeOpacity={0.85}
-                    className="overflow-hidden rounded-2xl border border-gray-200 bg-white"
+                    style={[twStyle("overflow-hidden rounded-2xl border border-gray-200 bg-white"), idx > 0 ? { marginTop: 16 } : undefined]}
                   >
-                    <View className="aspect-square bg-gray-100">
+                    <View style={twStyle("aspect-square bg-gray-100")}>
                       {thumb && !isVideo ? (
                         <Image
                           source={{ uri: thumb }}
-                          className="h-full w-full"
+                          style={twStyle("h-full w-full") as ImageStyle}
                           resizeMode="cover"
                           accessibilityLabel="Post image"
                         />
                       ) : thumb && isVideo ? (
-                        <View className="h-full w-full items-center justify-center bg-gray-200">
+                        <View style={twStyle("h-full w-full items-center justify-center bg-gray-200")}>
                           <Ionicons name="videocam" size={48} color="#9ca3af" />
                         </View>
                       ) : (
-                        <View className="h-full w-full items-center justify-center">
+                        <View style={twStyle("h-full w-full items-center justify-center")}>
                           <Ionicons name="image-outline" size={48} color="#d1d5db" />
                         </View>
                       )}
                     </View>
-                    <View className="p-3">
+                    <View style={twStyle("p-3")}>
                       <Text
-                        className="text-sm text-gray-700"
+                        style={twStyle("text-sm text-gray-700")}
                         numberOfLines={2}
                       >
                         {post.caption || "No caption"}
                       </Text>
-                      <View className="mt-2 flex-row flex-wrap items-center gap-2">
+                      <View style={twStyle("mt-2 flex-row flex-wrap items-center")}>
                         <View
-                          className={`rounded-full px-2.5 py-0.5 ${
+                          style={[twStyle(`rounded-full px-2.5 py-0.5 ${
                             post.status === "published"
                               ? "bg-green-100"
                               : "bg-gray-100"
-                          }`}
+                          }`), { marginRight: 8 }]}
                         >
                           <Text
-                            className={`text-xs font-medium ${
+                            style={twStyle(`text-xs font-medium ${
                               post.status === "published"
                                 ? "text-green-800"
                                 : "text-gray-600"
-                            }`}
+                            }`)}
                           >
                             {post.status}
                           </Text>
                         </View>
-                        <Text className="text-xs text-gray-500">
+                        <Text style={twStyle("text-xs text-gray-500")}>
                           {post.like_count} likes · {post.comment_count ?? 0} comments
                         </Text>
                       </View>
@@ -358,10 +362,10 @@ export default function ExplorePostsScreen() {
       >
         <TouchableOpacity
           onPress={pickMedia}
-          className="mb-4 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-6"
+          style={twStyle("mb-4 flex-row items-center justify-center rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-6")}
         >
           <Ionicons name="images-outline" size={28} color="#9ca3af" />
-          <Text className="ml-2 text-sm font-medium text-gray-600">
+          <Text style={twStyle("ml-2 text-sm font-medium text-gray-600")}>
             {selectedAssets.length > 0
               ? `Add more (${selectedAssets.length}/5)`
               : "Pick photos or videos"}
@@ -371,18 +375,18 @@ export default function ExplorePostsScreen() {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            className="-mx-1 mb-4"
+            style={twStyle("-mx-1 mb-4")}
           >
             {selectedAssets.map((asset, i) => (
-              <View key={i} className="mr-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100">
+              <View key={i} style={twStyle("mr-2 h-20 w-20 overflow-hidden rounded-lg bg-gray-100")}>
                 <Image
                   source={{ uri: asset.uri }}
-                  className="h-full w-full"
+                  style={twStyle("h-full w-full") as ImageStyle}
                   resizeMode="cover"
                 />
                 <TouchableOpacity
                   onPress={() => removeAsset(i)}
-                  className="absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60"
+                  style={twStyle("absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full bg-black/60")}
                 >
                   <Ionicons name="close" size={14} color="#fff" />
                 </TouchableOpacity>
@@ -390,32 +394,32 @@ export default function ExplorePostsScreen() {
             ))}
           </ScrollView>
         ) : null}
-        <Text className="mb-2 text-sm font-medium text-gray-700">Caption (optional)</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Caption (optional)</Text>
         <TextInput
-          className="mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+          style={twStyle("mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           placeholder="Write a caption..."
           placeholderTextColor="#9ca3af"
           value={caption}
           onChangeText={setCaption}
           multiline
         />
-        <View className="mb-4 flex-row gap-3">
+        <View style={twStyle("mb-4 flex-row")}>
           <TouchableOpacity
             onPress={() => setPublishNow(true)}
-            className={`flex-1 rounded-xl py-3 ${publishNow ? "bg-green-600" : "bg-gray-100"}`}
+            style={[twStyle(`flex-1 rounded-xl py-3 ${publishNow ? "bg-green-600" : "bg-gray-100"}`), { marginRight: 12 }]}
           >
             <Text
-              className={`text-center text-sm font-medium ${publishNow ? "text-white" : "text-gray-600"}`}
+              style={twStyle(`text-center text-sm font-medium ${publishNow ? "text-white" : "text-gray-600"}`)}
             >
               Publish now
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setPublishNow(false)}
-            className={`flex-1 rounded-xl py-3 ${!publishNow ? "bg-gray-700" : "bg-gray-100"}`}
+            style={twStyle(`flex-1 rounded-xl py-3 ${!publishNow ? "bg-gray-700" : "bg-gray-100"}`)}
           >
             <Text
-              className={`text-center text-sm font-medium ${!publishNow ? "text-white" : "text-gray-600"}`}
+              style={twStyle(`text-center text-sm font-medium ${!publishNow ? "text-white" : "text-gray-600"}`)}
             >
               Save as draft
             </Text>
@@ -448,45 +452,45 @@ export default function ExplorePostsScreen() {
         >
           {editMode ? (
             <>
-              <Text className="mb-2 text-sm font-medium text-gray-700">Caption</Text>
+              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Caption</Text>
               <TextInput
-                className="mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 placeholder="Write a caption..."
                 placeholderTextColor="#9ca3af"
                 value={editCaption}
                 onChangeText={setEditCaption}
                 multiline
               />
-              <View className="mb-4 flex-row gap-3">
+              <View style={twStyle("mb-4 flex-row")}>
                 <TouchableOpacity
                   onPress={() => setEditPublishNow(true)}
-                  className={`flex-1 rounded-xl py-3 ${editPublishNow ? "bg-green-600" : "bg-gray-100"}`}
+                  style={[twStyle(`flex-1 rounded-xl py-3 ${editPublishNow ? "bg-green-600" : "bg-gray-100"}`), { marginRight: 12 }]}
                 >
                   <Text
-                    className={`text-center text-sm font-medium ${editPublishNow ? "text-white" : "text-gray-600"}`}
+                    style={twStyle(`text-center text-sm font-medium ${editPublishNow ? "text-white" : "text-gray-600"}`)}
                   >
                     Publish
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setEditPublishNow(false)}
-                  className={`flex-1 rounded-xl py-3 ${!editPublishNow ? "bg-gray-700" : "bg-gray-100"}`}
+                  style={twStyle(`flex-1 rounded-xl py-3 ${!editPublishNow ? "bg-gray-700" : "bg-gray-100"}`)}
                 >
                   <Text
-                    className={`text-center text-sm font-medium ${!editPublishNow ? "text-white" : "text-gray-600"}`}
+                    style={twStyle(`text-center text-sm font-medium ${!editPublishNow ? "text-white" : "text-gray-600"}`)}
                   >
                     Draft
                   </Text>
                 </TouchableOpacity>
               </View>
-              <View className="flex-row gap-3">
+              <View style={twStyle("flex-row")}>
                 <TouchableOpacity
                   onPress={() => setEditMode(false)}
-                  className="flex-1 rounded-xl border border-gray-300 py-3"
+                  style={[twStyle("flex-1 rounded-xl border border-gray-300 py-3"), { marginRight: 12 }]}
                 >
-                  <Text className="text-center text-sm font-medium text-gray-700">Cancel</Text>
+                  <Text style={twStyle("text-center text-sm font-medium text-gray-700")}>Cancel</Text>
                 </TouchableOpacity>
-                <View className="flex-1">
+                <View style={twStyle("flex-1")}>
                   <ActionButton
                     label={updating ? "Saving…" : "Save"}
                     onPress={handleSaveEdit}
@@ -499,75 +503,75 @@ export default function ExplorePostsScreen() {
           ) : (
             <>
               {viewPost.media_urls?.[0] && !/\.(mp4|webm|mov)$/i.test(viewPost.media_urls[0]) ? (
-                <View className="mb-4 aspect-square overflow-hidden rounded-xl bg-gray-100">
+                <View style={twStyle("mb-4 aspect-square overflow-hidden rounded-xl bg-gray-100")}>
                   <Image
                     source={{ uri: viewPost.media_urls[0] }}
-                    className="h-full w-full"
+                    style={twStyle("h-full w-full") as ImageStyle}
                     resizeMode="cover"
                   />
                 </View>
               ) : null}
-              <Text className="mb-2 text-sm text-gray-700">
+              <Text style={twStyle("mb-2 text-sm text-gray-700")}>
                 {viewPost.caption || "No caption"}
               </Text>
-              <View className="mb-4 flex-row flex-wrap gap-2">
+              <View style={twStyle("mb-4 flex-row flex-wrap")}>
                 <View
-                  className={`rounded-full px-2.5 py-1 ${viewPost.status === "published" ? "bg-green-100" : "bg-gray-100"}`}
+                  style={[twStyle(`rounded-full px-2.5 py-1 ${viewPost.status === "published" ? "bg-green-100" : "bg-gray-100"}`), { marginRight: 8, marginBottom: 8 }]}
                 >
                   <Text
-                    className={`text-xs font-medium ${viewPost.status === "published" ? "text-green-800" : "text-gray-600"}`}
+                    style={twStyle(`text-xs font-medium ${viewPost.status === "published" ? "text-green-800" : "text-gray-600"}`)}
                   >
                     {viewPost.status}
                   </Text>
                 </View>
                 {typeof viewPost.view_count === "number" && (
-                  <Text className="text-xs text-gray-500">{viewPost.view_count} views</Text>
+                  <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 8 }]}>{viewPost.view_count} views</Text>
                 )}
               </View>
-              <View className="mb-4 flex-row gap-3">
+              <View style={twStyle("mb-4 flex-row")}>
                 <TouchableOpacity
                   onPress={() => {
                     setEditCaption(viewPost.caption ?? "");
                     setEditPublishNow(viewPost.status === "published");
                     setEditMode(true);
                   }}
-                  className="flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3"
+                  style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3"), { marginRight: 12 }]}
                 >
                   <Ionicons name="pencil-outline" size={18} color="#6366f1" />
-                  <Text className="ml-1.5 text-sm font-medium text-indigo-600">Edit</Text>
+                  <Text style={twStyle("ml-1.5 text-sm font-medium text-indigo-600")}>Edit</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => viewPost && handleDelete(viewPost)}
-                  className="flex-1 flex-row items-center justify-center rounded-xl border border-red-200 bg-red-50 py-3"
+                  style={twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-red-200 bg-red-50 py-3")}
                 >
                   <Ionicons name="trash-outline" size={18} color="#dc2626" />
-                  <Text className="ml-1.5 text-sm font-medium text-red-600">Delete</Text>
+                  <Text style={twStyle("ml-1.5 text-sm font-medium text-red-600")}>Delete</Text>
                 </TouchableOpacity>
               </View>
 
-              <Text className="mb-2 text-sm font-medium text-gray-700">Comments</Text>
+              <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Comments</Text>
               {commentsLoading ? (
-                <Text className="mb-3 text-sm text-gray-500">Loading comments…</Text>
+                <Text style={twStyle("mb-3 text-sm text-gray-500")}>Loading comments…</Text>
               ) : comments.length === 0 ? (
-                <Text className="mb-3 text-sm text-gray-500">No comments yet.</Text>
+                <Text style={twStyle("mb-3 text-sm text-gray-500")}>No comments yet.</Text>
               ) : (
-                <ScrollView className="mb-3 max-h-40" nestedScrollEnabled>
+                <ScrollView style={twStyle("mb-3 max-h-40")} nestedScrollEnabled>
                   {comments.map((c) => (
-                    <View key={c.id} className="mb-2 rounded-lg bg-gray-50 px-3 py-2">
-                      <Text className="text-xs font-medium text-gray-700">
+                    <View key={c.id} style={twStyle("mb-2 rounded-lg bg-gray-50 px-3 py-2")}>
+                      <Text style={twStyle("text-xs font-medium text-gray-700")}>
                         {c.author?.full_name ?? "Someone"}
                       </Text>
-                      <Text className="text-sm text-gray-900">{c.body}</Text>
-                      <Text className="mt-0.5 text-xs text-gray-500">
+                      <Text style={twStyle("text-sm text-gray-900")}>{c.body}</Text>
+                      <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                         {new Date(c.created_at).toLocaleDateString()}
                       </Text>
                     </View>
                   ))}
                 </ScrollView>
               )}
-              <View className="flex-row items-end gap-2">
+              <View style={twStyle("flex-row items-end")}>
                 <TextInput
-                  className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-base text-gray-900"
+                  style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-base text-gray-900"), { marginRight: 8 }]}
                   placeholder="Add a comment…"
                   placeholderTextColor="#9ca3af"
                   value={commentBody}
@@ -593,15 +597,15 @@ export default function ExplorePostsScreen() {
                     }
                   }}
                   disabled={!commentBody.trim() || postingComment}
-                  className="rounded-xl bg-indigo-600 px-4 py-2.5"
+                  style={twStyle("rounded-xl bg-indigo-600 px-4 py-2.5")}
                 >
-                  <Text className="text-sm font-medium text-white">
+                  <Text style={twStyle("text-sm font-medium text-white")}>
                     {postingComment ? "Posting…" : "Post"}
                   </Text>
                 </TouchableOpacity>
               </View>
               {commentBody.length > 0 && (
-                <Text className="mt-1 text-xs text-gray-500">{commentBody.length}/200</Text>
+                <Text style={twStyle("mt-1 text-xs text-gray-500")}>{commentBody.length}/200</Text>
               )}
             </>
           )}

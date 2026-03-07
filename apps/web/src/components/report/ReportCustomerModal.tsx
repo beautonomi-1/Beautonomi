@@ -74,7 +74,7 @@ export function ReportCustomerModal({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Describe your concern (e.g. no-show, inappropriate behaviour...)"
-            className="w-full min-h-[120px] rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#FF0077]/30 focus:border-[#FF0077] outline-none resize-y"
+            className="w-full min-h-[120px] rounded-lg border border-gray-200 px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none resize-y"
             maxLength={2000}
             disabled={submitting}
           />

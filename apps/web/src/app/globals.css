@@ -8,6 +8,10 @@
 
 @layer base {
   :root {
+    /* Brand (align with @beautonomi/ui-tokens) */
+    --primary: #FF0077;
+    --primary-hover: #D60565;
+
     /* Status Colors - Normal Mode */
     --status-unconfirmed: #FEC89A;
     --status-unconfirmed-border: #F97316;

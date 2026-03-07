@@ -14,6 +14,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { twStyle } from "@/lib/twStyle";
 
 type VerificationStatus = "pending" | "in_progress" | "approved" | "rejected" | "reset";
 
@@ -91,7 +92,7 @@ export default function VerificationScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Identity verification" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -102,7 +103,7 @@ export default function VerificationScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Identity verification" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -117,21 +118,20 @@ export default function VerificationScreen() {
         onBack={() => router.back()}
       />
       <ScrollView
-        className="flex-1"
+        style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
-        <View className="px-4 pt-6">
-          <View className={`rounded-2xl p-6 items-center ${config.bg}`}>
+        <View style={twStyle("px-4 pt-6")}>
+          <View style={twStyle(`rounded-2xl p-6 items-center ${config.bg}`)}>
             <View
-              className="w-16 h-16 rounded-full items-center justify-center mb-4"
-              style={{ backgroundColor: `${config.color}30` }}
+              style={[twStyle("w-16 h-16 rounded-full items-center justify-center mb-4"), { backgroundColor: `${config.color}30` }]}
             >
               <Ionicons name={config.icon} size={32} color={config.color} />
             </View>
-            <Text className="text-lg font-semibold text-gray-900">{config.label}</Text>
-            <Text className="mt-2 text-center text-gray-600">
+            <Text style={twStyle("text-lg font-semibold text-gray-900")}>{config.label}</Text>
+            <Text style={twStyle("mt-2 text-center text-gray-600")}>
               {status === "approved"
                 ? "Your identity is verified. You can receive payouts."
                 : status === "rejected"
@@ -143,7 +143,7 @@ export default function VerificationScreen() {
           </View>
 
           {(status === "pending" || status === "in_progress" || status === "rejected" || status === "reset") && (
-            <View className="mt-6">
+            <View style={twStyle("mt-6")}>
               <ActionButton
                 label={status === "pending" || status === "rejected" || status === "reset" ? "Start verification" : "Continue verification"}
                 variant="secondary"
@@ -152,18 +152,18 @@ export default function VerificationScreen() {
                 icon="open-outline"
                 iconPosition="right"
               />
-              <Text className="mt-3 text-center text-sm text-gray-500">
+              <Text style={twStyle("mt-3 text-center text-sm text-gray-500")}>
                 Opens the verification flow in-app. You’ll stay inside the app.
               </Text>
             </View>
           )}
 
-          <View className="mt-8 rounded-2xl bg-slate-50 p-4">
-            <View className="flex-row items-center mb-2">
+          <View style={twStyle("mt-8 rounded-2xl bg-slate-50 p-4")}>
+            <View style={twStyle("flex-row items-center mb-2")}>
               <Ionicons name="shield-checkmark-outline" size={18} color="#475569" />
-              <Text className="ml-2 text-sm font-semibold text-gray-700">Why we verify</Text>
+              <Text style={twStyle("ml-2 text-sm font-semibold text-gray-700")}>Why we verify</Text>
             </View>
-            <Text className="text-sm text-gray-600 leading-5">
+            <Text style={twStyle("text-sm text-gray-600 leading-5")}>
               Identity verification helps us prevent fraud and meet regulatory requirements. Your information is processed securely by our verification partner.
             </Text>
           </View>

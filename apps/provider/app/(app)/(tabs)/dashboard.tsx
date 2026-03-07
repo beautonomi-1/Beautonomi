@@ -26,6 +26,7 @@ import {
   formatPercentage,
   formatTimeAgo,
 } from "@/lib/format";
+import { Colors } from "@/constants/colors";
 
 interface DashboardMetrics {
   total_bookings: number;
@@ -127,27 +128,19 @@ function getActivityIcon(type: string): {
   switch (type) {
     case "booking_created":
     case "new_booking":
-      return { name: "book-outline", color: "#6366f1", bg: "bg-indigo-50" };
+      return { name: "book-outline", color: "#6366f1", bg: "#eef2ff" };
     case "booking_completed":
-      return {
-        name: "checkmark-circle-outline",
-        color: "#22c55e",
-        bg: "bg-green-50",
-      };
+      return { name: "checkmark-circle-outline", color: "#22c55e", bg: "#f0fdf4" };
     case "booking_cancelled":
-      return { name: "close-circle-outline", color: "#ef4444", bg: "bg-red-50" };
+      return { name: "close-circle-outline", color: "#ef4444", bg: "#fef2f2" };
     case "payment_received":
-      return { name: "cash-outline", color: "#22c55e", bg: "bg-green-50" };
+      return { name: "cash-outline", color: "#22c55e", bg: "#f0fdf4" };
     case "new_review":
-      return { name: "star-outline", color: "#f59e0b", bg: "bg-amber-50" };
+      return { name: "star-outline", color: "#f59e0b", bg: "#fffbeb" };
     case "new_client":
-      return { name: "person-add-outline", color: "#3b82f6", bg: "bg-blue-50" };
+      return { name: "person-add-outline", color: "#3b82f6", bg: "#eff6ff" };
     default:
-      return {
-        name: "ellipse-outline",
-        color: "#6b7280",
-        bg: "bg-gray-100",
-      };
+      return { name: "ellipse-outline", color: "#6b7280", bg: "#f3f4f6" };
   }
 }
 
@@ -159,18 +152,17 @@ function WeeklyRevenueChart({ data }: { data: WeeklyRevenue[] }) {
 
   return (
     <Card variant="default" padding="md">
-      <View className="mb-3 flex-row items-baseline justify-between">
-        <Text className="text-xs font-medium uppercase tracking-wide text-gray-400">
+      <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" }}>
+        <Text style={{ fontSize: 12, fontWeight: "500", letterSpacing: 0.5, color: Colors.gray[400] }}>
           7-Day Total
         </Text>
-        <Text className="text-base font-bold text-gray-900">
+        <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
           {formatCurrency(totalRevenue)}
         </Text>
       </View>
 
       <View
-        className="flex-row items-end justify-between"
-        style={{ height: 120 }}
+        style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", height: 120 }}
         accessibilityLabel="Weekly revenue bar chart"
       >
         {data.map((day, index) => {
@@ -180,35 +172,30 @@ function WeeklyRevenueChart({ data }: { data: WeeklyRevenue[] }) {
           );
           const isToday = index === todayIdx;
           return (
-            <View key={day.day} className="flex-1 items-center px-0.5">
+            <View key={day.day} style={{ flex: 1, alignItems: "center", paddingHorizontal: 2 }}>
               {day.revenue > 0 && (
-                <Text className="mb-1 text-[9px] font-medium text-gray-400">
+                <Text style={{ marginBottom: 4, fontSize: 9, fontWeight: "500", color: Colors.gray[400] }}>
                   {formatCurrency(day.revenue).replace(/\.00$/, "")}
                 </Text>
               )}
               <View
-                className={`w-full max-w-[28px] ${
-                  isToday
-                    ? "rounded-lg bg-gray-900"
-                    : day.revenue > 0
-                      ? "rounded-lg bg-gray-200"
-                      : "rounded-lg bg-gray-100"
-                }`}
-                style={{ height: barHeight }}
+                style={{
+                  width: "100%",
+                  maxWidth: 28,
+                  borderRadius: 8,
+                  height: barHeight,
+                  backgroundColor: isToday ? Colors.gray[900] : day.revenue > 0 ? Colors.gray[200] : Colors.gray[100],
+                }}
               />
             </View>
           );
         })}
       </View>
 
-      <View className="mt-2 flex-row justify-between">
+      <View style={{ marginTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
         {DAY_LABELS.map((label, i) => (
-          <View key={label} className="flex-1 items-center">
-            <Text
-              className={`text-[10px] ${
-                i === todayIdx ? "font-bold text-gray-900" : "text-gray-400"
-              }`}
-            >
+          <View key={label} style={{ flex: 1, alignItems: "center" }}>
+            <Text style={{ fontSize: 10, fontWeight: i === todayIdx ? "700" : "400", color: i === todayIdx ? Colors.gray[900] : Colors.gray[400] }}>
               {label}
             </Text>
           </View>
@@ -395,7 +382,7 @@ export default function DashboardScreen() {
         subtitle={`${m?.appointments_today ?? 0} appointments today`}
         rightAction={
           <TouchableOpacity
-            className="min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-gray-100"
+            style={{ minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: Colors.gray[100] }}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               router.push("/(app)/(tabs)/more/notifications" as any);
@@ -411,57 +398,61 @@ export default function DashboardScreen() {
       {/* Identity strip: rating, badge, service type, at-home radius */}
       {m && (
         <View
-          className="mb-4 flex-row flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5"
+          style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 12, paddingVertical: 10 }}
           accessibilityLabel={`Rating ${m.average_rating?.toFixed(1) ?? "0.0"}, ${m.total_reviews ?? 0} reviews. Level: ${gam?.current_badge?.name ?? "Getting started"}. ${m.provider_profile?.supports_house_calls ? "At-home" : ""} ${m.provider_profile?.supports_salon ? "At-salon" : ""}. ${m.provider_profile?.supports_house_calls && m.provider_profile?.max_service_distance_km ? `Within ${m.provider_profile.max_service_distance_km} km` : ""}`}
         >
             <TouchableOpacity
-              className="flex-row items-center gap-1 rounded-lg px-2 py-1 active:opacity-80"
+              style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginRight: 12 }}
+              activeOpacity={0.8}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 router.push("/(app)/(tabs)/more/reviews" as any);
               }}
               accessibilityLabel={`Rating ${m.average_rating?.toFixed(1) ?? "0.0"} from ${m.total_reviews ?? 0} reviews`}
             >
-              <Ionicons name="star" size={16} color="#f59e0b" />
-              <Text className="text-base font-bold text-gray-900">
+              <Ionicons name="star" size={16} color="#f59e0b" style={{ marginRight: 4 }} />
+              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
                 {m.average_rating?.toFixed(1) ?? "0.0"}
               </Text>
-              <Text className="text-xs text-gray-500">
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
                 ({m.total_reviews ?? 0})
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              className="flex-row items-center gap-1 rounded-lg px-2 py-1 active:opacity-80"
+              style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginRight: 12 }}
+              activeOpacity={0.8}
               onPress={() => router.push("/(app)/(tabs)/more/rewards" as any)}
               accessibilityLabel={gam?.current_badge?.name ? `Level ${gam.current_badge.name}` : "View rewards"}
             >
-              <Ionicons name="trophy" size={16} color="#92400e" />
+              <Ionicons name="trophy" size={16} color="#92400e" style={{ marginRight: 4 }} />
               <View
-                className="rounded-full px-2 py-0.5"
                 style={{
+                  borderRadius: 9999,
+                  paddingHorizontal: 8,
+                  paddingVertical: 2,
                   backgroundColor:
                     (gam?.current_badge?.color && /^#/.test(gam.current_badge.color))
                       ? gam.current_badge.color
                       : "#6366f1",
                 }}
               >
-                <Text className="text-xs font-semibold text-white">
+                <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.white }}>
                   {gam?.current_badge?.name ?? "Getting started"}
                 </Text>
               </View>
             </TouchableOpacity>
             {(m.provider_profile?.supports_house_calls || m.provider_profile?.supports_salon) && (
-              <View className="flex-row items-center gap-1.5">
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
                 {m.provider_profile.supports_house_calls && (
-                  <View className="flex-row items-center rounded bg-green-100 px-2 py-0.5">
+                  <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 4, backgroundColor: "#dcfce7", paddingHorizontal: 8, paddingVertical: 2, marginRight: 6 }}>
                     <Ionicons name="home-outline" size={12} color="#166534" />
-                    <Text className="ml-0.5 text-xs font-medium text-green-800">At-home</Text>
+                    <Text style={{ marginLeft: 2, fontSize: 12, fontWeight: "500", color: "#166534" }}>At-home</Text>
                   </View>
                 )}
                 {m.provider_profile.supports_salon && (
-                  <View className="flex-row items-center rounded bg-purple-100 px-2 py-0.5">
+                  <View style={{ flexDirection: "row", alignItems: "center", borderRadius: 4, backgroundColor: "#f3e8ff", paddingHorizontal: 8, paddingVertical: 2 }}>
                     <Ionicons name="business-outline" size={12} color="#6b21a8" />
-                    <Text className="ml-0.5 text-xs font-medium text-purple-800">At-salon</Text>
+                    <Text style={{ marginLeft: 2, fontSize: 12, fontWeight: "500", color: "#6b21a8" }}>At-salon</Text>
                   </View>
                 )}
               </View>
@@ -470,15 +461,16 @@ export default function DashboardScreen() {
               m.provider_profile?.max_service_distance_km != null &&
               m.provider_profile.max_service_distance_km > 0 && (
                 <TouchableOpacity
-                  className="flex-row items-center gap-1 rounded bg-indigo-50 px-2 py-0.5 active:opacity-80"
+                  style={{ flexDirection: "row", alignItems: "center", borderRadius: 4, backgroundColor: "#eef2ff", paddingHorizontal: 8, paddingVertical: 2, marginRight: 12 }}
+                  activeOpacity={0.8}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     router.push("/(app)/(tabs)/more/settings/distance-settings" as any);
                   }}
                   accessibilityLabel={`Within ${m.provider_profile.max_service_distance_km} km. Tap to change distance settings.`}
                 >
-                  <Ionicons name="location-outline" size={12} color="#4338ca" />
-                  <Text className="text-xs font-medium text-indigo-800">
+                  <Ionicons name="location-outline" size={12} color="#4338ca" style={{ marginRight: 4 }} />
+                  <Text style={{ fontSize: 12, fontWeight: "500", color: "#3730a3" }}>
                     Within {m.provider_profile.max_service_distance_km} km
                   </Text>
                 </TouchableOpacity>
@@ -486,10 +478,9 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Quick Actions */}
-      <View className="mb-4 flex-row gap-3">
+      <View style={{ marginBottom: 16, flexDirection: "row" }}>
         <TouchableOpacity
-          className="min-h-[48px] flex-1 flex-row items-center justify-center rounded-xl bg-gray-900"
+          style={{ minHeight: 48, flex: 1, marginRight: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: Colors.gray[900] }}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             router.push("/(app)/(tabs)/more/bookings/new" as any);
@@ -499,10 +490,10 @@ export default function DashboardScreen() {
           accessibilityRole="button"
         >
           <Ionicons name="add-circle-outline" size={18} color="#fff" />
-          <Text className="ml-2 font-semibold text-white">New Booking</Text>
+          <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.white }}>New Booking</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          className="min-h-[48px] flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white"
+          style={{ minHeight: 48, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white }}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             router.push("/(app)/(tabs)/calendar" as any);
@@ -512,12 +503,12 @@ export default function DashboardScreen() {
           accessibilityRole="button"
         >
           <Ionicons name="calendar-outline" size={18} color="#111" />
-          <Text className="ml-2 font-semibold text-gray-900">Schedule</Text>
+          <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.gray[900] }}>Schedule</Text>
         </TouchableOpacity>
       </View>
 
       {/* Date Range Selector */}
-      <View className="mb-4">
+      <View style={{ marginBottom: 16 }}>
         <FilterChipGroup
           options={DATE_RANGE_OPTIONS}
           selected={dateRange}
@@ -530,10 +521,9 @@ export default function DashboardScreen() {
 
       {/* Revenue Stats */}
       <View
-        className="gap-3"
         style={{ flexDirection: "row", flexWrap: "wrap" }}
       >
-        <View style={{ width: statColumns === 4 ? "24%" : "48.5%" }}>
+        <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
           <StatCard
             title={`${periodLabel} Revenue`}
             value={displayRevenue}
@@ -543,7 +533,7 @@ export default function DashboardScreen() {
             compact={!isTablet}
           />
         </View>
-        <View style={{ width: statColumns === 4 ? "24%" : "48.5%" }}>
+        <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
           <StatCard
             title={`${periodLabel} Appointments`}
             value={String(displayAppointments)}
@@ -553,7 +543,7 @@ export default function DashboardScreen() {
             compact={!isTablet}
           />
         </View>
-        <View style={{ width: statColumns === 4 ? "24%" : "48.5%" }}>
+        <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginRight: 12, marginBottom: 12 }}>
           <StatCard
             title="Available Balance"
             value={formatCurrency(m?.available_balance ?? 0)}
@@ -563,7 +553,7 @@ export default function DashboardScreen() {
             compact={!isTablet}
           />
         </View>
-        <View style={{ width: statColumns === 4 ? "24%" : "48.5%" }}>
+        <View style={{ width: statColumns === 4 ? "24%" : "48.5%", marginBottom: 12 }}>
           <StatCard
             title="Completion Rate"
             value={formatPercentage(m?.completion_rate ?? 0)}
@@ -587,93 +577,89 @@ export default function DashboardScreen() {
           router.push("/(app)/(tabs)/more/bookings" as any)
         }
       />
-      <View className="flex-row gap-3">
+      <View style={{ flexDirection: "row" }}>
         <View
-          className="flex-1 items-center rounded-xl border border-gray-100 bg-white p-3"
+          style={{ flex: 1, marginRight: 12, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
           accessibilityLabel={`${displayAppointments} bookings ${periodLabel.toLowerCase()}`}
         >
-          <Text className="text-2xl font-bold text-gray-900">
+          <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>
             {displayAppointments}
           </Text>
-          <Text className="mt-1 text-xs text-gray-500">Scheduled</Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Scheduled</Text>
         </View>
         <View
-          className="flex-1 items-center rounded-xl border border-gray-100 bg-white p-3"
+          style={{ flex: 1, marginRight: 12, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
           accessibilityLabel={`${m?.pending_bookings ?? 0} pending`}
         >
-          <Text className="text-2xl font-bold text-amber-600">
+          <Text style={{ fontSize: 24, fontWeight: "700", color: "#d97706" }}>
             {m?.pending_bookings ?? 0}
           </Text>
-          <Text className="mt-1 text-xs text-gray-500">Pending</Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Pending</Text>
         </View>
         <View
-          className="flex-1 items-center rounded-xl border border-gray-100 bg-white p-3"
+          style={{ flex: 1, marginRight: 12, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
           accessibilityLabel={`${m?.confirmed_bookings ?? 0} confirmed`}
         >
-          <Text className="text-2xl font-bold text-indigo-600">
+          <Text style={{ fontSize: 24, fontWeight: "700", color: "#4f46e5" }}>
             {m?.confirmed_bookings ?? 0}
           </Text>
-          <Text className="mt-1 text-xs text-gray-500">Confirmed</Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Confirmed</Text>
         </View>
         <View
-          className="flex-1 items-center rounded-xl border border-gray-100 bg-white p-3"
+          style={{ flex: 1, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 12 }}
           accessibilityLabel={`${m?.completed_bookings ?? 0} completed`}
         >
-          <Text className="text-2xl font-bold text-green-600">
+          <Text style={{ fontSize: 24, fontWeight: "700", color: "#16a34a" }}>
             {m?.completed_bookings ?? 0}
           </Text>
-          <Text className="mt-1 text-xs text-gray-500">Completed</Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Completed</Text>
         </View>
       </View>
 
       {/* Top Services */}
       <SectionHeader title="Top Services" />
       {topServicesError && !topServices ? (
-        <View className="items-center rounded-xl border border-dashed border-red-200 bg-red-50 py-4">
+        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
           <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
-          <Text className="mt-1 text-xs text-red-500">Failed to load</Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load</Text>
         </View>
       ) : !topServices || topServices.length === 0 ? (
-        <View className="items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-6">
+        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 24 }}>
           <Ionicons name="bar-chart-outline" size={28} color="#d1d5db" />
-          <Text className="mt-2 text-sm text-gray-400">
+          <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[400] }}>
             No service data yet
           </Text>
         </View>
       ) : (
-        <View className="rounded-2xl border border-gray-100 bg-white">
+        <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white }}>
           {topServices.map((svc, idx) => {
             const maxRev = topServices[0].total_revenue || 1;
             const barWidth = (svc.total_revenue / maxRev) * 100;
             return (
               <View
                 key={idx}
-                className={`px-4 py-3 ${
-                  idx < topServices.length - 1 ? "border-b border-gray-50" : ""
-                }`}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  ...(idx < topServices.length - 1 ? { borderBottomWidth: 1, borderBottomColor: Colors.gray[50] } : {}),
+                }}
                 accessibilityLabel={`${svc.service_name}: ${svc.booking_count} bookings, ${formatCurrency(svc.total_revenue)} revenue`}
               >
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-1">
-                    <Text
-                      className="text-sm font-medium text-gray-900"
-                      numberOfLines={1}
-                    >
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
                       {svc.service_name}
                     </Text>
-                    <Text className="text-xs text-gray-500">
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
                       {svc.booking_count} bookings
                     </Text>
                   </View>
-                  <Text className="text-sm font-semibold text-gray-900">
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
                     {formatCurrency(svc.total_revenue)}
                   </Text>
                 </View>
-                <View className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-100">
-                  <View
-                    className="h-full rounded-full bg-indigo-400"
-                    style={{ width: `${barWidth}%` }}
-                  />
+                <View style={{ marginTop: 6, height: 6, overflow: "hidden", borderRadius: 9999, backgroundColor: Colors.gray[100] }}>
+                  <View style={{ height: "100%", borderRadius: 9999, backgroundColor: "#818cf8", width: `${barWidth}%` }} />
                 </View>
               </View>
             );
@@ -683,38 +669,38 @@ export default function DashboardScreen() {
 
       {/* Performance */}
       <SectionHeader title="Performance" />
-      <View className="flex-row gap-3">
+      <View style={{ flexDirection: "row" }}>
         <View
-          className="flex-1 rounded-xl border border-gray-100 bg-white p-4"
+          style={{ flex: 1, marginRight: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
           accessibilityLabel={`Rating: ${m?.average_rating?.toFixed(1) ?? "0.0"} from ${m?.total_reviews ?? 0} reviews`}
         >
-          <View className="flex-row items-center">
-            <Ionicons name="star" size={18} color="#f59e0b" />
-            <Text className="ml-1.5 text-xl font-bold text-gray-900">
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons name="star" size={18} color="#f59e0b" style={{ marginRight: 6 }} />
+            <Text style={{ marginLeft: 6, fontSize: 20, fontWeight: "700", color: Colors.gray[900] }}>
               {m?.average_rating?.toFixed(1) ?? "0.0"}
             </Text>
           </View>
-          <Text className="mt-1 text-xs text-gray-500">
+          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
             {m?.total_reviews ?? 0} reviews
           </Text>
         </View>
         <View
-          className="flex-1 rounded-xl border border-gray-100 bg-white p-4"
+          style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
           accessibilityLabel={`No show rate: ${formatPercentage(m?.no_show_rate ?? 0)}`}
         >
-          <Text className="text-xl font-bold text-gray-900">
+          <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900] }}>
             {formatPercentage(m?.no_show_rate ?? 0)}
           </Text>
-          <Text className="mt-1 text-xs text-gray-500">No-show rate</Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>No-show rate</Text>
         </View>
         <View
-          className="flex-1 rounded-xl border border-gray-100 bg-white p-4"
+          style={{ flex: 1, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
           accessibilityLabel={`${m?.completed_bookings ?? 0} completed bookings`}
         >
-          <Text className="text-xl font-bold text-gray-900">
+          <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900] }}>
             {m?.completed_bookings ?? 0}
           </Text>
-          <Text className="mt-1 text-xs text-gray-500">Completed</Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>Completed</Text>
         </View>
       </View>
 
@@ -728,42 +714,39 @@ export default function DashboardScreen() {
         }}
       />
       <TouchableOpacity
-        className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4"
+        style={{ borderRadius: 16, borderWidth: 1, borderColor: "#c7d2fe", backgroundColor: "#eef2ff", padding: 16 }}
         onPress={() => router.push("/(app)/(tabs)/more/rewards" as any)}
         activeOpacity={0.7}
         accessibilityLabel={`Rewards: ${gam?.total_points ?? 0} points`}
       >
-        <View className="flex-row items-center">
-          <View className="h-12 w-12 items-center justify-center rounded-full bg-indigo-100">
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View style={{ height: 48, width: 48, alignItems: "center", justifyContent: "center", borderRadius: 24, backgroundColor: "#e0e7ff" }}>
             <Ionicons name="trophy" size={24} color="#6366f1" />
           </View>
-          <View className="ml-3 flex-1">
-            <Text className="font-semibold text-indigo-900">
+          <View style={{ marginLeft: 12, flex: 1 }}>
+            <Text style={{ fontWeight: "600", color: "#312e81" }}>
               {gam?.current_badge?.name ?? "Getting Started"}
             </Text>
-            <Text className="mt-0.5 text-sm text-indigo-700">
+            <Text style={{ marginTop: 2, fontSize: 14, color: "#4338ca" }}>
               {(gam?.total_points ?? 0).toLocaleString()} points earned
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#6366f1" />
         </View>
         {nextBadge && (
-          <View className="mt-3">
-            <View className="flex-row justify-between mb-1">
-              <Text className="text-xs text-indigo-700">
+          <View style={{ marginTop: 12 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+              <Text style={{ fontSize: 12, color: "#4338ca" }}>
                 Next: {nextBadge.badge.name}
               </Text>
-              <Text className="text-xs text-indigo-600">
+              <Text style={{ fontSize: 12, color: "#4f46e5" }}>
                 {nextBadge.progress_percentage}%
               </Text>
             </View>
-            <View className="h-2 rounded-full bg-indigo-200 overflow-hidden">
-              <View
-                className="h-full rounded-full bg-indigo-600"
-                style={{ width: `${nextBadge.progress_percentage}%` }}
-              />
+            <View style={{ height: 8, borderRadius: 9999, backgroundColor: "#c7d2fe", overflow: "hidden" }}>
+              <View style={{ height: "100%", borderRadius: 9999, backgroundColor: "#4f46e5", width: `${nextBadge.progress_percentage}%` }} />
             </View>
-            <Text className="mt-1 text-[10px] text-indigo-500">
+            <Text style={{ marginTop: 4, fontSize: 10, color: "#6366f1" }}>
               {nextBadge.points_needed.toLocaleString()} pts to go
             </Text>
           </View>
@@ -777,25 +760,26 @@ export default function DashboardScreen() {
         onAction={() => router.push("/(app)/(tabs)/calendar" as any)}
       />
       {upcomingError && !upcomingBookings ? (
-        <View className="items-center rounded-xl border border-dashed border-red-200 bg-red-50 py-4">
+        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
           <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
-          <Text className="mt-1 text-xs text-red-500">Failed to load</Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load</Text>
         </View>
       ) : !upcomingBookings || upcomingBookings.length === 0 ? (
-        <View className="items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-8">
+        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 32 }}>
           <Ionicons name="calendar-outline" size={32} color="#d1d5db" />
-          <Text className="mt-2 text-sm text-gray-400">
+          <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[400] }}>
             No upcoming appointments
           </Text>
         </View>
       ) : (
-        <View className={isTablet ? "flex-row flex-wrap gap-3" : "gap-2"}>
+        <View style={[ isTablet ? { flexDirection: "row", flexWrap: "wrap" } : {} ]}>
           {upcomingBookings.slice(0, 7).map((booking) => (
             <TouchableOpacity
               key={booking.id}
-              className={`rounded-xl border border-gray-100 bg-white p-4 ${
-                isTablet ? "w-[48%]" : ""
-              }`}
+              style={[
+                { borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 },
+                isTablet ? { width: "48%", marginRight: 12, marginBottom: 12 } : { marginBottom: 8 },
+              ]}
               onPress={() =>
                 router.push(
                   `/(app)/(tabs)/more/bookings/${booking.id}` as any,
@@ -804,46 +788,39 @@ export default function DashboardScreen() {
               accessibilityLabel={`Upcoming: ${booking.customers?.full_name ?? "Walk-in"} at ${formatRelativeDate(booking.scheduled_at)}`}
               accessibilityRole="button"
             >
-              <View className="flex-row items-start justify-between">
-                <View className="flex-1">
-                  <View className="flex-row items-center">
+              <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
                     <Avatar
                       name={booking.customers?.full_name ?? "Guest"}
                       size="sm"
                     />
-                    <View className="ml-2.5 flex-1">
-                      <Text
-                        className="text-sm font-semibold text-gray-900"
-                        numberOfLines={1}
-                      >
+                    <View style={{ marginLeft: 10, flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
                         {booking.customers?.full_name ?? "Walk-in"}
                       </Text>
-                      <Text className="text-xs text-gray-500">
+                      <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
                         {formatRelativeDate(booking.scheduled_at)}
                       </Text>
                     </View>
                   </View>
-                  <View className="mt-2">
+                  <View style={{ marginTop: 8 }}>
                     {booking.services?.slice(0, 2).map((s, i) => (
-                      <Text
-                        key={i}
-                        className="text-xs text-gray-600"
-                        numberOfLines={1}
-                      >
+                      <Text key={i} style={{ fontSize: 12, color: Colors.gray[600] }} numberOfLines={1}>
                         {s.name ?? s.offering_name ?? "Service"}
                         {s.guest_name ? ` (${s.guest_name})` : ""} ({formatDuration(s.duration_minutes)})
                       </Text>
                     ))}
                   </View>
                   {booking.is_group_booking && booking.group_booking_ref && (
-                    <Text className="mt-1 text-[10px] text-gray-500" numberOfLines={1}>
+                    <Text style={{ marginTop: 4, fontSize: 10, color: Colors.gray[500] }} numberOfLines={1}>
                       Group: {booking.group_booking_ref}
                     </Text>
                   )}
                 </View>
-                <View className="items-end">
+                <View style={{ alignItems: "flex-end" }}>
                   <Badge status={booking.status} />
-                  <Text className="mt-2 text-sm font-semibold text-gray-900">
+                  <Text style={{ marginTop: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
                     {formatCurrency(booking.total_amount, booking.currency)}
                   </Text>
                 </View>
@@ -856,29 +833,31 @@ export default function DashboardScreen() {
       {/* Recent Activity */}
       <SectionHeader title="Recent Activity" />
       {activityError && !recentActivity ? (
-        <View className="items-center rounded-xl border border-dashed border-red-200 bg-red-50 py-4">
+        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
           <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
-          <Text className="mt-1 text-xs text-red-500">Failed to load</Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load</Text>
         </View>
       ) : !recentActivity || recentActivity.length === 0 ? (
-        <View className="items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-6">
+        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 24 }}>
           <Ionicons name="pulse-outline" size={28} color="#d1d5db" />
-          <Text className="mt-2 text-sm text-gray-400">
+          <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[400] }}>
             No recent activity
           </Text>
         </View>
       ) : (
-        <View className="rounded-2xl border border-gray-100 bg-white">
+        <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white }}>
           {recentActivity.map((item, idx) => {
             const iconInfo = getActivityIcon(item.type);
             return (
               <TouchableOpacity
                 key={item.id}
-                className={`flex-row items-center px-4 py-3 ${
-                  idx < recentActivity.length - 1
-                    ? "border-b border-gray-50"
-                    : ""
-                }`}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  ...(idx < recentActivity.length - 1 ? { borderBottomWidth: 1, borderBottomColor: Colors.gray[50] } : {}),
+                }}
                 onPress={() => {
                   if (item.data?.booking_id) {
                     router.push(
@@ -889,28 +868,19 @@ export default function DashboardScreen() {
                 accessibilityLabel={`${item.description}, ${formatTimeAgo(item.created_at)}`}
                 accessibilityRole="button"
               >
-                <View
-                  className={`${iconInfo.bg} h-10 w-10 items-center justify-center rounded-xl`}
-                >
-                  <Ionicons
-                    name={iconInfo.name}
-                    size={18}
-                    color={iconInfo.color}
-                  />
+                <View style={{ backgroundColor: iconInfo.bg, height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12 }}>
+                  <Ionicons name={iconInfo.name} size={18} color={iconInfo.color} />
                 </View>
-                <View className="ml-3 flex-1">
-                  <Text
-                    className="text-sm text-gray-900"
-                    numberOfLines={1}
-                  >
+                <View style={{ marginLeft: 12, flex: 1 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[900] }} numberOfLines={1}>
                     {item.description}
                   </Text>
-                  <Text className="text-xs text-gray-400">
+                  <Text style={{ fontSize: 12, color: Colors.gray[400] }}>
                     {formatTimeAgo(item.created_at)}
                   </Text>
                 </View>
                 {item.data?.amount != null && (
-                  <Text className="text-sm font-semibold text-gray-900">
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
                     {formatCurrency(item.data.amount)}
                   </Text>
                 )}
@@ -927,27 +897,28 @@ export default function DashboardScreen() {
         onAction={() => router.push("/(app)/(tabs)/calendar" as any)}
       />
       {todayBookingsError && !todayBookings ? (
-        <View className="items-center rounded-xl border border-dashed border-red-200 bg-red-50 py-4">
+        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
           <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
-          <Text className="mt-1 text-xs text-red-500">Failed to load appointments</Text>
+          <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load appointments</Text>
         </View>
       ) : !todayBookings || todayBookings.length === 0 ? (
-        <View className="items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-8">
+        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 32 }}>
           <Ionicons name="calendar-outline" size={32} color="#d1d5db" />
-          <Text className="mt-2 text-sm text-gray-400">
+          <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[400] }}>
             No appointments today
           </Text>
         </View>
       ) : (
-        <View className={isTablet ? "flex-row flex-wrap gap-3" : "gap-2"}>
+        <View style={[ isTablet ? { flexDirection: "row", flexWrap: "wrap" } : {} ]}>
           {todayBookings
             .slice(0, isTablet ? 6 : 4)
             .map((booking) => (
               <TouchableOpacity
                 key={booking.id}
-                className={`rounded-xl border border-gray-100 bg-white p-4 ${
-                  isTablet ? "w-[48%]" : ""
-                }`}
+                style={[
+                  { borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 },
+                  isTablet ? { width: "48%", marginRight: 12, marginBottom: 12 } : { marginBottom: 8 },
+                ]}
                 onPress={() =>
                   router.push(
                     `/(app)/(tabs)/more/bookings/${booking.id}` as any,
@@ -956,46 +927,36 @@ export default function DashboardScreen() {
                 accessibilityLabel={`Today: ${booking.customers?.full_name ?? "Walk-in"}`}
                 accessibilityRole="button"
               >
-                <View className="flex-row items-start justify-between">
-                  <View className="flex-1">
-                    <View className="flex-row items-center">
-                      <Avatar
-                        name={booking.customers?.full_name ?? "Guest"}
-                        size="sm"
-                      />
-                      <View className="ml-2.5 flex-1">
-                        <Text
-                          className="text-sm font-semibold text-gray-900"
-                          numberOfLines={1}
-                        >
+                <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Avatar name={booking.customers?.full_name ?? "Guest"} size="sm" />
+                      <View style={{ marginLeft: 10, flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>
                           {booking.customers?.full_name ?? "Walk-in"}
                         </Text>
-                        <Text className="text-xs text-gray-500">
+                        <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
                           {formatRelativeDate(booking.scheduled_at)}
                         </Text>
                       </View>
                     </View>
-                    <View className="mt-2">
+                    <View style={{ marginTop: 8 }}>
                       {booking.services?.slice(0, 2).map((s, i) => (
-                        <Text
-                          key={i}
-                          className="text-xs text-gray-600"
-                          numberOfLines={1}
-                        >
+                        <Text key={i} style={{ fontSize: 12, color: Colors.gray[600] }} numberOfLines={1}>
                           {s.name ?? s.offering_name ?? "Service"}
                           {s.guest_name ? ` (${s.guest_name})` : ""} ({formatDuration(s.duration_minutes)})
                         </Text>
                       ))}
                     </View>
                     {booking.is_group_booking && booking.group_booking_ref && (
-                      <Text className="mt-1 text-[10px] text-gray-500" numberOfLines={1}>
+                      <Text style={{ marginTop: 4, fontSize: 10, color: Colors.gray[500] }} numberOfLines={1}>
                         Group: {booking.group_booking_ref}
                       </Text>
                     )}
                   </View>
-                  <View className="items-end">
+                  <View style={{ alignItems: "flex-end" }}>
                     <Badge status={booking.status} />
-                    <Text className="mt-2 text-sm font-semibold text-gray-900">
+                    <Text style={{ marginTop: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>
                       {formatCurrency(booking.total_amount, booking.currency)}
                     </Text>
                   </View>
@@ -1005,7 +966,7 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      <View className="h-8" />
+      <View style={{ height: 32 }} />
     </ScreenContainer>
   );
 }

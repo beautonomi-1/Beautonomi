@@ -92,9 +92,9 @@ export function ProviderSidebar() {
         {/* Logo/Brand */}
         <div className="h-16 flex items-center justify-center border-b border-gray-200">
           {!sidebarCollapsed ? (
-            <span className="text-xl font-semibold text-[#FF0077]">Beautonomi</span>
+            <span className="text-xl font-semibold text-primary">Beautonomi</span>
           ) : (
-            <span className="text-xl font-semibold text-[#FF0077]">B</span>
+            <span className="text-xl font-semibold text-primary">B</span>
           )}
         </div>
 
@@ -113,7 +113,7 @@ export function ProviderSidebar() {
                       className={cn(
                         "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                         isActive
-                          ? "bg-[#FF0077]/10 text-[#FF0077]"
+                          ? "bg-primary/10 text-primary"
                           : "text-gray-700 hover:bg-gray-100"
                       )}
                     >

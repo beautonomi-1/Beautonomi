@@ -630,7 +630,7 @@ export default function ProviderOnboarding() {
               </div>
               <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
                 <div
-                  className="bg-[#FF0077] h-2 rounded-full transition-all duration-300"
+                  className="bg-primary h-2 rounded-full transition-all duration-300"
                   style={{ width: `${(getActualStepIndex() / totalVisibleSteps) * 100}%` }}
                 />
               </div>
@@ -649,7 +649,7 @@ export default function ProviderOnboarding() {
                         <div
                           className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center border-2 transition-all duration-200 ${
                             isCompleted || isCurrent
-                              ? "bg-[#FF0077] border-[#FF0077] text-white shadow-md scale-110"
+                              ? "bg-primary border-primary text-white shadow-md scale-110"
                               : "bg-white border-gray-300 text-gray-400"
                           }`}
                         >
@@ -672,7 +672,7 @@ export default function ProviderOnboarding() {
                       {index < totalVisibleSteps - 1 && (
                         <div
                           className={`h-1 flex-1 mx-2 transition-all duration-300 ${
-                            isCompleted ? "bg-[#FF0077]" : "bg-gray-300"
+                            isCompleted ? "bg-primary" : "bg-gray-300"
                           }`}
                         />
                       )}
@@ -762,7 +762,7 @@ export default function ProviderOnboarding() {
                 {currentStep < STEPS.length ? (
                   <Button 
                     onClick={handleNext} 
-                    className="flex-1 sm:flex-none bg-[#FF0077] hover:bg-[#D60565] text-white h-12 sm:h-14 text-base font-semibold rounded-lg shadow-md hover:shadow-lg transition-all"
+                    className="flex-1 sm:flex-none bg-primary hover:bg-primary-hover text-white h-12 sm:h-14 text-base font-semibold rounded-lg shadow-md hover:shadow-lg transition-all"
                   >
                     Next
                     <ChevronRight className="w-5 h-5 ml-2" />
@@ -771,7 +771,7 @@ export default function ProviderOnboarding() {
                   <Button 
                     onClick={handleSubmit} 
                     disabled={isSubmitting} 
-                    className="flex-1 sm:flex-none bg-[#FF0077] hover:bg-[#D60565] text-white h-12 sm:h-14 text-base font-semibold rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+                    className="flex-1 sm:flex-none bg-primary hover:bg-primary-hover text-white h-12 sm:h-14 text-base font-semibold rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50"
                   >
                     {isSubmitting ? "Submitting..." : "Submit"}
                   </Button>
@@ -857,12 +857,12 @@ function Step1TeamSize({
               }}
               className={`relative p-6 rounded-2xl border-2 transition-all duration-200 text-left hover:shadow-lg ${
                 isSelected
-                  ? "border-[#FF0077] bg-[#FF0077]/5 shadow-md"
+                  ? "border-primary bg-primary/5 shadow-md"
                   : "border-gray-200 hover:border-gray-300 bg-white"
               }`}
             >
               {option.badge && (
-                <span className="absolute top-3 right-3 text-xs font-semibold bg-[#FF0077] text-white px-2 py-1 rounded-full">
+                <span className="absolute top-3 right-3 text-xs font-semibold bg-primary text-white px-2 py-1 rounded-full">
                   {option.badge}
                 </span>
               )}
@@ -881,7 +881,7 @@ function Step1TeamSize({
                 </div>
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
                   isSelected
-                    ? "border-[#FF0077] bg-[#FF0077]"
+                    ? "border-primary bg-primary"
                     : "border-gray-300"
                 }`}>
                   {isSelected && (
@@ -937,20 +937,20 @@ function _Step1BusinessInfo({
 
       <div>
         <Label htmlFor="business_name" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
-          Business Name <span className="text-[#FF0077]">*</span>
+          Business Name <span className="text-primary">*</span>
         </Label>
         <Input
           id="business_name"
           value={data.business_name || ""}
           onChange={(e) => updateData({ business_name: e.target.value })}
           placeholder="Enter your business name"
-          className="h-12 sm:h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+          className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
           required
         />
       </div>
       <div>
         <Label htmlFor="business_type" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
-          Business Type <span className="text-[#FF0077]">*</span>
+          Business Type <span className="text-primary">*</span>
         </Label>
         <select
           id="business_type"
@@ -964,7 +964,7 @@ function _Step1BusinessInfo({
               toast.info("We'll automatically mark you as mobile-ready and help you set up service zones!", { duration: 4000 });
             }
           }}
-          className="w-full h-12 sm:h-14 px-4 text-base border border-gray-300 rounded-lg focus:border-[#FF0077] focus:ring-[#FF0077] bg-white"
+          className="w-full h-12 sm:h-14 px-4 text-base border border-gray-300 rounded-lg focus:border-primary focus:ring-primary bg-white"
         >
           <option value="salon">Salon/Studio (Fixed Location)</option>
           <option value="mobile">Freelancer (Mobile/At-Home Services)</option>
@@ -1009,7 +1009,7 @@ function _Step1BusinessInfo({
             updateData({ website: value || undefined });
           }}
           placeholder="https://yourwebsite.com"
-          className="h-12 sm:h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+          className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
         />
         <p className="text-xs sm:text-sm text-gray-600 mt-1">
           Your website helps customers learn more about you and improves your search visibility.
@@ -1027,7 +1027,7 @@ function _Step1BusinessInfo({
             const value = e.target.value;
             updateData({ years_in_business: value ? parseInt(value) : undefined });
           }}
-          className="w-full h-12 sm:h-14 px-4 text-base border border-gray-300 rounded-lg focus:border-[#FF0077] focus:ring-[#FF0077] bg-white"
+          className="w-full h-12 sm:h-14 px-4 text-base border border-gray-300 rounded-lg focus:border-primary focus:ring-primary bg-white"
         >
           <option value="">Select years...</option>
           <option value="0">Just starting (0 years)</option>
@@ -1062,7 +1062,7 @@ function _Step1BusinessInfo({
             }
           }}
           placeholder="Tell customers about your business, your expertise, what makes you unique, and what they can expect..."
-          className="min-h-[120px] sm:min-h-[140px] text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg resize-none"
+          className="min-h-[120px] sm:min-h-[140px] text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg resize-none"
           maxLength={2000}
         />
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mt-2">
@@ -1091,7 +1091,7 @@ function _Step1BusinessInfo({
               const randomTemplate = templates[Math.floor(Math.random() * templates.length)];
               updateData({ description: randomTemplate });
             }}
-            className="text-xs sm:text-sm text-[#FF0077] hover:text-[#D60565] font-medium hover:underline transition-colors"
+            className="text-xs sm:text-sm text-primary hover:text-primary-hover font-medium hover:underline transition-colors"
           >
             Use template
           </button>
@@ -1115,7 +1115,7 @@ function _Step1BusinessInfo({
                 previous_software_other: e.target.value !== "other" ? undefined : data.previous_software_other
               });
             }}
-            className="w-full h-12 sm:h-14 px-4 text-base border border-gray-300 rounded-lg focus:border-[#FF0077] focus:ring-[#FF0077] bg-white"
+            className="w-full h-12 sm:h-14 px-4 text-base border border-gray-300 rounded-lg focus:border-primary focus:ring-primary bg-white"
           >
             {previousSoftwareOptions.length > 0 ? (
               previousSoftwareOptions.map((option) => (
@@ -1138,7 +1138,7 @@ function _Step1BusinessInfo({
             value={data.previous_software_other || ""}
             onChange={(e) => updateData({ previous_software_other: e.target.value })}
             placeholder="Enter the name of the software"
-            className="mt-3 h-12 sm:h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+            className="mt-3 h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
           />
         )}
         <p className="text-xs sm:text-sm text-gray-600 mt-2 leading-relaxed">
@@ -1148,7 +1148,7 @@ function _Step1BusinessInfo({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 md:gap-5">
         <div>
           <Label htmlFor="phone" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
-            Phone <span className="text-[#FF0077]">*</span>
+            Phone <span className="text-primary">*</span>
           </Label>
           <Input
             id="phone"
@@ -1156,13 +1156,13 @@ function _Step1BusinessInfo({
             value={data.phone || ""}
             onChange={(e) => updateData({ phone: e.target.value })}
             placeholder="+27 12 345 6789"
-            className="h-12 sm:h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+            className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
             required
           />
         </div>
         <div>
           <Label htmlFor="email" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
-            Email <span className="text-[#FF0077]">*</span>
+            Email <span className="text-primary">*</span>
           </Label>
           <Input
             id="email"
@@ -1170,7 +1170,7 @@ function _Step1BusinessInfo({
             value={data.email || ""}
             onChange={(e) => updateData({ email: e.target.value })}
             placeholder="business@example.com"
-            className="h-12 sm:h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+            className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
             required
           />
         </div>
@@ -1204,8 +1204,8 @@ function _Step1BusinessInfo({
                 }}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                   isSelected
-                    ? "bg-[#FF0077] text-white border-2 border-[#FF0077]"
-                    : "bg-white text-gray-700 border-2 border-gray-300 hover:border-[#FF0077] hover:text-[#FF0077]"
+                    ? "bg-primary text-white border-2 border-primary"
+                    : "bg-white text-gray-700 border-2 border-gray-300 hover:border-primary hover:text-primary"
                 } ${isSelected && (data.languages_spoken || ["English"]).length === 1 ? "cursor-not-allowed opacity-75" : "cursor-pointer"}`}
                 disabled={isSelected && (data.languages_spoken || ["English"]).length === 1}
                 title={isSelected && (data.languages_spoken || ["English"]).length === 1 ? "At least one language is required" : ""}
@@ -1319,14 +1319,14 @@ function Step2Identity({
         {/* Name */}
         <div>
           <Label htmlFor="owner_name" className="text-base font-semibold text-gray-900 mb-2 block">
-            Your Name <span className="text-[#FF0077]">*</span>
+            Your Name <span className="text-primary">*</span>
           </Label>
           <Input
             id="owner_name"
             value={data.owner_name || ""}
             onChange={(e) => updateData({ owner_name: e.target.value })}
             placeholder="Enter your full name"
-            className="h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+            className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
             required
           />
         </div>
@@ -1334,7 +1334,7 @@ function Step2Identity({
         {/* Email */}
         <div>
           <Label htmlFor="owner_email" className="text-base font-semibold text-gray-900 mb-2 block">
-            Email Address <span className="text-[#FF0077]">*</span>
+            Email Address <span className="text-primary">*</span>
           </Label>
           <Input
             id="owner_email"
@@ -1342,7 +1342,7 @@ function Step2Identity({
             value={data.owner_email || ""}
             onChange={(e) => updateData({ owner_email: e.target.value })}
             placeholder="your.email@example.com"
-            className="h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+            className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
             required
           />
         </div>
@@ -1350,7 +1350,7 @@ function Step2Identity({
         {/* Phone with Verification */}
         <div>
           <Label htmlFor="owner_phone" className="text-base font-semibold text-gray-900 mb-2 block">
-            Mobile Number <span className="text-[#FF0077]">*</span>
+            Mobile Number <span className="text-primary">*</span>
           </Label>
           <div className="flex gap-3">
             <Input
@@ -1364,14 +1364,14 @@ function Step2Identity({
                 setVerificationCode("");
               }}
               placeholder="0821234567"
-              className="flex-1 h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+              className="flex-1 h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
               required
             />
             <Button
               type="button"
               onClick={handleSendCode}
               disabled={!data.owner_phone || isSendingCode || countdown > 0}
-              className="h-14 px-6 bg-[#FF0077] hover:bg-[#D60565] text-white rounded-xl disabled:opacity-50"
+              className="h-14 px-6 bg-primary hover:bg-primary-hover text-white rounded-xl disabled:opacity-50"
             >
               {isSendingCode ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
@@ -1390,7 +1390,7 @@ function Step2Identity({
           {codeSent && (
             <div className="mt-4 space-y-3">
               <Label htmlFor="verification_code" className="text-base font-semibold text-gray-900 mb-2 block">
-                Enter Verification Code <span className="text-[#FF0077]">*</span>
+                Enter Verification Code <span className="text-primary">*</span>
               </Label>
               <div className="flex gap-3">
                 <Input
@@ -1403,13 +1403,13 @@ function Step2Identity({
                     setVerificationCode(code);
                   }}
                   placeholder="1234"
-                  className="h-14 text-2xl text-center font-bold tracking-widest border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+                  className="h-14 text-2xl text-center font-bold tracking-widest border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
                 />
                 <Button
                   type="button"
                   onClick={handleVerifyCode}
                   disabled={verificationCode.length !== 4 || isVerifying || data.phone_verified}
-                  className="h-14 px-6 bg-[#FF0077] hover:bg-[#D60565] text-white rounded-xl disabled:opacity-50"
+                  className="h-14 px-6 bg-primary hover:bg-primary-hover text-white rounded-xl disabled:opacity-50"
                 >
                   {isVerifying ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
@@ -1799,7 +1799,7 @@ function Step3BusinessDetails({
 
       <div>
         <Label htmlFor="business_name" className="text-base font-semibold text-gray-900 mb-2 block">
-          Business Name <span className="text-[#FF0077]">*</span>
+          Business Name <span className="text-primary">*</span>
         </Label>
         <p className="text-xs text-gray-500 mb-2">
           This is how customers will see your business on the platform
@@ -1809,7 +1809,7 @@ function Step3BusinessDetails({
           value={data.business_name || ""}
           onChange={(e) => updateData({ business_name: e.target.value })}
           placeholder="Enter your business name"
-          className="h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+          className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
           required
         />
       </div>
@@ -1826,7 +1826,7 @@ function Step3BusinessDetails({
           value={data.description || ""}
           onChange={(e) => updateData({ description: e.target.value })}
           placeholder="Tell customers about your business, your expertise, and what makes you unique..."
-          className="min-h-[120px] text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl resize-none"
+          className="min-h-[120px] text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl resize-none"
           maxLength={2000}
         />
         <div className="flex items-center justify-between mt-2">
@@ -1860,7 +1860,7 @@ function Step3BusinessDetails({
             updateData({ website: value || undefined });
           }}
           placeholder="https://yourwebsite.com"
-          className="h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+          className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
         />
       </div>
 
@@ -1875,7 +1875,7 @@ function Step3BusinessDetails({
           id="years_in_business"
           value={data.years_in_business || ""}
           onChange={(e) => updateData({ years_in_business: e.target.value ? parseInt(e.target.value) : undefined })}
-          className="w-full h-14 px-4 text-base border border-gray-300 rounded-xl focus:border-[#FF0077] focus:ring-[#FF0077] bg-white"
+          className="w-full h-14 px-4 text-base border border-gray-300 rounded-xl focus:border-primary focus:ring-primary bg-white"
         >
           <option value="">Select years...</option>
           <option value="0">Just starting (0 years)</option>
@@ -1919,8 +1919,8 @@ function Step3BusinessDetails({
                 }}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
                   isSelected
-                    ? "bg-[#FF0077] text-white border-2 border-[#FF0077]"
-                    : "bg-white text-gray-700 border-2 border-gray-300 hover:border-[#FF0077] hover:text-[#FF0077]"
+                    ? "bg-primary text-white border-2 border-primary"
+                    : "bg-white text-gray-700 border-2 border-gray-300 hover:border-primary hover:text-primary"
                 } ${isSelected && (data.languages_spoken || ["English"]).length === 1 ? "cursor-not-allowed opacity-75" : "cursor-pointer"}`}
                 disabled={isSelected && (data.languages_spoken || ["English"]).length === 1}
                 title={isSelected && (data.languages_spoken || ["English"]).length === 1 ? "At least one language is required" : ""}
@@ -1966,7 +1966,7 @@ function Step3BusinessDetails({
                 });
               }}
               placeholder="https://facebook.com/yourpage"
-              className="h-12 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+              className="h-12 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
             />
           </div>
           <div>
@@ -1987,7 +1987,7 @@ function Step3BusinessDetails({
                 });
               }}
               placeholder="https://instagram.com/yourprofile"
-              className="h-12 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+              className="h-12 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
             />
           </div>
           <div>
@@ -2008,7 +2008,7 @@ function Step3BusinessDetails({
                 });
               }}
               placeholder="https://twitter.com/yourhandle"
-              className="h-12 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+              className="h-12 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
             />
           </div>
           <div>
@@ -2029,7 +2029,7 @@ function Step3BusinessDetails({
                 });
               }}
               placeholder="https://linkedin.com/in/yourprofile"
-              className="h-12 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+              className="h-12 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
             />
           </div>
         </div>
@@ -2076,7 +2076,7 @@ function Step4PaymentSetup({
               onClick={() => updateData({ yoco_machine: option.id as any })}
               className={`w-full p-5 rounded-xl border-2 transition-all duration-200 text-left ${
                 isSelected
-                  ? "border-[#FF0077] bg-[#FF0077]/5 shadow-md"
+                  ? "border-primary bg-primary/5 shadow-md"
                   : "border-gray-200 hover:border-gray-300 bg-white"
               }`}
             >
@@ -2091,7 +2091,7 @@ function Step4PaymentSetup({
                 </div>
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
                   isSelected
-                    ? "border-[#FF0077] bg-[#FF0077]"
+                    ? "border-primary bg-primary"
                     : "border-gray-300"
                 }`}>
                   {isSelected && <Check className="w-4 h-4 text-white" />}
@@ -2112,7 +2112,7 @@ function Step4PaymentSetup({
             value={data.yoco_machine_other || ""}
             onChange={(e) => updateData({ yoco_machine_other: e.target.value })}
             placeholder="e.g., iZettle, Square, etc."
-            className="h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+            className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
           />
         </div>
       )}
@@ -2140,7 +2140,7 @@ function Step4PaymentSetup({
             }}
             className={`w-full p-4 rounded-xl border-2 transition-all duration-200 text-left ${
               data.is_vat_registered === true
-                ? "border-[#FF0077] bg-[#FF0077]/5 shadow-md"
+                ? "border-primary bg-primary/5 shadow-md"
                 : "border-gray-200 hover:border-gray-300 bg-white"
             }`}
           >
@@ -2151,7 +2151,7 @@ function Step4PaymentSetup({
               </div>
               <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                 data.is_vat_registered === true
-                  ? "border-[#FF0077] bg-[#FF0077]"
+                  ? "border-primary bg-primary"
                   : "border-gray-300"
               }`}>
                 {data.is_vat_registered === true && <Check className="w-3 h-3 text-white" />}
@@ -2169,7 +2169,7 @@ function Step4PaymentSetup({
             }}
             className={`w-full p-4 rounded-xl border-2 transition-all duration-200 text-left ${
               data.is_vat_registered === false
-                ? "border-[#FF0077] bg-[#FF0077]/5 shadow-md"
+                ? "border-primary bg-primary/5 shadow-md"
                 : "border-gray-200 hover:border-gray-300 bg-white"
             }`}
           >
@@ -2180,7 +2180,7 @@ function Step4PaymentSetup({
               </div>
               <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
                 data.is_vat_registered === false
-                  ? "border-[#FF0077] bg-[#FF0077]"
+                  ? "border-primary bg-primary"
                   : "border-gray-300"
               }`}>
                 {data.is_vat_registered === false && <Check className="w-3 h-3 text-white" />}
@@ -2192,7 +2192,7 @@ function Step4PaymentSetup({
         {data.is_vat_registered === true && (
           <div className="mt-4">
             <Label htmlFor="vat_number" className="text-base font-semibold text-gray-900 mb-2 block">
-              VAT Number (SARS) <span className="text-[#FF0077]">*</span>
+              VAT Number (SARS) <span className="text-primary">*</span>
             </Label>
             <Input
               id="vat_number"
@@ -2208,7 +2208,7 @@ function Step4PaymentSetup({
               }}
               maxLength={10}
               required
-              className="h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+              className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
             />
             <p className="text-xs text-gray-600 mt-2">
               Your 10-digit SARS VAT registration number (must start with 4)
@@ -2256,7 +2256,7 @@ function Step4PaymentSetup({
               updateData({ payout_setup_complete: false });
               toast.info("You can set up your payout account after onboarding in Settings → Payout Accounts");
             }}
-            className="border-[#FF0077] text-[#FF0077] hover:bg-[#FF0077]/5"
+            className="border-primary text-primary hover:bg-primary/5"
           >
             Set Up Later
           </Button>
@@ -2317,7 +2317,7 @@ function Step5CurrentSoftware({
 
       {isLoading ? (
         <div className="flex justify-center py-8">
-          <Loader2 className="w-8 h-8 animate-spin text-[#FF0077]" />
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       ) : (
         <div className="space-y-4">
@@ -2332,7 +2332,7 @@ function Step5CurrentSoftware({
                 }}
                 className={`w-full p-5 rounded-xl border-2 transition-all duration-200 text-left ${
                   isSelected
-                    ? "border-[#FF0077] bg-[#FF0077]/5 shadow-md"
+                    ? "border-primary bg-primary/5 shadow-md"
                     : "border-gray-200 hover:border-gray-300 bg-white"
                 }`}
               >
@@ -2342,7 +2342,7 @@ function Step5CurrentSoftware({
                   </span>
                   <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
                     isSelected
-                      ? "border-[#FF0077] bg-[#FF0077]"
+                      ? "border-primary bg-primary"
                       : "border-gray-300"
                   }`}>
                     {isSelected && <Check className="w-4 h-4 text-white" />}
@@ -2364,7 +2364,7 @@ function Step5CurrentSoftware({
             value={data.previous_software_other || ""}
             onChange={(e) => updateData({ previous_software_other: e.target.value })}
             placeholder="Enter software name"
-            className="h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
+            className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
           />
         </div>
       )}
@@ -2411,7 +2411,7 @@ function Step6Payroll({
               onClick={() => updateData({ payroll_type: option.id as any })}
               className={`w-full p-5 rounded-xl border-2 transition-all duration-200 text-left ${
                 isSelected
-                  ? "border-[#FF0077] bg-[#FF0077]/5 shadow-md"
+                  ? "border-primary bg-primary/5 shadow-md"
                   : "border-gray-200 hover:border-gray-300 bg-white"
               }`}
             >
@@ -2426,7 +2426,7 @@ function Step6Payroll({
                 </div>
                 <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
                   isSelected
-                    ? "border-[#FF0077] bg-[#FF0077]"
+                    ? "border-primary bg-primary"
                     : "border-gray-300"
                 }`}>
                   {isSelected && <Check className="w-4 h-4 text-white" />}
@@ -2447,7 +2447,7 @@ function Step6Payroll({
             value={data.payroll_details || ""}
             onChange={(e) => updateData({ payroll_details: e.target.value })}
             placeholder="Describe how you pay your staff..."
-            className="min-h-[100px] text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl resize-none"
+            className="min-h-[100px] text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl resize-none"
           />
         </div>
       )}
@@ -2562,7 +2562,7 @@ function Step7Location({
       {/* Address Autocomplete - Main field */}
       <div>
         <Label htmlFor="address" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
-          Address <span className="text-[#FF0077]">*</span>
+          Address <span className="text-primary">*</span>
         </Label>
         <AddressAutocomplete
           value={data.address?.line1 || ""}
@@ -2597,14 +2597,14 @@ function Step7Location({
             } as any
           })}
           placeholder="Apt 4B, Suite 200, etc."
-          className="h-12 sm:h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+          className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
         />
       </div>
 
       {/* City - Auto-filled from address but can be edited */}
       <div>
         <Label htmlFor="city" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
-          City <span className="text-[#FF0077]">*</span>
+          City <span className="text-primary">*</span>
         </Label>
         <Input
           id="city"
@@ -2616,7 +2616,7 @@ function Step7Location({
             } as any
           })}
           placeholder="City (e.g., Cape Town)"
-          className="h-12 sm:h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+          className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
           required
         />
         {data.address?.city && (
@@ -2640,7 +2640,7 @@ function Step7Location({
               } as any
             })}
             placeholder="State or Province"
-            className="h-12 sm:h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+            className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
           />
         </div>
         <div>
@@ -2657,7 +2657,7 @@ function Step7Location({
               } as any
             })}
             placeholder="Postal Code"
-            className="h-12 sm:h-14 text-base border-gray-300 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-lg"
+            className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
           />
         </div>
       </div>
@@ -2665,7 +2665,7 @@ function Step7Location({
       {/* Country - Dropdown */}
       <div>
         <Label htmlFor="country" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
-          Country <span className="text-[#FF0077]">*</span>
+          Country <span className="text-primary">*</span>
         </Label>
         {isLoadingCountries ? (
           <div className="h-12 sm:h-14 border border-gray-300 rounded-lg flex items-center justify-center">
@@ -2681,7 +2681,7 @@ function Step7Location({
                 country: e.target.value,
               } as any
             })}
-            className="w-full h-12 sm:h-14 px-4 text-base border border-gray-300 rounded-lg focus:border-[#FF0077] focus:ring-[#FF0077] bg-white"
+            className="w-full h-12 sm:h-14 px-4 text-base border border-gray-300 rounded-lg focus:border-primary focus:ring-primary bg-white"
             required
           >
             {countries.map((country) => (
@@ -2771,7 +2771,7 @@ function Step9ServiceZones({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FF0077] mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-gray-600">Finding service zones matching your location...</p>
         </div>
       </div>
@@ -2826,7 +2826,7 @@ function Step9ServiceZones({
                 key={zone.id}
                 className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${
                   selectedZoneIds.includes(zone.id)
-                    ? "border-[#FF0077] bg-[#FF0077]/5"
+                    ? "border-primary bg-primary/5"
                     : "border-gray-200 hover:border-gray-300"
                 }`}
                 onClick={() => toggleZone(zone.id)}
@@ -2838,7 +2838,7 @@ function Step9ServiceZones({
                         type="checkbox"
                         checked={selectedZoneIds.includes(zone.id)}
                         onChange={() => toggleZone(zone.id)}
-                        className="w-4 h-4 text-[#FF0077] border-gray-300 rounded focus:ring-[#FF0077]"
+                        className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
                       />
                       <h3 className="font-semibold text-lg">{zone.name}</h3>
                       <span className="text-xs px-2 py-1 bg-gray-100 rounded">
@@ -2858,8 +2858,8 @@ function Step9ServiceZones({
           </div>
 
           {selectedZoneIds.length > 0 && (
-            <div className="mt-4 p-4 bg-[#FF0077]/5 rounded-lg border border-[#FF0077]/20">
-              <p className="text-sm text-[#FF0077]">
+            <div className="mt-4 p-4 bg-primary/5 rounded-lg border border-primary/20">
+              <p className="text-sm text-primary">
                 <span className="font-medium">{selectedZoneIds.length}</span> zone{selectedZoneIds.length !== 1 ? 's' : ''} selected. 
                 You'll be able to set travel fees and pricing for each zone after completing onboarding.
               </p>
@@ -2943,7 +2943,7 @@ function Step10GlobalCategories({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FF0077] mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-gray-600">Loading categories...</p>
         </div>
       </div>
@@ -2990,7 +2990,7 @@ function Step10GlobalCategories({
               onClick={() => toggleCategory(category.id)}
               className={`p-4 border rounded-lg text-left transition-colors ${
                 data.global_category_ids?.includes(category.id)
-                  ? "border-[#FF0077] bg-[#FF0077]/5 text-[#FF0077]"
+                  ? "border-primary bg-primary/5 text-primary"
                   : "border-gray-300 hover:border-gray-400"
               }`}
             >
@@ -3010,8 +3010,8 @@ function Step10GlobalCategories({
         </div>
       )}
       {data.global_category_ids && data.global_category_ids.length > 0 && (
-        <div className="mt-4 p-4 bg-[#FF0077]/5 rounded-lg border border-[#FF0077]/20">
-          <p className="text-sm text-[#FF0077]">
+        <div className="mt-4 p-4 bg-primary/5 rounded-lg border border-primary/20">
+          <p className="text-sm text-primary">
             <span className="font-medium">
               {data.global_category_ids.length}
             </span>{" "}
@@ -3140,7 +3140,7 @@ function Step11ServiceCatalog({
               </div>
               {/* Addons Section */}
               {service.addons && service.addons.length > 0 && (
-                <div className="pl-4 border-l-2 border-[#FF0077]/20 space-y-2">
+                <div className="pl-4 border-l-2 border-primary/20 space-y-2">
                   <p className="text-xs font-medium text-gray-500">Add-ons:</p>
                   {service.addons.map((addon, addonIndex) => (
                     <div key={addonIndex} className="text-sm text-gray-600 flex items-center justify-between">
@@ -3217,7 +3217,7 @@ function Step11ServiceCatalog({
                     const randomTemplate = templates[Math.floor(Math.random() * templates.length)];
                     setFormService({ ...formService, description: randomTemplate });
                   }}
-                  className="text-xs text-[#FF0077] hover:underline"
+                  className="text-xs text-primary hover:underline"
                 >
                   Use template
                 </button>
@@ -3306,7 +3306,7 @@ function Step11ServiceCatalog({
             <div className="flex gap-2">
               <Button
                 onClick={handleAddService}
-                className="bg-[#FF0077] hover:bg-[#D60565] text-white"
+                className="bg-primary hover:bg-primary-hover text-white"
               >
                 {editingIndex !== null ? "Update" : "Add"} Service
               </Button>
@@ -3557,7 +3557,7 @@ function ServiceAddonsManager({
                 type="button"
                 onClick={handleAddAddon}
                 size="sm"
-                className="bg-[#FF0077] hover:bg-[#D60565] text-white"
+                className="bg-primary hover:bg-primary-hover text-white"
               >
                 {editingIndex !== null ? "Update" : "Add"} Add-on
               </Button>
@@ -3788,7 +3788,7 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
                     <span className="font-medium">{service.title}</span> - {service.duration_minutes} mins - {service.currency} {service.price}
                   </div>
                   {service.description && (
-                    <div className="mt-2 pl-2 border-l-2 border-[#FF0077]/20">
+                    <div className="mt-2 pl-2 border-l-2 border-primary/20">
                       <p className="text-xs text-gray-600 italic">"{service.description}"</p>
                     </div>
                   )}
@@ -3903,7 +3903,7 @@ function Step14PlanSelection({
   if (isLoadingPlans) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-[#FF0077]" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
         <span className="ml-3 text-gray-600">Loading plans...</span>
       </div>
     );
@@ -3942,15 +3942,15 @@ function Step14PlanSelection({
               onClick={() => updateData({ selected_plan_id: plan.id })}
               className={`relative rounded-2xl border-2 p-6 cursor-pointer transition-all ${
                 isSelected
-                  ? "border-[#FF0077] shadow-xl bg-[#FF0077]/5"
+                  ? "border-primary shadow-xl bg-primary/5"
                   : plan.is_popular
-                  ? "border-gray-300 shadow-lg hover:border-[#FF0077]/50"
+                  ? "border-gray-300 shadow-lg hover:border-primary/50"
                   : "border-gray-200 hover:border-gray-300"
               }`}
             >
               {plan.is_popular && (
                 <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                  <span className="bg-[#FF0077] text-white px-3 py-1 rounded-full text-xs font-semibold">
+                  <span className="bg-primary text-white px-3 py-1 rounded-full text-xs font-semibold">
                     Most Popular
                   </span>
                 </div>
@@ -3972,7 +3972,7 @@ function Step14PlanSelection({
               <ul className="space-y-3 mb-6">
                 {plan.features.map((feature, index) => (
                   <li key={index} className="flex items-start gap-2">
-                    <Check className="w-5 h-5 text-[#FF0077] flex-shrink-0 mt-0.5" />
+                    <Check className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
                     <span className="text-sm text-gray-700">{feature}</span>
                   </li>
                 ))}
@@ -3980,7 +3980,7 @@ function Step14PlanSelection({
 
               <div className={`w-full h-10 rounded-full flex items-center justify-center ${
                 isSelected
-                  ? "bg-[#FF0077] text-white"
+                  ? "bg-primary text-white"
                   : "bg-gray-100 text-gray-600"
               }`}>
                 {isSelected ? (

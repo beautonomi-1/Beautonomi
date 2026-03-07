@@ -87,7 +87,7 @@ export default function ServiceAddons({
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <Sparkles className="w-4 h-4 text-[#FF0077]" />
+        <Sparkles className="w-4 h-4 text-primary" />
         <h4 className="text-sm font-semibold text-gray-900">
           Recommended Add-ons
         </h4>
@@ -103,7 +103,7 @@ export default function ServiceAddons({
               onClick={() => toggleAddon(addon)}
               className={`w-full p-3 rounded-lg border-2 text-left transition-all touch-target ${
                 isSelected
-                  ? "border-[#FF0077] bg-pink-50"
+                  ? "border-primary bg-pink-50"
                   : "border-gray-200 bg-white hover:border-gray-300"
               }`}
             >
@@ -139,7 +139,7 @@ export default function ServiceAddons({
                   <div
                     className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
                       isSelected
-                        ? "bg-[#FF0077] text-white"
+                        ? "bg-primary text-white"
                         : "border-2 border-gray-300"
                     }`}
                   >

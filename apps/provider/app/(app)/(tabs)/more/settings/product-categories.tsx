@@ -19,6 +19,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
+import { twStyle } from "@/lib/twStyle";
 
 interface ProductCategory {
   id: string;
@@ -168,7 +169,7 @@ export default function ProductCategoriesScreen() {
         subtitle={`${categories?.length ?? 0} categories`}
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-900"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
             onPress={openCreate}
           >
             <Ionicons name="add" size={20} color="#fff" />
@@ -177,8 +178,8 @@ export default function ProductCategoriesScreen() {
       />
 
       {categories && categories.length > 0 && (
-        <View className="mb-3 flex-row gap-3">
-          <View className="flex-1">
+        <View style={twStyle("mb-3 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <StatCard
               title="Active"
               value={String(activeCount)}
@@ -188,7 +189,7 @@ export default function ProductCategoriesScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <StatCard
               title="Products"
               value={String(totalProducts)}
@@ -202,7 +203,7 @@ export default function ProductCategoriesScreen() {
       )}
 
       {categories && categories.length > 2 && (
-        <View className="mb-3">
+        <View style={twStyle("mb-3")}>
           <SearchBar
             value={search}
             onChangeText={setSearch}
@@ -230,22 +231,22 @@ export default function ProductCategoriesScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 6 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 6 }} />}
           renderItem={({ item: cat }: { item: ProductCategory }) => (
             <TouchableOpacity
-              className={`flex-row items-center rounded-xl border bg-white p-4 ${
+              style={twStyle(`flex-row items-center rounded-xl border bg-white p-4 ${
                 cat.is_active
                   ? "border-gray-100"
                   : "border-gray-100 opacity-60"
-              }`}
+              }`)}
               onPress={() => openEdit(cat)}
               activeOpacity={0.7}
             >
               <View
-                className="h-10 w-10 items-center justify-center rounded-xl"
-                style={{
+                style={[twStyle("h-10 w-10 items-center justify-center rounded-xl"), {
                   backgroundColor: (cat.color ?? "#6366f1") + "18",
-                }}
+                }]}
               >
                 <Ionicons
                   name="grid-outline"
@@ -253,14 +254,14 @@ export default function ProductCategoriesScreen() {
                   color={cat.color ?? "#6366f1"}
                 />
               </View>
-              <View className="ml-3 flex-1">
-                <View className="flex-row items-center gap-2">
-                  <Text className="text-sm font-semibold text-gray-900">
+              <View style={twStyle("ml-3 flex-1")}>
+                <View style={twStyle("flex-row items-center")}>
+                  <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>
                     {cat.name}
                   </Text>
                   {!cat.is_active && (
-                    <View className="rounded-full bg-gray-100 px-2 py-0.5">
-                      <Text className="text-[10px] font-medium text-gray-500">
+                    <View style={twStyle("rounded-full bg-gray-100 px-2 py-0.5")}>
+                      <Text style={twStyle("text-[10px] font-medium text-gray-500")}>
                         Inactive
                       </Text>
                     </View>
@@ -268,21 +269,21 @@ export default function ProductCategoriesScreen() {
                 </View>
                 {cat.description && (
                   <Text
-                    className="mt-0.5 text-xs text-gray-500"
+                    style={twStyle("mt-0.5 text-xs text-gray-500")}
                     numberOfLines={1}
                   >
                     {cat.description}
                   </Text>
                 )}
                 {cat.product_count !== undefined && (
-                  <Text className="mt-0.5 text-xs text-indigo-500">
+                  <Text style={twStyle("mt-0.5 text-xs text-indigo-500")}>
                     {cat.product_count} product
                     {cat.product_count !== 1 ? "s" : ""}
                   </Text>
                 )}
               </View>
-              <View className="flex-row items-center gap-2">
-                <TouchableOpacity onPress={() => handleToggleActive(cat)}>
+              <View style={twStyle("flex-row items-center")}>
+                <TouchableOpacity onPress={() => handleToggleActive(cat)} style={{ marginRight: 8 }}>
                   <Ionicons
                     name={cat.is_active ? "eye-outline" : "eye-off-outline"}
                     size={18}
@@ -308,36 +309,35 @@ export default function ProductCategoriesScreen() {
         title={editing ? "Edit Category" : "New Product Category"}
       >
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Name *
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
             placeholder="e.g. Hair Care"
             placeholderTextColor="#9ca3af"
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Description
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
             onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
             placeholder="Optional description"
             placeholderTextColor="#9ca3af"
             multiline
           />
-          <Text className="mb-2 text-sm font-medium text-gray-700">Color</Text>
-          <View className="mb-3 flex-row flex-wrap gap-2">
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Color</Text>
+          <View style={twStyle("mb-3 flex-row flex-wrap")}>
             {COLORS.map((c) => (
               <TouchableOpacity
                 key={c}
-                className={`h-9 w-9 items-center justify-center rounded-full ${
+                style={[twStyle(`h-9 w-9 items-center justify-center rounded-full ${
                   form.color === c ? "border-2 border-gray-900" : ""
-                }`}
-                style={{ backgroundColor: c }}
+                }`), { backgroundColor: c, marginRight: 8, marginBottom: 8 }]}
                 onPress={() => setForm((p) => ({ ...p, color: c }))}
               >
                 {form.color === c && (
@@ -346,8 +346,8 @@ export default function ProductCategoriesScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <View className="mb-4 flex-row items-center justify-between">
-            <Text className="text-sm font-medium text-gray-700">Active</Text>
+          <View style={twStyle("mb-4 flex-row items-center justify-between")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
             <Switch
               value={form.is_active}
               onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}

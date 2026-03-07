@@ -1,8 +1,10 @@
 import { View, Text, ScrollView, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { Colors } from "@/constants/colors";
 
 const ITEMS = [
   { icon: "wallet-outline" as const, label: "Earnings & summary", subtitle: "Total earnings, balance, pending", route: "/(app)/(tabs)/more/finance-hub", color: "#22c55e" },
@@ -15,6 +17,7 @@ const ITEMS = [
 
 export default function FinanceBillingHubScreen() {
   const router = useRouter();
+  const { screenPadding } = useResponsive();
 
   return (
     <ScreenContainer>
@@ -24,12 +27,12 @@ export default function FinanceBillingHubScreen() {
         onBack={() => router.back()}
       />
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
-        <View className="mb-3 rounded-xl border border-green-100 bg-green-50/50 p-3">
-          <Text className="text-sm text-gray-700">
+        <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: "#bbf7d0", backgroundColor: "rgba(240,253,244,0.5)", padding: 12 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[700] }}>
             All finance and billing is managed in the app. No need to open a browser.
           </Text>
         </View>
@@ -37,18 +40,17 @@ export default function FinanceBillingHubScreen() {
           <TouchableOpacity
             key={item.route}
             onPress={() => router.push(item.route as never)}
-            className="mb-3 flex-row items-center rounded-xl border border-gray-200 bg-white p-4"
+            style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
             activeOpacity={0.7}
           >
             <View
-              className="h-10 w-10 items-center justify-center rounded-full"
-              style={{ backgroundColor: `${item.color}20` }}
+              style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: `${item.color}20` }}
             >
               <Ionicons name={item.icon} size={22} color={item.color} />
             </View>
-            <View className="ml-3 flex-1">
-              <Text className="font-semibold text-gray-900">{item.label}</Text>
-              <Text className="text-xs text-gray-500">{item.subtitle}</Text>
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.label}</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{item.subtitle}</Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
           </TouchableOpacity>

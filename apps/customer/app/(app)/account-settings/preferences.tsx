@@ -123,24 +123,20 @@ function AppearanceSection() {
 
   return (
     <View>
-      <Text className="text-lg font-bold text-gray-900 mb-1">Appearance</Text>
-      <Text className="text-sm text-gray-500 mb-3">Choose your preferred theme</Text>
-      <View className="gap-2">
-        {modes.map((m) => (
+      <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>Appearance</Text>
+      <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 12 }}>Choose your preferred theme</Text>
+      <View>
+        {modes.map((m, index) => (
           <TouchableOpacity
             key={m.key}
             onPress={() => setThemeMode(m.key)}
-            className="bg-white rounded-xl p-4 border border-gray-100 flex-row items-center"
+            style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: Colors.gray[100], flexDirection: "row", alignItems: "center", marginTop: index === 0 ? 0 : 8 }}
             activeOpacity={0.7}
             accessibilityRole="radio"
             accessibilityState={{ selected: themeMode === m.key }}
           >
-            <Ionicons
-              name={m.icon}
-              size={20}
-              color={themeMode === m.key ? Colors.primary : "#9ca3af"}
-            />
-            <Text className="ml-3 flex-1 font-medium text-gray-900">{m.label}</Text>
+            <Ionicons name={m.icon} size={20} color={themeMode === m.key ? Colors.primary : Colors.gray[400]} />
+            <Text style={{ marginLeft: 12, flex: 1, fontWeight: "500", color: Colors.gray[900] }}>{m.label}</Text>
             {themeMode === m.key && (
               <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
             )}
@@ -246,26 +242,26 @@ export default function PreferencesScreen() {
   return (
     <>
       <ScreenFrame loading={loading} error={error} onRetry={load}>
-        <View className="gap-6">
+        <View>
           <View>
-            <Text className="text-lg font-bold text-gray-900">App Preferences</Text>
-            <Text className="text-sm text-gray-500 mt-1">
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>App Preferences</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
               Customise your language, currency, and timezone
             </Text>
           </View>
 
-          <View className="gap-3">
-            {FIELD_CONFIG.map((config) => (
+          <View style={{ marginTop: 24 }}>
+            {FIELD_CONFIG.map((config, index) => (
               <TouchableOpacity
                 key={config.field}
                 onPress={() => setPickerField(config.field)}
                 disabled={saving}
-                className="bg-white rounded-xl p-4 border border-gray-100"
+                style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: Colors.gray[100], marginTop: index === 0 ? 0 : 12 }}
                 activeOpacity={0.7}
               >
-                <Text className="text-sm text-gray-500 mb-1">{config.label}</Text>
-                <View className="flex-row justify-between items-center">
-                  <Text className="font-medium text-gray-900">
+                <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 4 }}>{config.label}</Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>
                     {displayLabel(
                       config.options,
                       profile[config.field],
@@ -273,61 +269,50 @@ export default function PreferencesScreen() {
                         config.defaultValue,
                     )}
                   </Text>
-                  <Text className="text-gray-400 text-lg">›</Text>
+                  <Text style={{ color: Colors.gray[400], fontSize: 18 }}>›</Text>
                 </View>
               </TouchableOpacity>
             ))}
           </View>
 
           {saving && (
-            <View className="flex-row items-center justify-center gap-2 py-2">
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 8, marginTop: 24 }}>
               <ActivityIndicator size="small" color={Colors.primary} />
-              <Text className="text-sm text-gray-500">Saving...</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[500], marginLeft: 8 }}>Saving...</Text>
             </View>
           )}
 
-          {/* Appearance */}
-          <AppearanceSection />
+          <View style={{ marginTop: 24 }}>
+            <AppearanceSection />
+          </View>
         </View>
       </ScreenFrame>
 
-      {/* Bottom-sheet style picker modal */}
       <Modal
         visible={pickerField !== null}
         transparent
         animationType="slide"
         onRequestClose={() => setPickerField(null)}
       >
-        <Pressable
-          className="flex-1 justify-end bg-black/40"
-          onPress={() => setPickerField(null)}
-        >
-          <Pressable
-            className="bg-white rounded-t-2xl max-h-[60%]"
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View className="py-3 border-b border-gray-200">
-              <Text className="text-center font-semibold text-gray-900">
+        <Pressable style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" }} onPress={() => setPickerField(null)}>
+          <Pressable style={{ backgroundColor: Colors.white, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: "60%" }} onPress={(e) => e.stopPropagation()}>
+            <View style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.gray[200] }}>
+              <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900] }}>
                 {pickerConfig?.modalTitle ?? "Select"}
               </Text>
             </View>
-            <ScrollView className="p-4" keyboardShouldPersistTaps="handled">
+            <ScrollView style={{ padding: 16 }} keyboardShouldPersistTaps="handled">
               {pickerConfig?.options.map((option) => {
-                const isSelected =
-                  pickerField !== null && profile[pickerField] === option.value;
+                const isSelected = pickerField !== null && profile[pickerField] === option.value;
                 return (
                   <TouchableOpacity
                     key={option.value}
-                    className="py-3 border-b border-gray-100"
+                    style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
                     onPress={() => {
                       if (pickerField) selectOption(pickerField, option.value);
                     }}
                   >
-                    <Text
-                      className={`text-base ${
-                        isSelected ? "font-semibold text-primary" : "text-gray-900"
-                      }`}
-                    >
+                    <Text style={{ fontSize: 16, fontWeight: isSelected ? "600" : "400", color: isSelected ? Colors.primary : Colors.gray[900] }}>
                       {option.label}
                     </Text>
                   </TouchableOpacity>

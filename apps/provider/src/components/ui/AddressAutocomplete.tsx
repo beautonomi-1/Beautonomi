@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
+import { twStyle } from "@/lib/twStyle";
 
 interface GeocodingResult {
   place_name: string;
@@ -119,12 +120,12 @@ export function AddressAutocomplete({
   return (
     <View>
       {label && (
-        <Text className="mb-1.5 text-sm font-medium text-gray-700">{label}</Text>
+        <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{label}</Text>
       )}
-      <View className="flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3">
+      <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3")}>
         <Ionicons name="search-outline" size={18} color="#9ca3af" />
         <TextInput
-          className="ml-2 min-h-[44px] flex-1 text-sm text-gray-900"
+          style={twStyle("ml-2 min-h-[44px] flex-1 text-sm text-gray-900")}
           value={query}
           onChangeText={handleChangeText}
           placeholder={placeholder}
@@ -136,7 +137,7 @@ export function AddressAutocomplete({
       </View>
 
       {showResults && results.length > 0 && (
-        <View className="mt-1 rounded-xl border border-gray-100 bg-white shadow-sm">
+        <View style={twStyle("mt-1 rounded-xl border border-gray-100 bg-white shadow-sm")}>
           <FlatList
             data={results}
             keyExtractor={(item: GeocodingResult, i: number) => `${item.place_name}-${i}`}
@@ -145,12 +146,12 @@ export function AddressAutocomplete({
             renderItem={({ item }: { item: GeocodingResult }) => (
               <TouchableOpacity
                 onPress={() => handleSelect(item)}
-                className="flex-row items-center border-b border-gray-50 px-3 py-3"
+                style={twStyle("flex-row items-center border-b border-gray-50 px-3 py-3")}
                 accessibilityRole="button"
                 accessibilityLabel={item.place_name}
               >
                 <Ionicons name="location-outline" size={16} color="#6b7280" />
-                <Text className="ml-2 flex-1 text-sm text-gray-700" numberOfLines={2}>
+                <Text style={twStyle("ml-2 flex-1 text-sm text-gray-700")} numberOfLines={2}>
                   {item.place_name}
                 </Text>
               </TouchableOpacity>

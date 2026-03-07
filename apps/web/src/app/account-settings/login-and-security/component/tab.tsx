@@ -219,8 +219,8 @@ const LoginAccount = () => {
                   value={tab.value}
                   className={`py-2 font-light transition-colors ${
                     activeTab === tab.value
-                      ? "border-b-2 border-[#FF0077] text-[#FF0077] text-sm font-semibold"
-                      : "border-b-2 border-transparent text-sm text-gray-500 hover:text-[#FF0077]"
+                      ? "border-b-2 border-primary text-primary text-sm font-semibold"
+                      : "border-b-2 border-transparent text-sm text-gray-500 hover:text-primary"
                   }`}
                 >
                   {tab.label}
@@ -249,7 +249,7 @@ const LoginAccount = () => {
                   <Button
                     variant="outline"
                     onClick={handleUpdateClick}
-                    className="text-[#FF0077] border-[#FF0077] hover:bg-[#FF0077] hover:text-white"
+                    className="text-primary border-primary hover:bg-primary hover:text-white"
                   >
                     {showPasswordUpdate ? "Cancel" : "Update"}
                   </Button>
@@ -282,7 +282,7 @@ const LoginAccount = () => {
                         <button
                           type="button"
                           onClick={handleForgotPassword}
-                          className="text-[#FF0077] hover:text-[#E6006A] underline text-sm font-medium mt-2 transition-colors"
+                          className="text-primary hover:text-primary-hover underline text-sm font-medium mt-2 transition-colors"
                         >
                           Forgot password?
                         </button>
@@ -325,7 +325,7 @@ const LoginAccount = () => {
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
                           disabled={isUpdatingPassword}
-                          className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-6 py-2.5 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white px-6 py-2.5 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {isUpdatingPassword ? "Updating..." : "Update Password"}
                         </motion.button>
@@ -382,7 +382,7 @@ const LoginAccount = () => {
                 className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 sticky top-6"
               >
                 <div className="flex items-center gap-3 mb-4">
-                  <Shield className="w-6 h-6 text-[#FF0077]" />
+                  <Shield className="w-6 h-6 text-primary" />
                   <h2 className="text-lg font-semibold tracking-tighter text-gray-900">
                     {securityCopy?.title ?? "Keeping your account secure"}
                   </h2>
@@ -393,14 +393,14 @@ const LoginAccount = () => {
                 <div className="space-y-3">
                   <Link 
                     href={securityCopy?.safety_tips_customer?.url ?? "/help#customer"}
-                    className="text-[#FF0077] hover:text-[#E6006A] text-sm font-medium underline transition-colors flex items-center gap-1.5 group"
+                    className="text-primary hover:text-primary-hover text-sm font-medium underline transition-colors flex items-center gap-1.5 group"
                   >
                     <span>{securityCopy?.safety_tips_customer?.label ?? "Safety tips for customers"}</span>
                     <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                   </Link>
                   <Link 
                     href={securityCopy?.safety_tips_provider?.url ?? "/help#provider"}
-                    className="text-[#FF0077] hover:text-[#E6006A] text-sm font-medium underline transition-colors flex items-center gap-1.5 group"
+                    className="text-primary hover:text-primary-hover text-sm font-medium underline transition-colors flex items-center gap-1.5 group"
                   >
                     <span>{securityCopy?.safety_tips_provider?.label ?? "Safety tips for providers"}</span>
                     <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
@@ -419,7 +419,7 @@ const LoginAccount = () => {
             className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 md:p-8"
           >
             <div className="flex items-center gap-3 mb-4">
-              <Lock className="w-6 h-6 text-[#FF0077]" />
+              <Lock className="w-6 h-6 text-primary" />
               <h2 className="text-xl font-semibold tracking-tighter text-gray-900">Login Requests</h2>
             </div>
             <div className="text-center py-12">
@@ -440,7 +440,7 @@ const LoginAccount = () => {
             className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 md:p-8"
           >
             <div className="flex items-center gap-3 mb-4">
-              <Shield className="w-6 h-6 text-[#FF0077]" />
+              <Shield className="w-6 h-6 text-primary" />
               <h2 className="text-xl font-semibold tracking-tighter text-gray-900">Shared Access</h2>
             </div>
             <div className="text-center py-12">
@@ -490,7 +490,7 @@ const LoginAccount = () => {
                 onChange={(e) =>
                   setDeactivateData({ ...deactivateData, reason: e.target.value })
                 }
-                className="w-full px-3 py-2 border border-white/40 rounded-lg backdrop-blur-sm bg-white/60 resize-none focus:outline-none focus:ring-2 focus:ring-[#FF0077]"
+                className="w-full px-3 py-2 border border-white/40 rounded-lg backdrop-blur-sm bg-white/60 resize-none focus:outline-none focus:ring-2 focus:ring-primary"
                 rows={3}
                 placeholder="Tell us why you're deactivating your account (optional)"
               />

@@ -310,13 +310,13 @@ export default function ReportsPage() {
                       <Link
                         key={report.id}
                         href={report.href}
-                        className="block p-3 rounded-lg border border-gray-200 hover:border-[#FF0077] hover:bg-pink-50 transition-all group"
+                        className="block p-3 rounded-lg border border-gray-200 hover:border-primary hover:bg-pink-50 transition-all group"
                       >
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-700 group-hover:text-[#FF0077]">
+                          <span className="text-sm font-medium text-gray-700 group-hover:text-primary">
                             {report.name}
                           </span>
-                          <FileText className="w-4 h-4 text-gray-400 group-hover:text-[#FF0077] transition-colors" />
+                          <FileText className="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors" />
                         </div>
                       </Link>
                     ))}

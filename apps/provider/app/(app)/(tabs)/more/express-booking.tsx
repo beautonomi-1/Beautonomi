@@ -20,6 +20,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { Colors } from "@/constants/colors";
 
 interface BookingLink {
   id: string;
@@ -132,31 +133,29 @@ export default function ExpressBookingScreen() {
         <LoadingState fullScreen={false} />
       ) : (
         <>
-          {/* Hero Section */}
           <View
-            className="mb-4 rounded-2xl bg-indigo-50 p-6"
+            style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#eef2ff", padding: 24 }}
             accessibilityLabel="Booking link section"
           >
-            <View className="items-center">
-              <View className="h-16 w-16 items-center justify-center rounded-2xl bg-indigo-100">
+            <View style={{ alignItems: "center" }}>
+              <View style={{ height: 64, width: 64, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: "#c7d2fe" }}>
                 <Ionicons name="flash" size={28} color="#6366f1" />
               </View>
-              <Text className="mt-3 text-lg font-bold text-indigo-900">
+              <Text style={{ marginTop: 12, fontSize: 18, fontWeight: "700", color: "#312e81" }}>
                 Share Your Booking Link
               </Text>
-              <Text className="mt-1 text-center text-sm text-indigo-700">
+              <Text style={{ marginTop: 4, textAlign: "center", fontSize: 14, color: "#4338ca" }}>
                 Share this link with clients so they can book directly
               </Text>
             </View>
 
-            {/* Link Display */}
             {link?.url && (
               <View
-                className="mt-4 rounded-xl border border-indigo-200 bg-white px-4 py-3"
+                style={{ marginTop: 16, borderRadius: 12, borderWidth: 1, borderColor: "#c7d2fe", backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12 }}
                 accessibilityLabel={`Booking link: ${link.url}`}
               >
                 <Text
-                  className="text-center text-sm font-medium text-indigo-600"
+                  style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: "#4f46e5" }}
                   selectable
                   numberOfLines={2}
                 >
@@ -165,76 +164,67 @@ export default function ExpressBookingScreen() {
               </View>
             )}
 
-            {/* Copy & Share Buttons */}
-            <View className="mt-4 flex-row gap-3">
+            <View style={{ marginTop: 16, flexDirection: "row" }}>
               <TouchableOpacity
-                className={`flex-1 flex-row items-center justify-center rounded-xl py-3 ${
-                  copied ? "bg-green-600" : "bg-indigo-600"
-                }`}
+                style={{
+                  flex: 1,
+                  marginRight: 12,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 12,
+                  paddingVertical: 12,
+                  backgroundColor: copied ? "#16a34a" : "#4f46e5",
+                }}
                 onPress={handleCopyLink}
                 accessibilityLabel={copied ? "Link copied" : "Copy booking link"}
                 accessibilityRole="button"
               >
-                <Ionicons
-                  name={copied ? "checkmark-circle" : "copy-outline"}
-                  size={18}
-                  color="#fff"
-                />
-                <Text className="ml-2 font-semibold text-white">
+                <Ionicons name={copied ? "checkmark-circle" : "copy-outline"} size={18} color="#fff" />
+                <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.white }}>
                   {copied ? "Copied!" : "Copy Link"}
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                className="flex-1 flex-row items-center justify-center rounded-xl border border-indigo-300 bg-white py-3"
+                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: "#a5b4fc", backgroundColor: Colors.white, paddingVertical: 12 }}
                 onPress={handleShareLink}
                 accessibilityLabel="Share booking link"
                 accessibilityRole="button"
               >
                 <Ionicons name="share-outline" size={18} color="#6366f1" />
-                <Text className="ml-2 font-semibold text-indigo-600">
-                  Share Link
-                </Text>
+                <Text style={{ marginLeft: 8, fontWeight: "600", color: "#4f46e5" }}>Share Link</Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* QR Code */}
           {link?.url && (
             <>
               <SectionHeader title="QR Code" />
               <View
-                className="items-center rounded-2xl border border-gray-100 bg-white p-6"
+                style={{ alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 24 }}
                 accessibilityLabel="QR code for booking link"
               >
-                <View className="items-center justify-center rounded-2xl bg-white p-4">
-                  <QRCode
-                    value={link.url}
-                    size={180}
-                    color="#111827"
-                    backgroundColor="#ffffff"
-                  />
+                <View style={{ alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: Colors.white, padding: 16 }}>
+                  <QRCode value={link.url} size={180} color="#111827" backgroundColor="#ffffff" />
                 </View>
-                <Text className="mt-3 text-center text-xs text-gray-500">
+                <Text style={{ marginTop: 12, textAlign: "center", fontSize: 12, color: Colors.gray[500] }}>
                   Clients can scan this code to open your booking page
                 </Text>
               </View>
             </>
           )}
 
-          {/* Customize Slug */}
           {link && (
             <>
               <SectionHeader title="Customize Link" />
-              <View className="rounded-2xl border border-gray-100 bg-white p-4">
+              <View style={{ borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}>
                 {editingSlug ? (
                   <>
-                    <Text className="mb-2 text-sm font-medium text-gray-700">
-                      Custom URL slug
-                    </Text>
-                    <View className="flex-row items-center gap-3">
+                    <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Custom URL slug</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
                       <TextInput
-                        className="flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"
+                        style={{ flex: 1, marginRight: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, color: Colors.gray[900] }}
                         placeholder="my-salon"
                         placeholderTextColor="#9ca3af"
                         value={customSlug}
@@ -243,44 +233,26 @@ export default function ExpressBookingScreen() {
                         autoCorrect={false}
                         accessibilityLabel="Custom URL slug input"
                       />
-                      <ActionButton
-                        label="Save"
-                        variant="secondary"
-                        size="sm"
-                        onPress={handleSaveSlug}
-                        loading={saving}
-                        disabled={!customSlug.trim()}
-                      />
+                      <ActionButton label="Save" variant="secondary" size="sm" onPress={handleSaveSlug} loading={saving} disabled={!customSlug.trim()} />
                     </View>
-                    <TouchableOpacity
-                      onPress={() => setEditingSlug(false)}
-                      className="mt-2 self-start"
-                      accessibilityLabel="Cancel editing slug"
-                      accessibilityRole="button"
-                    >
-                      <Text className="text-sm text-gray-500">Cancel</Text>
+                    <TouchableOpacity onPress={() => setEditingSlug(false)} style={{ marginTop: 8, alignSelf: "flex-start" }} accessibilityLabel="Cancel editing slug" accessibilityRole="button">
+                      <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Cancel</Text>
                     </TouchableOpacity>
                   </>
                 ) : (
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-1">
-                      <Text className="text-sm text-gray-500">
-                        Current slug
-                      </Text>
-                      <Text className="mt-0.5 text-base font-medium text-gray-900">
-                        {link.slug}
-                      </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Current slug</Text>
+                      <Text style={{ marginTop: 2, fontSize: 16, fontWeight: "500", color: Colors.gray[900] }}>{link.slug}</Text>
                     </View>
                     <TouchableOpacity
-                      className="flex-row items-center rounded-lg bg-gray-100 px-3 py-2"
+                      style={{ flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
                       onPress={handleStartEditSlug}
                       accessibilityLabel="Edit booking link slug"
                       accessibilityRole="button"
                     >
                       <Ionicons name="pencil-outline" size={16} color="#6b7280" />
-                      <Text className="ml-1 text-sm font-medium text-gray-700">
-                        Edit
-                      </Text>
+                      <Text style={{ marginLeft: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Edit</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -288,123 +260,95 @@ export default function ExpressBookingScreen() {
             </>
           )}
 
-          {/* Active Toggle */}
           {link && (
             <>
               <SectionHeader title="Link Status" />
-              <View className="flex-row items-center justify-between rounded-2xl border border-gray-100 bg-white px-4 py-4">
-                <View className="flex-row items-center">
-                  <View
-                    className={`mr-2 h-3 w-3 rounded-full ${
-                      link.is_active ? "bg-green-500" : "bg-gray-300"
-                    }`}
-                  />
-                  <Text className="text-sm font-medium text-gray-900">
-                    {link.is_active ? "Active" : "Inactive"}
-                  </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 16 }}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <View style={{ marginRight: 8, height: 12, width: 12, borderRadius: 9999, backgroundColor: link.is_active ? "#22c55e" : Colors.gray[300] }} />
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{link.is_active ? "Active" : "Inactive"}</Text>
                 </View>
-                <Text className="text-xs text-gray-400">
-                  {link.is_active
-                    ? "Clients can book via this link"
-                    : "Link is disabled"}
+                <Text style={{ fontSize: 12, color: Colors.gray[400] }}>
+                  {link.is_active ? "Clients can book via this link" : "Link is disabled"}
                 </Text>
               </View>
             </>
           )}
 
-          {/* Short links (express booking links) */}
           {(expressLinks.length > 0 || expressLinksError) && (
             <>
               <SectionHeader title="Short links" />
               {expressLinksError ? (
-                <View className="rounded-xl border border-red-100 bg-red-50 p-4">
-                  <Text className="text-sm text-red-800">{expressLinksError}</Text>
+                <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#fecaca", backgroundColor: "#fef2f2", padding: 16 }}>
+                  <Text style={{ fontSize: 14, color: "#991b1b" }}>{expressLinksError}</Text>
                   <TouchableOpacity
-                    className="mt-3 self-start rounded-xl bg-red-600 px-4 py-2"
+                    style={{ marginTop: 12, alignSelf: "flex-start", borderRadius: 12, backgroundColor: "#dc2626", paddingHorizontal: 16, paddingVertical: 8 }}
                     onPress={loadExpressLinks}
                     accessibilityLabel="Retry loading short links"
                     accessibilityRole="button"
                   >
-                    <Text className="font-medium text-white">Try again</Text>
+                    <Text style={{ fontWeight: "500", color: Colors.white }}>Try again</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
                 <>
-                  <Text className="mb-2 text-xs text-gray-500">
+                  <Text style={{ marginBottom: 8, fontSize: 12, color: Colors.gray[500] }}>
                     Pre-filled booking links. Create or edit on the web portal.
                   </Text>
-                  <View className="gap-3">
-                    {expressLinks.map((el) => {
-                  const fullUrl = `${(APP_URL || "").replace(/\/$/, "")}/book/l/${encodeURIComponent(el.slug)}`;
-                  const isCopied = copiedShortId === el.id;
-                  return (
-                    <View
-                      key={el.id}
-                      className="rounded-xl border border-gray-100 bg-white p-4"
-                    >
-                      <View className="flex-row items-center justify-between">
-                        <View className="flex-1">
-                          <Text className="font-medium text-gray-900">
-                            {el.name}
-                          </Text>
-                          <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={1}>
-                            {fullUrl}
-                          </Text>
-                          {el.use_count != null && (
-                            <Text className="mt-1 text-xs text-gray-400">
-                              {el.use_count} click{el.use_count !== 1 ? "s" : ""}
-                            </Text>
-                          )}
+                  <View>
+                    {expressLinks.map((el, idx) => {
+                      const fullUrl = `${(APP_URL || "").replace(/\/$/, "")}/book/l/${encodeURIComponent(el.slug)}`;
+                      const isCopied = copiedShortId === el.id;
+                      return (
+                        <View key={el.id} style={{ marginTop: idx === 0 ? 0 : 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{el.name}</Text>
+                              <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }} numberOfLines={1}>{fullUrl}</Text>
+                              {el.use_count != null && (
+                                <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[400] }}>{el.use_count} click{el.use_count !== 1 ? "s" : ""}</Text>
+                              )}
+                            </View>
+                            <View style={{ flexDirection: "row" }}>
+                              <TouchableOpacity
+                                style={{ marginRight: 8, borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
+                                onPress={async () => {
+                                  try {
+                                    await Clipboard.setStringAsync(fullUrl);
+                                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                    setCopiedShortId(el.id);
+                                    setTimeout(() => setCopiedShortId(null), 2000);
+                                  } catch {
+                                    Alert.alert("Error", "Failed to copy");
+                                  }
+                                }}
+                                accessibilityLabel="Copy short link"
+                                accessibilityRole="button"
+                              >
+                                <Ionicons name={isCopied ? "checkmark-circle" : "copy-outline"} size={18} color={isCopied ? "#059669" : "#6b7280"} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={{ marginRight: 8, borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
+                                onPress={() => Share.share({ message: `Book with me: ${fullUrl}`, url: fullUrl })}
+                                accessibilityLabel="Share short link"
+                                accessibilityRole="button"
+                              >
+                                <Ionicons name="share-outline" size={18} color="#6b7280" />
+                              </TouchableOpacity>
+                              {APP_URL && (
+                                <TouchableOpacity
+                                  style={{ marginRight: 8, borderRadius: 8, backgroundColor: "#e0e7ff", paddingHorizontal: 12, paddingVertical: 8 }}
+                                  onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/provider/express-booking`)}
+                                  accessibilityLabel="Manage links on web"
+                                  accessibilityRole="button"
+                                >
+                                  <Ionicons name="open-outline" size={18} color="#6366f1" />
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          </View>
                         </View>
-                        <View className="flex-row gap-2">
-                          <TouchableOpacity
-                            className="rounded-lg bg-gray-100 px-3 py-2"
-                            onPress={async () => {
-                              try {
-                                await Clipboard.setStringAsync(fullUrl);
-                                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                                setCopiedShortId(el.id);
-                                setTimeout(() => setCopiedShortId(null), 2000);
-                              } catch {
-                                Alert.alert("Error", "Failed to copy");
-                              }
-                            }}
-                            accessibilityLabel="Copy short link"
-                            accessibilityRole="button"
-                          >
-                            <Ionicons
-                              name={isCopied ? "checkmark-circle" : "copy-outline"}
-                              size={18}
-                              color={isCopied ? "#059669" : "#6b7280"}
-                            />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            className="rounded-lg bg-gray-100 px-3 py-2"
-                            onPress={() =>
-                              Share.share({
-                                message: `Book with me: ${fullUrl}`,
-                                url: fullUrl,
-                              })
-                            }
-                            accessibilityLabel="Share short link"
-                            accessibilityRole="button"
-                          >
-                            <Ionicons name="share-outline" size={18} color="#6b7280" />
-                          </TouchableOpacity>
-                          {APP_URL && (
-                            <TouchableOpacity
-                              className="rounded-lg bg-indigo-100 px-3 py-2"
-                              onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/provider/express-booking`)}
-                              accessibilityLabel="Manage links on web"
-                              accessibilityRole="button"
-                            >
-                              <Ionicons name="open-outline" size={18} color="#6366f1" />
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      </View>
-                    </View>
-                  );
+                      );
                     })}
                   </View>
                 </>
@@ -412,7 +356,7 @@ export default function ExpressBookingScreen() {
             </>
           )}
 
-          <View className="h-8" />
+          <View style={{ height: 32 }} />
         </>
       )}
     </ScreenContainer>

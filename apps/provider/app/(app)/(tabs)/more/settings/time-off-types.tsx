@@ -20,6 +20,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
+import { twStyle } from "@/lib/twStyle";
 
 interface TimeOffType {
   id: string;
@@ -206,7 +207,7 @@ export default function TimeOffTypesScreen() {
         subtitle={`${types?.length ?? 0} types`}
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-900"
+            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
             onPress={openCreate}
           >
             <Ionicons name="add" size={20} color="#fff" />
@@ -215,8 +216,8 @@ export default function TimeOffTypesScreen() {
       />
 
       {types && types.length > 0 && (
-        <View className="mb-3 flex-row gap-3">
-          <View className="flex-1">
+        <View style={twStyle("mb-3 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <StatCard
               title="Paid Types"
               value={String(paidCount)}
@@ -226,7 +227,7 @@ export default function TimeOffTypesScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <StatCard
               title="Active"
               value={String(activeCount)}
@@ -240,13 +241,13 @@ export default function TimeOffTypesScreen() {
       )}
 
       {types && types.length > 2 && (
-        <View className="mb-3">
+        <View style={twStyle("mb-3")}>
           <SearchBar
             value={search}
             onChangeText={setSearch}
             placeholder="Search types..."
           />
-          <View className="mt-2">
+          <View style={twStyle("mt-2")}>
             <FilterChipGroup
               options={[
                 { label: "All", value: "all" },
@@ -281,23 +282,23 @@ export default function TimeOffTypesScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: type }: { item: TimeOffType }) => (
             <TouchableOpacity
-              className={`rounded-xl border bg-white p-4 ${
+              style={twStyle(`rounded-xl border bg-white p-4 ${
                 type.is_active
                   ? "border-gray-100"
                   : "border-gray-100 opacity-60"
-              }`}
+              }`)}
               onPress={() => openEdit(type)}
               activeOpacity={0.7}
             >
-              <View className="flex-row items-center">
+              <View style={twStyle("flex-row items-center")}>
                 <View
-                  className="h-10 w-10 items-center justify-center rounded-xl"
-                  style={{
+                  style={[twStyle("h-10 w-10 items-center justify-center rounded-xl"), {
                     backgroundColor: (type.color ?? "#6366f1") + "20",
-                  }}
+                  }]}
                 >
                   <Ionicons
                     name="sunny-outline"
@@ -305,27 +306,27 @@ export default function TimeOffTypesScreen() {
                     color={type.color ?? "#6366f1"}
                   />
                 </View>
-                <View className="ml-3 flex-1">
-                  <View className="flex-row items-center gap-2">
-                    <Text className="text-sm font-semibold text-gray-900">
+                <View style={twStyle("ml-3 flex-1")}>
+                  <View style={twStyle("flex-row items-center")}>
+                    <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>
                       {type.name}
                     </Text>
                     <View
-                      className={`rounded-full px-2 py-0.5 ${
+                      style={[twStyle(`rounded-full px-2 py-0.5 ${
                         type.is_paid ? "bg-green-50" : "bg-gray-100"
-                      }`}
+                      }`), { marginRight: 8 }]}
                     >
                       <Text
-                        className={`text-[10px] font-medium ${
+                        style={twStyle(`text-[10px] font-medium ${
                           type.is_paid ? "text-green-700" : "text-gray-500"
-                        }`}
+                        }`)}
                       >
                         {type.is_paid ? "Paid" : "Unpaid"}
                       </Text>
                     </View>
                     {!type.is_active && (
-                      <View className="rounded-full bg-gray-100 px-2 py-0.5">
-                        <Text className="text-[10px] font-medium text-gray-500">
+                      <View style={[twStyle("rounded-full bg-gray-100 px-2 py-0.5"), { marginRight: 8 }]}>
+                        <Text style={twStyle("text-[10px] font-medium text-gray-500")}>
                           Inactive
                         </Text>
                       </View>
@@ -333,28 +334,29 @@ export default function TimeOffTypesScreen() {
                   </View>
                   {type.description && (
                     <Text
-                      className="mt-0.5 text-xs text-gray-500"
+                      style={twStyle("mt-0.5 text-xs text-gray-500")}
                       numberOfLines={1}
                     >
                       {type.description}
                     </Text>
                   )}
-                  <View className="mt-1 flex-row items-center gap-3">
+                  <View style={twStyle("mt-1 flex-row items-center")}>
                     {type.max_days && (
-                      <Text className="text-xs text-indigo-500">
+                      <Text style={[twStyle("text-xs text-indigo-500"), { marginRight: 12 }]}>
                         Max {type.max_days} days/year
                       </Text>
                     )}
                     {type.usage_count !== undefined && (
-                      <Text className="text-xs text-gray-400">
+                      <Text style={twStyle("text-xs text-gray-400")}>
                         Used {type.usage_count} times
                       </Text>
                     )}
                   </View>
                 </View>
-                <View className="flex-row items-center gap-2">
+                <View style={twStyle("flex-row items-center")}>
                   <TouchableOpacity
                     onPress={() => handleToggleActive(type)}
+                    style={{ marginRight: 8 }}
                   >
                     <Ionicons
                       name={
@@ -384,47 +386,46 @@ export default function TimeOffTypesScreen() {
         title={editing ? "Edit Time Off Type" : "New Time Off Type"}
       >
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Name *
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
             placeholder="e.g. Annual Leave"
             placeholderTextColor="#9ca3af"
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Description
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
             onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
             placeholder="Optional details..."
             placeholderTextColor="#9ca3af"
             multiline
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Max Days Per Year
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.maxDays}
             onChangeText={(t) => setForm((p) => ({ ...p, maxDays: t }))}
             placeholder="Leave blank for unlimited"
             placeholderTextColor="#9ca3af"
             keyboardType="number-pad"
           />
-          <Text className="mb-2 text-sm font-medium text-gray-700">Color</Text>
-          <View className="mb-3 flex-row flex-wrap gap-3">
+          <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Color</Text>
+          <View style={twStyle("mb-3 flex-row flex-wrap")}>
             {COLORS.map((c) => (
               <TouchableOpacity
                 key={c}
-                className={`h-10 w-10 items-center justify-center rounded-full ${
+                style={[twStyle(`h-10 w-10 items-center justify-center rounded-full ${
                   form.color === c ? "border-2 border-gray-900" : ""
-                }`}
-                style={{ backgroundColor: c }}
+                }`), { backgroundColor: c, marginRight: 12, marginBottom: 12 }]}
                 onPress={() => setForm((p) => ({ ...p, color: c }))}
               >
                 {form.color === c && (
@@ -433,8 +434,8 @@ export default function TimeOffTypesScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <View className="mb-3 flex-row items-center justify-between">
-            <Text className="text-sm font-medium text-gray-700">
+          <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>
               Paid Leave
             </Text>
             <Switch
@@ -444,8 +445,8 @@ export default function TimeOffTypesScreen() {
               thumbColor={form.isPaid ? "#16a34a" : "#f4f4f5"}
             />
           </View>
-          <View className="mb-4 flex-row items-center justify-between">
-            <Text className="text-sm font-medium text-gray-700">Active</Text>
+          <View style={twStyle("mb-4 flex-row items-center justify-between")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>Active</Text>
             <Switch
               value={form.isActive}
               onValueChange={(v) => setForm((p) => ({ ...p, isActive: v }))}

@@ -127,7 +127,7 @@ const ServiceCategoriesNav = () => {
                   onClick={() => setActiveCategory(category.slug)}
                   className={`flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-normal whitespace-nowrap transition-colors border-b-2 ${
                     activeCategory === category.slug
-                      ? "text-[#FF0077] border-[#FF0077]"
+                      ? "text-primary border-primary"
                       : "text-gray-600 border-transparent hover:text-gray-900"
                   }`}
                 >

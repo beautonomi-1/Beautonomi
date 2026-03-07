@@ -263,7 +263,7 @@ export default function AdminProviderBadgesPage() {
               </p>
               <p className="text-sm text-gray-500 mt-1">
                 Point earning rules:{" "}
-                <Link href="/admin/gamification/point-rules" className="text-[#FF0077] hover:underline inline-flex items-center gap-1">
+                <Link href="/admin/gamification/point-rules" className="text-primary hover:underline inline-flex items-center gap-1">
                   <Link2 className="w-3.5 h-3.5" />
                   Point rules
                 </Link>

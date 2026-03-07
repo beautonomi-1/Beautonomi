@@ -8,12 +8,14 @@ import {
   Linking,
   RefreshControl,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import Constants from "expo-constants";
 import { useAuth } from "@/providers/AuthProvider";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { Colors, shadow } from "@/constants/colors";
 import { APP_URL } from "@/config/public-env";
 import { api } from "@/lib/api-client";
@@ -23,6 +25,10 @@ type IconName = keyof typeof Ionicons.glyphMap;
 export default function ProfileScreen() {
   useScreenTracking("Profile");
   const { user, signOut } = useAuth();
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const contentContainerStyle = isTablet
+    ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
+    : {};
   type ChecklistItem = { id: string; label: string; completed: boolean; required?: boolean };
   const [profileData, setProfileData] = useState<{
     completion: number;
@@ -97,32 +103,34 @@ export default function ProfileScreen() {
     : null;
 
   return (
-    <ScrollView
-      className="flex-1 bg-gray-50"
-      contentContainerStyle={{ paddingBottom: 120 }}
-      contentInsetAdjustmentBehavior="automatic"
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          tintColor={Colors.primary}
-        />
-      }
-    >
-      {/* ── Profile header ── */}
-      <View className="bg-white pb-6">
-        <View className="px-5 pt-4 mb-5">
-          <Text className="text-2xl font-bold text-gray-900">Profile</Text>
-        </View>
+    <View style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
+      <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.gray[50] }} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 120, ...contentContainerStyle }}
+        contentInsetAdjustmentBehavior="automatic"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={Colors.primary}
+          />
+        }
+      >
+        {/* ── Profile header ── */}
+        <View style={[contentContainerStyle, { backgroundColor: Colors.white, paddingBottom: 24 }]}>
+          <View style={{ paddingHorizontal: contentPadding, paddingTop: 16, marginBottom: 20 }}>
+            <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>Profile</Text>
+          </View>
 
         <TouchableOpacity
           onPress={() =>
             router.push("/(app)/account-settings/personal-info")
           }
           activeOpacity={0.7}
-          className="px-5"
+          style={{ paddingHorizontal: contentPadding }}
         >
-          <View className="flex-row items-center">
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
             {/* Avatar */}
             <View
               style={{
@@ -157,16 +165,16 @@ export default function ProfileScreen() {
               )}
             </View>
 
-            <View className="flex-1 ml-4">
-              <Text className="text-xl font-bold text-gray-900">
+            <View style={{ flex: 1, marginLeft: 16 }}>
+              <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900] }}>
                 {displayName}
               </Text>
               {memberSince ? (
-                <Text className="text-sm text-gray-500 mt-0.5">
+                <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }}>
                   Member since {memberSince}
                 </Text>
               ) : null}
-              <Text className="text-sm font-medium mt-1" style={{ color: Colors.primary }}>
+              <Text style={{ fontSize: 14, fontWeight: "500", marginTop: 4, color: Colors.primary }}>
                 Show profile
               </Text>
             </View>
@@ -176,18 +184,22 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
         {/* Verification badges: green check when done, red cross when mandatory and missing */}
-        <View className="flex-row items-center px-5 mt-4 gap-3">
-          <VerificationBadge
-            icon="mail-outline"
-            label="Email"
-            verified={emailVerified}
-            required
-          />
-          <VerificationBadge
-            icon="call-outline"
-            label="Phone"
-            verified={phoneVerified}
-          />
+        <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: contentPadding, marginTop: 16 }}>
+          <View style={{ marginRight: 12 }}>
+            <VerificationBadge
+              icon="mail-outline"
+              label="Email"
+              verified={emailVerified}
+              required
+            />
+          </View>
+          <View style={{ marginRight: 12 }}>
+            <VerificationBadge
+              icon="call-outline"
+              label="Phone"
+              verified={phoneVerified}
+            />
+          </View>
           <VerificationBadge
             icon="shield-checkmark-outline"
             label="Identity"
@@ -198,15 +210,15 @@ export default function ProfileScreen() {
 
       {/* ── Profile completion card ── */}
       {(completionPct < 100 || checklistItems.length > 0) && (
-        <View className="px-4 mt-4">
+        <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
           <TouchableOpacity
             onPress={() =>
               router.push("/(app)/account-settings/personal-info")
             }
             activeOpacity={0.8}
-            className="bg-white rounded-2xl p-4 border border-gray-100"
+            style={{ backgroundColor: Colors.white, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.gray[100] }}
           >
-            <View className="flex-row items-start">
+            <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
               <View
                 style={{
                   width: 44,
@@ -220,20 +232,20 @@ export default function ProfileScreen() {
               >
                 <Ionicons name="sparkles" size={22} color={Colors.primary} />
               </View>
-              <View className="flex-1">
-                <Text className="text-base font-semibold text-gray-900">
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
                   Complete your profile
                 </Text>
-                <Text className="text-sm text-gray-500 mt-1">
+                <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 4 }}>
                   Make booking easier and help providers give you the best experience
                 </Text>
                 {/* Progress bar */}
-                <View className="mt-3 flex-row items-center">
+                <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center" }}>
                   <View
                     style={{
                       flex: 1,
                       height: 6,
-                      backgroundColor: "#f3f4f6",
+                      backgroundColor: Colors.gray[100],
                       borderRadius: 3,
                       overflow: "hidden",
                       marginRight: 10,
@@ -248,14 +260,14 @@ export default function ProfileScreen() {
                       }}
                     />
                   </View>
-                  <Text className="text-xs font-semibold text-gray-600">
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[600] }}>
                     {completionPct}%
                   </Text>
                 </View>
-                {/* Checklist: green check = completed, red cross = mandatory incomplete */}
+                {/* Checklist */}
                 {checklistItems.length > 0 && (
-                  <View className="mt-3 gap-2">
-                    {checklistItems.slice(0, 5).map((item) => {
+                  <View style={{ marginTop: 12 }}>
+                    {checklistItems.slice(0, 5).map((item, index) => {
                       const done = item.completed;
                       const mandatoryMissing = !item.completed && item.required;
                       const iconName = done
@@ -265,7 +277,7 @@ export default function ProfileScreen() {
                           : "ellipse-outline";
                       const iconColor = done ? "#16A34A" : mandatoryMissing ? "#ef4444" : "#9ca3af";
                       return (
-                        <View key={item.id} className="flex-row items-center">
+                        <View key={item.id} style={{ flexDirection: "row", alignItems: "center", marginTop: index === 0 ? 0 : 8 }}>
                           <Ionicons
                             name={iconName as keyof typeof Ionicons.glyphMap}
                             size={18}
@@ -273,9 +285,10 @@ export default function ProfileScreen() {
                             style={{ marginRight: 8 }}
                           />
                           <Text
-                            className="flex-1 text-sm"
                             style={{
-                              color: done ? "#16A34A" : mandatoryMissing ? "#b91c1c" : "#6b7280",
+                              flex: 1,
+                              fontSize: 14,
+                              color: done ? "#16A34A" : mandatoryMissing ? "#b91c1c" : Colors.gray[600],
                             }}
                           >
                             {item.label}
@@ -292,11 +305,11 @@ export default function ProfileScreen() {
       )}
 
       {/* ── Loyalty highlight ── */}
-      <View className="px-4 mt-4">
+      <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
         <TouchableOpacity
           onPress={() => router.push("/(app)/account-settings/loyalty")}
           activeOpacity={0.8}
-          className="bg-white rounded-2xl p-4 border border-gray-100 flex-row items-center"
+          style={{ backgroundColor: Colors.white, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.gray[100], flexDirection: "row", alignItems: "center" }}
         >
           <View
             style={{
@@ -311,33 +324,37 @@ export default function ProfileScreen() {
           >
             <Ionicons name="trophy" size={22} color="#D97706" />
           </View>
-          <View className="flex-1">
-            <Text className="text-base font-semibold text-gray-900">
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
               {loyaltyPoints.toLocaleString()} points
             </Text>
-            <Text className="text-sm text-gray-500">
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
               Earn points on every booking
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#d1d5db" />
+          <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} />
         </TouchableOpacity>
       </View>
 
       {/* ── Quick actions ── */}
-      <View className="px-4 mt-4">
-        <View className="flex-row gap-3">
-          <QuickAction
-            icon="calendar-outline"
-            label="Bookings"
-            onPress={() =>
-              router.push("/(app)/account-settings/bookings")
-            }
-          />
-          <QuickAction
-            icon="bag-outline"
-            label="Orders"
-            onPress={() => router.push("/(app)/product-orders" as any)}
-          />
+      <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
+        <View style={{ flexDirection: "row" }}>
+          <View style={{ marginRight: 12 }}>
+            <QuickAction
+              icon="calendar-outline"
+              label="Bookings"
+              onPress={() =>
+                router.push("/(app)/account-settings/bookings")
+              }
+            />
+          </View>
+          <View style={{ marginRight: 12 }}>
+            <QuickAction
+              icon="bag-outline"
+              label="Orders"
+              onPress={() => router.push("/(app)/product-orders" as any)}
+            />
+          </View>
           <QuickAction
             icon="wallet-outline"
             label="Wallet"
@@ -356,11 +373,11 @@ export default function ProfileScreen() {
       </View>
 
       {/* ── Settings ── */}
-      <View className="px-4 mt-5">
-        <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">
+      <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
+        <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, paddingHorizontal: 4 }}>
           Settings
         </Text>
-        <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <View style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], overflow: "hidden" }}>
           <MenuItem
             icon="settings-outline"
             label="Account settings"
@@ -397,7 +414,7 @@ export default function ProfileScreen() {
       </View>
 
       {/* ── Referral banner ── */}
-      <View className="px-4 mt-5">
+      <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
         <TouchableOpacity
           onPress={() => {
             Share.share({
@@ -406,15 +423,14 @@ export default function ProfileScreen() {
             });
           }}
           activeOpacity={0.8}
-          className="rounded-2xl overflow-hidden"
-          style={{ backgroundColor: "#FDF2F8" }}
+          style={{ borderRadius: 16, overflow: "hidden", backgroundColor: "#FDF2F8" }}
         >
-          <View className="p-4 flex-row items-center">
-            <View className="flex-1">
-              <Text className="text-base font-semibold text-gray-900">
+          <View style={{ padding: 16, flexDirection: "row", alignItems: "center" }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
                 Invite friends
               </Text>
-              <Text className="text-sm text-gray-600 mt-1">
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 4 }}>
                 Share Beautonomi and earn credits when friends book
               </Text>
             </View>
@@ -436,11 +452,11 @@ export default function ProfileScreen() {
       </View>
 
       {/* ── Support ── */}
-      <View className="px-4 mt-5">
-        <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">
+      <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
+        <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[400], textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, paddingHorizontal: 4 }}>
           Support
         </Text>
-        <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <View style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], overflow: "hidden" }}>
           <MenuItem
             icon="help-circle-outline"
             label="Help centre"
@@ -463,13 +479,13 @@ export default function ProfileScreen() {
       </View>
 
       {/* ── Become a provider ── */}
-      <View className="px-4 mt-5">
+      <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
         <TouchableOpacity
           onPress={() =>
             Linking.openURL(`${APP_URL}/provider/onboarding`)
           }
           activeOpacity={0.8}
-          className="bg-white rounded-2xl border border-gray-100 p-4 flex-row items-center"
+          style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], padding: 16, flexDirection: "row", alignItems: "center" }}
         >
           <View
             style={{
@@ -484,77 +500,76 @@ export default function ProfileScreen() {
           >
             <Ionicons name="storefront-outline" size={22} color="#16A34A" />
           </View>
-          <View className="flex-1">
-            <Text className="text-base font-semibold text-gray-900">
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
               Become a beauty provider
             </Text>
-            <Text className="text-sm text-gray-500 mt-0.5">
+            <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }}>
               Offer your services on Beautonomi
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color="#d1d5db" />
+          <Ionicons name="chevron-forward" size={18} color={Colors.gray[300]} />
         </TouchableOpacity>
       </View>
 
       {/* ── Sign out ── */}
-      <View className="px-4 mt-5">
+      <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
         <TouchableOpacity
           onPress={() => signOut()}
-          className="py-4 items-center"
+          style={{ paddingVertical: 16, alignItems: "center" }}
           accessibilityRole="button"
           accessibilityLabel="Log out"
         >
-          <Text className="text-sm font-medium" style={{ color: "#EF4444" }}>
+          <Text style={{ fontSize: 14, fontWeight: "500", color: "#EF4444" }}>
             Log out
           </Text>
         </TouchableOpacity>
       </View>
 
       {/* ── Footer ── */}
-      <View className="items-center mt-2 pb-4">
-        <Text className="text-xs text-gray-300">
+      <View style={{ alignItems: "center", marginTop: 8, paddingBottom: 16 }}>
+        <Text style={{ fontSize: 12, color: Colors.gray[300] }}>
           Beautonomi v{Constants.expoConfig?.version ?? "1.0.0"}
         </Text>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 /* ─── Logged-out state ─── */
 function LoggedOutProfile() {
   return (
-    <ScrollView
-      className="flex-1 bg-white"
-      contentContainerStyle={{ paddingBottom: 100 }}
-    >
-      <View className="px-5 pt-6">
-        <Text className="text-2xl font-bold text-gray-900">Profile</Text>
-        <Text className="text-base text-gray-500 mt-2">
+    <View style={{ flex: 1, backgroundColor: Colors.white }}>
+      <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.white }} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
+      >
+      <View style={{ paddingHorizontal: 20, paddingTop: 24 }}>
+        <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>Profile</Text>
+        <Text style={{ fontSize: 16, color: Colors.gray[500], marginTop: 8 }}>
           Log in to start booking beauty services, managing your appointments, and more.
         </Text>
       </View>
 
-      <View className="px-5 mt-8">
+      <View style={{ paddingHorizontal: 20, marginTop: 32 }}>
         <TouchableOpacity
           onPress={() => router.replace("/(auth)/login")}
-          style={{ backgroundColor: Colors.primary }}
-          className="py-4 rounded-xl items-center"
+          style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center" }}
           accessibilityRole="button"
         >
-          <Text className="text-white font-semibold text-base">Log in</Text>
+          <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>Log in</Text>
         </TouchableOpacity>
 
-        <View className="flex-row justify-center mt-4">
-          <Text className="text-sm text-gray-500">
+        <View style={{ flexDirection: "row", justifyContent: "center", marginTop: 16 }}>
+          <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
             Don&apos;t have an account?{" "}
           </Text>
           <TouchableOpacity
             onPress={() => router.push("/(auth)/signup")}
           >
-            <Text
-              className="text-sm font-semibold"
-              style={{ color: Colors.primary }}
-            >
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>
               Sign up
             </Text>
           </TouchableOpacity>
@@ -562,11 +577,11 @@ function LoggedOutProfile() {
       </View>
 
       {/* Separator */}
-      <View className="mx-5 mt-8 mb-6 border-t border-gray-200" />
+      <View style={{ marginHorizontal: 20, marginTop: 32, marginBottom: 24, borderTopWidth: 1, borderTopColor: Colors.gray[200] }} />
 
       {/* Menu */}
-      <View className="px-4">
-        <View className="bg-white rounded-2xl overflow-hidden">
+      <View style={{ paddingHorizontal: 16 }}>
+        <View style={{ backgroundColor: Colors.white, borderRadius: 16, overflow: "hidden" }}>
           <MenuItem
             icon="settings-outline"
             label="Settings"
@@ -586,12 +601,13 @@ function LoggedOutProfile() {
         </View>
       </View>
 
-      <View className="items-center mt-8 pb-4">
-        <Text className="text-xs text-gray-300">
+      <View style={{ alignItems: "center", marginTop: 32, paddingBottom: 16 }}>
+        <Text style={{ fontSize: 12, color: Colors.gray[300] }}>
           Beautonomi v{Constants.expoConfig?.version ?? "1.0.0"}
         </Text>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -612,9 +628,9 @@ function VerificationBadge({
   const color = verified ? "#16A34A" : isMandatoryMissing ? "#ef4444" : "#d1d5db";
   const textColor = verified ? "#16A34A" : isMandatoryMissing ? "#b91c1c" : "#9ca3af";
   return (
-    <View className="flex-row items-center">
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
       <Ionicons name={iconName as any} size={16} color={color} />
-      <Text className="text-xs ml-1" style={{ color: textColor }}>
+      <Text style={{ fontSize: 12, marginLeft: 4, color: textColor }}>
         {label}
       </Text>
     </View>
@@ -635,14 +651,14 @@ function QuickAction({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
-      className="flex-1 bg-white rounded-2xl border border-gray-100 items-center py-4"
+      style={{ flex: 1, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], alignItems: "center", paddingVertical: 16 }}
     >
       <View
         style={{
           width: 40,
           height: 40,
           borderRadius: 12,
-          backgroundColor: "#f9fafb",
+          backgroundColor: Colors.gray[50],
           alignItems: "center",
           justifyContent: "center",
           marginBottom: 6,
@@ -650,7 +666,7 @@ function QuickAction({
       >
         <Ionicons name={icon} size={20} color={Colors.primary} />
       </View>
-      <Text className="text-xs font-medium text-gray-700">{label}</Text>
+      <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700] }}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -670,23 +686,21 @@ function MenuItem({
   return (
     <TouchableOpacity
       onPress={onPress}
-      className="flex-row items-center px-4 py-3.5"
-      style={
-        !last
-          ? { borderBottomWidth: 1, borderBottomColor: "#f3f4f6" }
-          : undefined
-      }
+      style={[
+        { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14 },
+        !last ? { borderBottomWidth: 1, borderBottomColor: Colors.gray[100] } : undefined,
+      ]}
       accessibilityRole="button"
       accessibilityLabel={label}
     >
       <Ionicons
         name={icon}
         size={20}
-        color="#6b7280"
+        color={Colors.gray[600]}
         style={{ marginRight: 14 }}
       />
-      <Text className="flex-1 text-sm font-medium text-gray-900">{label}</Text>
-      <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
+      <Text style={{ flex: 1, fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{label}</Text>
+      <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
     </TouchableOpacity>
   );
 }

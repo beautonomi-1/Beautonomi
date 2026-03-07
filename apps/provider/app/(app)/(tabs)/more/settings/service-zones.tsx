@@ -21,6 +21,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { formatCurrency } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface PlatformZone {
   id: string;
@@ -227,8 +228,8 @@ export default function ServiceZonesScreen() {
       />
 
       {zones && zones.length > 0 && (
-        <View className="mb-3 flex-row gap-2">
-          <View className="flex-1">
+        <View style={twStyle("mb-3 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
             <StatCard
               title="Active"
               value={String(activeCount)}
@@ -238,7 +239,7 @@ export default function ServiceZonesScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
             <StatCard
               title="Avg Travel"
               value={`${avgTravelTime}m`}
@@ -248,7 +249,7 @@ export default function ServiceZonesScreen() {
               compact
             />
           </View>
-          <View className="flex-1">
+          <View style={twStyle("flex-1")}>
             <StatCard
               title="Total Fees"
               value={formatCurrency(totalFees)}
@@ -262,13 +263,13 @@ export default function ServiceZonesScreen() {
       )}
 
       {zones && zones.length > 3 && (
-        <View className="mb-3">
+        <View style={twStyle("mb-3")}>
           <SearchBar
             value={search}
             onChangeText={setSearch}
             placeholder="Search zones..."
           />
-          <View className="mt-2">
+          <View style={twStyle("mt-2")}>
             <FilterChipGroup
               options={[
                 { label: "All", value: "all" },
@@ -302,27 +303,28 @@ export default function ServiceZonesScreen() {
           showsVerticalScrollIndicator={false}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           renderItem={({ item: zone }: { item: ZoneWithSelection }) => (
             <TouchableOpacity
-              className={`rounded-xl border bg-white p-4 ${
+              style={twStyle(`rounded-xl border bg-white p-4 ${
                 zone.is_selected
                   ? zone.selection?.is_active
                     ? "border-indigo-200"
                     : "border-gray-200 opacity-70"
                   : "border-gray-100"
-              }`}
+              }`)}
               onPress={() =>
                 zone.is_selected ? openEdit(zone) : openAdd(zone.platform_zone)
               }
               activeOpacity={0.7}
             >
-              <View className="flex-row items-start justify-between">
-                <View className="flex-row flex-1 items-center">
+              <View style={twStyle("flex-row items-start justify-between")}>
+                <View style={twStyle("flex-row flex-1 items-center")}>
                   <View
-                    className={`h-10 w-10 items-center justify-center rounded-lg ${
+                    style={twStyle(`h-10 w-10 items-center justify-center rounded-lg ${
                       zone.is_selected ? "bg-indigo-50" : "bg-gray-50"
-                    }`}
+                    }`)}
                   >
                     <Ionicons
                       name="location-outline"
@@ -330,12 +332,12 @@ export default function ServiceZonesScreen() {
                       color={zone.is_selected ? "#6366f1" : "#9ca3af"}
                     />
                   </View>
-                  <View className="ml-3 flex-1">
-                    <Text className="text-sm font-semibold text-gray-900">
+                  <View style={twStyle("ml-3 flex-1")}>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                       {zone.platform_zone.name}
                     </Text>
                     {zone.platform_zone.region && (
-                      <Text className="text-xs text-gray-500">
+                      <Text style={twStyle("text-xs text-gray-500")}>
                         {zone.platform_zone.region}
                       </Text>
                     )}
@@ -352,27 +354,27 @@ export default function ServiceZonesScreen() {
                   />
                 ) : (
                   <TouchableOpacity
-                    className="rounded-lg bg-indigo-50 px-3 py-1.5"
+                    style={twStyle("rounded-lg bg-indigo-50 px-3 py-1.5")}
                     onPress={() => openAdd(zone.platform_zone)}
                   >
-                    <Text className="text-xs font-medium text-indigo-700">
+                    <Text style={twStyle("text-xs font-medium text-indigo-700")}>
                       Add
                     </Text>
                   </TouchableOpacity>
                 )}
               </View>
               {zone.is_selected && zone.selection && (
-                <View className="mt-2 flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-3">
-                    <View className="flex-row items-center gap-1">
+                <View style={twStyle("mt-2 flex-row items-center justify-between")}>
+                  <View style={twStyle("flex-row items-center")}>
+                    <View style={[twStyle("flex-row items-center"), { marginRight: 4 }]}>
                       <Ionicons name="cash-outline" size={12} color="#6b7280" />
-                      <Text className="text-xs text-gray-500">
+                      <Text style={twStyle("text-xs text-gray-500")}>
                         {formatCurrency(zone.selection.travel_fee)}
                       </Text>
                     </View>
-                    <View className="flex-row items-center gap-1">
+                    <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
                       <Ionicons name="time-outline" size={12} color="#6b7280" />
-                      <Text className="text-xs text-gray-500">
+                      <Text style={twStyle("text-xs text-gray-500")}>
                         {zone.selection.travel_time_minutes}min
                       </Text>
                     </View>
@@ -397,11 +399,11 @@ export default function ServiceZonesScreen() {
         }
       >
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Travel Fee (R)
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.travel_fee}
             onChangeText={(t) =>
               setForm((p) => ({ ...p, travel_fee: t }))
@@ -410,11 +412,11 @@ export default function ServiceZonesScreen() {
             placeholder="0.00"
             placeholderTextColor="#9ca3af"
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Travel Time (minutes)
           </Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.travel_time}
             onChangeText={(t) =>
               setForm((p) => ({ ...p, travel_time: t }))
@@ -423,11 +425,11 @@ export default function ServiceZonesScreen() {
             placeholder="30"
             placeholderTextColor="#9ca3af"
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Notes
           </Text>
           <TextInput
-            className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.description}
             onChangeText={(t) =>
               setForm((p) => ({ ...p, description: t }))

@@ -11,6 +11,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { twStyle } from "@/lib/twStyle";
 
 interface SetupStep {
   id: string;
@@ -62,28 +63,27 @@ export default function SetupStatusScreen() {
 
       {status && (
         <>
-          <View className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
-            <View className="flex-row items-center justify-between">
-              <Text className="text-base font-semibold text-gray-900">
+          <View style={twStyle("mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4")}>
+            <View style={twStyle("flex-row items-center justify-between")}>
+              <Text style={twStyle("text-base font-semibold text-gray-900")}>
                 {status.isComplete ? "All set!" : "Complete your setup"}
               </Text>
-              <View className="rounded-full bg-indigo-100 px-3 py-1">
-                <Text className="text-sm font-medium text-indigo-700">
+              <View style={twStyle("rounded-full bg-indigo-100 px-3 py-1")}>
+                <Text style={twStyle("text-sm font-medium text-indigo-700")}>
                   {status.completionPercentage}%
                 </Text>
               </View>
             </View>
-            <View className="mt-2 h-2 w-full overflow-hidden rounded-full bg-indigo-100">
+            <View style={twStyle("mt-2 h-2 w-full overflow-hidden rounded-full bg-indigo-100")}>
               <View
-                className="h-full bg-indigo-600"
-                style={{ width: `${status.completionPercentage}%` }}
+                style={[twStyle("h-full bg-indigo-600"), { width: `${status.completionPercentage}%` }]}
               />
             </View>
           </View>
 
           <SectionHeader title="Steps" />
-          <View className="gap-2">
-            {(status.steps ?? []).map((step) => {
+          <View>
+            {(status.steps ?? []).map((step, stepIdx) => {
               const isComplete = step.completed;
               const isRequiredIncomplete = !step.completed && step.required;
               const iconName = isComplete
@@ -101,15 +101,15 @@ export default function SetupStatusScreen() {
               return (
                 <TouchableOpacity
                   key={step.id}
-                  className={`flex-row items-center rounded-xl border p-4 ${borderStyle}`}
+                  style={[twStyle(`flex-row items-center rounded-xl border p-4 ${borderStyle}`), stepIdx > 0 ? { marginTop: 8 } : undefined]}
                   onPress={() => openStep(step)}
                 >
-                  <View className={`h-10 w-10 items-center justify-center rounded-full ${bgCircle}`}>
+                  <View style={twStyle(`h-10 w-10 items-center justify-center rounded-full ${bgCircle}`)}>
                     <Ionicons name={iconName as any} size={22} color={iconColor} />
                   </View>
-                  <View className="ml-3 flex-1">
-                    <Text className="font-medium text-gray-900">{step.title}</Text>
-                    <Text className="mt-0.5 text-sm text-gray-500" numberOfLines={1}>
+                  <View style={twStyle("ml-3 flex-1")}>
+                    <Text style={twStyle("font-medium text-gray-900")}>{step.title}</Text>
+                    <Text style={twStyle("mt-0.5 text-sm text-gray-500")} numberOfLines={1}>
                       {step.description}
                     </Text>
                   </View>
@@ -122,12 +122,12 @@ export default function SetupStatusScreen() {
       )}
 
       {status && (!status.steps || status.steps.length === 0) && (
-        <View className="rounded-2xl border border-gray-100 bg-white p-4">
-          <Text className="text-sm text-gray-500">No setup steps available.</Text>
+        <View style={twStyle("rounded-2xl border border-gray-100 bg-white p-4")}>
+          <Text style={twStyle("text-sm text-gray-500")}>No setup steps available.</Text>
         </View>
       )}
 
-      <View className="h-8" />
+      <View style={twStyle("h-8")} />
     </ScreenContainer>
   );
 }

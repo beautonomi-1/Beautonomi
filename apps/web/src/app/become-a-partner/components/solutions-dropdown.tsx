@@ -27,7 +27,7 @@ export default function SolutionsDropdown() {
       <button
         onMouseEnter={() => setIsOpen(true)}
         onMouseLeave={() => setIsOpen(false)}
-        className="flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-[#FF0077] transition-colors"
+        className="flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-primary transition-colors"
       >
         Services
         <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -48,7 +48,7 @@ export default function SolutionsDropdown() {
                 onClick={() => setIsOpen(false)}
               >
                 <span className="text-xl sm:text-2xl flex-shrink-0">{type.icon}</span>
-                <span className="text-xs sm:text-sm font-medium text-gray-700 group-hover:text-[#FF0077] transition-colors">
+                <span className="text-xs sm:text-sm font-medium text-gray-700 group-hover:text-primary transition-colors">
                   {type.category}
                 </span>
               </Link>

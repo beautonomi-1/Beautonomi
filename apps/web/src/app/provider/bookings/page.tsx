@@ -372,43 +372,43 @@ export default function ProviderBookings() {
                 <TabsList className="inline-flex h-auto w-full sm:w-auto gap-1 sm:gap-2 bg-transparent p-0 sm:p-1 sm:bg-muted rounded-none sm:rounded-md border-b border-gray-200 sm:border-b-0">
                   <TabsTrigger 
                     value="all"
-                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
                   >
                     All ({filteredBookings.length})
                   </TabsTrigger>
                   <TabsTrigger 
                     value="pending"
-                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
                   >
                     Pending ({groupedBookings.pending.length})
                   </TabsTrigger>
                   <TabsTrigger 
                     value="confirmed"
-                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
                   >
                     Confirmed ({groupedBookings.confirmed.length})
                   </TabsTrigger>
                   <TabsTrigger 
                     value="in_progress"
-                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
                   >
                     In Progress ({groupedBookings.in_progress.length})
                   </TabsTrigger>
                   <TabsTrigger 
                     value="completed"
-                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
                   >
                     Completed ({groupedBookings.completed.length})
                   </TabsTrigger>
                   <TabsTrigger 
                     value="cancelled"
-                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
                   >
                     Cancelled ({groupedBookings.cancelled.length})
                   </TabsTrigger>
                   <TabsTrigger 
                     value="no_show"
-                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-[#FF0077] data-[state=active]:bg-transparent sm:data-[state=active]:bg-[#FF0077] data-[state=active]:text-[#FF0077] sm:data-[state=active]:text-white transition-all duration-200 hover:text-[#FF0077] sm:hover:text-white whitespace-nowrap"
+                    className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
                   >
                     No Shows ({groupedBookings.no_show.length})
                   </TabsTrigger>
@@ -586,7 +586,7 @@ function BookingCard({
   };
 
   return (
-    <div className={`bg-white border rounded-lg p-4 sm:p-6 hover:shadow-md transition-shadow ${isSelected ? "ring-2 ring-[#FF0077]" : ""}`}>
+    <div className={`bg-white border rounded-lg p-4 sm:p-6 hover:shadow-md transition-shadow ${isSelected ? "ring-2 ring-primary" : ""}`}>
       <div className="flex flex-col gap-4 sm:gap-6">
         {/* Header Section */}
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
@@ -596,7 +596,7 @@ function BookingCard({
               className="flex-shrink-0 mt-1"
             >
               {isSelected ? (
-                <CheckSquare className="w-5 h-5 text-[#FF0077]" />
+                <CheckSquare className="w-5 h-5 text-primary" />
               ) : (
                 <Square className="w-5 h-5 text-gray-400" />
               )}

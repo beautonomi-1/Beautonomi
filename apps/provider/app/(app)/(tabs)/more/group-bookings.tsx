@@ -22,6 +22,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface Participant {
   id: string;
@@ -237,21 +238,21 @@ export default function GroupBookingsScreen() {
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
-      <View className="mb-3 flex-row gap-2">
-        <View className="flex-1">
+      <View style={twStyle("mb-3 flex-row")}>
+        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
           <StatCard title="Total" value={String(stats.total)} icon="people-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
           <StatCard title="Upcoming" value={String(stats.upcoming)} icon="calendar-outline" iconColor="#3b82f6" iconBg="bg-blue-50" compact />
         </View>
-        <View className="flex-1">
+        <View style={twStyle("flex-1")}>
           <StatCard title="Revenue" value={formatCurrency(stats.revenue)} icon="cash-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
         </View>
       </View>
 
       <SearchBar value={search} onChangeText={setSearch} placeholder="Search by ref, service, staff..." />
 
-      <View className="my-3">
+      <View style={twStyle("my-3")}>
         <FilterChipGroup options={STATUS_FILTERS} selected={filter} onSelect={setFilter} />
       </View>
 
@@ -267,53 +268,54 @@ export default function GroupBookingsScreen() {
           showsVerticalScrollIndicator={true}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          contentContainerStyle={{ paddingBottom: 120, gap: 10 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           renderItem={({ item: group }: { item: GroupBooking }) => {
             const ss = statusStyle(group.status);
             return (
               <TouchableOpacity
-                className="rounded-xl border border-gray-100 bg-white p-4"
+                style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
                 onPress={() => setSelectedGroup(group)}
                 activeOpacity={0.7}
               >
-                <View className="flex-row items-start justify-between">
-                  <View className="flex-1">
-                    <View className="flex-row items-center gap-2">
-                      <Text className="text-base font-semibold text-gray-900">
+                <View style={twStyle("flex-row items-start justify-between")}>
+                  <View style={twStyle("flex-1")}>
+                    <View style={twStyle("flex-row items-center")}>
+                      <Text style={[twStyle("text-base font-semibold text-gray-900"), { marginRight: 8 }]}>
                         {group.service_name ?? group.ref_number ?? "Group Session"}
                       </Text>
-                      <View className={`rounded-full px-2 py-0.5 ${ss.bg}`}>
-                        <Text className={`text-[10px] font-medium capitalize ${ss.text}`}>
+                      <View style={twStyle(`rounded-full px-2 py-0.5 ${ss.bg}`)}>
+                        <Text style={twStyle(`text-[10px] font-medium capitalize ${ss.text}`)}>
                           {group.status}
                         </Text>
                       </View>
                     </View>
-                    <Text className="mt-0.5 text-xs text-gray-500">
+                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                       {formatDate(group.scheduled_date)} at {group.scheduled_time?.substring(0, 5)} · {group.duration_minutes}min
                     </Text>
-                    <View className="mt-1.5 flex-row items-center gap-3">
+                    <View style={twStyle("mt-1.5 flex-row items-center")}>
                       {group.team_member_name && (
-                        <View className="flex-row items-center gap-1">
-                          <Ionicons name="person-outline" size={12} color="#6b7280" />
-                          <Text className="text-xs text-gray-500">{group.team_member_name}</Text>
+                        <View style={[twStyle("flex-row items-center"), { marginRight: 12 }]}>
+                          <Ionicons name="person-outline" size={12} color="#6b7280" style={{ marginRight: 4 }} />
+                          <Text style={twStyle("text-xs text-gray-500")}>{group.team_member_name}</Text>
                         </View>
                       )}
-                      <View className="flex-row items-center gap-1">
-                        <Ionicons name="people-outline" size={12} color="#6b7280" />
-                        <Text className="text-xs text-gray-500">
+                      <View style={twStyle("flex-row items-center")}>
+                        <Ionicons name="people-outline" size={12} color="#6b7280" style={{ marginRight: 4 }} />
+                        <Text style={twStyle("text-xs text-gray-500")}>
                           {group.current_participants ?? 0}
                           {group.max_participants ? `/${group.max_participants}` : ""} participants
                         </Text>
                       </View>
                     </View>
                   </View>
-                  <Text className="text-base font-bold text-gray-900">
+                  <Text style={twStyle("text-base font-bold text-gray-900")}>
                     {formatCurrency(group.total_price)}
                   </Text>
                 </View>
 
                 {group.ref_number && (
-                  <Text className="mt-1 text-[10px] text-gray-400">#{group.ref_number}</Text>
+                  <Text style={twStyle("mt-1 text-[10px] text-gray-400")}>#{group.ref_number}</Text>
                 )}
               </TouchableOpacity>
             );
@@ -331,85 +333,85 @@ export default function GroupBookingsScreen() {
       >
         {selectedGroup && (
           <View>
-            <View className="mb-3 flex-row items-center justify-between">
-              <Text className="text-sm text-gray-500">
+            <View style={twStyle("mb-3 flex-row items-center justify-between")}>
+              <Text style={twStyle("text-sm text-gray-500")}>
                 {formatDate(selectedGroup.scheduled_date)} at {selectedGroup.scheduled_time?.substring(0, 5)}
               </Text>
-              <View className={`rounded-full px-3 py-1 ${statusStyle(selectedGroup.status).bg}`}>
-                <Text className={`text-xs font-medium capitalize ${statusStyle(selectedGroup.status).text}`}>
+              <View style={twStyle(`rounded-full px-3 py-1 ${statusStyle(selectedGroup.status).bg}`)}>
+                <Text style={twStyle(`text-xs font-medium capitalize ${statusStyle(selectedGroup.status).text}`)}>
                   {selectedGroup.status}
                 </Text>
               </View>
             </View>
 
-            <View className="mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
-              <View className="flex-row justify-between mb-1">
-                <Text className="text-sm text-gray-500">Duration</Text>
-                <Text className="text-sm text-gray-700">{selectedGroup.duration_minutes} min</Text>
+            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3")}>
+              <View style={twStyle("flex-row justify-between mb-1")}>
+                <Text style={twStyle("text-sm text-gray-500")}>Duration</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>{selectedGroup.duration_minutes} min</Text>
               </View>
               {selectedGroup.team_member_name && (
-                <View className="flex-row justify-between mb-1">
-                  <Text className="text-sm text-gray-500">Staff</Text>
-                  <Text className="text-sm text-gray-700">{selectedGroup.team_member_name}</Text>
+                <View style={twStyle("flex-row justify-between mb-1")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Staff</Text>
+                  <Text style={twStyle("text-sm text-gray-700")}>{selectedGroup.team_member_name}</Text>
                 </View>
               )}
               {selectedGroup.price_per_person && (
-                <View className="flex-row justify-between mb-1">
-                  <Text className="text-sm text-gray-500">Per Person</Text>
-                  <Text className="text-sm text-gray-700">{formatCurrency(selectedGroup.price_per_person)}</Text>
+                <View style={twStyle("flex-row justify-between mb-1")}>
+                  <Text style={twStyle("text-sm text-gray-500")}>Per Person</Text>
+                  <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(selectedGroup.price_per_person)}</Text>
                 </View>
               )}
-              <View className="flex-row justify-between mb-1">
-                <Text className="text-sm text-gray-500">Participants</Text>
-                <Text className="text-sm text-gray-700">
+              <View style={twStyle("flex-row justify-between mb-1")}>
+                <Text style={twStyle("text-sm text-gray-500")}>Participants</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>
                   {selectedGroup.current_participants ?? 0}
                   {selectedGroup.max_participants ? ` / ${selectedGroup.max_participants}` : ""}
                 </Text>
               </View>
-              <View className="mt-1 border-t border-gray-200 pt-2 flex-row justify-between">
-                <Text className="text-base font-bold text-gray-900">Total</Text>
-                <Text className="text-base font-bold text-gray-900">{formatCurrency(selectedGroup.total_price)}</Text>
+              <View style={twStyle("mt-1 border-t border-gray-200 pt-2 flex-row justify-between")}>
+                <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
+                <Text style={twStyle("text-base font-bold text-gray-900")}>{formatCurrency(selectedGroup.total_price)}</Text>
               </View>
             </View>
 
             {selectedGroup.notes && (
-              <View className="mb-3 rounded-lg bg-gray-50 p-3">
-                <Text className="text-xs text-gray-600">{selectedGroup.notes}</Text>
+              <View style={twStyle("mb-3 rounded-lg bg-gray-50 p-3")}>
+                <Text style={twStyle("text-xs text-gray-600")}>{selectedGroup.notes}</Text>
               </View>
             )}
 
             {/* Participants */}
-            <View className="mb-3">
-              <View className="flex-row items-center justify-between mb-2">
-                <Text className="text-xs font-semibold uppercase text-gray-400">Participants</Text>
+            <View style={twStyle("mb-3")}>
+              <View style={twStyle("flex-row items-center justify-between mb-2")}>
+                <Text style={twStyle("text-xs font-semibold uppercase text-gray-400")}>Participants</Text>
                 {selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled" && (
                   <TouchableOpacity
-                    className="flex-row items-center gap-1"
+                    style={[twStyle("flex-row items-center"), { marginRight: 4 }]}
                     onPress={openAddParticipant}
                   >
-                    <Ionicons name="add-circle-outline" size={16} color="#6366f1" />
-                    <Text className="text-xs font-medium text-indigo-600">Add</Text>
+                    <Ionicons name="add-circle-outline" size={16} color="#6366f1" style={{ marginRight: 4 }} />
+                    <Text style={twStyle("text-xs font-medium text-indigo-600")}>Add</Text>
                   </TouchableOpacity>
                 )}
               </View>
 
               {(selectedGroup.participants ?? []).length === 0 ? (
-                <View className="rounded-lg bg-gray-50 p-3">
-                  <Text className="text-center text-xs text-gray-400">No participants yet</Text>
+                <View style={twStyle("rounded-lg bg-gray-50 p-3")}>
+                  <Text style={twStyle("text-center text-xs text-gray-400")}>No participants yet</Text>
                 </View>
               ) : (
                 (selectedGroup.participants ?? []).map((p) => (
-                  <View key={p.id} className="mb-1.5 flex-row items-center rounded-lg bg-gray-50 p-3">
+                  <View key={p.id} style={twStyle("mb-1.5 flex-row items-center rounded-lg bg-gray-50 p-3")}>
                     <Avatar name={p.customer_name} size="sm" />
-                    <View className="ml-2 flex-1">
-                      <Text className="text-sm font-medium text-gray-900">{p.customer_name}</Text>
+                    <View style={twStyle("ml-2 flex-1")}>
+                      <Text style={twStyle("text-sm font-medium text-gray-900")}>{p.customer_name}</Text>
                       {p.customer_phone && (
-                        <Text className="text-xs text-gray-400">{p.customer_phone}</Text>
+                        <Text style={twStyle("text-xs text-gray-400")}>{p.customer_phone}</Text>
                       )}
                     </View>
-                    <View className="flex-row items-center gap-2">
-                      <View className={`rounded-full px-2 py-0.5 ${p.paid ? "bg-green-50" : "bg-amber-50"}`}>
-                        <Text className={`text-[10px] font-medium ${p.paid ? "text-green-700" : "text-amber-700"}`}>
+                    <View style={twStyle("flex-row items-center")}>
+                      <View style={[twStyle(`rounded-full px-2 py-0.5 ${p.paid ? "bg-green-50" : "bg-amber-50"}`), { marginRight: 8 }]}>
+                        <Text style={twStyle(`text-[10px] font-medium ${p.paid ? "text-green-700" : "text-amber-700"}`)}>
                           {p.paid ? "Paid" : "Unpaid"}
                         </Text>
                       </View>
@@ -426,34 +428,34 @@ export default function GroupBookingsScreen() {
 
             {/* Actions */}
             {selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled" && (
-              <View className="flex-row gap-2">
+              <View style={twStyle("flex-row")}>
                 <TouchableOpacity
-                  className="flex-1 items-center rounded-lg bg-indigo-50 py-2.5"
+                  style={[twStyle("flex-1 items-center rounded-lg bg-indigo-50 py-2.5"), { marginRight: 8 }]}
                   onPress={() => openEdit(selectedGroup)}
                 >
-                  <Text className="text-sm font-medium text-indigo-700">Edit</Text>
+                  <Text style={twStyle("text-sm font-medium text-indigo-700")}>Edit</Text>
                 </TouchableOpacity>
                 {selectedGroup.status === "confirmed" && (
                   <TouchableOpacity
-                    className="flex-1 items-center rounded-lg bg-green-50 py-2.5"
+                    style={[twStyle("flex-1 items-center rounded-lg bg-green-50 py-2.5"), { marginRight: 8 }]}
                     onPress={() => handleStatusChange(selectedGroup, "started")}
                   >
-                    <Text className="text-sm font-medium text-green-700">Start</Text>
+                    <Text style={twStyle("text-sm font-medium text-green-700")}>Start</Text>
                   </TouchableOpacity>
                 )}
                 {selectedGroup.status === "started" && (
                   <TouchableOpacity
-                    className="flex-1 items-center rounded-lg bg-green-50 py-2.5"
+                    style={[twStyle("flex-1 items-center rounded-lg bg-green-50 py-2.5"), { marginRight: 8 }]}
                     onPress={() => handleStatusChange(selectedGroup, "completed")}
                   >
-                    <Text className="text-sm font-medium text-green-700">Complete</Text>
+                    <Text style={twStyle("text-sm font-medium text-green-700")}>Complete</Text>
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
-                  className="flex-1 items-center rounded-lg bg-red-50 py-2.5"
+                  style={[twStyle("flex-1 items-center rounded-lg bg-red-50 py-2.5"), { marginRight: 8 }]}
                   onPress={() => handleCancel(selectedGroup)}
                 >
-                  <Text className="text-sm font-medium text-red-700">Cancel</Text>
+                  <Text style={twStyle("text-sm font-medium text-red-700")}>Cancel</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -464,21 +466,21 @@ export default function GroupBookingsScreen() {
       {/* Edit form */}
       <BottomSheet visible={showEdit} onClose={() => setShowEdit(false)} title="Edit Group Booking">
         <View>
-          <View className="mb-3 flex-row gap-3">
-            <View className="flex-1">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Date</Text>
+          <View style={twStyle("mb-3 flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={editForm.date}
                 onChangeText={(t) => setEditForm((p) => ({ ...p, date: t }))}
                 placeholder="YYYY-MM-DD"
                 placeholderTextColor="#9ca3af"
               />
             </View>
-            <View className="flex-1">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Time</Text>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Time</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={editForm.time}
                 onChangeText={(t) => setEditForm((p) => ({ ...p, time: t }))}
                 placeholder="HH:MM"
@@ -486,11 +488,11 @@ export default function GroupBookingsScreen() {
               />
             </View>
           </View>
-          <View className="mb-3 flex-row gap-3">
-            <View className="flex-1">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Duration (min)</Text>
+          <View style={twStyle("mb-3 flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Duration (min)</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={editForm.duration}
                 onChangeText={(t) => setEditForm((p) => ({ ...p, duration: t }))}
                 keyboardType="number-pad"
@@ -498,10 +500,10 @@ export default function GroupBookingsScreen() {
                 placeholderTextColor="#9ca3af"
               />
             </View>
-            <View className="flex-1">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Max Participants</Text>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Max Participants</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={editForm.maxParticipants}
                 onChangeText={(t) => setEditForm((p) => ({ ...p, maxParticipants: t }))}
                 keyboardType="number-pad"
@@ -510,9 +512,9 @@ export default function GroupBookingsScreen() {
               />
             </View>
           </View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">Notes</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes</Text>
           <TextInput
-            className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={editForm.notes}
             onChangeText={(t) => setEditForm((p) => ({ ...p, notes: t }))}
             placeholder="Optional notes..."
@@ -526,26 +528,26 @@ export default function GroupBookingsScreen() {
       {/* Add participant */}
       <BottomSheet visible={showAddParticipant} onClose={() => setShowAddParticipant(false)} title="Add Participant">
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">Name *</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Name *</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={participantForm.name}
             onChangeText={(t) => setParticipantForm((p) => ({ ...p, name: t }))}
             placeholder="Client name"
             placeholderTextColor="#9ca3af"
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">Phone</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Phone</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={participantForm.phone}
             onChangeText={(t) => setParticipantForm((p) => ({ ...p, phone: t }))}
             placeholder="Optional"
             placeholderTextColor="#9ca3af"
             keyboardType="phone-pad"
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">Email</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Email</Text>
           <TextInput
-            className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={participantForm.email}
             onChangeText={(t) => setParticipantForm((p) => ({ ...p, email: t }))}
             placeholder="Optional"

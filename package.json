@@ -7,7 +7,10 @@
       "react": "19.1.0",
       "react-dom": "19.1.0",
       "react-native": "0.81.5",
-      "@react-native-async-storage/async-storage": "2.2.0"
+      "@react-native-async-storage/async-storage": "2.2.0",
+      "@amplitude/analytics-react-native>react": "19.1.0",
+      "@amplitude/analytics-react-native>react-native": "0.81.5",
+      "@amplitude/plugin-engagement-react-native>react": "19.1.0"
     }
   },
   "scripts": {
@@ -16,6 +19,9 @@
     "dev:backend": "pnpm exec turbo run dev --filter=web",
     "dev:customer": "pnpm --filter customer dev",
     "dev:provider": "pnpm --filter provider dev",
+    "dev:check:customer": "node tooling/expo-dev/check-customer-dev.js",
+    "dev:check:provider": "node tooling/expo-dev/check-provider-dev.js",
+    "dev:check": "node tooling/expo-dev/check-customer-dev.js && node tooling/expo-dev/check-provider-dev.js",
     "build": "pnpm exec turbo run build",
     "lint": "pnpm exec turbo run lint",
     "typecheck": "pnpm exec turbo run typecheck",
@@ -28,11 +34,16 @@
     "build:web": "pnpm exec turbo run build --filter=web",
     "build:packages": "pnpm exec turbo run build --filter='./packages/*'",
     "prepare:production": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build",
+    "release:check": "pnpm run typecheck && pnpm run lint && pnpm run test",
     "parity:check": "node tooling/parity/check-parity.mjs",
     "audit:routes": "node tooling/audit/scan-routes.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md}\"",
     "setup:env": "node scripts/setup-env.js",
-    "setup": "pnpm install && node scripts/setup-env.js"
+    "setup": "pnpm install && node scripts/setup-env.js",
+    "build:customer:ios": "cd apps/customer && eas build --profile production --platform ios",
+    "build:customer:android": "cd apps/customer && eas build --profile production --platform android",
+    "build:provider:ios": "cd apps/provider && eas build --profile production --platform ios",
+    "build:provider:android": "cd apps/provider && eas build --profile production --platform android"
   },
   "devDependencies": {
     "turbo": "^2.8.8"

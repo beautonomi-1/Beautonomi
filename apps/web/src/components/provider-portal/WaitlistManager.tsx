@@ -154,7 +154,7 @@ function WaitlistCard({
       <div className="flex items-start gap-3">
         <Avatar className="w-10 h-10 flex-shrink-0">
           <AvatarImage src={entry.client_avatar} />
-          <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077] font-medium">
+          <AvatarFallback className="bg-primary/10 text-primary font-medium">
             {entry.client_name.charAt(0)}
           </AvatarFallback>
         </Avatar>
@@ -247,7 +247,7 @@ function WaitlistCard({
               </Button>
               <Button
                 size="sm"
-                className="flex-1 bg-[#FF0077] hover:bg-[#D60565]"
+                className="flex-1 bg-primary hover:bg-primary-hover"
                 onClick={() => onBook(entry)}
               >
                 <CalendarPlus className="w-4 h-4 mr-1" />
@@ -484,7 +484,7 @@ export function AddToWaitlistDialog({
             <Button
               onClick={handleSubmit}
               disabled={!formData.client_name || !formData.service_id || isSubmitting}
-              className="flex-1 h-14 text-base font-semibold bg-[#FF0077] hover:bg-[#D60565] text-white active:scale-95 transition-transform"
+              className="flex-1 h-14 text-base font-semibold bg-primary hover:bg-primary-hover text-white active:scale-95 transition-transform"
             >
               {isSubmitting ? "Adding..." : "Add to Waitlist"}
             </Button>
@@ -638,7 +638,7 @@ export function WaitlistManager({
           </Select>
           <Button
             onClick={() => setIsAddDialogOpen(true)}
-            className="bg-[#FF0077] hover:bg-[#D60565]"
+            className="bg-primary hover:bg-primary-hover"
           >
             <Plus className="w-4 h-4 mr-2" />
             Add
@@ -660,7 +660,7 @@ export function WaitlistManager({
           </p>
           <Button
             onClick={() => setIsAddDialogOpen(true)}
-            className="bg-[#FF0077] hover:bg-[#D60565]"
+            className="bg-primary hover:bg-primary-hover"
           >
             <Plus className="w-4 h-4 mr-2" />
             Add to Waitlist

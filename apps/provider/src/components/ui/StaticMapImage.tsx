@@ -5,7 +5,9 @@
 import { useEffect, useState } from "react";
 import { View, ActivityIndicator, Text } from "react-native";
 import { Image } from "expo-image";
+import { Colors } from "@/constants/colors";
 import { getMapboxToken } from "@/lib/third-party-config";
+import { twStyle } from "@/lib/twStyle";
 
 interface StaticMapImageProps {
   latitude: number;
@@ -59,17 +61,16 @@ export function StaticMapImage({
   if (loading) {
     return (
       <View
-        className={className}
-        style={{
+        style={[twStyle(className ?? ""), {
           width,
           height,
           borderRadius,
           justifyContent: "center",
           alignItems: "center",
           backgroundColor: "#f3f4f6",
-        }}
+        }]}
       >
-        <ActivityIndicator size="small" color="#FF0077" />
+        <ActivityIndicator size="small" color={Colors.primary} />
       </View>
     );
   }
@@ -77,17 +78,16 @@ export function StaticMapImage({
   if (!uri) {
     return (
       <View
-        className={className}
-        style={{
+        style={[twStyle(className ?? ""), {
           width,
           height,
           borderRadius,
           backgroundColor: "#f3f4f6",
           justifyContent: "center",
           alignItems: "center",
-        }}
+        }]}
       >
-        <Text className="text-xs text-gray-400">Map unavailable</Text>
+        <Text style={twStyle("text-xs text-gray-400")}>Map unavailable</Text>
       </View>
     );
   }

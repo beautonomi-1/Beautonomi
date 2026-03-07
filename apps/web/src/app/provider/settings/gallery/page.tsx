@@ -549,7 +549,7 @@ export default function GalleryManagementPage() {
           />
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#FF0077] mx-auto mb-4"></div>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
               <p className="text-gray-600">Loading...</p>
             </div>
           </div>
@@ -657,7 +657,7 @@ export default function GalleryManagementPage() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
               {thumbnailUrl ? (
                 <div 
-                  className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-lg overflow-hidden border-2 border-[#FF0077] cursor-pointer flex-shrink-0"
+                  className="relative w-24 h-24 sm:w-32 sm:h-32 rounded-lg overflow-hidden border-2 border-primary cursor-pointer flex-shrink-0"
                   onClick={() => {
                     const index = gallery.findIndex(url => url === thumbnailUrl);
                     if (index !== -1) setSelectedImageIndex(index);
@@ -674,7 +674,7 @@ export default function GalleryManagementPage() {
                       e.currentTarget.src = '/images/placeholder-image.jpg';
                     }}
                   />
-                  <div className="absolute top-1 right-1 sm:top-2 sm:right-2 bg-[#FF0077] text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1">
+                  <div className="absolute top-1 right-1 sm:top-2 sm:right-2 bg-primary text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1">
                     <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-current" />
                     <span className="hidden sm:inline">Thumbnail</span>
                   </div>
@@ -741,7 +741,7 @@ export default function GalleryManagementPage() {
                 <Button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isUploading || isSaving}
-                  className="w-full sm:w-auto bg-[#FF0077] hover:bg-[#D60565] text-white disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+                  className="w-full sm:w-auto bg-primary hover:bg-primary-hover text-white disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
                 >
                   <Upload className="w-4 h-4 mr-2" />
                   {isUploading ? "Uploading..." : "Upload Images"}
@@ -774,7 +774,7 @@ export default function GalleryManagementPage() {
                 <Button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isUploading || isSaving}
-                  className="bg-[#FF0077] hover:bg-[#D60565] text-white disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+                  className="bg-primary hover:bg-primary-hover text-white disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
                 >
                   <Upload className="w-4 h-4 mr-2" />
                   {isUploading ? "Uploading..." : "Upload Photos"}
@@ -786,7 +786,7 @@ export default function GalleryManagementPage() {
                   {gallery.map((url, index) => (
                     <div
                       key={index}
-                      className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200 hover:border-[#FF0077] transition-all cursor-pointer"
+                      className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200 hover:border-primary transition-all cursor-pointer"
                       onClick={() => setSelectedImageIndex(index)}
                     >
                       <img
@@ -826,7 +826,7 @@ export default function GalleryManagementPage() {
                             }}
                             className={`opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-md font-medium h-7 sm:h-8 px-2 sm:px-3 text-xs sm:text-sm touch-manipulation ${
                               thumbnailUrl === url
-                                ? 'bg-[#FF0077] text-white border-0 cursor-not-allowed'
+                                ? 'bg-primary text-white border-0 cursor-not-allowed'
                                 : 'bg-white/90 hover:bg-white text-gray-900 border-0'
                             }`}
                             disabled={thumbnailUrl === url}
@@ -868,7 +868,7 @@ export default function GalleryManagementPage() {
                       
                       {/* Listing image & Profile circle badges */}
                       {thumbnailUrl === url && (
-                        <div className="absolute top-1 right-1 bg-[#FF0077] text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1 shadow-md">
+                        <div className="absolute top-1 right-1 bg-primary text-white text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1 rounded flex items-center gap-1 shadow-md">
                           <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-current" />
                           <span className="hidden sm:inline">Listing</span>
                         </div>
@@ -936,7 +936,7 @@ export default function GalleryManagementPage() {
                             }}
                             className={`min-h-[44px] sm:min-h-0 ${
                               thumbnailUrl === gallery[selectedImageIndex]
-                                ? 'bg-[#FF0077] text-white'
+                                ? 'bg-primary text-white'
                                 : 'bg-white/90 hover:bg-white text-gray-900'
                             } border-0 shadow-md touch-manipulation w-full sm:w-auto`}
                             disabled={thumbnailUrl === gallery[selectedImageIndex]}
@@ -1054,7 +1054,7 @@ export default function GalleryManagementPage() {
                           type="button"
                           onClick={handleSaveEditDetails}
                           disabled={isSavingDetails}
-                          className="bg-[#FF0077] hover:bg-[#D60565] text-white"
+                          className="bg-primary hover:bg-primary-hover text-white"
                         >
                           {isSavingDetails ? (
                             <>

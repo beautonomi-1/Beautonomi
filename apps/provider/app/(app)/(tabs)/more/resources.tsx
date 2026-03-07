@@ -21,6 +21,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
+import { Colors } from "@/constants/colors";
 
 interface ResourceGroup {
   id: string;
@@ -246,34 +247,34 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
     <>
       {embedded && (
         <TouchableOpacity
-          className="mb-3 flex-row items-center justify-center rounded-xl bg-gray-900 py-3"
+          style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: Colors.gray[900], paddingVertical: 12 }}
           onPress={tab === "resources" ? openCreate : openCreateGroup}
         >
           <Ionicons name="add" size={20} color="#fff" />
-          <Text className="ml-2 font-semibold text-white">{tab === "resources" ? "Add resource" : "Add group"}</Text>
+          <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.white }}>{tab === "resources" ? "Add resource" : "Add group"}</Text>
         </TouchableOpacity>
       )}
-      <View className="min-h-0 flex-1">
-        <View className="mb-4 flex-row gap-3">
-          <View className="flex-1">
-            <StatCard title="Total" value={String(stats.total)} icon="construct-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
+      <View style={{ minHeight: 0, flex: 1 }}>
+        <View style={{ marginBottom: 16, flexDirection: "row" }}>
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <StatCard title="Total" value={String(stats.total)} icon="construct-outline" iconColor="#6366f1" iconBg="#eef2ff" compact />
           </View>
-          <View className="flex-1">
-            <StatCard title="Active" value={String(stats.active)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="bg-green-50" compact />
+          <View style={{ flex: 1, marginRight: 12 }}>
+            <StatCard title="Active" value={String(stats.active)} icon="checkmark-circle-outline" iconColor="#22c55e" iconBg="#f0fdf4" compact />
           </View>
-          <View className="flex-1">
-            <StatCard title="Groups" value={String(stats.groupCount)} icon="layers-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+          <View style={{ flex: 1 }}>
+            <StatCard title="Groups" value={String(stats.groupCount)} icon="layers-outline" iconColor="#f59e0b" iconBg="#fffbeb" compact />
           </View>
         </View>
 
-        <View className="mb-3">
+        <View style={{ marginBottom: 12 }}>
           <FilterChipGroup options={TAB_OPTIONS} selected={tab} onSelect={setTab} />
         </View>
 
         {tab === "resources" ? (
           <>
             <SearchBar value={search} onChangeText={setSearch} placeholder="Search resources..." />
-            <View className="my-3">
+            <View style={{ marginVertical: 12 }}>
               <FilterChipGroup
                 options={[
                   { label: "All", value: "all" },
@@ -296,51 +297,50 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
                 showsVerticalScrollIndicator={false}
                 refreshing={refreshing}
                 onRefresh={handleRefresh}
-                contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
-              renderItem={({ item: res }: { item: Resource }) => {
+                contentContainerStyle={{ paddingBottom: 120 }}
+                ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+                renderItem={({ item: res }: { item: Resource }) => {
                 const ti = typeInfo(res.resource_type ?? null);
                 return (
                   <TouchableOpacity
-                    className="rounded-xl border border-gray-100 bg-white p-4"
+                    style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
                     onPress={() => openEdit(res)}
                     activeOpacity={0.7}
                   >
-                    <View className="flex-row items-center">
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
                       <View
-                        className="h-10 w-10 items-center justify-center rounded-xl"
-                        style={{ backgroundColor: (res.calendar_color ?? ti.color) + "15" }}
+                        style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: (res.calendar_color ?? ti.color) + "15" }}
                       >
                         <Ionicons name={ti.icon} size={18} color={res.calendar_color ?? ti.color} />
                       </View>
-                      <View className="ml-3 flex-1">
-                        <View className="flex-row items-center gap-2">
-                          <Text className="text-sm font-semibold text-gray-900">{res.name}</Text>
-                          <View className={`rounded-full px-2 py-0.5 ${res.is_active ? "bg-green-50" : "bg-gray-100"}`}>
-                            <Text className={`text-[10px] font-medium ${res.is_active ? "text-green-700" : "text-gray-500"}`}>
+                      <View style={{ marginLeft: 12, flex: 1 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginRight: 8 }}>{res.name}</Text>
+                          <View style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: res.is_active ? "#f0fdf4" : Colors.gray[100] }}>
+                            <Text style={{ fontSize: 10, fontWeight: "500", color: res.is_active ? "#15803d" : Colors.gray[500] }}>
                               {res.is_active ? "Active" : "Inactive"}
                             </Text>
                           </View>
                         </View>
-                        <View className="mt-1 flex-row items-center gap-2">
-                          <View className="rounded-full bg-gray-100 px-2 py-0.5">
-                            <Text className="text-[10px] text-gray-600">{ti.label}</Text>
+                        <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center" }}>
+                          <View style={{ borderRadius: 9999, backgroundColor: Colors.gray[100], paddingHorizontal: 8, paddingVertical: 2, marginRight: 8 }}>
+                            <Text style={{ fontSize: 10, color: Colors.gray[600] }}>{ti.label}</Text>
                           </View>
                           {res.capacity && (
-                            <Text className="text-xs text-gray-400">Cap: {res.capacity}</Text>
+                            <Text style={{ fontSize: 12, color: Colors.gray[400], marginRight: 8 }}>Cap: {res.capacity}</Text>
                           )}
                           {res.group_name && (
                             <View
-                              className="rounded-full px-2 py-0.5"
-                              style={{ backgroundColor: (res.group_color ?? "#6366f1") + "15" }}
+                              style={{ borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: (res.group_color ?? "#6366f1") + "15" }}
                             >
-                              <Text className="text-[10px]" style={{ color: res.group_color ?? "#6366f1" }}>
+                              <Text style={{ fontSize: 10, color: res.group_color ?? "#6366f1" }}>
                                 {res.group_name}
                               </Text>
                             </View>
                           )}
                         </View>
                         {res.description && (
-                          <Text className="mt-0.5 text-xs text-gray-400" numberOfLines={1}>
+                          <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[400] }} numberOfLines={1}>
                             {res.description}
                           </Text>
                         )}
@@ -369,23 +369,23 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
               showsVerticalScrollIndicator={false}
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              contentContainerStyle={{ paddingBottom: 120, gap: 8 }}
-              renderItem={({ item: group }: { item: ResourceGroup }) => (
+              contentContainerStyle={{ paddingBottom: 120 }}
+              ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+                renderItem={({ item: group }: { item: ResourceGroup }) => (
                 <TouchableOpacity
-                  className="flex-row items-center rounded-xl border border-gray-100 bg-white p-4"
+                  style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}
                   onPress={() => openEditGroup(group)}
                   activeOpacity={0.7}
                 >
                   <View
-                    className="h-10 w-10 items-center justify-center rounded-xl"
-                    style={{ backgroundColor: group.color + "20" }}
+                    style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: group.color + "20" }}
                   >
-                    <View className="h-5 w-5 rounded-full" style={{ backgroundColor: group.color }} />
+                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: group.color }} />
                   </View>
-                  <View className="ml-3 flex-1">
-                    <Text className="text-sm font-semibold text-gray-900">{group.name}</Text>
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{group.name}</Text>
                     {group.resource_count != null && (
-                      <Text className="text-xs text-gray-500">{group.resource_count} resources</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{group.resource_count} resources</Text>
                     )}
                   </View>
                   <TouchableOpacity onPress={() => handleDeleteGroup(group)} hitSlop={8}>
@@ -402,47 +402,54 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
       {/* Resource form */}
       <BottomSheet visible={showForm} onClose={() => setShowForm(false)} title={editing ? "Edit Resource" : "New Resource"}>
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">Name *</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Name *</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.name}
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
             placeholder="e.g. Treatment Room 1"
             placeholderTextColor="#9ca3af"
           />
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Type</Text>
-          <View className="mb-3 flex-row flex-wrap gap-2">
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Type</Text>
+          <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap" }}>
             {RESOURCE_TYPES.map((t) => (
               <TouchableOpacity
                 key={t.value}
-                className={`flex-row items-center gap-1.5 rounded-lg px-3 py-2 ${
-                  form.resource_type === t.value ? "bg-indigo-600" : "bg-gray-100"
-                }`}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  borderRadius: 8,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  marginRight: 8,
+                  marginBottom: 8,
+                  backgroundColor: form.resource_type === t.value ? "#4f46e5" : Colors.gray[100],
+                }}
                 onPress={() => setForm((p) => ({ ...p, resource_type: t.value }))}
               >
-                <Ionicons name={t.icon} size={14} color={form.resource_type === t.value ? "#fff" : t.color} />
-                <Text className={`text-xs font-medium ${form.resource_type === t.value ? "text-white" : "text-gray-700"}`}>
+                <Ionicons name={t.icon} size={14} color={form.resource_type === t.value ? "#fff" : t.color} style={{ marginRight: 6 }} />
+                <Text style={{ fontSize: 12, fontWeight: "500", color: form.resource_type === t.value ? Colors.white : Colors.gray[700] }}>
                   {t.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Description</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Description</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={form.description}
             onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
             placeholder="Optional description"
             placeholderTextColor="#9ca3af"
           />
 
-          <View className="mb-3 flex-row gap-3">
-            <View className="flex-1">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Capacity</Text>
+          <View style={{ marginBottom: 12, flexDirection: "row" }}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Capacity</Text>
               <TextInput
-                className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={form.capacity}
                 onChangeText={(t) => setForm((p) => ({ ...p, capacity: t }))}
                 placeholder="1"
@@ -450,22 +457,22 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
                 keyboardType="number-pad"
               />
             </View>
-            <View className="flex-1">
-              <Text className="mb-1 text-sm font-medium text-gray-700">Group</Text>
-              <View className="flex-row flex-wrap gap-1.5">
+            <View style={{ flex: 1 }}>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Group</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
                 <TouchableOpacity
-                  className={`rounded-lg px-3 py-2.5 ${!form.group_id ? "bg-indigo-600" : "bg-gray-100"}`}
+                  style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginRight: 6, marginBottom: 6, backgroundColor: !form.group_id ? "#4f46e5" : Colors.gray[100] }}
                   onPress={() => setForm((p) => ({ ...p, group_id: "" }))}
                 >
-                  <Text className={`text-xs font-medium ${!form.group_id ? "text-white" : "text-gray-600"}`}>None</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "500", color: !form.group_id ? Colors.white : Colors.gray[600] }}>None</Text>
                 </TouchableOpacity>
                 {(groups ?? []).map((g) => (
                   <TouchableOpacity
                     key={g.id}
-                    className={`rounded-lg px-3 py-2.5 ${form.group_id === g.id ? "bg-indigo-600" : "bg-gray-100"}`}
+                    style={{ borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, marginRight: 6, marginBottom: 6, backgroundColor: form.group_id === g.id ? "#4f46e5" : Colors.gray[100] }}
                     onPress={() => setForm((p) => ({ ...p, group_id: g.id }))}
                   >
-                    <Text className={`text-xs font-medium ${form.group_id === g.id ? "text-white" : "text-gray-600"}`}>
+                    <Text style={{ fontSize: 12, fontWeight: "500", color: form.group_id === g.id ? Colors.white : Colors.gray[600] }}>
                       {g.name}
                     </Text>
                   </TouchableOpacity>
@@ -474,15 +481,23 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
             </View>
           </View>
 
-          <Text className="mb-1 text-sm font-medium text-gray-700">Calendar Color</Text>
-          <View className="mb-3 flex-row gap-2">
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Calendar Color</Text>
+          <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap" }}>
             {COLOR_PALETTE.map((c) => (
               <TouchableOpacity
                 key={c}
-                className={`h-8 w-8 items-center justify-center rounded-full ${
-                  form.calendar_color === c ? "border-2 border-gray-900" : ""
-                }`}
-                style={{ backgroundColor: c }}
+                style={{
+                  width: 32,
+                  height: 32,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 16,
+                  borderWidth: form.calendar_color === c ? 2 : 0,
+                  borderColor: Colors.gray[900],
+                  backgroundColor: c,
+                  marginRight: 8,
+                  marginBottom: 8,
+                }}
                 onPress={() => setForm((p) => ({ ...p, calendar_color: c }))}
               >
                 {form.calendar_color === c && <Ionicons name="checkmark" size={14} color="#fff" />}
@@ -490,8 +505,8 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
             ))}
           </View>
 
-          <View className="mb-4 flex-row items-center justify-between">
-            <Text className="text-sm font-medium text-gray-700">Active</Text>
+          <View style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Active</Text>
             <Switch
               value={form.is_active}
               onValueChange={(v) => setForm((p) => ({ ...p, is_active: v }))}
@@ -507,23 +522,31 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
       {/* Group form */}
       <BottomSheet visible={showGroupForm} onClose={() => setShowGroupForm(false)} title={editingGroup ? "Edit Group" : "New Group"}>
         <View>
-          <Text className="mb-1 text-sm font-medium text-gray-700">Group Name *</Text>
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Group Name *</Text>
           <TextInput
-            className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+            style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             value={groupForm.name}
             onChangeText={(t) => setGroupForm((p) => ({ ...p, name: t }))}
             placeholder="e.g. Treatment Rooms"
             placeholderTextColor="#9ca3af"
           />
-          <Text className="mb-1 text-sm font-medium text-gray-700">Color</Text>
-          <View className="mb-4 flex-row gap-2">
+          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Color</Text>
+          <View style={{ marginBottom: 16, flexDirection: "row", flexWrap: "wrap" }}>
             {COLOR_PALETTE.map((c) => (
               <TouchableOpacity
                 key={c}
-                className={`h-8 w-8 items-center justify-center rounded-full ${
-                  groupForm.color === c ? "border-2 border-gray-900" : ""
-                }`}
-                style={{ backgroundColor: c }}
+                style={{
+                  width: 32,
+                  height: 32,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 16,
+                  borderWidth: groupForm.color === c ? 2 : 0,
+                  borderColor: Colors.gray[900],
+                  backgroundColor: c,
+                  marginRight: 8,
+                  marginBottom: 8,
+                }}
                 onPress={() => setGroupForm((p) => ({ ...p, color: c }))}
               >
                 {groupForm.color === c && <Ionicons name="checkmark" size={14} color="#fff" />}
@@ -537,7 +560,7 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
   );
   if (embedded) {
     return (
-      <View className="flex-1 min-h-0">
+      <View style={{ flex: 1, minHeight: 0 }}>
         {hasError ? (
           <ErrorState message={errorMessage} onRetry={handleRefresh} />
         ) : (
@@ -554,7 +577,7 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
         subtitle={`${stats.total} resources · ${stats.groupCount} groups`}
         rightAction={
           <TouchableOpacity
-            className="h-10 w-10 items-center justify-center rounded-full bg-gray-900"
+            style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: Colors.gray[900] }}
             onPress={tab === "resources" ? openCreate : openCreateGroup}
           >
             <Ionicons name="add" size={20} color="#fff" />

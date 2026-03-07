@@ -7,11 +7,13 @@ import {
   RefreshControl,
   Linking,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { api } from "@/lib/api-client";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
-import { SCREEN_PADDING, STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,36 +49,22 @@ function formatTaxStatus(status: string | null): string {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <View className="flex-row justify-between items-center py-3 border-b border-gray-100">
-      <Text className="text-sm text-gray-500">{label}</Text>
-      <Text className="text-sm font-medium text-gray-900">{value}</Text>
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
+      <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{label}</Text>
+      <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{value}</Text>
     </View>
   );
 }
 
-function DocumentCard({
-  doc,
-  onDownload,
-}: {
-  doc: TaxDocument;
-  onDownload: () => void;
-}) {
+function DocumentCard({ doc, onDownload }: { doc: TaxDocument; onDownload: () => void }) {
   return (
-    <View className="bg-white rounded-xl p-4 mb-3 border border-gray-100 flex-row items-center justify-between">
-      <View className="flex-1 mr-3">
-        <Text className="font-medium text-gray-900">
-          {doc.label ?? doc.type ?? "Tax Document"}
-        </Text>
-        <Text className="text-sm text-gray-500 mt-0.5">
-          {doc.year}
-        </Text>
+    <View style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.gray[100], flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+      <View style={{ flex: 1, marginRight: 12 }}>
+        <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{doc.label ?? doc.type ?? "Tax Document"}</Text>
+        <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }}>{doc.year}</Text>
       </View>
-      <TouchableOpacity
-        onPress={onDownload}
-        activeOpacity={0.7}
-        className="bg-primary px-4 py-2 rounded-lg"
-      >
-        <Text className="text-white text-sm font-semibold">Download</Text>
+      <TouchableOpacity onPress={onDownload} activeOpacity={0.7} style={{ backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 }}>
+        <Text style={{ color: Colors.white, fontSize: 14, fontWeight: "600" }}>Download</Text>
       </TouchableOpacity>
     </View>
   );
@@ -88,6 +76,8 @@ function DocumentCard({
 
 export default function TaxesScreen() {
   useScreenTracking("Taxes");
+  const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
 
   const [taxInfo, setTaxInfo] = useState<TaxInfo | null>(null);
   const [docs, setDocs] = useState<TaxDocument[]>([]);
@@ -188,26 +178,21 @@ export default function TaxesScreen() {
     });
   }, []);
 
-  // Loading state
   if (loading) {
     return (
-      <View className="flex-1 bg-white items-center justify-center">
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text className="text-gray-600 mt-4">Loading…</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 16 }}>Loading…</Text>
       </View>
     );
   }
 
-  // Error state
   if (error && !taxInfo && docs.length === 0) {
     return (
-      <View className="flex-1 bg-white items-center justify-center p-6">
-        <Text className="text-center text-gray-700 mb-4">{error}</Text>
-        <TouchableOpacity
-          onPress={() => load()}
-          className="bg-primary px-6 py-3 rounded-xl"
-        >
-          <Text className="text-white font-semibold">Retry</Text>
+      <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <Text style={{ textAlign: "center", color: Colors.gray[700], marginBottom: 16 }}>{error}</Text>
+        <TouchableOpacity onPress={() => load()} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
+          <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
         </TouchableOpacity>
       </View>
     );
@@ -215,73 +200,40 @@ export default function TaxesScreen() {
 
   return (
     <ScrollView
-      className="flex-1 bg-gray-50"
-      contentContainerStyle={{
-        padding: SCREEN_PADDING,
-        paddingBottom: STACK_CONTENT_PADDING_BOTTOM,
-      }}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => load(true)}
-          tintColor={Colors.primary}
-        />
-      }
+      style={{ flex: 1, backgroundColor: Colors.gray[50] }}
+      contentContainerStyle={{ padding: contentPadding, paddingBottom: STACK_CONTENT_PADDING_BOTTOM, ...constraint }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />}
     >
-      {/* ── Section 1: Tax Information ── */}
-      <View className="mb-6">
-        <Text className="text-lg font-semibold text-gray-900 mb-3">
-          Tax Information
-        </Text>
-
+      <View style={{ marginBottom: 24 }}>
+        <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>Tax Information</Text>
         {taxInfo ? (
-          <View className="bg-white rounded-xl px-4 border border-gray-100">
-            <InfoRow
-              label="Country"
-              value={taxInfo.country || "Not specified"}
-            />
-            <InfoRow
-              label="VAT / Tax ID"
-              value={taxInfo.vat_id || taxInfo.tax_id || "Not provided"}
-            />
-            <View className="flex-row justify-between items-center py-3">
-              <Text className="text-sm text-gray-500">Tax Status</Text>
-              <View className="bg-primary-light px-3 py-1 rounded-full">
-                <Text className="text-xs font-semibold text-primary">
-                  {formatTaxStatus(taxInfo.tax_status)}
-                </Text>
+          <View style={{ backgroundColor: Colors.white, borderRadius: 12, paddingHorizontal: 16, borderWidth: 1, borderColor: Colors.gray[100] }}>
+            <InfoRow label="Country" value={taxInfo.country || "Not specified"} />
+            <InfoRow label="VAT / Tax ID" value={taxInfo.vat_id || taxInfo.tax_id || "Not provided"} />
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12 }}>
+              <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Tax Status</Text>
+              <View style={{ backgroundColor: Colors.primaryLight, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 9999 }}>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary }}>{formatTaxStatus(taxInfo.tax_status)}</Text>
               </View>
             </View>
           </View>
         ) : (
-          <View className="bg-white rounded-xl p-5 border border-gray-100">
-            <Text className="text-gray-500 text-sm leading-5">
-              No tax information on file. Tax information may be required for
-              certain services.
+          <View style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 20, borderWidth: 1, borderColor: Colors.gray[100] }}>
+            <Text style={{ color: Colors.gray[500], fontSize: 14, lineHeight: 20 }}>
+              No tax information on file. Tax information may be required for certain services.
             </Text>
           </View>
         )}
       </View>
-
-      {/* ── Section 2: Tax Documents ── */}
       <View>
-        <Text className="text-lg font-semibold text-gray-900 mb-3">
-          Tax Documents
-        </Text>
-
+        <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 12 }}>Tax Documents</Text>
         {docs.length === 0 ? (
-          <View className="bg-white rounded-xl p-5 border border-gray-100">
-            <Text className="text-gray-500 text-sm">
-              No tax documents available
-            </Text>
+          <View style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 20, borderWidth: 1, borderColor: Colors.gray[100] }}>
+            <Text style={{ color: Colors.gray[500], fontSize: 14 }}>No tax documents available</Text>
           </View>
         ) : (
           docs.map((doc) => (
-            <DocumentCard
-              key={doc.id}
-              doc={doc}
-              onDownload={() => handleDownload(doc.download_url)}
-            />
+            <DocumentCard key={doc.id} doc={doc} onDownload={() => handleDownload(doc.download_url)} />
           ))
         )}
       </View>

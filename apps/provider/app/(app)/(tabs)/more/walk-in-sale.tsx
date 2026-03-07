@@ -11,12 +11,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { Colors } from "@/constants/colors";
 
 interface Product {
   id: string;
@@ -53,6 +55,7 @@ interface SalesResponse {
 }
 
 export default function WalkInSaleScreen() {
+  const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [cart, setCart] = useState<{ product_id: string; name: string; price: number; quantity: number }[]>([]);
@@ -141,7 +144,7 @@ export default function WalkInSaleScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Walk-in Sale" showBack />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -152,7 +155,7 @@ export default function WalkInSaleScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Walk-in Sale" showBack />
-        <View className="flex-1 justify-center px-4">
+        <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -174,34 +177,34 @@ export default function WalkInSaleScreen() {
               setPaymentMethod("cash");
               setCreateOpen(true);
             }}
-            className="flex-row items-center rounded-xl bg-amber-500 px-4 py-2"
+            style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: "#f59e0b", paddingHorizontal: 16, paddingVertical: 8 }}
           >
             <Ionicons name="add" size={18} color="#fff" />
-            <Text className="ml-1.5 text-sm font-semibold text-white">New sale</Text>
+            <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "600", color: Colors.white }}>New sale</Text>
           </TouchableOpacity>
         }
       />
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         showsVerticalScrollIndicator={false}
       >
-        <View className="mb-3 flex-row items-center justify-between">
-          <Text className="text-sm font-medium text-gray-500">Recent walk-in sales</Text>
+        <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[500] }}>Recent walk-in sales</Text>
           {totalSales > 0 && (
-            <Text className="text-sm text-gray-500">{totalSales} total</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{totalSales} total</Text>
           )}
         </View>
         {sales.length === 0 ? (
-          <View className="items-center rounded-2xl border border-gray-100 bg-gray-50/50 p-8">
-            <View className="mb-3 h-14 w-14 items-center justify-center rounded-full bg-amber-100">
+          <View style={{ alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: "rgba(249,250,251,0.5)", padding: 32 }}>
+            <View style={{ marginBottom: 12, height: 56, width: 56, alignItems: "center", justifyContent: "center", borderRadius: 9999, backgroundColor: "#fef3c7" }}>
               <Ionicons name="storefront-outline" size={28} color="#f59e0b" />
             </View>
-            <Text className="text-center font-medium text-gray-900">No walk-in sales yet</Text>
-            <Text className="mt-1 text-center text-sm text-gray-500">
+            <Text style={{ textAlign: "center", fontWeight: "500", color: Colors.gray[900] }}>No walk-in sales yet</Text>
+            <Text style={{ marginTop: 4, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
               Tap &quot;New sale&quot; to record a cash or Yoco sale.
             </Text>
           </View>
@@ -209,17 +212,17 @@ export default function WalkInSaleScreen() {
           sales.slice(0, 20).map((sale) => (
             <View
               key={sale.id}
-              className="mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4"
+              style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
             >
-              <View className="h-10 w-10 items-center justify-center rounded-xl bg-amber-100">
+              <View style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#fef3c7" }}>
                 <Ionicons name="receipt-outline" size={20} color="#f59e0b" />
               </View>
-              <View className="ml-3 flex-1 min-w-0">
-                <Text className="font-semibold text-gray-900">{sale.order_number}</Text>
-                <Text className="mt-0.5 text-sm text-gray-600">
+              <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{sale.order_number}</Text>
+                <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }}>
                   R {Number(sale.total_amount).toFixed(2)} · {sale.payment_method}
                 </Text>
-                <Text className="mt-0.5 text-xs text-gray-500">
+                <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
                   {new Date(sale.created_at).toLocaleDateString()}
                 </Text>
               </View>
@@ -238,12 +241,12 @@ export default function WalkInSaleScreen() {
           <LoadingState />
         ) : (
           <>
-            <Text className="mb-2 text-sm font-medium text-gray-700">Products</Text>
-            <ScrollView className="mb-4 max-h-48 rounded-xl border border-gray-200 bg-gray-50" nestedScrollEnabled>
+            <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Products</Text>
+            <ScrollView style={{ marginBottom: 16, maxHeight: 192, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50] }} nestedScrollEnabled>
               {activeProducts.length === 0 ? (
-                <Text className="p-4 text-sm text-gray-500">No active products. Add products first.</Text>
+                <Text style={{ padding: 16, fontSize: 14, color: Colors.gray[500] }}>No active products. Add products first.</Text>
               ) : (
-                activeProducts.map((p) => {
+                activeProducts.map((p, idx) => {
                   const inCart = cart.find((c) => c.product_id === p.id);
                   const stock = Number(p.quantity ?? 0);
                   return (
@@ -251,30 +254,38 @@ export default function WalkInSaleScreen() {
                       key={p.id}
                       onPress={() => addToCart(p)}
                       disabled={stock < 1}
-                      className="flex-row items-center justify-between border-b border-gray-100 px-4 py-3 last:border-b-0"
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        borderBottomWidth: idx < activeProducts.length - 1 ? 1 : 0,
+                        borderBottomColor: Colors.gray[100],
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                      }}
                     >
-                      <View className="flex-1 min-w-0">
-                        <Text className="font-medium text-gray-900" numberOfLines={1}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
                           {p.name}
                         </Text>
-                        <Text className="text-sm text-gray-600">
+                        <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
                           R {Number(p.retail_price).toFixed(2)}
                           {stock >= 0 && ` · ${stock} in stock`}
                         </Text>
                       </View>
                       {inCart ? (
-                        <View className="flex-row items-center gap-2">
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
                           <TouchableOpacity
                             onPress={() => updateCartQty(p.id, -1)}
-                            className="h-8 w-8 items-center justify-center rounded-lg bg-gray-200"
+                            style={{ height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: Colors.gray[200], marginRight: 8 }}
                           >
                             <Ionicons name="remove" size={18} color="#374151" />
                           </TouchableOpacity>
-                          <Text className="min-w-[24px] text-center font-medium">{inCart.quantity}</Text>
+                          <Text style={{ minWidth: 24, textAlign: "center", fontWeight: "500", marginRight: 8 }}>{inCart.quantity}</Text>
                           <TouchableOpacity
                             onPress={() => updateCartQty(p.id, 1)}
                             disabled={inCart.quantity >= stock}
-                            className="h-8 w-8 items-center justify-center rounded-lg bg-amber-500"
+                            style={{ height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#f59e0b" }}
                           >
                             <Ionicons name="add" size={18} color="#fff" />
                           </TouchableOpacity>
@@ -283,9 +294,9 @@ export default function WalkInSaleScreen() {
                         <TouchableOpacity
                           onPress={() => addToCart(p)}
                           disabled={stock < 1}
-                          className="rounded-lg bg-amber-500 px-3 py-1.5"
+                          style={{ borderRadius: 8, backgroundColor: "#f59e0b", paddingHorizontal: 12, paddingVertical: 6 }}
                         >
-                          <Text className="text-sm font-medium text-white">Add</Text>
+                          <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.white }}>Add</Text>
                         </TouchableOpacity>
                       )}
                     </TouchableOpacity>
@@ -296,58 +307,54 @@ export default function WalkInSaleScreen() {
 
             {cart.length > 0 && (
               <>
-                <Text className="mb-2 text-sm font-medium text-gray-700">Cart</Text>
-                <View className="mb-3 rounded-xl border border-gray-200 bg-white p-3">
+                <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Cart</Text>
+                <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 12 }}>
                   {cart.map((c) => (
-                    <View key={c.product_id} className="flex-row justify-between py-1">
-                      <Text className="text-sm text-gray-900" numberOfLines={1}>
+                    <View key={c.product_id} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                      <Text style={{ fontSize: 14, color: Colors.gray[900] }} numberOfLines={1}>
                         {c.name} × {c.quantity}
                       </Text>
-                      <Text className="text-sm font-medium text-gray-700">
+                      <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
                         R {(c.price * c.quantity).toFixed(2)}
                       </Text>
                     </View>
                   ))}
-                  <View className="mt-2 border-t border-gray-100 pt-2 flex-row justify-between">
-                    <Text className="font-semibold text-gray-900">Total</Text>
-                    <Text className="font-semibold text-gray-900">R {cartTotal.toFixed(2)}</Text>
+                  <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Total</Text>
+                    <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>R {cartTotal.toFixed(2)}</Text>
                   </View>
                 </View>
 
-                <Text className="mb-2 text-sm font-medium text-gray-700">Payment</Text>
-                <View className="mb-4 flex-row gap-2">
+                <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Payment</Text>
+                <View style={{ marginBottom: 16, flexDirection: "row" }}>
                   <TouchableOpacity
                     onPress={() => setPaymentMethod("cash")}
-                    className={`flex-1 rounded-xl py-2.5 ${paymentMethod === "cash" ? "bg-amber-500" : "bg-gray-100"}`}
+                    style={{ flex: 1, marginRight: 8, borderRadius: 12, paddingVertical: 10, backgroundColor: paymentMethod === "cash" ? "#f59e0b" : Colors.gray[100] }}
                   >
-                    <Text
-                      className={`text-center text-sm font-medium ${paymentMethod === "cash" ? "text-white" : "text-gray-700"}`}
-                    >
+                    <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: paymentMethod === "cash" ? Colors.white : Colors.gray[700] }}>
                       Cash
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => setPaymentMethod("yoco")}
-                    className={`flex-1 rounded-xl py-2.5 ${paymentMethod === "yoco" ? "bg-amber-500" : "bg-gray-100"}`}
+                    style={{ flex: 1, borderRadius: 12, paddingVertical: 10, backgroundColor: paymentMethod === "yoco" ? "#f59e0b" : Colors.gray[100] }}
                   >
-                    <Text
-                      className={`text-center text-sm font-medium ${paymentMethod === "yoco" ? "text-white" : "text-gray-700"}`}
-                    >
+                    <Text style={{ textAlign: "center", fontSize: 14, fontWeight: "500", color: paymentMethod === "yoco" ? Colors.white : Colors.gray[700] }}>
                       Yoco
                     </Text>
                   </TouchableOpacity>
                 </View>
 
-                <Text className="mb-1 text-sm font-medium text-gray-700">Customer (optional)</Text>
+                <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Customer (optional)</Text>
                 <TextInput
-                  className="mb-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-base text-gray-900"
+                  style={{ marginBottom: 8, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 10, fontSize: 16, color: Colors.gray[900] }}
                   placeholder="Name"
                   placeholderTextColor="#9ca3af"
                   value={customerName}
                   onChangeText={setCustomerName}
                 />
                 <TextInput
-                  className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-base text-gray-900"
+                  style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 10, fontSize: 16, color: Colors.gray[900] }}
                   placeholder="Phone"
                   placeholderTextColor="#9ca3af"
                   value={customerPhone}
@@ -365,7 +372,7 @@ export default function WalkInSaleScreen() {
             )}
 
             {cart.length === 0 && (
-              <Text className="text-center text-sm text-gray-500">Add products above to continue.</Text>
+              <Text style={{ textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>Add products above to continue.</Text>
             )}
           </>
         )}

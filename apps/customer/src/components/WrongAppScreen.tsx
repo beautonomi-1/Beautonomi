@@ -1,4 +1,5 @@
 import { View, Text, Linking, Pressable } from "react-native";
+import { Colors } from "@/constants/colors";
 
 type WrongAppScreenProps = {
   /** "provider" | "admin" */
@@ -13,30 +14,26 @@ export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
   const isAdmin = portal === "admin";
 
   return (
-    <View className="flex-1 bg-white px-6 justify-center items-center">
-      <Text className="text-xl font-semibold text-gray-900 text-center mb-2">
-        Wrong app
-      </Text>
-      <Text className="text-base text-gray-600 text-center mb-6">
-        {isProvider &&
-          "This account is a Provider. Open the Provider app to access your business dashboard."}
-        {isAdmin &&
-          "This account has admin access. Use the web admin portal to manage the platform."}
+    <View style={{ flex: 1, backgroundColor: Colors.white, paddingHorizontal: 24, justifyContent: "center", alignItems: "center" }}>
+      <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], textAlign: "center", marginBottom: 8 }}>Wrong app</Text>
+      <Text style={{ fontSize: 16, color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>
+        {isProvider && "This account is a Provider. Open the Provider app to access your business dashboard."}
+        {isAdmin && "This account has admin access. Use the web admin portal to manage the platform."}
       </Text>
       {isAdmin && APP_URL ? (
         <Pressable
           onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/admin/dashboard`)}
-          className="mb-3 min-w-[200px] py-3 px-4 bg-[#FF0077] rounded-lg items-center"
+          style={{ marginBottom: 12, minWidth: 200, paddingVertical: 12, paddingHorizontal: 16, backgroundColor: Colors.primary, borderRadius: 8, alignItems: "center" }}
         >
-          <Text className="text-white font-medium">Open Admin on Web</Text>
+          <Text style={{ color: Colors.white, fontWeight: "500" }}>Open Admin on Web</Text>
         </Pressable>
       ) : null}
       {onSignOut && (
         <Pressable
           onPress={onSignOut}
-          className="min-w-[200px] py-3 px-4 border border-gray-300 rounded-lg items-center"
+          style={{ minWidth: 200, paddingVertical: 12, paddingHorizontal: 16, borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 8, alignItems: "center" }}
         >
-          <Text className="text-gray-700 font-medium">Sign out</Text>
+          <Text style={{ color: Colors.gray[700], fontWeight: "500" }}>Sign out</Text>
         </Pressable>
       )}
     </View>

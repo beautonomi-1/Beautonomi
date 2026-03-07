@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Megaphone } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import type { PublicProviderCard } from "@/types/beautonomi";
-import ProviderCard from "./provider-card";
+import ProviderCard from "./provider-card-dynamic";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 
 /**

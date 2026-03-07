@@ -1201,7 +1201,7 @@ export default function ProviderCalendar() {
                   <SlidersHorizontal className="w-4 h-4" />
                   <span className="hidden lg:inline">FILTERS</span>
                   {(selectedTeamMember !== "all" || selectedTeamMemberIds.length < teamMembers.length) && (
-                    <Badge className="text-[10px] h-4 px-1.5 bg-[#FF0077] text-white ml-1">
+                    <Badge className="text-[10px] h-4 px-1.5 bg-primary text-white ml-1">
                       {selectedTeamMember !== "all" ? "1" : selectedTeamMemberIds.length}
                     </Badge>
                   )}
@@ -1247,7 +1247,7 @@ export default function ProviderCalendar() {
                     <div className="flex items-center gap-2">
                       <Avatar className="w-6 h-6">
                         <AvatarImage src={member.avatar_url} />
-                        <AvatarFallback className="text-xs bg-gradient-to-br from-[#FF0077] to-[#FF6B35] text-white">
+                        <AvatarFallback className="text-xs bg-gradient-to-br from-primary to-[#FF6B35] text-white">
                           {member.name.charAt(0)}
                         </AvatarFallback>
                       </Avatar>
@@ -1360,7 +1360,7 @@ export default function ProviderCalendar() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 lg:h-9 lg:w-9 text-white hover:bg-[#FF0077]/20 hover:text-white border border-white/20 hidden md:flex"
+                    className="h-8 w-8 lg:h-9 lg:w-9 text-white hover:bg-primary/20 hover:text-white border border-white/20 hidden md:flex"
                     title="New appointment"
                     aria-label="New appointment"
                   >
@@ -1517,7 +1517,7 @@ export default function ProviderCalendar() {
           <>
             {isRefreshing && (
               <div className="absolute top-20 right-4 z-50 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-2 flex items-center gap-2 border border-gray-200">
-                <RefreshCw className="w-4 h-4 text-[#FF0077] animate-spin" />
+                <RefreshCw className="w-4 h-4 text-primary animate-spin" />
                 <span className="text-xs text-gray-600">Refreshing...</span>
               </div>
             )}

@@ -15,6 +15,8 @@ import type {
   TimeIncrement,
   DefaultAppointmentStatus,
 } from "@/hooks/useCalendarPreferences";
+import { useResponsive } from "@/hooks/useResponsive";
+import { twStyle } from "@/lib/twStyle";
 
 /* ================================================================== */
 /*  Props                                                              */
@@ -37,13 +39,13 @@ interface Props {
 
 function SectionHeader({ title, icon }: { title: string; icon: string }) {
   return (
-    <View className="mb-2 mt-5 flex-row items-center">
+    <View style={twStyle("mb-2 mt-5 flex-row items-center")}>
       <Ionicons
         name={icon as keyof typeof Ionicons.glyphMap}
         size={16}
         color="#6366f1"
       />
-      <Text className="ml-2 text-xs font-bold uppercase tracking-wider text-gray-400">
+      <Text style={twStyle("ml-2 text-xs font-bold uppercase tracking-wider text-gray-400")}>
         {title}
       </Text>
     </View>
@@ -66,11 +68,11 @@ function ToggleRow({
   onToggle: (v: boolean) => void;
 }) {
   return (
-    <View className="flex-row items-center justify-between border-b border-gray-50 py-3">
-      <View className="mr-4 flex-1">
-        <Text className="text-sm font-medium text-gray-900">{label}</Text>
+    <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 py-3")}>
+      <View style={twStyle("mr-4 flex-1")}>
+        <Text style={twStyle("text-sm font-medium text-gray-900")}>{label}</Text>
         {description && (
-          <Text className="mt-0.5 text-xs text-gray-500">{description}</Text>
+          <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{description}</Text>
         )}
       </View>
       <Switch
@@ -103,25 +105,25 @@ function PillSelector<T extends string | number>({
   onChange: (v: T) => void;
 }) {
   return (
-    <View className="border-b border-gray-50 py-3">
-      <Text className="text-sm font-medium text-gray-900">{label}</Text>
+    <View style={twStyle("border-b border-gray-50 py-3")}>
+      <Text style={twStyle("text-sm font-medium text-gray-900")}>{label}</Text>
       {description && (
-        <Text className="mt-0.5 text-xs text-gray-500">{description}</Text>
+        <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{description}</Text>
       )}
-      <View className="mt-2 flex-row flex-wrap gap-2">
+      <View style={twStyle("mt-2 flex-row flex-wrap")}>
         {options.map((opt) => {
           const selected = opt.value === value;
           return (
             <TouchableOpacity
               key={String(opt.value)}
-              className={`rounded-full px-4 py-2 ${selected ? "bg-indigo-600" : "bg-gray-100"}`}
+              style={[twStyle(`rounded-full px-4 py-2 ${selected ? "bg-indigo-600" : "bg-gray-100"}`), { marginRight: 8, marginBottom: 8 }]}
               onPress={() => onChange(opt.value)}
               accessibilityRole="radio"
               accessibilityState={{ selected }}
               accessibilityLabel={opt.label}
             >
               <Text
-                className={`text-xs font-semibold ${selected ? "text-white" : "text-gray-700"}`}
+                style={twStyle(`text-xs font-semibold ${selected ? "text-white" : "text-gray-700"}`)}
               >
                 {opt.label}
               </Text>
@@ -155,16 +157,16 @@ function NumberStepper({
   suffix?: string;
 }) {
   return (
-    <View className="flex-row items-center justify-between border-b border-gray-50 py-3">
-      <View className="mr-4 flex-1">
-        <Text className="text-sm font-medium text-gray-900">{label}</Text>
+    <View style={twStyle("flex-row items-center justify-between border-b border-gray-50 py-3")}>
+      <View style={twStyle("mr-4 flex-1")}>
+        <Text style={twStyle("text-sm font-medium text-gray-900")}>{label}</Text>
         {description && (
-          <Text className="mt-0.5 text-xs text-gray-500">{description}</Text>
+          <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{description}</Text>
         )}
       </View>
-      <View className="flex-row items-center rounded-xl bg-gray-100">
+      <View style={twStyle("flex-row items-center rounded-xl bg-gray-100")}>
         <TouchableOpacity
-          className="px-3 py-2"
+          style={twStyle("px-3 py-2")}
           onPress={() => onChange(Math.max(min, value - 1))}
           disabled={value <= min}
           accessibilityLabel={`Decrease ${label}`}
@@ -176,12 +178,12 @@ function NumberStepper({
             color={value <= min ? "#d1d5db" : "#111"}
           />
         </TouchableOpacity>
-        <Text className="min-w-[40px] text-center text-sm font-bold text-gray-900">
+        <Text style={twStyle("min-w-[40px] text-center text-sm font-bold text-gray-900")}>
           {value}
           {suffix ?? ""}
         </Text>
         <TouchableOpacity
-          className="px-3 py-2"
+          style={twStyle("px-3 py-2")}
           onPress={() => onChange(Math.min(max, value + 1))}
           disabled={value >= max}
           accessibilityLabel={`Increase ${label}`}
@@ -209,6 +211,7 @@ export function CalendarPreferencesModal({
   onUpdate,
   onReset,
 }: Props) {
+  const { screenPadding } = useResponsive();
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   return (
@@ -218,24 +221,24 @@ export function CalendarPreferencesModal({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View className="flex-1 bg-black/40">
+      <View style={twStyle("flex-1 bg-black/40")}>
         {/* Backdrop */}
-        <Pressable className="flex-[0.15]" onPress={onClose} />
+        <Pressable style={twStyle("flex-[0.15]")} onPress={onClose} />
 
         {/* Panel */}
-        <View className="flex-[0.85] rounded-t-3xl bg-white">
+        <View style={twStyle("flex-[0.85] rounded-t-3xl bg-white")}>
           {/* Handle */}
-          <View className="items-center pb-1 pt-3">
-            <View className="h-1 w-10 rounded-full bg-gray-300" />
+          <View style={twStyle("items-center pb-1 pt-3")}>
+            <View style={twStyle("h-1 w-10 rounded-full bg-gray-300")} />
           </View>
 
           {/* Header */}
-          <View className="flex-row items-center justify-between border-b border-gray-100 px-5 pb-3">
+          <View style={twStyle("flex-row items-center justify-between border-b border-gray-100 px-5 pb-3")}>
             <View>
-              <Text className="text-lg font-bold text-gray-900">
+              <Text style={twStyle("text-lg font-bold text-gray-900")}>
                 Calendar Preferences
               </Text>
-              <Text className="mt-0.5 text-xs text-gray-500">
+              <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                 Customize how your calendar looks and behaves
               </Text>
             </View>
@@ -251,8 +254,8 @@ export function CalendarPreferencesModal({
 
           {/* Content */}
           <ScrollView
-            className="flex-1"
-            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+            style={twStyle("flex-1")}
+            contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 40 }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
@@ -340,7 +343,7 @@ export function CalendarPreferencesModal({
 
             {/* ──────────── ADVANCED ──────────── */}
             <TouchableOpacity
-              className="mt-5 flex-row items-center justify-between rounded-xl bg-gray-50 px-4 py-3"
+              style={twStyle("mt-5 flex-row items-center justify-between rounded-xl bg-gray-50 px-4 py-3")}
               onPress={() => setShowAdvanced(!showAdvanced)}
               accessibilityRole="button"
               accessibilityLabel={
@@ -349,9 +352,9 @@ export function CalendarPreferencesModal({
                   : "Show advanced settings"
               }
             >
-              <View className="flex-row items-center">
+              <View style={twStyle("flex-row items-center")}>
                 <Ionicons name="settings-outline" size={16} color="#6b7280" />
-                <Text className="ml-2 text-sm font-semibold text-gray-700">
+                <Text style={twStyle("ml-2 text-sm font-semibold text-gray-700")}>
                   Advanced Settings
                 </Text>
               </View>
@@ -363,7 +366,7 @@ export function CalendarPreferencesModal({
             </TouchableOpacity>
 
             {showAdvanced && (
-              <View className="mt-2">
+              <View style={twStyle("mt-2")}>
                 <NumberStepper
                   label="Workday Start"
                   description="Hour the calendar grid begins"
@@ -415,12 +418,12 @@ export function CalendarPreferencesModal({
 
             {/* ──────────── Reset ──────────── */}
             <TouchableOpacity
-              className="mt-6 items-center rounded-xl border border-red-200 bg-red-50 py-3"
+              style={twStyle("mt-6 items-center rounded-xl border border-red-200 bg-red-50 py-3")}
               onPress={onReset}
               accessibilityRole="button"
               accessibilityLabel="Reset all preferences to defaults"
             >
-              <Text className="text-sm font-semibold text-red-600">
+              <Text style={twStyle("text-sm font-semibold text-red-600")}>
                 Reset to Defaults
               </Text>
             </TouchableOpacity>

@@ -12,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Colors } from "@/constants/colors";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
 
 const PRIMARY = Colors.primary;
@@ -45,9 +46,11 @@ function getTimelineIndex(status: string): number {
 export default function ProductOrderDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
   const { fetchOrderDetail } = useProductOrders();
   const [order, setOrder] = useState<ProductOrder | null>(null);
   const [loading, setLoading] = useState(true);
+  const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
 
   useEffect(() => {
     if (!id) return;
@@ -89,7 +92,7 @@ export default function ProductOrderDetailScreen() {
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 16,
+          paddingHorizontal: contentPadding,
           paddingVertical: 14,
           backgroundColor: "#fff",
           borderBottomWidth: 1,
@@ -107,12 +110,13 @@ export default function ProductOrderDetailScreen() {
 
       <ScrollView
         contentContainerStyle={{
+          paddingHorizontal: contentPadding,
           paddingBottom: 40,
-          ...(Platform.OS === "web" ? { maxWidth: 600, alignSelf: "center", width: "100%" } as any : {}),
+          ...constraint,
         }}
       >
         {/* Status timeline */}
-        <View style={{ backgroundColor: "#fff", padding: 20, marginBottom: 12 }}>
+        <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 16 }}>
             Order Status
           </Text>
@@ -121,7 +125,7 @@ export default function ProductOrderDetailScreen() {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                padding: 16,
+                padding: contentPadding,
                 borderRadius: 12,
                 backgroundColor: "#FEF2F2",
               }}
@@ -208,7 +212,7 @@ export default function ProductOrderDetailScreen() {
         </View>
 
         {/* Items */}
-        <View style={{ backgroundColor: "#fff", padding: 20, marginBottom: 12 }}>
+        <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
             Items
           </Text>
@@ -259,7 +263,7 @@ export default function ProductOrderDetailScreen() {
         </View>
 
         {/* Fulfillment details */}
-        <View style={{ backgroundColor: "#fff", padding: 20, marginBottom: 12 }}>
+        <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
             {order.fulfillment_type === "delivery" ? "Delivery Details" : "Collection Details"}
           </Text>
@@ -297,7 +301,7 @@ export default function ProductOrderDetailScreen() {
         </View>
 
         {/* Payment summary */}
-        <View style={{ backgroundColor: "#fff", padding: 20 }}>
+        <View style={{ backgroundColor: "#fff", padding: contentPadding }}>
           <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
             Payment Summary
           </Text>
@@ -336,7 +340,7 @@ export default function ProductOrderDetailScreen() {
 
         {/* Return request action */}
         {["delivered", "ready_for_collection"].includes(order.status) && (
-          <View style={{ padding: 20, backgroundColor: "#fff", marginTop: 12 }}>
+          <View style={{ padding: contentPadding, backgroundColor: "#fff", marginTop: 12 }}>
             <TouchableOpacity
               onPress={() =>
                 router.push(`/request-return?order_id=${order.id}` as any)
@@ -349,10 +353,9 @@ export default function ProductOrderDetailScreen() {
                 borderColor: "#EF4444",
                 borderRadius: 12,
                 paddingVertical: 14,
-                gap: 8,
               }}
             >
-              <Ionicons name="arrow-undo-outline" size={18} color="#EF4444" />
+              <Ionicons name="arrow-undo-outline" size={18} color="#EF4444" style={{ marginRight: 8 }} />
               <Text style={{ color: "#EF4444", fontWeight: "600", fontSize: 15 }}>
                 Request Return / Refund
               </Text>

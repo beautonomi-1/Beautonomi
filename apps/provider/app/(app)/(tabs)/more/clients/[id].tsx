@@ -15,6 +15,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { formatCurrency, formatDate, formatTime } from "@/lib/format";
+import { twStyle } from "@/lib/twStyle";
 
 interface ClientCustomer {
   id: string;
@@ -83,7 +84,7 @@ export default function ClientDetailScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Client" showBack onBack={goBackToClients} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -94,7 +95,7 @@ export default function ClientDetailScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Client" showBack onBack={goBackToClients} />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -116,34 +117,34 @@ export default function ClientDetailScreen() {
       <ScreenHeader title="Client" showBack onBack={goBackToClients} />
 
       <ScrollView
-        className="flex-1"
+        style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 32 }}
         refreshControl={
           <RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor="#1a1f3c" />
         }
       >
         {/* Client info */}
-        <View className="mb-4 rounded-2xl border border-gray-100 bg-white p-4">
-          <View className="flex-row items-center">
+        <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+          <View style={twStyle("flex-row items-center")}>
             <Avatar name={name} size="lg" />
-            <View className="ml-4 flex-1">
-              <Text className="text-lg font-semibold text-gray-900">{name}</Text>
+            <View style={twStyle("ml-4 flex-1")}>
+              <Text style={twStyle("text-lg font-semibold text-gray-900")}>{name}</Text>
               {customer.phone ? (
-                <Text className="text-sm text-gray-500">{customer.phone}</Text>
+                <Text style={twStyle("text-sm text-gray-500")}>{customer.phone}</Text>
               ) : null}
               {customer.email ? (
-                <Text className="text-sm text-gray-500">{customer.email}</Text>
+                <Text style={twStyle("text-sm text-gray-500")}>{customer.email}</Text>
               ) : null}
             </View>
           </View>
-          <View className="mt-3 flex-row gap-4 border-t border-gray-100 pt-3">
-            <View>
-              <Text className="text-xs text-gray-400">Bookings</Text>
-              <Text className="text-sm font-semibold text-gray-900">{client.total_bookings}</Text>
+          <View style={twStyle("mt-3 flex-row border-t border-gray-100 pt-3")}>
+            <View style={{ marginRight: 16 }}>
+              <Text style={twStyle("text-xs text-gray-400")}>Bookings</Text>
+              <Text style={twStyle("text-sm font-semibold text-gray-900")}>{client.total_bookings}</Text>
             </View>
             <View>
-              <Text className="text-xs text-gray-400">Total spent</Text>
-              <Text className="text-sm font-semibold text-gray-900">
+              <Text style={twStyle("text-xs text-gray-400")}>Total spent</Text>
+              <Text style={twStyle("text-sm font-semibold text-gray-900")}>
                 {formatCurrency(client.total_spent, "ZAR")}
               </Text>
             </View>
@@ -151,17 +152,17 @@ export default function ClientDetailScreen() {
         </View>
 
         {/* Booking history */}
-        <View className="rounded-2xl border border-gray-100 bg-white">
-          <View className="border-b border-gray-100 px-4 py-3">
-            <Text className="text-sm font-semibold text-gray-900">Booking history</Text>
-            <Text className="text-xs text-gray-500">
+        <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
+          <View style={twStyle("border-b border-gray-100 px-4 py-3")}>
+            <Text style={twStyle("text-sm font-semibold text-gray-900")}>Booking history</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>
               {history.length} {history.length === 1 ? "item" : "items"}
             </Text>
           </View>
           {history.length === 0 ? (
-            <View className="items-center justify-center py-12 px-4">
+            <View style={twStyle("items-center justify-center py-12 px-4")}>
               <Ionicons name="calendar-outline" size={40} color="#9ca3af" />
-              <Text className="mt-2 text-sm text-gray-500">No bookings yet</Text>
+              <Text style={twStyle("mt-2 text-sm text-gray-500")}>No bookings yet</Text>
             </View>
           ) : (
             history.map((item) => {
@@ -177,12 +178,12 @@ export default function ClientDetailScreen() {
                   }}
                   disabled={!isAppointment}
                   activeOpacity={isAppointment ? 0.7 : 1}
-                  className="flex-row items-center border-b border-gray-50 px-4 py-3 last:border-b-0"
+                  style={twStyle("flex-row items-center border-b border-gray-50 px-4 py-3 last:border-b-0")}
                 >
                   <View
-                    className={`mr-3 h-10 w-10 items-center justify-center rounded-full ${
+                    style={twStyle(`mr-3 h-10 w-10 items-center justify-center rounded-full ${
                       isAppointment ? "bg-indigo-50" : "bg-emerald-50"
-                    }`}
+                    }`)}
                   >
                     <Ionicons
                       name={isAppointment ? "calendar" : "receipt"}
@@ -190,26 +191,26 @@ export default function ClientDetailScreen() {
                       color={isAppointment ? "#6366f1" : "#10b981"}
                     />
                   </View>
-                  <View className="flex-1 min-w-0">
-                    <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
+                  <View style={twStyle("flex-1 min-w-0")}>
+                    <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={1}>
                       {item.description}
                     </Text>
-                    <View className="mt-0.5 flex-row flex-wrap items-center gap-2">
-                      <Text className="text-xs text-gray-500">
+                    <View style={twStyle("mt-0.5 flex-row flex-wrap items-center")}>
+                      <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 8 }]}>
                         {formatDate(item.scheduled_at ?? item.date, "MMM d, yyyy")}
                         {item.scheduled_at ? ` at ${formatTime(item.scheduled_at)}` : ""}
                       </Text>
                       {item.status ? (
-                        <Text className={`text-xs font-medium capitalize ${statusColor}`}>
+                        <Text style={[twStyle(`text-xs font-medium capitalize ${statusColor}`), { marginRight: 8 }]}>
                           {item.status.replace(/_/g, " ")}
                         </Text>
                       ) : null}
                       {item.team_member_name ? (
-                        <Text className="text-xs text-gray-500">with {item.team_member_name}</Text>
+                        <Text style={twStyle("text-xs text-gray-500")}>with {item.team_member_name}</Text>
                       ) : null}
                     </View>
                   </View>
-                  <Text className="ml-2 text-sm font-semibold text-gray-900">
+                  <Text style={twStyle("ml-2 text-sm font-semibold text-gray-900")}>
                     {formatCurrency(item.amount, "ZAR")}
                   </Text>
                   {isAppointment ? (

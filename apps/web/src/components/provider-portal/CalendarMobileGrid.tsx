@@ -63,8 +63,8 @@ const getAppointmentStyle = (status: Appointment["status"]) => {
       };
     default:
       return {
-        bg: "bg-[#FF0077]",
-        border: "border-[#FF0077]/20",
+        bg: "bg-primary",
+        border: "border-primary/20",
         text: "text-white",
         icon: CalendarIcon,
       };
@@ -200,7 +200,7 @@ export function CalendarMobileGrid({
                 className={cn(
                   "flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-all touch-manipulation min-h-[44px]",
                   selectedStaffIndex === idx
-                    ? "bg-[#FF0077] text-white"
+                    ? "bg-primary text-white"
                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                 )}
               >
@@ -214,7 +214,7 @@ export function CalendarMobileGrid({
                     "text-xs px-1.5 py-0.5 rounded-full",
                     selectedStaffIndex === idx
                       ? "bg-white/20 text-white"
-                      : "bg-[#FF0077] text-white"
+                      : "bg-primary text-white"
                   )}>
                     {appointments.filter(
                       (apt) =>

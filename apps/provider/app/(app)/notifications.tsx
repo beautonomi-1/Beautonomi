@@ -8,6 +8,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { twStyle } from "@/lib/twStyle";
 
 type Notification = {
   id: string;
@@ -56,7 +57,7 @@ export default function NotificationsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Notifications" onBack={() => router.back()} />
-        <View className="flex-1 items-center justify-center py-12">
+        <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
       </ScreenContainer>
@@ -67,7 +68,7 @@ export default function NotificationsScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Notifications" onBack={() => router.back()} />
-        <View className="flex-1 justify-center px-4">
+        <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
       </ScreenContainer>
@@ -84,11 +85,11 @@ export default function NotificationsScreen() {
             <TouchableOpacity
               onPress={handleMarkAllRead}
               disabled={markingRead}
-              className="rounded-full bg-gray-100 px-3 py-2"
+              style={twStyle("rounded-full bg-gray-100 px-3 py-2")}
               accessibilityLabel="Mark all notifications as read"
               accessibilityRole="button"
             >
-              <Text className="text-sm font-medium text-gray-700">
+              <Text style={twStyle("text-sm font-medium text-gray-700")}>
                 {markingRead ? "…" : "Mark all read"}
               </Text>
             </TouchableOpacity>
@@ -96,50 +97,50 @@ export default function NotificationsScreen() {
         }
       />
       <ScrollView
-        className="flex-1"
+        style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
         {notifications.length === 0 ? (
-          <View className="py-12 px-4 items-center">
+          <View style={twStyle("py-12 px-4 items-center")}>
             <Ionicons name="notifications-outline" size={48} color="#9ca3af" />
-            <Text className="mt-4 text-center text-gray-600">No notifications</Text>
-            <Text className="mt-2 text-center text-sm text-gray-500">
+            <Text style={twStyle("mt-4 text-center text-gray-600")}>No notifications</Text>
+            <Text style={twStyle("mt-2 text-center text-sm text-gray-500")}>
               You&apos;re all caught up
             </Text>
           </View>
         ) : (
-          <View className="pb-4">
+          <View style={twStyle("pb-4")}>
             {notifications.map((n) => (
               <View
                 key={n.id}
-                className={`mb-3 rounded-xl border p-4 ${n.read ? "border-gray-200 bg-white" : "border-indigo-100 bg-indigo-50/50"}`}
+                style={twStyle(`mb-3 rounded-xl border p-4 ${n.read ? "border-gray-200 bg-white" : "border-indigo-100 bg-indigo-50/50"}`)}
               >
-                <View className="flex-row items-start justify-between">
-                  <View className="flex-1">
+                <View style={twStyle("flex-row items-start justify-between")}>
+                  <View style={twStyle("flex-1")}>
                     <Text
-                      className={`font-medium ${n.read ? "text-gray-700" : "text-gray-900"}`}
+                      style={twStyle(`font-medium ${n.read ? "text-gray-700" : "text-gray-900"}`)}
                       numberOfLines={1}
                     >
                       {n.title ?? "Notification"}
                     </Text>
                     {n.message ? (
                       <Text
-                        className="mt-1 text-sm text-gray-600"
+                        style={twStyle("mt-1 text-sm text-gray-600")}
                         numberOfLines={2}
                       >
                         {n.message}
                       </Text>
                     ) : null}
                     {n.timestamp && (
-                      <Text className="mt-2 text-xs text-gray-400">
+                      <Text style={twStyle("mt-2 text-xs text-gray-400")}>
                         {new Date(n.timestamp).toLocaleString()}
                       </Text>
                     )}
                   </View>
                   {!n.read && (
-                    <View className="ml-2 h-2 w-2 rounded-full bg-indigo-500" />
+                    <View style={twStyle("ml-2 h-2 w-2 rounded-full bg-indigo-500")} />
                   )}
                 </View>
               </View>

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "customer",
+    "name": "Beautonomi",
     "slug": "customer",
     "scheme": "customer",
     "updates": {
@@ -21,11 +21,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.beautonomi.customer",
-      "infoPlist": { "UIBackgroundModes": ["remote-notification"] },
+      "bundleIdentifier": "com.beautonomi",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"],
+        "ITSAppUsesNonExemptEncryption": false
+      },
       "entitlements": {
         "aps-environment": "development",
-        "com.apple.security.application-groups": ["group.com.beautonomi.customer.onesignal"]
+        "com.apple.security.application-groups": ["group.com.beautonomi.onesignal"]
       },
       "associatedDomains": [
         "applinks:beautonomi.com",
@@ -37,7 +40,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.beautonomi.customer",
+      "package": "com.beautonomi",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "intentFilters": [
@@ -60,12 +63,16 @@
         }
       ]
     },
-    "web": { "favicon": "./assets/favicon.png" },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single"
+    },
     "plugins": [
       "expo-router",
       "expo-font",
-      "@sentry/react-native",
       "singular-react-native",
+      ["onesignal-expo-plugin", { "mode": "development" }],
       [
         "expo-splash-screen",
         {
