@@ -1,13 +1,17 @@
 import { useEffect } from "react";
 import { View, Platform, TouchableOpacity, Linking } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { RoleGate } from "@/components/RoleGate";
 import { SingularLinkHandler } from "@/components/SingularLinkHandler";
 import MaintenanceGate from "@/components/MaintenanceGate";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/providers/AuthProvider";
+import { api } from "@/lib/api-client";
 
 const CUSTOMER_SCHEME = "customer://";
+const REFERRAL_REF_KEY = "referral_ref";
 
 function handleCustomerDeepLink(url: string): boolean {
   if (!url.startsWith(CUSTOMER_SCHEME)) return false;
@@ -35,10 +39,26 @@ function handleCustomerDeepLink(url: string): boolean {
     router.replace("/(app)/product-orders" as never);
     return true;
   }
+  if (path === "signup" && params.ref) {
+    router.replace({ pathname: "/(auth)/signup", params: { ref: params.ref } } as never);
+    return true;
+  }
   return false;
 }
 
 export default function AppLayout() {
+  const { session } = useAuth();
+
+  // Attach pending referral after login (e.g. post email verification)
+  useEffect(() => {
+    if (!session?.access_token) return;
+    AsyncStorage.getItem(REFERRAL_REF_KEY).then((ref) => {
+      if (!ref?.trim()) return;
+      api
+        .post("/api/me/referrals/attach", { referral_code: ref.trim() })
+        .finally(() => AsyncStorage.removeItem(REFERRAL_REF_KEY));
+    });
+  }, [session?.access_token]);
   const headerBackFallback = () => (
     <TouchableOpacity
       onPress={() => {

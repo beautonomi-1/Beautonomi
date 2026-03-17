@@ -86,11 +86,16 @@ export default function InAppBrowserScreen() {
           onMessage={(e) => {
             try {
               const msg = JSON.parse(e.nativeEvent.data);
-              if (msg?.type === "checkout_success") {
+              const isPaymentSuccess =
+                msg?.type === "checkout_success" || msg?.type === "payment_success";
+              if (isPaymentSuccess) {
                 const paymentType = msg?.payment_type;
                 const bookingId = msg?.booking_id;
                 if (bookingId) {
-                  router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } } as never);
+                  router.replace({
+                    pathname: "/(app)/booking-detail",
+                    params: { id: bookingId },
+                  } as never);
                 } else if (paymentType === "custom_offer") {
                   router.replace("/(app)/account-settings/custom-requests" as never);
                 } else if (paymentType === "wallet_topup") {

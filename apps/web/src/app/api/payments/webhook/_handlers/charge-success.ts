@@ -124,6 +124,12 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     return;
   }
 
+  // Pay remaining balance (deposit-only bookings)
+  if (metadata?.payment_type === "booking_remaining") {
+    await handleBookingRemainingSuccess({ reference, metadata, amount, fees, customer }, supabase);
+    return;
+  }
+
   // ── Standard booking payment ──────────────────────────────────────────────
 
   const { data: booking, error: bookingError } = await supabase
@@ -1764,6 +1770,151 @@ async function handleSubscriptionAuthorizationSuccess(
     }
   } catch (err: unknown) {
     console.error("Failed to create Paystack subscription after authorization:", err);
+  }
+}
+
+// ─── Pay remaining balance (deposit-only bookings) ───────────────────────────
+
+async function handleBookingRemainingSuccess(
+  payload: { reference: string; metadata: any; amount: any; fees: any; customer: any },
+  supabase: SupabaseClient,
+) {
+  const { reference, metadata, amount, fees, customer } = payload;
+  const bookingId = metadata.booking_id as string;
+
+  const { data: existingPayment } = await supabase
+    .from("booking_payments")
+    .select("id")
+    .eq("payment_provider_id", reference)
+    .maybeSingle();
+  if (existingPayment) {
+    console.log(`Pay-remaining payment ${reference} already recorded`);
+    return;
+  }
+
+  const { data: booking, error: bookingError } = await supabase
+    .from("bookings")
+    .select("*")
+    .eq("id", bookingId)
+    .single();
+  if (bookingError || !booking) {
+    console.error("Pay-remaining: booking not found", bookingId);
+    return;
+  }
+  const bookingData = booking as ChargeBookingRow;
+  const providerId = bookingData.provider_id ?? null;
+
+  const amountInCurrency = convertFromSmallestUnit(amount || 0);
+  const feesInCurrency = convertFromSmallestUnit(fees || 0);
+  const netAmount = amountInCurrency - feesInCurrency;
+
+  await supabase.from("booking_payments").insert({
+    booking_id: bookingId,
+    amount: amountInCurrency,
+    payment_method: "card",
+    payment_provider: "paystack",
+    payment_provider_id: reference,
+    payment_provider_data: { metadata, customer_email: customer?.email },
+    status: "completed",
+    notes: `Remaining balance paid via Paystack. Ref: ${reference}`,
+  });
+
+  const { data: settingsRow } = await supabase
+    .from("platform_settings")
+    .select("settings")
+    .eq("is_active", true)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const commissionRate =
+    (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 0;
+  const platformCommission = commissionRate > 0 ? (netAmount * commissionRate) / 100 : 0;
+  const providerEarnings = netAmount - platformCommission;
+
+  await supabase.from("payment_transactions").insert({
+    booking_id: bookingId,
+    reference,
+    amount: amountInCurrency,
+    fees: feesInCurrency,
+    net_amount: netAmount,
+    status: "success",
+    provider: "paystack",
+    transaction_type: "charge",
+    metadata: {
+      payment_type: "booking_remaining",
+      customer_email: customer?.email,
+    },
+    created_at: new Date().toISOString(),
+  });
+
+  await supabase.from("finance_transactions").insert({
+    booking_id: bookingId,
+    provider_id: providerId,
+    transaction_type: "payment",
+    amount: netAmount,
+    fees: feesInCurrency,
+    commission: platformCommission,
+    net: platformCommission,
+    description: `Remaining balance for booking ${bookingData.booking_number}`,
+    created_at: new Date().toISOString(),
+  });
+  await supabase.from("finance_transactions").insert({
+    booking_id: bookingId,
+    provider_id: providerId,
+    transaction_type: "provider_earnings",
+    amount: providerEarnings,
+    fees: 0,
+    commission: 0,
+    net: providerEarnings,
+    description: `Provider earnings (remaining balance) for booking ${bookingData.booking_number}`,
+    created_at: new Date().toISOString(),
+  });
+
+  await supabase
+    .from("bookings")
+    .update({
+      status: "confirmed",
+      payment_date: new Date().toISOString(),
+      payment_provider: "paystack",
+      payment_reference: reference,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", bookingId);
+
+  try {
+    const { sendToUser } = await import("@/lib/notifications/onesignal");
+    await sendToUser(
+      bookingData.customer_id,
+      {
+        title: "Payment Confirmed",
+        message: `Your remaining balance of R${amountInCurrency.toFixed(2)} for booking ${bookingData.booking_number} has been paid.`,
+        data: { type: "payment_success", booking_id: bookingId },
+        url: `/account-settings/bookings`,
+      },
+      ["push"],
+      { appType: "customer" }
+    );
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("user_id")
+      .eq("id", providerId)
+      .single();
+    const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
+    if (providerUserId) {
+      await sendToUser(
+        providerUserId,
+        {
+          title: "Remaining Balance Paid",
+          message: `Remaining balance for booking ${bookingData.booking_number} has been paid.`,
+          data: { type: "booking_payment", booking_id: bookingId },
+          url: `/provider/bookings/${bookingId}`,
+        },
+        ["push"],
+        { appType: "provider" }
+      );
+    }
+  } catch (notifError) {
+    console.error("Error sending pay-remaining notifications:", notifError);
   }
 }
 

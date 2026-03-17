@@ -31,6 +31,7 @@ function handleNotificationRoute(data: Record<string, unknown>) {
     switch (type) {
       case "booking_reminder":
       case "booking_confirmed":
+      case "booking_confirmation": // on-demand accepted
       case "booking_cancelled":
       case "booking_updated":
       case "booking_completed":

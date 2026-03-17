@@ -2,6 +2,8 @@
 
 Audit date: 2025-02. Ensures provider mobile app (Expo) and provider portal (Next.js) use the same API contracts.
 
+**See also:** [BOOKING_FLOW_ALIGNMENT.md](./BOOKING_FLOW_ALIGNMENT.md) — how customer app booking flow (holds, consume, on-demand) maps to provider app screens and APIs.
+
 ## Endpoints used by mobile (aligned)
 
 | Endpoint | Method | Mobile usage | Portal API | Status |
@@ -40,6 +42,29 @@ Audit date: 2025-02. Ensures provider mobile app (Expo) and provider portal (Nex
 | `/api/provider/custom-requests` | GET | List (inbox) | Array of requests with customer, attachments, offers | OK |
 | `/api/provider/custom-requests/[id]` | GET | Detail (single request) | Single request, same shape as list item; 404 if not found | OK |
 | `/api/provider/custom-requests/[id]/offers` | POST | Send offer | Body: price, currency, duration_minutes, expiration_at, etc. | OK |
+| `/api/provider/staff/[id]/permissions` | GET | Load permissions for one staff member | `{ permissions: Record<string, boolean> }` (24 keys) | OK |
+| `/api/provider/staff/[id]/permissions` | PATCH | Save permissions (owner only) | Body: `{ permissions: Record<string, boolean> }` | OK |
+| `/api/provider/time-clock` | GET | List time cards (Time clock screen) | Array of time cards | OK |
+| `/api/provider/time-clock` | POST | PIN clock-in | Body: `{ pin }` | OK |
+| `/api/provider/staff/[id]/time-clock/clock-in` | POST | Clock in a staff member | Optional body | OK |
+| `/api/provider/staff/[id]/time-clock/clock-out` | POST | Clock out a staff member | Optional body | OK |
+| `/api/provider/time-clock/[id]` | PATCH | Update time card (clock_in_time, clock_out_time, notes) | Body: partial time card | OK |
+| `/api/provider/pay-runs` | GET | Payroll list | Array / paginated | OK |
+| `/api/provider/pay-runs` | POST | Create pay run | Body per API | OK |
+| `/api/provider/pay-runs/my-earnings` | GET | My earnings (staff) | Earnings data | OK |
+| `/api/provider/routes` | GET, POST | Routes screen (at-home optimization) | Same as portal | OK |
+| `/api/provider/packages` | GET | Packages list | Same as portal | OK |
+| `/api/provider/ads/campaigns` | GET | Paid ads campaigns | Same as portal | OK |
+
+## Staff permissions (mobile parity)
+
+- **GET/PATCH `/api/provider/staff/[id]/permissions`**  
+  Mobile screen `staff-permissions/[id].tsx` shows all 24 permission toggles in 9 categories (Calendar, Sales, Services & Products, Team, Settings, Clients, Reviews, Messages, Explore), aligned with web and `StaffPermissions` in `apps/web/src/lib/auth/permissions.ts`. State is merged with API response so missing keys default to `false`. Save uses PATCH with full `permissions` object; on error shows `Alert.alert`. Only provider owners (and superadmin) can update; API returns 403 for staff.
+
+## Time clock & pay-runs
+
+- **Time clock:** Mobile `more/time-clock.tsx` uses GET/POST `/api/provider/time-clock` (list cards, PIN clock), POST `/api/provider/staff/[id]/time-clock/clock-in` and `.../clock-out`, PATCH `/api/provider/time-clock/[id]`. Accessible from More → Team & scheduling (Team screen) and Settings → Team → Time clock.
+- **Pay-runs:** Mobile payroll and my-earnings use `/api/provider/pay-runs` and `/api/provider/pay-runs/my-earnings`; same contracts as portal.
 
 ## Fix applied
 
@@ -74,6 +99,14 @@ Audit date: 2025-02. Ensures provider mobile app (Expo) and provider portal (Nex
 
 - **Products, product-orders, returns, staff, locations, settings, subscription, billing-history, inventory**  
   Response shapes verified; mobile types align with API (including optional pagination/metadata where used).
+
+## Settings – all native
+
+- **Calendar display** → native `more/settings/calendar-preferences` (GET/PATCH `/api/provider/settings/calendar-preferences`).
+- **Calendar colors & icons** → native `more/settings/calendar-colors-icons` (info screen + “Open on web” to portal for full CRUD).
+- **Calendar links** → native `more/settings/calendar-links` (info screen + “Open on web” to portal for full CRUD).
+- **Waitlist settings** → native `more/settings/waitlist-settings` (GET/PATCH `/api/provider/settings/waitlist`).
+- **Payout center** → native `more/payouts`.
 
 ## Error handling (2025-03)
 

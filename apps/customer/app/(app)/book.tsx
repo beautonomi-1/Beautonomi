@@ -9,6 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Linking,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -37,6 +39,14 @@ import type {
 } from "@/types/api";
 
 type Step = "service" | "venue" | "staff" | "date" | "time" | "addons";
+
+export interface SelectedServiceItem {
+  offeringId: string;
+  title: string;
+  duration_minutes: number;
+  price: number;
+  currency: string;
+}
 
 const STEP_LABELS: Record<Step, string> = {
   service: "Service",
@@ -93,14 +103,19 @@ function StepIndicator({ steps, current }: { steps: Step[]; current: Step }) {
 }
 
 /* ─── Provider Summary Header ─── */
-function BookingSummaryHeader({ provider, service, variant }: {
+function BookingSummaryHeader({ provider, service, variant, selectedServices }: {
   provider: PublicProviderDetail;
   service: ProviderService | null;
   variant: { title?: string; price: number; duration_minutes: number } | null;
+  selectedServices?: SelectedServiceItem[];
 }) {
-  const displayName = variant?.title ?? service?.title;
-  const displayPrice = variant?.price ?? service?.price;
-  const displayDuration = variant?.duration_minutes ?? service?.duration_minutes;
+  const items = selectedServices && selectedServices.length > 0 ? selectedServices : null;
+  const displayName = items
+    ? items.length === 1 ? items[0].title : `${items.length} services`
+    : (variant?.title ?? service?.title);
+  const displayPrice = items ? items.reduce((s, i) => s + i.price, 0) : (variant?.price ?? service?.price);
+  const displayDuration = items ? items.reduce((s, i) => s + i.duration_minutes, 0) : (variant?.duration_minutes ?? service?.duration_minutes);
+  const currency = provider.currency ?? items?.[0]?.currency ?? "ZAR";
 
   return (
     <View style={{
@@ -116,9 +131,9 @@ function BookingSummaryHeader({ provider, service, variant }: {
       )}
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }} numberOfLines={1}>{provider.business_name}</Text>
-        {displayName && (
+        {(displayName || displayDuration != null) && (
           <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }} numberOfLines={1}>
-            {displayName} · {displayDuration} min · {provider.currency} {displayPrice?.toFixed(2)}
+            {displayName} · {displayDuration} min · {currency} {Number(displayPrice ?? 0).toFixed(2)}
           </Text>
         )}
       </View>
@@ -168,18 +183,22 @@ export default function BookScreen() {
   useScreenTracking("Book");
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
-  const { slug, service_id, duration_minutes, reschedule_booking_id, campaign_id, provider_id } = useLocalSearchParams<{
+  const { slug, service_id, duration_minutes, reschedule_booking_id, campaign_id, provider_id, step: stepParam } = useLocalSearchParams<{
     slug: string;
     service_id?: string;
     duration_minutes?: string;
     reschedule_booking_id?: string;
     campaign_id?: string;
     provider_id?: string;
+    step?: string;
   }>();
   const { user } = useAuth();
   const { coords } = useLocation();
   const { selectedAddress: primaryAddress } = useSelectedAddress();
   const { addresses: savedAddresses } = useAddresses(!!user);
+
+  const validSteps: Step[] = ["service", "venue", "staff", "date", "time", "addons"];
+  const initialStep: Step = stepParam && validSteps.includes(stepParam as Step) ? (stepParam as Step) : "service";
 
   const [provider, setProvider] = useState<PublicProviderDetail | null>(null);
   const [servicesData, setServicesData] = useState<ProviderServicesResponse | null>(null);
@@ -187,8 +206,9 @@ export default function BookScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [step, setStep] = useState<Step>("service");
+  const [step, setStep] = useState<Step>(initialStep);
   const [selectedService, setSelectedService] = useState<ProviderService | null>(null);
+  const [selectedServices, setSelectedServices] = useState<SelectedServiceItem[]>([]);
   const [locationType, setLocationType] = useState<"at_salon" | "at_home">("at_salon");
   const [selectedLocation, setSelectedLocation] = useState<ProviderLocation | null>(null);
   const [atHomeAddress, setAtHomeAddress] = useState({ line1: "", city: "", country: "ZA" });
@@ -205,6 +225,7 @@ export default function BookScreen() {
   const [creatingHold, setCreatingHold] = useState(false);
   const [addonsList, setAddonsList] = useState<{ id: string; title?: string; name?: string; price: number; duration_minutes?: number; currency?: string; is_recommended?: boolean }[]>([]);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
+  const [waitlistJoining, setWaitlistJoining] = useState(false);
 
   // Week navigation for date picker
   const [weekOffset, setWeekOffset] = useState(0);
@@ -240,7 +261,16 @@ export default function BookScreen() {
         if (service_id) {
           const flat: ProviderService[] = (svcRes.data.categories || []).flatMap((c) => c.services);
           const svc = flat.find((s) => s.id === service_id || s.variants?.some((v) => v.id === service_id));
-          if (svc) setSelectedService(svc);
+          if (svc) {
+            setSelectedService(svc);
+            const v = svc.variants?.find((vr) => vr.id === service_id) ?? svc.variants?.[0];
+            const offeringId = v?.id ?? svc.id;
+            const dur = v?.duration_minutes ?? svc.duration_minutes ?? 60;
+            const price = v?.price ?? svc.price ?? 0;
+            const currency = svc.currency ?? "ZAR";
+            setSelectedServices([{ offeringId, title: v?.title ?? svc.title ?? "", duration_minutes: dur, price, currency }]);
+            if (v) setSelectedVariant(v);
+          }
         }
       }
 
@@ -257,16 +287,20 @@ export default function BookScreen() {
 
   useEffect(() => { loadProviderAndServices(); }, [loadProviderAndServices]);
 
-  const effectiveDuration = selectedVariant
-    ? selectedVariant.duration_minutes
-    : selectedService
-      ? selectedService.variants?.[0]?.duration_minutes ?? selectedService.duration_minutes
-      : parseInt(duration_minutes || "60", 10);
-  const effectiveOfferingId = selectedVariant
-    ? selectedVariant.id
-    : selectedService
-      ? selectedService.variants?.[0]?.id || selectedService.id
-      : service_id;
+  const effectiveDuration = selectedServices.length > 0
+    ? selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0)
+    : selectedVariant
+      ? selectedVariant.duration_minutes
+      : selectedService
+        ? selectedService.variants?.[0]?.duration_minutes ?? selectedService.duration_minutes
+        : parseInt(duration_minutes || "60", 10);
+  const effectiveOfferingId = selectedServices.length > 0
+    ? selectedServices[0].offeringId
+    : selectedVariant
+      ? selectedVariant.id
+      : selectedService
+        ? selectedService.variants?.[0]?.id || selectedService.id
+        : service_id;
 
   const loadSlots = useCallback(async () => {
     if (!slug || !effectiveOfferingId || !selectedDate || !selectedStaff) return;
@@ -295,6 +329,60 @@ export default function BookScreen() {
     }
   }, [slug, effectiveOfferingId, effectiveDuration, selectedDate, selectedStaff, locationType, selectedLocation]);
 
+  const joinWaitlist = useCallback(async () => {
+    if (!provider?.id || !selectedDate) return;
+    const displayName =
+      user?.user_metadata?.full_name ||
+      [user?.user_metadata?.first_name, user?.user_metadata?.last_name].filter(Boolean).join(" ") ||
+      user?.email?.split("@")[0] ||
+      "";
+    if (!displayName.trim()) {
+      Alert.alert("Name required", "Please add your name in Profile to join the waitlist.");
+      return;
+    }
+    setWaitlistJoining(true);
+    try {
+      const preferredDate = selectedDate.toISOString().split("T")[0];
+      const body: Record<string, string> = {
+        provider_id: provider.id,
+        customer_name: displayName.trim(),
+        preferred_date: preferredDate,
+        preferred_time_start: "09:00",
+        preferred_time_end: "17:00",
+      };
+      if (user?.email) body.customer_email = user.email;
+      if (user?.user_metadata?.phone || (user as { phone?: string })?.phone) body.customer_phone = (user?.user_metadata?.phone || (user as { phone?: string })?.phone) as string;
+      if (effectiveOfferingId && /^[0-9a-f-]{36}$/i.test(effectiveOfferingId)) body.service_id = effectiveOfferingId;
+      if (selectedStaff?.id && /^[0-9a-f-]{36}$/i.test(selectedStaff.id)) body.staff_id = selectedStaff.id;
+      const res = await api.post<{ entry?: { id: string } }>("/api/public/waitlist", body);
+      if (res.error) {
+        const msg = (res.error as { message?: string })?.message || "Could not join waitlist.";
+        const code = (res.error as { code?: string })?.code;
+        if (code === "FEATURE_DISABLED" || code === "NOT_FOUND") {
+          Alert.alert("Not available", "This provider doesn't offer waitlist.");
+        } else if (code === "WAITLIST_FULL") {
+          Alert.alert("Waitlist full", "The waitlist is currently full. Please try again later.");
+        } else {
+          Alert.alert("Error", msg);
+        }
+      } else {
+        haptic.light();
+        Alert.alert(
+          "You're on the list",
+          "We'll notify you when a slot opens for this date.",
+          [
+            { text: "OK" },
+            { text: "View my waitlist", onPress: () => router.push("/(app)/account-settings/waitlist") },
+          ]
+        );
+      }
+    } catch (e) {
+      Alert.alert("Error", e instanceof Error ? e.message : "Could not join waitlist.");
+    } finally {
+      setWaitlistJoining(false);
+    }
+  }, [provider?.id, selectedDate, user, effectiveOfferingId, selectedStaff?.id]);
+
   useEffect(() => {
     if (step === "time" && selectedDate && selectedStaff) loadSlots();
   }, [step, selectedDate, selectedStaff, loadSlots]);
@@ -319,7 +407,12 @@ export default function BookScreen() {
   }, [step, slug, effectiveOfferingId]);
 
   const createHold = useCallback(async () => {
-    if (!provider || !selectedService || !selectedStaff || !selectedSlot) return;
+    const servicesForHold = selectedServices.length > 0
+      ? selectedServices
+      : selectedService
+        ? [{ offeringId: effectiveOfferingId, title: selectedVariant?.title ?? selectedService.title ?? "", duration_minutes: effectiveDuration, price: selectedVariant?.price ?? selectedService.price ?? 0, currency: selectedService.currency ?? "ZAR" }]
+        : [];
+    if (!provider || servicesForHold.length === 0 || !selectedStaff || !selectedSlot) return;
     setCreatingHold(true);
     try {
       const latLng = atHomeCoords ?? (coords ? { latitude: coords.latitude, longitude: coords.longitude } : null);
@@ -327,12 +420,19 @@ export default function BookScreen() {
         ? { line1: atHomeAddress.line1, city: atHomeAddress.city, country: atHomeAddress.country, latitude: latLng?.latitude, longitude: latLng?.longitude }
         : undefined;
 
+      const startAt = typeof selectedSlot.start === "string" && selectedSlot.start.includes("Z")
+        ? selectedSlot.start
+        : new Date(selectedSlot.start).toISOString();
+      const endAt = typeof selectedSlot.end === "string" && selectedSlot.end.includes("Z")
+        ? selectedSlot.end
+        : new Date(selectedSlot.end).toISOString();
+
       const res = await api.post<{ hold_id?: string; id?: string }>("/api/public/booking-holds", {
         provider_id: provider.id,
         staff_id: selectedStaff.id,
-        services: [{ offering_id: effectiveOfferingId, staff_id: selectedStaff.id }],
-        start_at: selectedSlot.start,
-        end_at: selectedSlot.end,
+        services: servicesForHold.map((s) => ({ offering_id: s.offeringId, staff_id: selectedStaff.id })),
+        start_at: startAt,
+        end_at: endAt,
         location_type: locationType,
         location_id: locationType === "at_salon" ? selectedLocation?.id : null,
         address,
@@ -348,7 +448,8 @@ export default function BookScreen() {
       haptic.success();
       const params: Record<string, string> = {
         hold_id: holdId,
-        service_name: selectedVariant?.title ?? selectedService.title,
+        slug: provider.slug,
+        service_name: servicesForHold.length === 1 ? servicesForHold[0].title : `${servicesForHold.length} services`,
         provider_name: provider.business_name,
         provider_thumbnail: provider.thumbnail_url ?? "",
       };
@@ -362,7 +463,7 @@ export default function BookScreen() {
     } finally {
       setCreatingHold(false);
     }
-  }, [provider, selectedService, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, coords, effectiveOfferingId, selectedLocation, selectedVariant, reschedule_booking_id, campaign_id, provider_id, selectedAddonIds]);
+  }, [provider, selectedService, selectedServices, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, coords, effectiveOfferingId, effectiveDuration, selectedLocation, selectedVariant, reschedule_booking_id, campaign_id, provider_id, selectedAddonIds]);
 
   const goBack = useCallback(() => {
     haptic.light();
@@ -483,7 +584,7 @@ export default function BookScreen() {
             <StepIndicator steps={visibleSteps} current={step} />
 
             {/* Provider Summary */}
-            <BookingSummaryHeader provider={provider} service={selectedService} variant={selectedVariant} />
+            <BookingSummaryHeader provider={provider} service={selectedService} variant={selectedVariant} selectedServices={selectedServices.length > 0 ? selectedServices : undefined} />
 
             {/* Error banner */}
             {error && (
@@ -495,10 +596,23 @@ export default function BookScreen() {
             {/* ── Step: Service ── */}
             {step === "service" && (
               <View>
-                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Select a service</Text>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Select service(s)</Text>
+                {selectedServices.length > 0 && (
+                  <View style={{ marginBottom: 16, padding: 12, backgroundColor: "#F0FDF4", borderRadius: 12, borderWidth: 1, borderColor: "#BBF7D0" }}>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#166534", marginBottom: 8 }}>Your selection ({selectedServices.length})</Text>
+                    {selectedServices.map((item, idx) => (
+                      <View key={`${item.offeringId}-${idx}`} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: idx < selectedServices.length - 1 ? 1 : 0, borderColor: "rgba(0,0,0,0.06)" }}>
+                        <Text style={{ fontSize: 14, color: "#111827", flex: 1 }} numberOfLines={1}>{item.title} · {item.duration_minutes} min · {item.currency} {item.price.toFixed(2)}</Text>
+                        <TouchableOpacity onPress={() => { haptic.light(); setSelectedServices((prev) => prev.filter((_, i) => i !== idx)); }} hitSlop={8} accessibilityLabel="Remove service">
+                          <Ionicons name="close-circle" size={22} color="#B91C1C" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
                 {allServices.map((svc) => {
                   const hasVariants = svc.variants && svc.variants.length > 1;
-                  const isSelected = selectedService?.id === svc.id;
+                  const currency = svc.currency ?? "ZAR";
                   return (
                     <View key={svc.id} style={{ marginBottom: 4 }}>
                       <Pressable
@@ -507,66 +621,61 @@ export default function BookScreen() {
                             haptic.light();
                             setSelectedService(svc);
                             setSelectedVariant(null);
-                            setStep("venue");
+                            const offeringId = svc.variants?.[0]?.id ?? svc.id;
+                            const dur = svc.variants?.[0]?.duration_minutes ?? svc.duration_minutes ?? 60;
+                            const price = svc.variants?.[0]?.price ?? svc.price ?? 0;
+                            setSelectedServices((prev) => [...prev, { offeringId, title: svc.title ?? "", duration_minutes: dur, price, currency }]);
                           }
                         }}
                         style={{
                           flexDirection: "row", justifyContent: "space-between", alignItems: "center",
                           paddingVertical: 14, paddingHorizontal: 14, borderRadius: 12, marginBottom: 2,
-                          backgroundColor: isSelected && !hasVariants ? Colors.primaryLight : "#fff",
-                          borderWidth: 1, borderColor: isSelected && !hasVariants ? Colors.primary : "#F3F4F6",
+                          backgroundColor: "#fff",
+                          borderWidth: 1, borderColor: "#F3F4F6",
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel={`${svc.title}, ${svc.duration_minutes} minutes, ${svc.currency} ${svc.price}`}
+                        accessibilityLabel={`Add ${svc.title}, ${svc.duration_minutes} minutes`}
                       >
                         <View style={{ flex: 1 }}>
                           <Text style={{ fontWeight: "600", color: "#111827", fontSize: 15 }}>{svc.title}</Text>
                           <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
-                            {hasVariants ? "Multiple options available" : `${svc.duration_minutes} min · ${svc.currency} ${svc.price.toFixed(2)}`}
+                            {hasVariants ? "Multiple options — tap to choose" : `${svc.duration_minutes} min · ${currency} ${svc.price.toFixed(2)}`}
                           </Text>
                         </View>
-                        {!hasVariants && (
-                          <View style={{ flexDirection: "row", alignItems: "center" }}>
-                            {isSelected && <Ionicons name="checkmark-circle" size={20} color={Colors.primary} style={{ marginRight: 4 }} />}
-                            <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
-                          </View>
-                        )}
+                        {!hasVariants && <Ionicons name="add-circle-outline" size={22} color={Colors.primary} />}
                         {hasVariants && <Ionicons name="chevron-down" size={18} color="#9CA3AF" />}
                       </Pressable>
                       {hasVariants && (
                         <View style={{ paddingLeft: 12, marginBottom: 8 }}>
-                          {svc.variants!.map((v, vi) => {
-                            const vSelected = selectedVariant?.id === v.id;
-                            return (
-                              <Pressable
-                                key={v.id}
-                                onPress={() => {
-                                  haptic.light();
-                                  setSelectedService(svc);
-                                  setSelectedVariant(v);
-                                  setStep("venue");
-                                }}
-                                style={{
-                                  flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-                                  borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12,
-                                  backgroundColor: vSelected ? Colors.primaryLight : "#F9FAFB",
-                                  borderColor: vSelected ? Colors.primary : "#E5E7EB",
-                                  marginTop: vi === 0 ? 0 : 6,
-                                }}
-                                accessibilityRole="button"
-                                accessibilityLabel={`${v.title ?? svc.title} ${v.duration_minutes} minutes ${svc.currency} ${v.price}`}
-                              >
-                                <View>
-                                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{v.title ?? `${v.duration_minutes} min`}</Text>
-                                  <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{v.duration_minutes} min</Text>
-                                </View>
-                                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                  <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.primary, marginRight: 6 }}>{svc.currency} {v.price.toFixed(2)}</Text>
-                                  {vSelected && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
-                                </View>
-                              </Pressable>
-                            );
-                          })}
+                          {svc.variants!.map((v, vi) => (
+                            <Pressable
+                              key={v.id}
+                              onPress={() => {
+                                haptic.light();
+                                setSelectedService(svc);
+                                setSelectedVariant(v);
+                                setSelectedServices((prev) => [...prev, { offeringId: v.id, title: v.title ?? svc.title ?? "", duration_minutes: v.duration_minutes, price: v.price, currency }]);
+                              }}
+                              style={{
+                                flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+                                borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12,
+                                backgroundColor: "#F9FAFB",
+                                borderColor: "#E5E7EB",
+                                marginTop: vi === 0 ? 0 : 6,
+                              }}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Add ${v.title ?? svc.title} ${v.duration_minutes} minutes`}
+                            >
+                              <View>
+                                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{v.title ?? `${v.duration_minutes} min`}</Text>
+                                <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{v.duration_minutes} min</Text>
+                              </View>
+                              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.primary, marginRight: 6 }}>{currency} {v.price.toFixed(2)}</Text>
+                                <Ionicons name="add-circle-outline" size={18} color={Colors.primary} />
+                              </View>
+                            </Pressable>
+                          ))}
                         </View>
                       )}
                     </View>
@@ -576,7 +685,7 @@ export default function BookScreen() {
             )}
 
             {/* ── Step: Venue ── */}
-            {step === "venue" && selectedService && (
+            {step === "venue" && (selectedService || selectedServices.length > 0) && (
               <View>
                 <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Where would you like your service?</Text>
                 {provider.supports_salon && (provider.locations?.length ? (
@@ -674,7 +783,7 @@ export default function BookScreen() {
                     {locationType === "at_salon" && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
                   </Pressable>
                 ))}
-                {provider.supports_house_calls && selectedService.supports_at_home && (
+                {provider.supports_house_calls && selectedService?.supports_at_home && (
                   <Pressable
                     onPress={() => {
                       haptic.light();
@@ -959,45 +1068,102 @@ export default function BookScreen() {
                 ) : slots.length === 0 ? (
                   <View style={{ alignItems: "center", paddingVertical: 24 }}>
                     <Ionicons name="time-outline" size={36} color="#D1D5DB" />
-                    <Text style={{ color: "#6B7280", marginTop: 8, fontSize: 14 }}>No available slots for this date.</Text>
+                    <Text style={{ color: "#6B7280", marginTop: 8, fontSize: 14, textAlign: "center" }}>
+                      No available times for this date. The date or time may be fully booked or outside opening hours.
+                    </Text>
                     <TouchableOpacity
                       onPress={() => setStep("date")}
                       style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: contentPadding, paddingVertical: 10, marginTop: 12 }}
                     >
                       <Text style={{ color: "#fff", fontWeight: "600" }}>Try Another Date</Text>
                     </TouchableOpacity>
+                    {provider?.id && (
+                      <TouchableOpacity
+                        onPress={() => (user ? joinWaitlist() : router.push("/(auth)/login"))}
+                        disabled={waitlistJoining}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginTop: 12,
+                          paddingVertical: 12,
+                          paddingHorizontal: 16,
+                          borderRadius: 10,
+                          borderWidth: 1.5,
+                          borderColor: Colors.primary,
+                          backgroundColor: "transparent",
+                        }}
+                      >
+                        {waitlistJoining ? (
+                          <ActivityIndicator size="small" color={Colors.primary} style={{ marginRight: 8 }} />
+                        ) : (
+                          <Ionicons name="hourglass-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
+                        )}
+                        <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>
+                          {user ? (waitlistJoining ? "Joining…" : "Join waitlist") : "Sign in to join waitlist"}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 ) : (
-                  <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                    {slots.map((slot, i) => {
-                      const timeStr = new Date(slot.start).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
-                      const isSelected = selectedSlot?.start === slot.start;
-                      return (
-                        <TouchableOpacity
-                          key={i}
-                          onPress={() => { haptic.light(); setSelectedSlot(slot); }}
-                          style={{
-                            paddingHorizontal: contentPadding, paddingVertical: 12, borderRadius: 12,
-                            borderWidth: 1.5,
-                            backgroundColor: isSelected ? Colors.primary : "#fff",
-                            borderColor: isSelected ? Colors.primary : "#E5E7EB",
-                            marginRight: 8,
-                            marginBottom: 8,
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Select time ${timeStr}`}
-                          accessibilityState={{ selected: isSelected }}
-                        >
-                          <Text style={{
-                            fontWeight: "600", fontSize: 14,
-                            color: isSelected ? "#fff" : "#111827",
-                          }}>
-                            {timeStr}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+                  (() => {
+                    const getPeriod = (iso: string) => {
+                      const h = new Date(iso).getHours();
+                      if (h < 12) return "Morning";
+                      if (h < 17) return "Afternoon";
+                      return "Evening";
+                    };
+                    const byPeriod = { Morning: [] as AvailabilitySlot[], Afternoon: [] as AvailabilitySlot[], Evening: [] as AvailabilitySlot[] };
+                    slots.forEach((s) => {
+                      const p = getPeriod(s.start);
+                      byPeriod[p].push(s);
+                    });
+                    const order: ("Morning" | "Afternoon" | "Evening")[] = ["Morning", "Afternoon", "Evening"];
+                    return (
+                      <View>
+                        {order.map((period) => {
+                          const list = byPeriod[period];
+                          if (list.length === 0) return null;
+                          return (
+                            <View key={period} style={{ marginBottom: 16 }}>
+                              <Text style={{ fontSize: 12, fontWeight: "600", color: "#6B7280", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                                {period}
+                              </Text>
+                              <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                                {list.map((slot, i) => {
+                                  const timeStr = new Date(slot.start).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+                                  const isSelected = selectedSlot?.start === slot.start;
+                                  return (
+                                    <TouchableOpacity
+                                      key={i}
+                                      onPress={() => { haptic.light(); setSelectedSlot(slot); }}
+                                      style={{
+                                        paddingHorizontal: contentPadding,
+                                        paddingVertical: 12,
+                                        borderRadius: 12,
+                                        borderWidth: 1.5,
+                                        backgroundColor: isSelected ? Colors.primary : "#fff",
+                                        borderColor: isSelected ? Colors.primary : "#E5E7EB",
+                                        marginRight: 8,
+                                        marginBottom: 8,
+                                      }}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`Select time ${timeStr}`}
+                                      accessibilityState={{ selected: isSelected }}
+                                    >
+                                      <Text style={{ fontWeight: "600", fontSize: 14, color: isSelected ? "#fff" : "#111827" }}>
+                                        {timeStr}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    );
+                  })()
                 )}
               </View>
             )}
@@ -1005,7 +1171,7 @@ export default function BookScreen() {
 
           {/* ═══ Step: Add-ons (optional extras before checkout) ═══ */}
           {step === "addons" && (
-            <View>
+            <View style={{ marginTop: 8, marginBottom: 24 }}>
               <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 }}>Add extras (optional)</Text>
               <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>
                 Optional add-ons to enhance your visit
@@ -1055,6 +1221,101 @@ export default function BookScreen() {
           )}
 
           {/* ═══ Sticky Bottom CTA ═══ */}
+          {step === "service" && (
+            <View style={{
+              paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
+              borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
+            }}>
+              <TouchableOpacity
+                onPress={() => { haptic.medium(); setStep("venue"); }}
+                disabled={selectedServices.length === 0}
+                style={{
+                  backgroundColor: selectedServices.length > 0 ? Colors.primary : "#D1D5DB",
+                  borderRadius: 14, paddingVertical: 16,
+                  alignItems: "center", flexDirection: "row", justifyContent: "center",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Next"
+                accessibilityState={{ disabled: selectedServices.length === 0 }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Next</Text>
+                <Ionicons name="chevron-forward" size={20} color="#fff" style={{ marginLeft: 6 }} />
+              </TouchableOpacity>
+            </View>
+          )}
+          {step === "venue" && (selectedService || selectedServices.length > 0) && (
+            <View style={{
+              paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
+              borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
+            }}>
+              {(() => {
+                const venueValid = locationType === "at_salon"
+                  ? (selectedLocation != null || (provider?.locations?.length ?? 0) === 0)
+                  : (atHomeAddress.line1.length > 0 || atHomeCoords != null);
+                return (
+                  <TouchableOpacity
+                    onPress={() => { haptic.medium(); setStep(staff.length > 0 ? "staff" : "date"); }}
+                    disabled={!venueValid}
+                    style={{
+                      backgroundColor: venueValid ? Colors.primary : "#D1D5DB",
+                      borderRadius: 14, paddingVertical: 16,
+                      alignItems: "center", flexDirection: "row", justifyContent: "center",
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Next"
+                    accessibilityState={{ disabled: !venueValid }}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Next</Text>
+                    <Ionicons name="chevron-forward" size={20} color="#fff" style={{ marginLeft: 6 }} />
+                  </TouchableOpacity>
+                );
+              })()}
+            </View>
+          )}
+          {step === "staff" && staff.length > 0 && (
+            <View style={{
+              paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
+              borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
+            }}>
+              <TouchableOpacity
+                onPress={() => { haptic.medium(); setStep("date"); }}
+                disabled={!selectedStaff}
+                style={{
+                  backgroundColor: selectedStaff ? Colors.primary : "#D1D5DB",
+                  borderRadius: 14, paddingVertical: 16,
+                  alignItems: "center", flexDirection: "row", justifyContent: "center",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Next"
+                accessibilityState={{ disabled: !selectedStaff }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Next</Text>
+                <Ionicons name="chevron-forward" size={20} color="#fff" style={{ marginLeft: 6 }} />
+              </TouchableOpacity>
+            </View>
+          )}
+          {step === "date" && (staff.length === 0 || selectedStaff) && (
+            <View style={{
+              paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
+              borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
+            }}>
+              <TouchableOpacity
+                onPress={() => { haptic.medium(); setStep("time"); }}
+                disabled={!selectedDate}
+                style={{
+                  backgroundColor: selectedDate ? Colors.primary : "#D1D5DB",
+                  borderRadius: 14, paddingVertical: 16,
+                  alignItems: "center", flexDirection: "row", justifyContent: "center",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Next"
+                accessibilityState={{ disabled: !selectedDate }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Next</Text>
+                <Ionicons name="chevron-forward" size={20} color="#fff" style={{ marginLeft: 6 }} />
+              </TouchableOpacity>
+            </View>
+          )}
           {step === "time" && selectedSlot && (
             <View style={{
               paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,

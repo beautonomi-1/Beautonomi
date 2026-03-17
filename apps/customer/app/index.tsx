@@ -39,11 +39,20 @@ function hasIncompleteRequired(data: ProfileCompletion | null): boolean {
   return items.some((item) => item.required === true && !item.completed);
 }
 
+/** First incomplete required item id → route for that screen */
+function getIncompleteRedirectRoute(data: ProfileCompletion | null): string {
+  const items = data?.checklistItems ?? [];
+  const first = items.find((item) => item.required === true && !item.completed);
+  if (first?.id === "address") return "/(app)/account-settings/addresses";
+  return "/(app)/account-settings/personal-info";
+}
+
 export default function Index() {
   const { session, loading, signOut } = useAuth();
   const [portalState, setPortalState] = useState<PortalState>("idle");
   const [wrongPortal, setWrongPortal] = useState<string | null>(null);
   const [profileState, setProfileState] = useState<"idle" | "loading" | "complete" | "incomplete" | "error">("idle");
+  const [profileCompletionData, setProfileCompletionData] = useState<ProfileCompletion | null>(null);
 
   useEffect(() => {
     if (loading || !session || !APP_URL?.trim()) {
@@ -110,6 +119,7 @@ export default function Index() {
         .then((res) => {
           if (cancelled) return;
           const data = res.data ?? null;
+          setProfileCompletionData(data);
           setProfileState(hasIncompleteRequired(data) ? "incomplete" : "complete");
         })
         .catch(() => {
@@ -180,9 +190,10 @@ export default function Index() {
     return <Redirect href="/(app)/(tabs)/home" />;
   }
 
-  // Required profile items incomplete (e.g. email not verified) → nudge to complete
+  // Required profile items incomplete → redirect to the right screen (address → addresses, else personal-info)
   if (portalState === "customer" && profileState === "incomplete") {
-    return <Redirect href="/(app)/account-settings/personal-info" />;
+    const href = getIncompleteRedirectRoute(profileCompletionData);
+    return <Redirect href={href as any} />;
   }
 
   return <Redirect href="/(app)/(tabs)/home" />;

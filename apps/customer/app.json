@@ -9,7 +9,7 @@
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -41,7 +41,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.beautonomi",
-      "versionCode": 4,
+      "versionCode": 19,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",
@@ -89,7 +89,8 @@
       "eas": {"projectId": "434ef972-0597-4d93-9c09-ff7b9e11b149"},
       "router": {
         "origin": "https://beautonomi.com"
-      }
+      },
+      "iosAppId": ""
     }
   }
 }

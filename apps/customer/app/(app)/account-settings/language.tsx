@@ -19,13 +19,13 @@ export default function LanguageSettings() {
   const [currentCode, setCurrentCode] = useState(() => (i18n.language || "en").split("-")[0]);
   const { data: preferences, refresh } = useApi<PreferencesResponse>("/api/me/preferences");
 
+  const serverLang = preferences?.preferences?.language ?? (preferences as any)?.preferred_language ?? null;
   useEffect(() => {
-    const serverLang = preferences?.preferences?.language;
     if (serverLang && supportedLanguages.some((l) => l.code === serverLang) && serverLang !== (i18n.language || "en").split("-")[0]) {
       changeLanguage(serverLang);
       setCurrentCode(serverLang);
     }
-  }, [preferences?.preferences?.language]);
+  }, [serverLang]);
 
   useEffect(() => {
     const handler = (lng: string) => setCurrentCode((lng || "en").split("-")[0]);
@@ -41,7 +41,7 @@ export default function LanguageSettings() {
     await changeLanguage(code);
     setCurrentCode(code);
     if (API_LANGUAGE_CODES.has(code)) {
-      await api.post("/api/me/preferences", { language: code });
+      await api.post("/api/me/preferences", { language: code }).catch(() => {});
       refresh();
     }
   }, [currentCode, refresh]);

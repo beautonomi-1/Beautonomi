@@ -10,6 +10,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { Avatar } from "@/components/ui/Avatar";
 import { twStyle } from "@/lib/twStyle";
 
@@ -21,10 +22,16 @@ interface StaffMember {
   is_admin?: boolean;
 }
 
+const ROLE_LABEL: Record<string, string> = {
+  provider_owner: "Owner",
+  provider_manager: "Manager",
+  provider_staff: "Staff",
+};
+
 export default function StaffPermissionsListScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const { data: staffList, loading, refresh } = useApi<StaffMember[]>(
+  const { data: staffList, loading, error: staffError, refresh } = useApi<StaffMember[]>(
     "/api/provider/staff"
   );
 
@@ -38,6 +45,15 @@ export default function StaffPermissionsListScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <LoadingState message="Loading staff..." />
+      </ScreenContainer>
+    );
+  }
+
+  if (staffError && !staffList) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Staff permissions" showBack subtitle="Edit per-staff access" />
+        <ErrorState message={staffError} onRetry={refresh} />
       </ScreenContainer>
     );
   }
@@ -75,7 +91,7 @@ export default function StaffPermissionsListScreen() {
               <View style={twStyle("ml-3 flex-1")}>
                 <Text style={twStyle("font-medium text-gray-900")}>{item.name}</Text>
                 <Text style={twStyle("text-xs text-gray-500")}>
-                  {item.role ?? "Staff"}
+                  {item.role ? ROLE_LABEL[item.role] ?? item.role : "Staff"}
                   {item.is_admin ? " • Admin" : ""}
                 </Text>
               </View>

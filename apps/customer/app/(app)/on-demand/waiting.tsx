@@ -147,12 +147,17 @@ export default function OnDemandWaitingScreen() {
         {
           text: "Cancel",
           style: "destructive",
-          onPress: async () => {
+            onPress: async () => {
             setCancelling(true);
             try {
-              const res = await api.post(`/api/me/on-demand/requests/${requestId}/cancel`, {});
-              if (res.error) Alert.alert("Error", getApiErrorMessage(res.error, "Failed to cancel"));
-              else load();
+              const res = await api.post<OnDemandRequest>(`/api/me/on-demand/requests/${requestId}/cancel`, {});
+              if (res.error) {
+                Alert.alert("Error", getApiErrorMessage(res.error, "Failed to cancel"));
+              } else {
+                const updated = res.data;
+                if (updated) setRequest(updated);
+                else load();
+              }
             } finally {
               setCancelling(false);
             }

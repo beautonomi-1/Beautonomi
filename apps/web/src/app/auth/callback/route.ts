@@ -84,12 +84,18 @@ export async function GET(request: NextRequest) {
         updateData.full_name = name;
       }
 
-      // Extract avatar from OAuth metadata
-      const avatar = userMetadata.avatar_url || 
-                     userMetadata.picture || 
-                     userMetadata.photo ||
-                     userMetadata.image;
-
+      // Extract avatar from OAuth metadata (Facebook may send picture as { data: { url } })
+      let avatar: string | undefined;
+      const rawPicture = userMetadata.picture;
+      if (userMetadata.avatar_url) {
+        avatar = userMetadata.avatar_url as string;
+      } else if (typeof rawPicture === "string") {
+        avatar = rawPicture;
+      } else if (rawPicture && typeof rawPicture === "object" && (rawPicture as { data?: { url?: string } }).data?.url) {
+        avatar = (rawPicture as { data: { url: string } }).data.url;
+      } else if (userMetadata.photo || userMetadata.image) {
+        avatar = (userMetadata.photo || userMetadata.image) as string;
+      }
       if (avatar) {
         updateData.avatar_url = avatar;
       }

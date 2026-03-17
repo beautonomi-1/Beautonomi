@@ -24,12 +24,13 @@ import { useAuth } from "@/providers/AuthProvider";
 import {
   useAddresses,
   searchAddress,
+  reverseGeocode,
   type SavedAddress,
   type GeocodeSuggestion,
 } from "@/hooks/useAddresses";
 import { haptic } from "@/lib/haptics";
 import { useResponsive } from "@/hooks/useResponsive";
-import { APP_URL } from "@/config/public-env";
+import { RADIUS_INPUT, RADIUS_CARD } from "@/constants/layout";
 
 export interface AddressPickerSelection {
   label: string;
@@ -54,6 +55,8 @@ interface AddressPickerProps {
   onClose: () => void;
   onSelect: (address: AddressPickerSelection) => void;
   onUseCurrentLocation: () => void;
+  /** Prefill the search box (e.g. when editing an existing address). */
+  initialQuery?: string;
 }
 
 export function AddressPicker({
@@ -61,6 +64,7 @@ export function AddressPicker({
   onClose,
   onSelect,
   onUseCurrentLocation,
+  initialQuery,
 }: AddressPickerProps) {
   const { contentPadding } = useResponsive();
   const { user } = useAuth();
@@ -69,14 +73,27 @@ export function AddressPicker({
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
   const [gettingLocation, setGettingLocation] = useState(false);
+  const lastKnownCoordsRef = useRef<{ latitude: number; longitude: number } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!visible) {
       setQuery("");
       setSuggestions([]);
+    } else if (initialQuery?.trim()) {
+      setQuery(initialQuery.trim());
+      if (initialQuery.trim().length >= 3) {
+        setSearching(true);
+        const proximity = lastKnownCoordsRef.current
+          ? { longitude: lastKnownCoordsRef.current.longitude, latitude: lastKnownCoordsRef.current.latitude }
+          : undefined;
+        searchAddress(initialQuery.trim(), { proximity }).then((results) => {
+          setSuggestions(results);
+          setSearching(false);
+        });
+      }
     }
-  }, [visible]);
+  }, [visible, initialQuery]);
 
   const handleSearch = useCallback((text: string) => {
     setQuery(text);
@@ -87,7 +104,10 @@ export function AddressPicker({
     }
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
-      const results = await searchAddress(text);
+      const proximity = lastKnownCoordsRef.current
+        ? { longitude: lastKnownCoordsRef.current.longitude, latitude: lastKnownCoordsRef.current.latitude }
+        : undefined;
+      const results = await searchAddress(text, { proximity });
       setSuggestions(results);
       setSearching(false);
     }, 400);
@@ -173,41 +193,26 @@ export function AddressPicker({
       });
       const lat = loc.coords.latitude;
       const lng = loc.coords.longitude;
+      lastKnownCoordsRef.current = { latitude: lat, longitude: lng };
 
       let structured: AddressPickerSelection["structured"] | undefined;
       let displayName = "Current location";
 
-      if (APP_URL?.trim()) {
-        try {
-          const res = await fetch(`${APP_URL}/api/mapbox/reverse-geocode`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ latitude: lat, longitude: lng }),
-          });
-          const json = await res.json().catch(() => ({}));
-          const feature = json?.data;
-          if (feature?.place_name && feature?.center) {
-            displayName = feature.place_name;
-            const context = feature.context ?? [];
-            const find = (prefix: string) => context.find((c: { id: string }) => c.id?.startsWith(prefix))?.text ?? "";
-            const place = find("place.") || find("locality.") || find("district.");
-            const country = find("country.");
-            const parts = (feature.place_name || "").split(",").map((p: string) => p.trim()).filter(Boolean);
-            structured = {
-              address_line1: parts[0] || feature.text || "Current location",
-              city: place || parts[1] || "—",
-              state: find("region.") || undefined,
-              postal_code: find("postcode.") || undefined,
-              country: country || "South Africa",
-            };
-          }
-        } catch {
-          structured = {
-            address_line1: "Current location",
-            city: "—",
-            country: "South Africa",
-          };
-        }
+      const feature = await reverseGeocode(lat, lng);
+      if (feature?.place_name && feature?.center) {
+        displayName = feature.place_name;
+        const context = feature.context ?? [];
+        const find = (prefix: string) => context.find((c) => c.id?.startsWith(prefix))?.text ?? "";
+        const place = find("place.") || find("locality.") || find("district.");
+        const country = find("country.");
+        const parts = (feature.place_name || "").split(",").map((p) => p.trim()).filter(Boolean);
+        structured = {
+          address_line1: parts[0] || feature.text || "Current location",
+          city: place || parts[1] || "—",
+          state: find("region.") || undefined,
+          postal_code: find("postcode.") || undefined,
+          country: country || "South Africa",
+        };
       } else {
         structured = {
           address_line1: "Current location",
@@ -244,20 +249,20 @@ export function AddressPicker({
         >
           <Pressable
             style={{
-              backgroundColor: "#fff",
-              borderTopLeftRadius: 24,
-              borderTopRightRadius: 24,
+              backgroundColor: Colors.white,
+              borderTopLeftRadius: RADIUS_CARD,
+              borderTopRightRadius: RADIUS_CARD,
               maxHeight: "80%",
               paddingBottom: 34,
             }}
             onPress={(e) => e.stopPropagation()}
           >
             <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 8 }}>
-              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB" }} />
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.gray[300] }} />
             </View>
 
             <View style={{ paddingHorizontal: contentPadding }}>
-            <Text style={{ fontSize: 20, fontWeight: "700", color: "#111827", marginBottom: 16 }}>
+            <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], marginBottom: 16 }}>
               Select address
             </Text>
 
@@ -265,17 +270,17 @@ export function AddressPicker({
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                backgroundColor: "#F3F4F6",
-                borderRadius: 12,
+                backgroundColor: Colors.gray[100],
+                borderRadius: RADIUS_INPUT,
                 paddingHorizontal: 14,
                 marginBottom: 16,
               }}
             >
-              <Ionicons name="search-outline" size={18} color="#9CA3AF" />
+              <Ionicons name="search-outline" size={18} color={Colors.gray[400]} />
               <TextInput
-                style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 10, fontSize: 15, color: "#111827" }}
+                style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 10, fontSize: 15, color: Colors.gray[900] }}
                 placeholder="Search for an address..."
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={Colors.gray[400]}
                 value={query}
                 onChangeText={handleSearch}
                 autoFocus={false}
@@ -291,7 +296,7 @@ export function AddressPicker({
                 alignItems: "center",
                 paddingVertical: 14,
                 borderBottomWidth: 1,
-                borderColor: "#F3F4F6",
+                borderColor: Colors.gray[100],
               }}
             >
               <View
@@ -299,7 +304,7 @@ export function AddressPicker({
                   width: 36,
                   height: 36,
                   borderRadius: 18,
-                  backgroundColor: "rgba(255,0,119,0.08)",
+                  backgroundColor: Colors.primaryLight,
                   alignItems: "center",
                   justifyContent: "center",
                 }}
@@ -343,7 +348,7 @@ export function AddressPicker({
                         width: 36,
                         height: 36,
                         borderRadius: 18,
-                        backgroundColor: "#F3F4F6",
+                        backgroundColor: Colors.gray[100],
                         alignItems: "center",
                         justifyContent: "center",
                         marginRight: 10,
@@ -352,12 +357,12 @@ export function AddressPicker({
                       <Ionicons
                         name={item.is_default ? "star" : "home-outline"}
                         size={16}
-                        color={item.is_default ? "#F59E0B" : "#6B7280"}
+                        color={item.is_default ? "#F59E0B" : Colors.gray[500]}
                       />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{item.label}</Text>
-                      <Text style={{ fontSize: 12, color: "#9CA3AF" }} numberOfLines={1}>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{item.label}</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[400] }} numberOfLines={1}>
                         {item.address_line1}, {item.city}
                       </Text>
                     </View>
@@ -380,7 +385,7 @@ export function AddressPicker({
 
             {suggestions.length > 0 && (
               <View style={{ paddingHorizontal: contentPadding, marginBottom: 16 }}>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: "#6B7280", marginBottom: 8 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[500], marginBottom: 8 }}>
                   Search results
                 </Text>
                 {suggestions.map((item, index) => (
@@ -392,15 +397,15 @@ export function AddressPicker({
                       alignItems: "center",
                       paddingVertical: 14,
                       borderBottomWidth: 1,
-                      borderColor: "#F3F4F6",
+                      borderColor: Colors.gray[100],
                     }}
                   >
-                    <Ionicons name="location-outline" size={18} color="#6B7280" style={{ marginRight: 10 }} />
+                    <Ionicons name="location-outline" size={18} color={Colors.gray[500]} style={{ marginRight: 10 }} />
                     <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }} numberOfLines={1}>
+                      <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
                         {item.text}
                       </Text>
-                      <Text style={{ fontSize: 12, color: "#9CA3AF" }} numberOfLines={1}>
+                      <Text style={{ fontSize: 12, color: Colors.gray[400] }} numberOfLines={1}>
                         {item.place_name}
                       </Text>
                     </View>
@@ -417,7 +422,7 @@ export function AddressPicker({
 
             {!addressesLoading && addresses.length === 0 && suggestions.length === 0 && (
               <View style={{ padding: 24, alignItems: "center" }}>
-                <Text style={{ fontSize: 13, color: "#9CA3AF", textAlign: "center" }}>
+                <Text style={{ fontSize: 13, color: Colors.gray[400], textAlign: "center" }}>
                   Search for an address above or use your current location
                 </Text>
               </View>

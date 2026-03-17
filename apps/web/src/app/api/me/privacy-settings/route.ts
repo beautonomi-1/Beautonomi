@@ -147,6 +147,19 @@ export async function PATCH(request: NextRequest) {
     if (body.questions_visible !== undefined) {
       privacySettingsJsonb.questions_visible = body.questions_visible;
     }
+    // Customer app privacy toggles (stored in JSONB so GET returns them)
+    if (body.show_profile_publicly !== undefined) {
+      privacySettingsJsonb.show_profile_publicly = body.show_profile_publicly;
+    }
+    if (body.allow_providers_see_reviews !== undefined) {
+      privacySettingsJsonb.allow_providers_see_reviews = body.allow_providers_see_reviews;
+    }
+    if (body.share_booking_data !== undefined) {
+      privacySettingsJsonb.share_booking_data = body.share_booking_data;
+    }
+    if (body.receive_marketing !== undefined) {
+      privacySettingsJsonb.receive_marketing = body.receive_marketing;
+    }
 
     // Update users table if there are column updates
     if (Object.keys(usersTableUpdates).length > 0) {

@@ -998,6 +998,11 @@ export default function CalendarScreen() {
                 Group: {booking.group_booking_ref}
               </Text>
             )}
+            {booking.location_type === "at_home" && (
+              <Text style={{ marginTop: 2, fontSize: 8, color: subTextColor }} numberOfLines={1}>
+                At home
+              </Text>
+            )}
             {!preferences.compactMode && height >= 55 && (
               <Text style={{ marginTop: 2, fontSize: 9, color: subTextColor }}>
                 {formatTime(booking.scheduled_at)}

@@ -232,7 +232,7 @@ export default function ExplorePostScreen() {
         params: { slug: post.provider.slug, service_id: post.offering.id },
       });
     }
-  }, [post?.provider?.slug, post?.offering?.id]);
+  }, [post?.provider?.slug, post?.offering?.id, router]);
 
   if (loading && !post) {
     return (

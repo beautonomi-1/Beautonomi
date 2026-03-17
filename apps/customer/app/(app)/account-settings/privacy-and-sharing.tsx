@@ -69,32 +69,8 @@ export default function PrivacyAndSharingScreen() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await api.get<PrivacySettings>("/api/me/privacy-settings");
-        if (cancelled) return;
-        if (res.error) {
-          setError(res.error.message || "Failed to load privacy settings");
-        } else if (res.data) {
-          setSettings({ ...DEFAULT_SETTINGS, ...res.data });
-        }
-      } catch (e) {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Failed to load privacy settings");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    fetchData();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    load();
+  }, [load]);
 
   const toggle = useCallback(
     async (key: keyof PrivacySettings, value: boolean) => {
@@ -145,6 +121,7 @@ export default function PrivacyAndSharingScreen() {
                       onValueChange={(v) => toggle(item.key, v)}
                       trackColor={{ false: Colors.gray[300], true: Colors.primary }}
                       thumbColor={Colors.white}
+                      disabled={savingKey != null}
                     />
                   )}
                 </View>

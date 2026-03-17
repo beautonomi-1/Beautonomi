@@ -8,7 +8,7 @@ import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 
 const SAVE_CARD_INFO =
-  "We&apos;ll save your card securely when you pay. To verify your card, Paystack may place a small temporary charge (e.g. R1) and reverse it—this confirms your card for future use.";
+  "We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.";
 
 export default function PaymentsScreen() {
   const [methods, setMethods] = useState<any[]>([]);
@@ -97,7 +97,7 @@ export default function PaymentsScreen() {
           </View>
           <View style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 12, marginBottom: 12 }}>
             <Text style={{ fontSize: 12, color: Colors.gray[600] }}>
-              We&apos;ll save your card securely when you pay. To verify your card, Paystack may place a small temporary charge (e.g. R1) and reverse it—this confirms your card for future use.
+              We&apos;ll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.
             </Text>
           </View>
           {methods.length === 0 ? (

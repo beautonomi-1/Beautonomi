@@ -819,17 +819,21 @@ export default function PartnerProfileScreen() {
 
               const data = res.data as Record<string, unknown> | undefined;
               const paymentInfo = data?.payment as { authorization_url?: string } | undefined;
+              const url = paymentInfo?.authorization_url;
 
-              if (paymentInfo?.authorization_url) {
+              if (url) {
                 const WebBrowser = await import("expo-web-browser");
-                await WebBrowser.openBrowserAsync(paymentInfo.authorization_url, {
+                await WebBrowser.openBrowserAsync(url, {
                   presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
                 });
                 haptic.success();
-                Alert.alert("Welcome!", "Your membership is now active. Enjoy your benefits!");
+                Alert.alert(
+                  "Complete payment",
+                  "Finish payment in the browser. Once done, go to Account → Membership to see your new plan."
+                );
               } else {
-                haptic.success();
-                Alert.alert("Welcome!", "You've joined the membership. Enjoy your benefits!");
+                haptic.error();
+                Alert.alert("Error", "Payment link could not be created. Please try again.");
               }
             } catch {
               Alert.alert("Error", "Something went wrong. Please try again.");

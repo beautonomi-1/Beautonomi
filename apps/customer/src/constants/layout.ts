@@ -7,6 +7,13 @@ import { Colors } from "./colors";
 /** Horizontal padding for screen content (matches web px-4) */
 export const SCREEN_PADDING = 16;
 
+/** Modern rounded corners – use for onboarding and account screens */
+export const RADIUS_INPUT = 16;
+export const RADIUS_CARD = 20;
+export const RADIUS_BUTTON = 16;
+export const RADIUS_BUTTON_PILL = 999;
+export const RADIUS_SM = 12;
+
 /** Bottom padding for ScrollView when tab bar is visible (Home, Explore, Bookings, Chats, Profile) */
 export const TAB_CONTENT_PADDING_BOTTOM = 100;
 

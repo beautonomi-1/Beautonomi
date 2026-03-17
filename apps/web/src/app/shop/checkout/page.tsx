@@ -405,7 +405,7 @@ export default function ProductCheckoutPage() {
                   />
                   <div>
                     <p className="font-medium text-gray-900">Pay Online</p>
-                    <p className="text-xs text-gray-500">Secure payment via Paystack (card, EFT, etc.)</p>
+                    <p className="text-xs text-gray-500">Secure payment with card (card, EFT, etc.)</p>
                   </div>
                 </label>
               )}

@@ -16,6 +16,15 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
 
 const PRIMARY = Colors.primary;
+const RETURN_WINDOW_DAYS = 14;
+
+function isWithinReturnWindow(order: ProductOrder): boolean {
+  const from = order.delivered_at || order.created_at;
+  if (!from) return false;
+  const delivered = new Date(from);
+  const days = (Date.now() - delivered.getTime()) / (1000 * 60 * 60 * 24);
+  return days <= RETURN_WINDOW_DAYS;
+}
 
 const STATUS_TIMELINE = [
   { key: "pending", label: "Order Placed", icon: "receipt-outline" },
@@ -338,12 +347,12 @@ export default function ProductOrderDetailScreen() {
           </View>
         </View>
 
-        {/* Return request action */}
-        {["delivered", "ready_for_collection"].includes(order.status) && (
+        {/* Return request action: only when delivered/ready_for_collection and within return window */}
+        {["delivered", "ready_for_collection"].includes(order.status) && isWithinReturnWindow(order) && (
           <View style={{ padding: contentPadding, backgroundColor: "#fff", marginTop: 12 }}>
             <TouchableOpacity
               onPress={() =>
-                router.push(`/request-return?order_id=${order.id}` as any)
+                router.push({ pathname: "/(app)/request-return", params: { order_id: order.id } } as any)
               }
               style={{
                 flexDirection: "row",
@@ -360,6 +369,13 @@ export default function ProductOrderDetailScreen() {
                 Request Return / Refund
               </Text>
             </TouchableOpacity>
+          </View>
+        )}
+        {["delivered", "ready_for_collection"].includes(order.status) && !isWithinReturnWindow(order) && (
+          <View style={{ padding: contentPadding, marginTop: 12 }}>
+            <Text style={{ fontSize: 13, color: "#6B7280", textAlign: "center" }}>
+              Return window ({RETURN_WINDOW_DAYS} days) has passed. For help, contact support.
+            </Text>
           </View>
         )}
       </ScrollView>

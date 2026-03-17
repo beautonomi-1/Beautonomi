@@ -47,8 +47,8 @@ const GROUPS: SettingsGroup[] = [
     items: [
       { id: "bookings", title: "Bookings", desc: "Upcoming, past and cancelled", route: "bookings", icon: "calendar-outline" },
       { id: "recurring-bookings", title: "Recurring bookings", desc: "Manage repeat appointments", route: "recurring-bookings", icon: "repeat-outline" },
-      { id: "product-orders", title: "Product orders", desc: "Track purchases and deliveries", route: "/product-orders", icon: "bag-outline" },
-      { id: "returns", title: "Returns & refunds", desc: "Return requests and status", route: "/my-returns", icon: "arrow-undo-outline" },
+      { id: "product-orders", title: "Product orders", desc: "Track purchases and deliveries", route: "/(app)/product-orders", icon: "bag-outline" },
+      { id: "returns", title: "Returns & refunds", desc: "Return requests and status", route: "/(app)/my-returns", icon: "arrow-undo-outline" },
       { id: "custom-requests", title: "Custom requests", desc: "Bespoke service requests", route: "custom-requests", icon: "create-outline" },
       { id: "waitlist", title: "Waitlist", desc: "Slots you're waiting for", route: "waitlist", icon: "hourglass-outline" },
       { id: "reviews", title: "My reviews", desc: "Reviews you've written", route: "reviews", icon: "star-outline" },

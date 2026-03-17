@@ -7,6 +7,7 @@ import { ScreenFrame } from "@/components/ScreenFrame";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { Colors } from "@/constants/colors";
+import { SCREEN_PADDING, RADIUS_CARD, RADIUS_INPUT, RADIUS_BUTTON, STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 import { PhoneInputWithCountry } from "@/components/PhoneInputWithCountry";
 import { parsePhoneToCountryAndNational, getNationalFromStored } from "@/constants/phone";
 
@@ -135,56 +136,94 @@ export default function PersonalInfoScreen() {
     }
   };
 
+  const cardStyle = {
+    backgroundColor: Colors.white,
+    borderRadius: RADIUS_CARD,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+  };
+  const inputStyle = {
+    borderRadius: RADIUS_INPUT,
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.gray[50],
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: Colors.gray[900],
+  };
+
   return (
     <ScreenFrame loading={loading} error={error} onRetry={load}>
       {profile && (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} keyboardShouldPersistTaps="handled" accessibilityLabel="Personal info form" accessibilityRole="none">
-        <View>
-          <View style={{ alignItems: "center", marginBottom: 16 }}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: SCREEN_PADDING, paddingBottom: STACK_CONTENT_PADDING_BOTTOM }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          accessibilityLabel="Personal info form"
+          accessibilityRole="none"
+        >
+          {/* Profile photo card */}
+          <View style={[cardStyle, { alignItems: "center", paddingVertical: 24 }]}>
             <Pressable onPress={uploadAvatar} disabled={pickLoading} accessibilityLabel="Change profile photo" accessibilityRole="button">
-              {profile.avatar_url ? (
-                <Image source={{ uri: profile.avatar_url }} style={{ width: 96, height: 96, borderRadius: 48 }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
-              ) : (
-                <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: Colors.gray[200], alignItems: "center", justifyContent: "center" }}>
-                  <Text style={{ fontSize: 30, color: Colors.gray[500] }}>
-                    {(profile.full_name || profile.email || "?").charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-              )}
+              <View style={{ width: 112, height: 112, borderRadius: 56, overflow: "hidden", borderWidth: 3, borderColor: Colors.primary + "20" }}>
+                {profile.avatar_url ? (
+                  <Image source={{ uri: profile.avatar_url }} style={{ width: "100%", height: "100%" }} contentFit="cover" cachePolicy="memory-disk" transition={200} />
+                ) : (
+                  <View style={{ width: "100%", height: "100%", backgroundColor: Colors.gray[200], alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 36, color: Colors.gray[500], fontWeight: "600" }}>
+                      {(profile.full_name || profile.email || "?").charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </Pressable>
-            <Text style={{ fontSize: 14, color: Colors.primary, marginTop: 8 }}>Tap to change photo</Text>
+            <Text style={{ fontSize: 14, color: Colors.primary, marginTop: 12, fontWeight: "500" }}>Tap to change photo</Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 4 }}>Required for your profile</Text>
           </View>
-          <View style={{ marginTop: 16 }}>
-            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Full name</Text>
+
+          {/* Basic info card */}
+          <View style={cardStyle}>
+            <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900], marginBottom: 16 }}>Basic info</Text>
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 8 }}>Full name</Text>
+              <TextInput
+                style={[inputStyle, { backgroundColor: Colors.white }]}
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="Your name"
+                placeholderTextColor={Colors.gray[400]}
+                accessibilityLabel="Full name"
+                accessibilityRole="none"
+              />
+            </View>
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 8 }}>Email</Text>
+              <View style={{ borderRadius: RADIUS_INPUT, backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14 }}>
+                <Text style={{ fontSize: 16, color: Colors.gray[600] }}>{profile.email || "-"}</Text>
+              </View>
+            </View>
+            <View>
+              <PhoneInputWithCountry
+                label="Phone"
+                countryCode={phoneCountryCode}
+                onCountryCodeChange={setPhoneCountryCode}
+                nationalValue={phoneNational}
+                onNationalChange={setPhoneNational}
+                placeholder="Your phone number"
+                accessibilityLabel="Your phone number"
+              />
+            </View>
+          </View>
+
+          {/* About card */}
+          <View style={cardStyle}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 8 }}>About me</Text>
             <TextInput
-              style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-              value={fullName}
-              onChangeText={setFullName}
-              placeholder="Your name"
-              placeholderTextColor={Colors.gray[400]}
-              accessibilityLabel="Full name"
-              accessibilityRole="none"
-            />
-          </View>
-          <View>
-            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Email</Text>
-            <Text style={{ paddingVertical: 12, color: Colors.gray[600] }}>{profile.email || "-"}</Text>
-          </View>
-          <View style={{ marginTop: 16 }}>
-            <PhoneInputWithCountry
-              label="Phone"
-              countryCode={phoneCountryCode}
-              onCountryCodeChange={setPhoneCountryCode}
-              nationalValue={phoneNational}
-              onNationalChange={setPhoneNational}
-              placeholder="Your phone number"
-              accessibilityLabel="Your phone number"
-            />
-          </View>
-          <View style={{ marginTop: 16 }}>
-            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>About me</Text>
-            <TextInput
-              style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900], minHeight: 80, textAlignVertical: "top" }}
+              style={[inputStyle, { minHeight: 96, textAlignVertical: "top" }, { backgroundColor: Colors.white }]}
               value={about}
               onChangeText={setAbout}
               placeholder="A short bio for your profile (optional)"
@@ -195,20 +234,22 @@ export default function PersonalInfoScreen() {
               accessibilityRole="none"
             />
           </View>
-          <View style={{ marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderColor: Colors.gray[100] }}>
-            <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>Emergency contact</Text>
-            <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12 }}>Optional – used in case of emergency</Text>
-            <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Name</Text>
+
+          {/* Emergency contact card */}
+          <View style={cardStyle}>
+            <Text style={{ fontSize: 17, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>Emergency contact</Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 16 }}>Optional – used in case of emergency</Text>
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 8 }}>Name</Text>
               <TextInput
-                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
+                style={[inputStyle, { backgroundColor: Colors.white }]}
                 value={emergencyName}
                 onChangeText={setEmergencyName}
                 placeholder="Contact name"
                 placeholderTextColor={Colors.gray[400]}
               />
             </View>
-            <View style={{ marginBottom: 12 }}>
+            <View style={{ marginBottom: 16 }}>
               <PhoneInputWithCountry
                 label="Phone"
                 countryCode={emergencyCountryCode}
@@ -219,10 +260,10 @@ export default function PersonalInfoScreen() {
                 accessibilityLabel="Emergency contact phone number"
               />
             </View>
-            <View style={{ marginBottom: 4 }}>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Relationship</Text>
+            <View>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 8 }}>Relationship</Text>
               <TextInput
-                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
+                style={[inputStyle, { backgroundColor: Colors.white }]}
                 value={emergencyRelationship}
                 onChangeText={setEmergencyRelationship}
                 placeholder="e.g. Spouse, Parent"
@@ -230,16 +271,22 @@ export default function PersonalInfoScreen() {
               />
             </View>
           </View>
+
           <TouchableOpacity
             onPress={save}
             disabled={saving}
-            style={{ backgroundColor: Colors.primary, paddingVertical: 12, borderRadius: 12, alignItems: "center", marginTop: 16 }}
+            style={{
+              backgroundColor: Colors.primary,
+              paddingVertical: 16,
+              borderRadius: RADIUS_BUTTON,
+              alignItems: "center",
+              marginTop: 8,
+            }}
             accessibilityLabel={saving ? "Saving profile" : "Save profile"}
             accessibilityRole="button"
           >
-            <Text style={{ color: Colors.white, fontWeight: "600" }}>{saving ? "Saving..." : "Save"}</Text>
+            <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>{saving ? "Saving..." : "Save changes"}</Text>
           </TouchableOpacity>
-        </View>
         </ScrollView>
       )}
     </ScreenFrame>

@@ -535,7 +535,7 @@ export default function ProductCheckoutScreen() {
                   Pay Online
                 </Text>
                 <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
-                  Secure payment via Paystack (card, EFT, etc.)
+                  Secure payment with card (card, EFT, etc.)
                 </Text>
               </View>
               <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: paymentMethod === "paystack" ? PRIMARY : "#D1D5DB", alignItems: "center", justifyContent: "center" }}>

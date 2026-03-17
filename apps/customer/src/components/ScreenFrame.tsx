@@ -1,5 +1,5 @@
 import { View, Text, ScrollView, RefreshControl, ActivityIndicator, TouchableOpacity } from "react-native";
-import { SCREEN_PADDING, STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { SCREEN_PADDING, STACK_CONTENT_PADDING_BOTTOM, RADIUS_BUTTON } from "@/constants/layout";
 import { Colors } from "@/constants/colors";
 
 interface ScreenFrameProps {
@@ -44,7 +44,7 @@ export function ScreenFrame({
         {onRetry && (
           <TouchableOpacity
             onPress={onRetry}
-            style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
+            style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: RADIUS_BUTTON }}
             accessibilityRole="button"
             accessibilityLabel="Retry"
             accessibilityHint="Attempts to reload the content"

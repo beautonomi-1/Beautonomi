@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Camera, MapPin, CheckCircle2, ArrowRight } from "lucide-react";
+import { Camera, MapPin, CheckCircle2, ArrowRight, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
@@ -22,6 +22,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+const ONBOARDING_DRAFT_KEY = "beautonomi_customer_onboarding_draft";
+const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 interface OnboardingData {
   step: number;
@@ -83,6 +86,12 @@ const STEPS = [
   },
   {
     id: 6,
+    title: "Verify your identity",
+    description: "Optional – helps build trust with providers",
+    component: "identity"
+  },
+  {
+    id: 7,
     title: "You're all set!",
     description: "Start exploring beauty services",
     component: "complete"
@@ -103,38 +112,102 @@ export default function CustomerOnboardingPage() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [phoneCountryCode, setPhoneCountryCode] = useState("+27");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [identityDocumentType, setIdentityDocumentType] = useState<string>("license");
+  const [identityCountry, setIdentityCountry] = useState("");
+  const [identityFile, setIdentityFile] = useState<File | null>(null);
 
-  // Redirect if not authenticated and pre-fill data
+  const saveDraft = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const payload = {
+      ts: Date.now(),
+      step: currentStep,
+      preferredName,
+      bio,
+      phoneCountryCode,
+      phoneNumber,
+      formData,
+      photoPreview,
+    };
+    try {
+      localStorage.setItem(ONBOARDING_DRAFT_KEY, JSON.stringify(payload));
+    } catch {
+      // ignore
+    }
+  }, [currentStep, preferredName, bio, phoneCountryCode, phoneNumber, formData, photoPreview]);
+
+  const clearDraft = useCallback(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.removeItem(ONBOARDING_DRAFT_KEY);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Redirect if not authenticated and pre-fill data; restore draft if present
   React.useEffect(() => {
     if (!user) {
       router.push("/signup?type=customer");
-    } else {
-      // Pre-fill preferred name if available
-      const u = user as any;
-      if (u.preferred_name || u.user_metadata?.preferred_name) {
-        setPreferredName(u.preferred_name || u.user_metadata?.preferred_name);
-      }
-      
-      // Pre-fill phone if user already has one
-      if (user.phone) {
-        const phoneMatch = user.phone.match(/^(\+\d{1,4})(.+)$/);
-        if (phoneMatch) {
-          setPhoneCountryCode(phoneMatch[1]);
-          setPhoneNumber(phoneMatch[2]);
-          setFormData(prev => ({
-            ...prev,
-            phone: {
-              countryCode: phoneMatch[1],
-              number: phoneMatch[2],
-              verified: (user as any).phone_verified || false
-            }
-          }));
-        }
-      }
-      
-      // Note: Bio would need to be fetched from profile data separately if needed
+      return;
     }
-  }, [user, router]);
+    const u = user as any;
+    if (u.preferred_name || u.user_metadata?.preferred_name) {
+      setPreferredName(u.preferred_name || u.user_metadata?.preferred_name);
+    }
+    if (user.phone) {
+      const phoneMatch = user.phone.match(/^(\+\d{1,4})(.+)$/);
+      if (phoneMatch) {
+        setPhoneCountryCode(phoneMatch[1]);
+        setPhoneNumber(phoneMatch[2]);
+        setFormData((prev) => ({
+          ...prev,
+          phone: {
+            countryCode: phoneMatch[1],
+            number: phoneMatch[2],
+            verified: (user as any).phone_verified || false,
+          },
+        }));
+      }
+    }
+    if (draftLoaded) return;
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(ONBOARDING_DRAFT_KEY);
+      if (!raw) {
+        setDraftLoaded(true);
+        return;
+      }
+      const draft = JSON.parse(raw) as {
+        ts?: number;
+        step?: number;
+        preferredName?: string;
+        bio?: string;
+        phoneCountryCode?: string;
+        phoneNumber?: string;
+        formData?: OnboardingData;
+        photoPreview?: string | null;
+      };
+      if (draft.ts && Date.now() - draft.ts > DRAFT_MAX_AGE_MS) {
+        localStorage.removeItem(ONBOARDING_DRAFT_KEY);
+        setDraftLoaded(true);
+        return;
+      }
+      if (draft.step != null && draft.step >= 1 && draft.step <= STEPS.length) {
+        setCurrentStep(draft.step);
+      }
+      if (draft.preferredName != null) setPreferredName(draft.preferredName);
+      if (draft.bio != null) setBio(draft.bio);
+      if (draft.phoneCountryCode != null) setPhoneCountryCode(draft.phoneCountryCode);
+      if (draft.phoneNumber != null) setPhoneNumber(draft.phoneNumber);
+      if (draft.formData != null) setFormData(draft.formData);
+      if (draft.photoPreview != null) setPhotoPreview(draft.photoPreview);
+    } catch {
+      // ignore invalid draft
+    }
+    setDraftLoaded(true);
+  }, [user, router, draftLoaded]);
+
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -337,9 +410,29 @@ export default function CustomerOnboardingPage() {
     }
   };
 
+  const handleSaveIdentity = async () => {
+    if (!identityFile || !identityCountry.trim() || !user) return;
+    setIsLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", identityFile);
+      formData.append("document_type", identityDocumentType);
+      formData.append("country", identityCountry.trim());
+      await fetcher.post("/api/me/verification", formData);
+      toast.success("Identity document submitted for verification.");
+      handleNext();
+    } catch (error: any) {
+      console.error("Error submitting verification:", error);
+      toast.error(error?.message || "Failed to submit document");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleNext = () => {
     if (currentStep < STEPS.length) {
       setCurrentStep(currentStep + 1);
+      saveDraft();
     } else {
       handleComplete();
     }
@@ -348,13 +441,21 @@ export default function CustomerOnboardingPage() {
   const handleSkip = () => {
     if (currentStep < STEPS.length) {
       setCurrentStep(currentStep + 1);
+      saveDraft();
     } else {
       handleComplete();
     }
   };
 
   const handleComplete = () => {
+    clearDraft();
     router.push("/?onboarded=true");
+  };
+
+  const handleSaveAndContinueLater = () => {
+    saveDraft();
+    toast.success("Progress saved. Come back anytime to finish.");
+    router.push("/");
   };
 
   const renderStepContent = () => {
@@ -375,7 +476,7 @@ export default function CustomerOnboardingPage() {
                 Your account has been created successfully. Let's personalize your experience.
               </p>
             </div>
-            <div className="pt-4">
+            <div className="pt-4 space-y-3">
               <Button
                 onClick={handleNext}
                 className="bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white px-8 py-6 text-lg font-semibold rounded-full"
@@ -383,6 +484,15 @@ export default function CustomerOnboardingPage() {
                 Get Started
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
+              <p className="text-sm text-gray-500">
+                <button
+                  type="button"
+                  onClick={handleSaveAndContinueLater}
+                  className="underline hover:text-gray-700"
+                >
+                  Save and continue later
+                </button>
+              </p>
             </div>
           </div>
         );
@@ -508,6 +618,7 @@ export default function CustomerOnboardingPage() {
       case "photo":
         return (
           <div className="space-y-6">
+            <p className="text-sm text-amber-700 font-medium text-center">Required – helps others recognize you</p>
             <div className="flex flex-col items-center space-y-4">
               <Avatar className="w-32 h-32 border-4 border-gray-200">
                 <AvatarImage src={photoPreview || user?.avatar_url || ""} />
@@ -582,6 +693,74 @@ export default function CustomerOnboardingPage() {
                 disabled={!formData.location || isLoading}
               >
                 {isLoading ? "Saving..." : "Continue"}
+              </Button>
+            </div>
+          </div>
+        );
+
+      case "identity":
+        return (
+          <div className="space-y-6">
+            <div className="flex justify-center">
+              <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+                <ShieldCheck className="w-8 h-8 text-gray-600" />
+              </div>
+            </div>
+            <p className="text-sm text-gray-500 text-center">
+              Upload an ID document to get verified. This helps providers know you're a real customer.
+            </p>
+            <div>
+              <Label className="text-base font-medium text-gray-700 mb-2 block">Document type</Label>
+              <Select value={identityDocumentType} onValueChange={setIdentityDocumentType}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="license">Driver&apos;s license</SelectItem>
+                  <SelectItem value="passport">Passport</SelectItem>
+                  <SelectItem value="identity">Identity card</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-base font-medium text-gray-700 mb-2 block">Country of issue</Label>
+              <Input
+                type="text"
+                placeholder="e.g. South Africa"
+                value={identityCountry}
+                onChange={(e) => setIdentityCountry(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <Label className="text-base font-medium text-gray-700 mb-2 block">Document photo</Label>
+              <label className="flex flex-col items-center justify-center w-full border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 py-6">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => setIdentityFile(e.target.files?.[0] ?? null)}
+                />
+                <span className="text-sm text-gray-600">
+                  {identityFile ? identityFile.name : "Choose an image of your ID"}
+                </span>
+              </label>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                onClick={handleSkip}
+                variant="outline"
+                className="flex-1"
+                disabled={isLoading}
+              >
+                Skip for now
+              </Button>
+              <Button
+                onClick={handleSaveIdentity}
+                className="flex-1 bg-gradient-to-r from-[#FF0077] to-[#D60565] hover:from-[#E6006A] hover:to-[#C00555] text-white"
+                disabled={!identityFile || !identityCountry.trim() || isLoading}
+              >
+                {isLoading ? "Submitting..." : "Submit"}
               </Button>
             </div>
           </div>
@@ -684,6 +863,17 @@ export default function CustomerOnboardingPage() {
           <div className="min-h-[300px] flex items-center justify-center">
             {renderStepContent()}
           </div>
+          {currentStep < STEPS.length && STEPS[currentStep - 1].component !== "complete" && (
+            <div className="mt-6 pt-6 border-t border-gray-100 text-center">
+              <button
+                type="button"
+                onClick={handleSaveAndContinueLater}
+                className="text-sm text-gray-500 hover:text-gray-700 underline"
+              >
+                Save and continue later
+              </button>
+            </div>
+          )}
         </motion.div>
       </div>
       <Footer />

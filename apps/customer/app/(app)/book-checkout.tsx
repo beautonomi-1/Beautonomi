@@ -25,7 +25,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useFeatureFlag, useModuleConfig } from "@/providers/ConfigBundleProvider";
 import type { SavedPaymentMethod } from "@/types/api";
 
 /* ─── Types ─── */
@@ -157,15 +157,35 @@ function CountdownBar({ expiresAt }: { expiresAt: string }) {
 
   return (
     <View style={{
-      flexDirection: "row", alignItems: "center", backgroundColor: bgColor,
+      backgroundColor: bgColor,
       borderRadius: 12, padding: 12, marginBottom: 16,
+      borderWidth: countdown.expired ? 1 : 0,
+      borderColor: countdown.expired ? "#FECACA" : "transparent",
     }}>
-      <Ionicons name="time-outline" size={18} color={iconColor} style={{ marginRight: 8 }} />
-      <Text style={{ fontSize: 13, fontWeight: "600", color: textColor, flex: 1 }}>
-        {countdown.expired
-          ? "Time slot expired — please go back and select a new time"
-          : `Slot held for ${countdown.minutes}:${String(countdown.seconds).padStart(2, "0")}`}
-      </Text>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <Ionicons name="time-outline" size={18} color={iconColor} style={{ marginRight: 8 }} />
+        <Text style={{ fontSize: 13, fontWeight: "600", color: textColor, flex: 1 }}>
+          {countdown.expired
+            ? "This time slot has expired. Please select a new date and time to continue."
+            : `Slot held for ${countdown.minutes}:${String(countdown.seconds).padStart(2, "0")}`}
+        </Text>
+      </View>
+      {countdown.expired && (
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{
+            marginTop: 12,
+            backgroundColor: "#B91C1C",
+            paddingVertical: 10,
+            borderRadius: 10,
+            alignItems: "center",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Select new time"
+        >
+          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Select new time</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -318,7 +338,7 @@ function SavedCardSelector({ cards, selected, onSelect, onAddNew, onSetDefault }
 }
 
 const SAVE_CARD_INFO =
-  "We'll save your card securely when you pay. To verify your card, Paystack may place a small temporary charge (e.g. R1) and reverse it—this confirms your card for future use.";
+  "We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.";
 
 /* ─── Save Card Toggle ─── */
 function SaveCardToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
@@ -370,6 +390,7 @@ export default function BookCheckoutScreen() {
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const {
     hold_id,
+    slug: provider_slug,
     service_name: routeServiceName,
     provider_name: routeProviderName,
     provider_thumbnail: routeProviderThumbnail,
@@ -378,6 +399,7 @@ export default function BookCheckoutScreen() {
     provider_id: routeProviderId,
   } = useLocalSearchParams<{
     hold_id: string;
+    slug?: string;
     service_name?: string;
     provider_name?: string;
     provider_thumbnail?: string;
@@ -392,13 +414,19 @@ export default function BookCheckoutScreen() {
   const [consuming, setConsuming] = useState(false);
   const [requestingNow, setRequestingNow] = useState(false);
   const onDemandAcceptEnabled = useFeatureFlag("on_demand_accept_customer_enabled");
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "cash">("card");
+  const onDemandModule = useModuleConfig("on_demand");
+  const onDemandEnabled = Boolean(onDemandAcceptEnabled && onDemandModule?.enabled);
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "cash" | "wallet" | "giftcard">("card");
   const [paymentOption, setPaymentOption] = useState<"deposit" | "full">("full");
   const [saveCard, setSaveCard] = useState(true);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [useNewCard, setUseNewCard] = useState(false);
   const [useWallet, setUseWallet] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
+  const [giftCardCode, setGiftCardCode] = useState("");
+  const [giftCardValidating, setGiftCardValidating] = useState(false);
+  const [giftCardValid, setGiftCardValid] = useState<{ balance: number; currency: string } | null>(null);
+  const [giftCardError, setGiftCardError] = useState<string | null>(null);
 
   const { cards: savedCards, loading: cardsLoading, defaultCard, refresh: refreshCards } = useSavedCards();
   const { pay: paystackPay, loading: payLoading, error: payError } = usePaystackPayment();
@@ -415,6 +443,12 @@ export default function BookCheckoutScreen() {
   const [tipAmount, setTipAmount] = useState(0);
   const [addonsList, setAddonsList] = useState<AddonOption[]>([]);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
+  const [isGroupBooking, setIsGroupBooking] = useState(false);
+  const [groupParticipants, setGroupParticipants] = useState<{ id: string; name: string; phone?: string; service_ids: string[] }[]>([]);
+  const [productsList, setProductsList] = useState<{ id: string; name: string; retail_price: number; currency: string }[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<{ productId: string; name: string; price: number; quantity: number; currency: string }[]>([]);
+  const [packagesList, setPackagesList] = useState<{ id: string; name: string; description?: string; price: number; currency: string }[]>([]);
+  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
 
   useEffect(() => {
     if (defaultCard && !selectedCardId && !useNewCard) {
@@ -568,13 +602,48 @@ export default function BookCheckoutScreen() {
     });
   }, [addonsList]);
 
+  // Fetch provider products when we have slug (for add-to-booking products)
+  useEffect(() => {
+    if (!provider_slug) return;
+    api
+      .get<{ id: string; name: string; retail_price: number; currency: string }[] | { data?: unknown }>(
+        `/api/public/providers/${encodeURIComponent(provider_slug)}/products`
+      )
+      .then((res) => {
+        if (res.error) return;
+        const raw = res.data as any;
+        const arr = Array.isArray(raw) ? raw : raw?.data ?? [];
+        setProductsList(Array.isArray(arr) ? arr.map((p: any) => ({ id: p.id, name: p.name || "Product", retail_price: Number(p.price ?? p.retail_price) || 0, currency: p.currency || "ZAR" })) : []);
+      })
+      .catch(() => setProductsList([]));
+  }, [provider_slug]);
+
+  // Fetch provider packages (optional add-to-booking)
+  useEffect(() => {
+    if (!provider_slug) return;
+    let url = `/api/public/providers/${encodeURIComponent(provider_slug)}/packages`;
+    if (hold?.location_id) url += `?location_id=${encodeURIComponent(hold.location_id)}`;
+    api
+      .get<{ id: string; name: string; description?: string; price: number; currency: string }[] | { data?: unknown }>(url)
+      .then((res) => {
+        if (res.error) return;
+        const raw = res.data as any;
+        const arr = Array.isArray(raw) ? raw : raw?.data ?? [];
+        setPackagesList(Array.isArray(arr) ? arr.map((p: any) => ({ id: p.id, name: p.name || "Package", description: p.description, price: Number(p.price) || 0, currency: p.currency || "ZAR" })) : []);
+      })
+      .catch(() => setPackagesList([]));
+  }, [provider_slug, hold?.location_id]);
+
+  const snapshotOfferingIds = hold?.booking_services_snapshot?.map((s) => s.offering_id ?? (s as { id?: string }).id).filter(Boolean) as string[] ?? [];
+
   const subtotal = hold ? hold.booking_services_snapshot.reduce((s, svc) => s + svc.price, 0) : 0;
   const currency = hold?.booking_services_snapshot[0]?.currency || "ZAR";
   const travelFee = hold?.travel_fee ?? 0;
   const addonsSubtotal = addonsList
     .filter((a) => selectedAddonIds.includes(a.id))
     .reduce((s, a) => s + (Number(a.price) || 0), 0);
-  const prePromoTotal = subtotal + addonsSubtotal + travelFee;
+  const productsSubtotal = selectedProducts.reduce((s, p) => s + p.price * p.quantity, 0);
+  const prePromoTotal = subtotal + addonsSubtotal + travelFee + productsSubtotal;
   const total = Math.max(0, prePromoTotal - appliedPromoDiscount + tipAmount);
   const hasDeposit = !!(hold?.deposit_required && hold?.deposit_amount != null && hold.deposit_amount > 0);
   const depositAmount = hold?.deposit_amount ?? (hold?.deposit_percentage ? total * hold.deposit_percentage / 100 : 0);
@@ -617,6 +686,31 @@ export default function BookCheckoutScreen() {
       setPromoValidating(false);
     }
   }, [promotionCode, hold?.provider_id, hold?.location_type, hold?.location_id, prePromoTotal]);
+
+  const applyGiftCard = useCallback(async () => {
+    const code = giftCardCode.trim().toUpperCase();
+    if (!code) return;
+    setGiftCardError(null);
+    setGiftCardValidating(true);
+    try {
+      const res = await api.get<{ valid?: boolean; balance?: number; currency?: string; message?: string }>(
+        `/api/public/gift-cards/validate?code=${encodeURIComponent(code)}`
+      );
+      const data = res.data as any;
+      if (data?.valid && data?.balance != null) {
+        setGiftCardValid({ balance: Number(data.balance), currency: data.currency || "ZAR" });
+        haptic.success();
+      } else {
+        setGiftCardValid(null);
+        setGiftCardError(data?.message ?? "Invalid or expired gift card");
+      }
+    } catch {
+      setGiftCardValid(null);
+      setGiftCardError("Could not validate gift card");
+    } finally {
+      setGiftCardValidating(false);
+    }
+  }, [giftCardCode]);
 
   const navigateToBooking = useCallback((bookingId?: string, previousBookingId?: string) => {
     haptic.success();
@@ -674,7 +768,7 @@ export default function BookCheckoutScreen() {
     setRequestingNow(true);
     setError(null);
     try {
-      const requestPayload = {
+      const requestPayload: Record<string, unknown> = {
         provider_id: hold.provider_id,
         services: hold.booking_services_snapshot.map((s) => {
           const snap = s as { offering_id?: string; id?: string };
@@ -688,6 +782,15 @@ export default function BookCheckoutScreen() {
         tip_amount: 0,
         travel_fee: hold.travel_fee ?? 0,
       };
+      if (user?.user_metadata?.full_name || user?.email) {
+        const parts = (user.user_metadata?.full_name ?? "").trim().split(/\s+/);
+        requestPayload.client_info = {
+          firstName: parts[0] || "Guest",
+          lastName: parts.slice(1).join(" ") || "User",
+          email: user.email ?? undefined,
+          phone: user.phone ?? undefined,
+        };
+      }
       const res = await api.post<{ id: string }>(`/api/me/on-demand/requests`, {
         provider_id: hold.provider_id,
         request_payload: requestPayload,
@@ -725,6 +828,11 @@ export default function BookCheckoutScreen() {
       return;
     }
 
+    if (paymentMethod === "giftcard" && (!giftCardCode.trim() || !giftCardValid)) {
+      setError("Please enter and apply a valid gift card code.");
+      return;
+    }
+
     const requiredCustom = bookingCustomDefinitions.filter((d) => d.is_required).map((d) => d.name);
     const missingCustom = requiredCustom.filter(
       (name) =>
@@ -753,13 +861,16 @@ export default function BookCheckoutScreen() {
 
     try {
       const payload: Record<string, unknown> = {
-        payment_method: paymentMethod,
+        payment_method: paymentMethod === "wallet" ? "card" : paymentMethod === "giftcard" ? "giftcard" : paymentMethod,
         payment_option: paymentOption,
-        use_wallet: paymentMethod === "card" ? useWallet : false,
+        use_wallet: paymentMethod === "wallet" || (paymentMethod === "card" && useWallet),
         save_card: paymentMethod === "card" && (useNewCard || savedCards.length === 0) ? saveCard : false,
       };
       if (paymentMethod === "card" && selectedCardId && !useNewCard && savedCards.length > 0) {
         payload.payment_method_id = selectedCardId;
+      }
+      if (paymentMethod === "giftcard" && giftCardCode.trim() && giftCardValid) {
+        payload.gift_card_code = giftCardCode.trim().toUpperCase();
       }
       if (Object.keys(bookingCustomValues).length > 0) payload.custom_field_values = bookingCustomValues;
       if (Object.keys(providerFormValues).length > 0) payload.provider_form_responses = providerFormValues;
@@ -768,6 +879,35 @@ export default function BookCheckoutScreen() {
       if (selectedAddonIds.length > 0) payload.addons = selectedAddonIds;
       if (routeRescheduleBookingId) payload.reschedule_booking_id = routeRescheduleBookingId;
       if (tipAmount > 0) payload.tip_amount = tipAmount;
+      const validParticipants = isGroupBooking ? groupParticipants.filter((p) => p.name.trim()).map((p) => ({
+        name: p.name.trim(),
+        email: undefined,
+        phone: p.phone?.trim() || undefined,
+        service_ids: p.service_ids.length > 0 ? p.service_ids : snapshotOfferingIds,
+        notes: undefined,
+      })) : [];
+      if (validParticipants.length > 0) {
+        payload.is_group_booking = true;
+        payload.group_participants = validParticipants;
+      }
+      if (selectedProducts.length > 0) {
+        payload.products = selectedProducts.map((p) => ({
+          productId: p.productId,
+          quantity: p.quantity,
+          unitPrice: p.price,
+          totalPrice: p.price * p.quantity,
+        }));
+      }
+      if (selectedPackageId) payload.package_id = selectedPackageId;
+      if (user?.user_metadata?.full_name || user?.email) {
+        const parts = (user.user_metadata?.full_name ?? "").trim().split(/\s+/);
+        payload.client_info = {
+          firstName: parts[0] || "Guest",
+          lastName: parts.slice(1).join(" ") || "User",
+          email: user.email ?? undefined,
+          phone: user.phone ?? undefined,
+        };
+      }
 
       const res = await api.post<ConsumeResponse>(`/api/public/booking-holds/${hold_id}/consume`, payload);
 
@@ -809,7 +949,7 @@ export default function BookCheckoutScreen() {
       setConsuming(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pay helpers and navigateToBooking are stable refs
-  }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, promotionCode, tipAmount, routeRescheduleBookingId]);
+  }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId]);
 
   /* ─── Loading skeleton ─── */
   if (loading) {
@@ -941,7 +1081,13 @@ export default function BookCheckoutScreen() {
                   <Ionicons name="calendar-outline" size={18} color="#6B7280" style={{ marginRight: 6 }} />
                   <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Appointment Details</Text>
                 </View>
-                <EditChip label="date and time" onPress={() => router.back()} />
+                <EditChip label="date and time" onPress={() => {
+                  if (provider_slug) {
+                    router.replace({ pathname: "/(app)/book", params: { slug: provider_slug, step: "date" } });
+                  } else {
+                    router.back();
+                  }
+                }} />
               </View>
 
               {/* Date & Time */}
@@ -973,7 +1119,13 @@ export default function BookCheckoutScreen() {
             <View style={{ marginBottom: 16 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Services</Text>
-                <EditChip label="service" onPress={() => router.back()} />
+                <EditChip label="service" onPress={() => {
+                if (provider_slug) {
+                  router.replace({ pathname: "/(app)/book", params: { slug: provider_slug, step: "service" } });
+                } else {
+                  router.back();
+                }
+              }} />
               </View>
               {hold.booking_services_snapshot.map((svc, i) => {
                 const serviceName = svc.service_name ?? svc.title ?? svc.name ?? routeServiceName ?? `Service ${i + 1}`;
@@ -1061,6 +1213,151 @@ export default function BookCheckoutScreen() {
               </View>
             )}
 
+            {/* Group booking */}
+            <View style={{ marginBottom: 16 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Group booking</Text>
+                <Pressable
+                  onPress={() => { haptic.selection(); setIsGroupBooking((b) => !b); if (!isGroupBooking) setGroupParticipants([]); }}
+                  style={{ flexDirection: "row", alignItems: "center" }}
+                >
+                  <View style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: isGroupBooking ? Colors.primary : "#D1D5DB", justifyContent: "center", paddingHorizontal: 2 }}>
+                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#FFF", alignSelf: isGroupBooking ? "flex-end" : "flex-start" }} />
+                  </View>
+                  <Text style={{ fontSize: 13, color: "#6B7280", marginLeft: 8 }}>{isGroupBooking ? "On" : "Off"}</Text>
+                </Pressable>
+              </View>
+              {isGroupBooking && (
+                <>
+                  <TouchableOpacity
+                    onPress={() => {
+                      haptic.selection();
+                      setGroupParticipants((prev) => [
+                        ...prev,
+                        { id: `p-${Date.now()}`, name: "", phone: "", service_ids: [...snapshotOfferingIds] },
+                      ]);
+                    }}
+                    style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10, marginBottom: 8 }}
+                  >
+                    <Ionicons name="add-circle-outline" size={20} color={Colors.primary} style={{ marginRight: 8 }} />
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>Add participant</Text>
+                  </TouchableOpacity>
+                  {groupParticipants.map((p) => (
+                    <View key={p.id} style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#E5E7EB" }}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <Text style={{ fontSize: 12, fontWeight: "600", color: "#6B7280" }}>Participant</Text>
+                        <TouchableOpacity onPress={() => setGroupParticipants((prev) => prev.filter((x) => x.id !== p.id))}>
+                          <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                        </TouchableOpacity>
+                      </View>
+                      <TextInput
+                        value={p.name}
+                        onChangeText={(t) => setGroupParticipants((prev) => prev.map((x) => (x.id === p.id ? { ...x, name: t } : x)))}
+                        placeholder="Name (required)"
+                        style={{ backgroundColor: "#FFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: "#111827", marginBottom: 8 }}
+                      />
+                      <TextInput
+                        value={p.phone ?? ""}
+                        onChangeText={(t) => setGroupParticipants((prev) => prev.map((x) => (x.id === p.id ? { ...x, phone: t } : x)))}
+                        placeholder="Phone (optional)"
+                        keyboardType="phone-pad"
+                        style={{ backgroundColor: "#FFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: "#111827" }}
+                      />
+                    </View>
+                  ))}
+                </>
+              )}
+            </View>
+
+            {/* Products (add to booking) */}
+            {productsList.length > 0 && (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Products (optional)</Text>
+                {productsList.map((prod) => {
+                  const cur = selectedProducts.find((s) => s.productId === prod.id);
+                  const qty = cur?.quantity ?? 0;
+                  return (
+                    <View key={prod.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: "#F9FAFB", borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: "#E5E7EB" }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>{prod.name}</Text>
+                        <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{formatCurrency(prod.retail_price, prod.currency)}</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <TouchableOpacity
+                          onPress={() => {
+                            haptic.selection();
+                            if (qty <= 0) return;
+                            if (qty === 1) setSelectedProducts((prev) => prev.filter((s) => s.productId !== prod.id));
+                            else setSelectedProducts((prev) => prev.map((s) => (s.productId === prod.id ? { ...s, quantity: s.quantity - 1 } : s)));
+                          }}
+                          style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#E5E7EB", alignItems: "center", justifyContent: "center" }}
+                        >
+                          <Ionicons name="remove" size={18} color="#374151" />
+                        </TouchableOpacity>
+                        <Text style={{ minWidth: 28, textAlign: "center", fontSize: 14, fontWeight: "600", color: "#111827" }}>{qty}</Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            haptic.selection();
+                            if (qty === 0) setSelectedProducts((prev) => [...prev, { productId: prod.id, name: prod.name, price: prod.retail_price, quantity: 1, currency: prod.currency }]);
+                            else setSelectedProducts((prev) => prev.map((s) => (s.productId === prod.id ? { ...s, quantity: s.quantity + 1 } : s)));
+                          }}
+                          style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center" }}
+                        >
+                          <Ionicons name="add" size={18} color={Colors.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Package (optional) */}
+            {packagesList.length > 0 && (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Package (optional)</Text>
+                {packagesList.map((pkg) => {
+                  const selected = selectedPackageId === pkg.id;
+                  return (
+                    <Pressable
+                      key={pkg.id}
+                      onPress={() => { haptic.selection(); setSelectedPackageId(selected ? null : pkg.id); }}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        paddingVertical: 12,
+                        paddingHorizontal: 12,
+                        borderWidth: 1,
+                        borderColor: selected ? "#7C3AED" : "#E5E7EB",
+                        borderRadius: 12,
+                        backgroundColor: selected ? "#F5F3FF" : "#F9FAFB",
+                        marginBottom: 8,
+                      }}
+                    >
+                      <View style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 11,
+                        borderWidth: 2,
+                        borderColor: selected ? "#7C3AED" : "#9CA3AF",
+                        backgroundColor: selected ? "#7C3AED" : "transparent",
+                        marginRight: 10,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}>
+                        {selected && <Ionicons name="checkmark" size={14} color="#FFF" />}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>{pkg.name}</Text>
+                        {pkg.description ? <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }} numberOfLines={2}>{pkg.description}</Text> : null}
+                      </View>
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{formatCurrency(pkg.price, pkg.currency)}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
             {/* Travel Fee */}
             {hold.location_type === "at_home" && travelFee > 0 && (
               <View style={{
@@ -1082,7 +1379,7 @@ export default function BookCheckoutScreen() {
 
             {/* ═══ Total ═══ */}
             <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginBottom: 16 }}>
-              {(travelFee > 0 || addonsSubtotal > 0 || appliedPromoDiscount > 0 || tipAmount > 0) && (
+              {(travelFee > 0 || addonsSubtotal > 0 || productsSubtotal > 0 || appliedPromoDiscount > 0 || tipAmount > 0) && (
                 <>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                     <Text style={{ fontSize: 13, color: "#6B7280" }}>Services</Text>
@@ -1092,6 +1389,12 @@ export default function BookCheckoutScreen() {
                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                       <Text style={{ fontSize: 13, color: "#6B7280" }}>Add-ons</Text>
                       <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(addonsSubtotal, currency)}</Text>
+                    </View>
+                  )}
+                  {productsSubtotal > 0 && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>Products</Text>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(productsSubtotal, currency)}</Text>
                     </View>
                   )}
                   {travelFee > 0 && (
@@ -1364,25 +1667,41 @@ export default function BookCheckoutScreen() {
             {/* ═══ Payment Method ═══ */}
             <View style={{ marginBottom: 16 }}>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Payment Method</Text>
-              <View style={{ flexDirection: "row", marginBottom: 12 }}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 12, gap: 8 }}>
                 <Pressable
-                  onPress={() => { haptic.light(); setPaymentMethod("card"); }}
+                  onPress={() => { haptic.light(); setPaymentMethod("card"); setUseWallet(false); }}
                   style={{
-                    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", marginRight: 10,
+                    flex: 1, minWidth: 90, flexDirection: "row", alignItems: "center", justifyContent: "center",
                     paddingVertical: 14, borderRadius: 14, borderWidth: 1.5,
                     borderColor: paymentMethod === "card" ? Colors.primary : "#E5E7EB",
                     backgroundColor: paymentMethod === "card" ? Colors.primaryLight : "#fff",
                   }}
                   accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === "card" }}
                 >
-                  <Ionicons name="card-outline" size={18} color={paymentMethod === "card" ? Colors.primary : "#6B7280"} style={{ marginRight: 8 }} />
-                  <Text style={{ fontWeight: "600", color: paymentMethod === "card" ? Colors.primary : "#374151" }}>Card</Text>
-                  {paymentMethod === "card" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
+                  <Ionicons name="card-outline" size={18} color={paymentMethod === "card" ? Colors.primary : "#6B7280"} style={{ marginRight: 6 }} />
+                  <Text style={{ fontWeight: "600", color: paymentMethod === "card" ? Colors.primary : "#374151", fontSize: 14 }}>Card</Text>
+                  {paymentMethod === "card" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginLeft: 4 }} />}
                 </Pressable>
+                {user && walletBalance > 0 && (
+                  <Pressable
+                    onPress={() => { haptic.light(); setPaymentMethod("wallet"); }}
+                    style={{
+                      flex: 1, minWidth: 90, flexDirection: "row", alignItems: "center", justifyContent: "center",
+                      paddingVertical: 14, borderRadius: 14, borderWidth: 1.5,
+                      borderColor: paymentMethod === "wallet" ? Colors.primary : "#E5E7EB",
+                      backgroundColor: paymentMethod === "wallet" ? Colors.primaryLight : "#fff",
+                    }}
+                    accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === "wallet" }}
+                  >
+                    <Ionicons name="wallet-outline" size={18} color={paymentMethod === "wallet" ? Colors.primary : "#6B7280"} style={{ marginRight: 6 }} />
+                    <Text style={{ fontWeight: "600", color: paymentMethod === "wallet" ? Colors.primary : "#374151", fontSize: 14 }}>Wallet</Text>
+                    {paymentMethod === "wallet" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginLeft: 4 }} />}
+                  </Pressable>
+                )}
                 <Pressable
                   onPress={() => { haptic.light(); setPaymentMethod("cash"); }}
                   style={{
-                    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+                    flex: 1, minWidth: 90, flexDirection: "row", alignItems: "center", justifyContent: "center",
                     paddingVertical: 14, borderRadius: 14, borderWidth: 1.5,
                     borderColor: paymentMethod === "cash" ? Colors.primary : "#E5E7EB",
                     backgroundColor: paymentMethod === "cash" ? Colors.primaryLight : "#fff",
@@ -1390,12 +1709,82 @@ export default function BookCheckoutScreen() {
                   accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === "cash" }}
                 >
                   <Ionicons name="cash-outline" size={18} color={paymentMethod === "cash" ? Colors.primary : "#6B7280"} />
-                  <Text style={{ fontWeight: "600", color: paymentMethod === "cash" ? Colors.primary : "#374151" }}>Cash</Text>
-                  {paymentMethod === "cash" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
+                  <Text style={{ fontWeight: "600", color: paymentMethod === "cash" ? Colors.primary : "#374151", fontSize: 14 }}>Cash</Text>
+                  {paymentMethod === "cash" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginLeft: 4 }} />}
+                </Pressable>
+                <Pressable
+                  onPress={() => { haptic.light(); setPaymentMethod("giftcard"); setGiftCardError(null); }}
+                  style={{
+                    flex: 1, minWidth: 90, flexDirection: "row", alignItems: "center", justifyContent: "center",
+                    paddingVertical: 14, borderRadius: 14, borderWidth: 1.5,
+                    borderColor: paymentMethod === "giftcard" ? Colors.primary : "#E5E7EB",
+                    backgroundColor: paymentMethod === "giftcard" ? Colors.primaryLight : "#fff",
+                  }}
+                  accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === "giftcard" }}
+                >
+                  <Ionicons name="gift-outline" size={18} color={paymentMethod === "giftcard" ? Colors.primary : "#6B7280"} style={{ marginRight: 6 }} />
+                  <Text style={{ fontWeight: "600", color: paymentMethod === "giftcard" ? Colors.primary : "#374151", fontSize: 14 }}>Gift card</Text>
+                  {paymentMethod === "giftcard" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginLeft: 4 }} />}
                 </Pressable>
               </View>
 
-              {/* Use wallet balance (when card selected and user has balance) */}
+              {/* Gift card code (when gift card selected) */}
+              {paymentMethod === "giftcard" && (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "500", color: "#374151", marginBottom: 8 }}>Gift card code</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <TextInput
+                      value={giftCardCode}
+                      onChangeText={(t) => {
+                        setGiftCardCode(t.trim().toUpperCase());
+                        setGiftCardValid(null);
+                        setGiftCardError(null);
+                      }}
+                      placeholder="Enter code"
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      style={{
+                        flex: 1,
+                        backgroundColor: "#F9FAFB",
+                        borderWidth: 1,
+                        borderColor: giftCardError ? "#DC2626" : "#E5E7EB",
+                        borderRadius: 12,
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        fontSize: 15,
+                        color: "#111827",
+                      }}
+                      placeholderTextColor="#9CA3AF"
+                    />
+                    <TouchableOpacity
+                      onPress={applyGiftCard}
+                      disabled={!giftCardCode.trim() || giftCardValidating}
+                      style={{
+                        backgroundColor: giftCardCode.trim() && !giftCardValidating ? Colors.primary : "#E5E7EB",
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        borderRadius: 12,
+                        justifyContent: "center",
+                      }}
+                    >
+                      {giftCardValidating ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Apply</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                  {giftCardError ? (
+                    <Text style={{ fontSize: 12, color: "#DC2626", marginTop: 6 }}>{giftCardError}</Text>
+                  ) : giftCardValid ? (
+                    <Text style={{ fontSize: 12, color: "#059669", marginTop: 6 }}>
+                      Gift card applied — {giftCardValid.currency} {giftCardValid.balance.toFixed(2)} available
+                    </Text>
+                  ) : null}
+                </View>
+              )}
+
+              {/* Use wallet balance (when card selected and user has balance; wallet is not the primary method) */}
               {paymentMethod === "card" && user && walletBalance > 0 && (
                 <Pressable
                   onPress={() => { haptic.light(); setUseWallet(!useWallet); }}
@@ -1428,7 +1817,7 @@ export default function BookCheckoutScreen() {
                 </Pressable>
               )}
 
-              {/* Saved Cards Section (only when card payment selected) */}
+              {/* Saved Cards Section (only when card payment selected, not wallet) */}
               {paymentMethod === "card" && (
                 <View>
                   {cardsLoading ? (
@@ -1497,7 +1886,7 @@ export default function BookCheckoutScreen() {
                 {formatCurrency(paymentOption === "deposit" && hasDeposit ? depositAmount : total, currency)}
               </Text>
             </View>
-            {onDemandAcceptEnabled && user && hold?.provider_on_demand_accept_enabled && (
+            {onDemandEnabled && user && hold?.provider_on_demand_accept_enabled && (
               <TouchableOpacity
                 onPress={() => { haptic.medium(); handleRequestNow(); }}
                 disabled={requestingNow || isExpired}

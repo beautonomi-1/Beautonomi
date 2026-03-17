@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, Linking, Platform } from "react-native";
 import Constants from "expo-constants";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, IOS_APP_STORE_ID } from "@/config/public-env";
 
 interface VersionInfo {
   minVersion: string;
@@ -53,7 +53,7 @@ export function useForceUpdate() {
                   } else {
                     const storeUrl =
                       Platform.OS === "ios"
-                        ? "https://apps.apple.com/app/beautonomi/id0000000000"
+                        ? `https://apps.apple.com/app/beautonomi/id${IOS_APP_STORE_ID}`
                         : "https://play.google.com/store/apps/details?id=com.beautonomi";
                     Linking.openURL(storeUrl);
                   }
@@ -74,7 +74,7 @@ export function useForceUpdate() {
                   const storeUrl =
                     data.updateUrl ??
                     (Platform.OS === "ios"
-                      ? "https://apps.apple.com/app/beautonomi/id0000000000"
+                      ? `https://apps.apple.com/app/beautonomi/id${IOS_APP_STORE_ID}`
                       : "https://play.google.com/store/apps/details?id=com.beautonomi");
                   Linking.openURL(storeUrl);
                 },

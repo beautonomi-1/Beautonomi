@@ -71,7 +71,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
     title: "Business",
     items: [
       { icon: "layers-outline", label: "Catalogue & offerings", subtitle: "Services, products & packages", route: "/(app)/(tabs)/more/catalogue-offerings-hub", color: "#ec4899", bg: "#fdf2f8" },
-      { icon: "people-circle-outline", label: "Team & scheduling", subtitle: "Staff, shifts & time clock", route: "/(app)/(tabs)/more/team-hub", color: "#14b8a6", bg: "#ccfbf1" },
+      { icon: "people-circle-outline", label: "Team & scheduling", subtitle: "Staff, shifts & time clock", route: "/(app)/(tabs)/more/team", color: "#14b8a6", bg: "#ccfbf1" },
       { icon: "cash-outline", label: "Finance & billing", subtitle: "Earnings, payroll, invoices & gift cards", route: "/(app)/(tabs)/more/finance-billing-hub", color: "#22c55e", bg: "#f0fdf4" },
       { icon: "swap-horizontal-outline", label: "Transactions & history", subtitle: "Payments, fees & sales", route: "/(app)/(tabs)/more/transactions-hub", color: "#0d9488", bg: "#ccfbf1" },
       { icon: "bar-chart-outline", label: "Reports", subtitle: "Analytics, activity & insights", route: "/(app)/(tabs)/more/reports", color: "#3b82f6", bg: "#eff6ff" },
