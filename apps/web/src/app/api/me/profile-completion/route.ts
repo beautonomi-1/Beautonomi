@@ -131,15 +131,15 @@ export async function GET(request: NextRequest) {
       },
     ];
 
-    // Check address
-    const { data: address } = await supabase
+    // Check address: having at least one saved address counts as complete (no need to mark default)
+    const { data: addressRow } = await supabase
       .from("user_addresses")
       .select("id")
       .eq("user_id", user.id)
-      .eq("is_default", true)
+      .limit(1)
       .maybeSingle();
     
-    checklistItems[6].completed = !!address;
+    checklistItems[6].completed = !!addressRow;
 
     // Check profile questions (at least 3 answered)
     const answeredQuestions = profileData ? [

@@ -202,7 +202,8 @@ export async function POST(
       staff_id: s.staff_id,
     }));
 
-    const selectedDatetime = hold.start_at;
+    // Normalize to ISO 8601 so /api/public/bookings Zod datetime() accepts it (DB may return different format)
+    const selectedDatetime = new Date(hold.start_at).toISOString();
 
     const address = hold.address_snapshot as Record<string, any> | null;
     const addressFormatted =

@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { NotificationsDropdown } from "@/components/NotificationsDropdown";
 import {
   View,
   Text,
@@ -387,6 +388,7 @@ export default function HomeScreen() {
   const { categories: globalCategories } = useGlobalCategories();
 
   const [addressPickerVisible, setAddressPickerVisible] = useState(false);
+  const [notificationsDropdownVisible, setNotificationsDropdownVisible] = useState(false);
 
   const effectiveLat = selectedAddress?.latitude ?? coords?.latitude;
   const effectiveLng = selectedAddress?.longitude ?? coords?.longitude;
@@ -484,6 +486,10 @@ export default function HomeScreen() {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
+      <NotificationsDropdown
+        visible={notificationsDropdownVisible}
+        onClose={() => setNotificationsDropdownVisible(false)}
+      />
 
       <View style={contentWrapperDynamic}>
         <SafeAreaView edges={["top"]} style={styles.addressBar}>
@@ -561,10 +567,13 @@ export default function HomeScreen() {
               <Ionicons name="heart-outline" size={24} color="#333" />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => router.push("/(app)/notifications")}
+              onPress={() => {
+                haptic.selection();
+                setNotificationsDropdownVisible(true);
+              }}
               accessibilityRole="button"
               accessibilityLabel="Notifications"
-              accessibilityHint="Open notifications"
+              accessibilityHint="Show recent notifications"
               style={{ position: "relative" }}
             >
               <Ionicons name="notifications-outline" size={24} color="#333" />

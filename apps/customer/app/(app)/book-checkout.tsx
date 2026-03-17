@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -444,7 +444,7 @@ export default function BookCheckoutScreen() {
   const [addonsList, setAddonsList] = useState<AddonOption[]>([]);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
   const [isGroupBooking, setIsGroupBooking] = useState(false);
-  const [groupParticipants, setGroupParticipants] = useState<{ id: string; name: string; phone?: string; service_ids: string[] }[]>([]);
+  const [groupParticipants, setGroupParticipants] = useState<{ id: string; name: string; phone?: string; notes?: string; service_ids: string[] }[]>([]);
   const [productsList, setProductsList] = useState<{ id: string; name: string; retail_price: number; currency: string }[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<{ productId: string; name: string; price: number; quantity: number; currency: string }[]>([]);
   const [packagesList, setPackagesList] = useState<{ id: string; name: string; description?: string; price: number; currency: string }[]>([]);
@@ -636,7 +636,24 @@ export default function BookCheckoutScreen() {
 
   const snapshotOfferingIds = hold?.booking_services_snapshot?.map((s) => s.offering_id ?? (s as { id?: string }).id).filter(Boolean) as string[] ?? [];
 
-  const subtotal = hold ? hold.booking_services_snapshot.reduce((s, svc) => s + svc.price, 0) : 0;
+  const offeringPriceMap = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!hold?.booking_services_snapshot) return m;
+    for (const s of hold.booking_services_snapshot) {
+      const id = s.offering_id ?? (s as { id?: string }).id;
+      if (id) m.set(id, s.price);
+    }
+    return m;
+  }, [hold?.booking_services_snapshot]);
+
+  const primarySubtotal = hold ? hold.booking_services_snapshot.reduce((s, svc) => s + svc.price, 0) : 0;
+  const groupParticipantsSubtotal = isGroupBooking && groupParticipants.length > 0
+    ? groupParticipants.reduce((sum, p) => {
+        const ids = p.service_ids.length > 0 ? p.service_ids : snapshotOfferingIds;
+        return sum + ids.reduce((s, id) => s + (offeringPriceMap.get(id) ?? 0), 0);
+      }, 0)
+    : 0;
+  const subtotal = hold ? primarySubtotal + groupParticipantsSubtotal : 0;
   const currency = hold?.booking_services_snapshot[0]?.currency || "ZAR";
   const travelFee = hold?.travel_fee ?? 0;
   const addonsSubtotal = addonsList
@@ -884,7 +901,7 @@ export default function BookCheckoutScreen() {
         email: undefined,
         phone: p.phone?.trim() || undefined,
         service_ids: p.service_ids.length > 0 ? p.service_ids : snapshotOfferingIds,
-        notes: undefined,
+        notes: p.notes?.trim() || undefined,
       })) : [];
       if (validParticipants.length > 0) {
         payload.is_group_booking = true;
@@ -1234,7 +1251,7 @@ export default function BookCheckoutScreen() {
                       haptic.selection();
                       setGroupParticipants((prev) => [
                         ...prev,
-                        { id: `p-${Date.now()}`, name: "", phone: "", service_ids: [...snapshotOfferingIds] },
+                        { id: `p-${Date.now()}`, name: "", phone: "", notes: "", service_ids: [...snapshotOfferingIds] },
                       ]);
                     }}
                     style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10, marginBottom: 8 }}
@@ -1242,29 +1259,85 @@ export default function BookCheckoutScreen() {
                     <Ionicons name="add-circle-outline" size={20} color={Colors.primary} style={{ marginRight: 8 }} />
                     <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.primary }}>Add participant</Text>
                   </TouchableOpacity>
-                  {groupParticipants.map((p) => (
-                    <View key={p.id} style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#E5E7EB" }}>
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                        <Text style={{ fontSize: 12, fontWeight: "600", color: "#6B7280" }}>Participant</Text>
-                        <TouchableOpacity onPress={() => setGroupParticipants((prev) => prev.filter((x) => x.id !== p.id))}>
-                          <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                        </TouchableOpacity>
+                  {groupParticipants.map((p) => {
+                    const offeringId = (s: BookingServiceSnapshot) => s.offering_id ?? (s as { id?: string }).id;
+                    const snapshotOfferings = (hold?.booking_services_snapshot ?? []).map((s) => ({
+                      id: offeringId(s) as string,
+                      label: (s.service_name ?? s.title ?? s.name ?? "Service").trim() || "Service",
+                      price: s.price,
+                      currency: s.currency || "ZAR",
+                    })).filter((o) => o.id);
+                    return (
+                      <View key={p.id} style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#E5E7EB" }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                          <Text style={{ fontSize: 12, fontWeight: "600", color: "#6B7280" }}>Participant</Text>
+                          <TouchableOpacity onPress={() => setGroupParticipants((prev) => prev.filter((x) => x.id !== p.id))}>
+                            <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
+                        <TextInput
+                          value={p.name}
+                          onChangeText={(t) => setGroupParticipants((prev) => prev.map((x) => (x.id === p.id ? { ...x, name: t } : x)))}
+                          placeholder="Name (required)"
+                          style={{ backgroundColor: "#FFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: "#111827", marginBottom: 8 }}
+                        />
+                        <TextInput
+                          value={p.phone ?? ""}
+                          onChangeText={(t) => setGroupParticipants((prev) => prev.map((x) => (x.id === p.id ? { ...x, phone: t } : x)))}
+                          placeholder="Phone (optional)"
+                          keyboardType="phone-pad"
+                          style={{ backgroundColor: "#FFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: "#111827", marginBottom: 8 }}
+                        />
+                        {snapshotOfferings.length > 0 && (
+                          <View style={{ marginBottom: 8 }}>
+                            <Text style={{ fontSize: 12, fontWeight: "600", color: "#6B7280", marginBottom: 6 }}>Services for this person</Text>
+                            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                              {snapshotOfferings.map((off) => {
+                                const isSelected = p.service_ids.includes(off.id);
+                                return (
+                                  <Pressable
+                                    key={off.id}
+                                    onPress={() => {
+                                      haptic.selection();
+                                      setGroupParticipants((prev) => prev.map((x) => {
+                                        if (x.id !== p.id) return x;
+                                        const next = isSelected ? x.service_ids.filter((id) => id !== off.id) : [...x.service_ids, off.id];
+                                        return { ...x, service_ids: next };
+                                      }));
+                                    }}
+                                    style={{
+                                      flexDirection: "row",
+                                      alignItems: "center",
+                                      paddingVertical: 8,
+                                      paddingHorizontal: 12,
+                                      borderRadius: 10,
+                                      borderWidth: 1.5,
+                                      borderColor: isSelected ? Colors.primary : "#E5E7EB",
+                                      backgroundColor: isSelected ? Colors.primaryLight : "#FFF",
+                                      marginRight: 8,
+                                      marginBottom: 8,
+                                    }}
+                                  >
+                                    <Text style={{ fontSize: 13, fontWeight: "500", color: isSelected ? Colors.primary : "#374151", marginRight: 6 }} numberOfLines={1}>
+                                      {off.label}
+                                    </Text>
+                                    <Text style={{ fontSize: 12, color: "#6B7280" }}>{formatCurrency(off.price, off.currency)}</Text>
+                                    {isSelected && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginLeft: 4 }} />}
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        )}
+                        <TextInput
+                          value={p.notes ?? ""}
+                          onChangeText={(t) => setGroupParticipants((prev) => prev.map((x) => (x.id === p.id ? { ...x, notes: t } : x)))}
+                          placeholder="Notes (optional)"
+                          style={{ backgroundColor: "#FFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: "#111827" }}
+                        />
                       </View>
-                      <TextInput
-                        value={p.name}
-                        onChangeText={(t) => setGroupParticipants((prev) => prev.map((x) => (x.id === p.id ? { ...x, name: t } : x)))}
-                        placeholder="Name (required)"
-                        style={{ backgroundColor: "#FFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: "#111827", marginBottom: 8 }}
-                      />
-                      <TextInput
-                        value={p.phone ?? ""}
-                        onChangeText={(t) => setGroupParticipants((prev) => prev.map((x) => (x.id === p.id ? { ...x, phone: t } : x)))}
-                        placeholder="Phone (optional)"
-                        keyboardType="phone-pad"
-                        style={{ backgroundColor: "#FFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: "#111827" }}
-                      />
-                    </View>
-                  ))}
+                    );
+                  })}
                 </>
               )}
             </View>

@@ -49,8 +49,9 @@ export default function ProfileScreen() {
   const fetchProfileData = useCallback(async () => {
     if (!user) return;
     try {
-      const [compRes, loyaltyRes, verifyRes, ratingRes] = await Promise.allSettled([
+      const [compRes, profileRes, loyaltyRes, verifyRes, ratingRes] = await Promise.allSettled([
         api.get<any>("/api/me/profile-completion"),
+        api.get<any>("/api/me/profile"),
         api.get<any>("/api/me/loyalty"),
         api.get<any>("/api/me/verification"),
         api.get<any>("/api/me/rating"),
@@ -60,6 +61,11 @@ export default function ProfileScreen() {
       const comp = compRaw && typeof compRaw === "object" && compRaw !== null && "data" in compRaw
         ? (compRaw as { data: { percentage?: number; topItems?: { id: string; label: string }[]; checklistItems?: ChecklistItem[]; avatar_url?: string | null } }).data
         : compRaw;
+      const profileObj = profileRes.status === "fulfilled" && !profileRes.value?.error ? profileRes.value.data : null;
+      const avatarFromProfile = (profileObj && typeof profileObj === "object" && profileObj !== null && "avatar_url" in profileObj)
+        ? (profileObj as { avatar_url?: string | null }).avatar_url
+        : null;
+
       const loyalty =
         loyaltyRes.status === "fulfilled" ? loyaltyRes.value.data : null;
       const verify =
@@ -83,7 +89,7 @@ export default function ProfileScreen() {
         verified: verify?.verified ?? false,
         ratingAverage: Number(rating?.rating_average) || 0,
         reviewCount: Number(rating?.review_count) || 0,
-        avatarUrl: comp?.avatar_url ?? null,
+        avatarUrl: avatarFromProfile ?? comp?.avatar_url ?? null,
       });
     } catch {}
   }, [user]);
@@ -281,6 +287,15 @@ export default function ProfileScreen() {
             verified={isVerified}
           />
         </View>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/account-settings/login-and-security")}
+          style={{ marginTop: 12, paddingVertical: 8, paddingHorizontal: 4 }}
+          activeOpacity={0.7}
+          accessibilityLabel="Change email or phone number"
+          accessibilityRole="button"
+        >
+          <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Change email or phone →</Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Profile completion card ── */}
@@ -519,14 +534,34 @@ export default function ProfileScreen() {
       {/* ── Referral banner ── */}
       <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
         <TouchableOpacity
-          onPress={() => {
-            Share.share({
-              message: `I love booking beauty services on Beautonomi! Join me: ${APP_URL}`,
-              title: "Join Beautonomi",
-            });
+          onPress={async () => {
+            haptic.light();
+            try {
+              const res = await api.get<{ referral_link?: string }>("/api/me/referrals");
+              const link = res.data?.referral_link;
+              if (link && !res.error) {
+                await Share.share({
+                  message: `I love booking beauty services on Beautonomi! Join me and we both earn rewards: ${link}`,
+                  title: "Join Beautonomi",
+                  url: link,
+                });
+              } else {
+                await Share.share({
+                  message: `I love booking beauty services on Beautonomi! Join me: ${APP_URL}`,
+                  title: "Join Beautonomi",
+                });
+              }
+            } catch {
+              await Share.share({
+                message: `I love booking beauty services on Beautonomi! Join me: ${APP_URL}`,
+                title: "Join Beautonomi",
+              });
+            }
           }}
           activeOpacity={0.8}
           style={{ borderRadius: 16, overflow: "hidden", backgroundColor: "#FDF2F8" }}
+          accessibilityLabel="Invite friends and earn credits"
+          accessibilityRole="button"
         >
           <View style={{ padding: 16, flexDirection: "row", alignItems: "center" }}>
             <View style={{ flex: 1 }}>

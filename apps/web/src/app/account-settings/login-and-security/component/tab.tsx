@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs";
-import { Shield, Lock, AlertTriangle, ExternalLink } from "lucide-react";
+import { Shield, Lock, AlertTriangle, ExternalLink, Mail, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -20,6 +20,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { normalizeFullPhoneToE164 } from "@/lib/phone";
 
 const tabs = [
   { value: "step1", label: "LOGIN" },
@@ -50,10 +53,46 @@ const LoginAccount = () => {
     safety_tips_customer: { label: string; url: string };
     safety_tips_provider: { label: string; url: string };
   } | null>(null);
+  // Email & phone (Login tab)
+  const [profileEmail, setProfileEmail] = useState<string>("");
+  const [profilePhone, setProfilePhone] = useState<string>("");
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [showPhoneDialog, setShowPhoneDialog] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [phoneStep, setPhoneStep] = useState<"enter_phone" | "enter_otp">("enter_phone");
+  const [pendingPhoneE164, setPendingPhoneE164] = useState("");
+  const [phoneOtpCode, setPhoneOtpCode] = useState("");
+  const [dialogPhoneValue, setDialogPhoneValue] = useState("");
+  const [isSendingPhoneOtp, setIsSendingPhoneOtp] = useState(false);
+  const [isVerifyingPhoneOtp, setIsVerifyingPhoneOtp] = useState(false);
 
   useEffect(() => {
     loadPasswordInfo();
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps -- load when user changes
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user) return;
+      try {
+        const res = await fetcher.get<{ data?: { email?: string; phone?: string } }>("/api/me/profile", { cache: "no-store" });
+        const data = res?.data ?? (res as { email?: string; phone?: string });
+        const email = data?.email;
+        const phone = data?.phone;
+        if (email) {
+          const parts = email.split("@");
+          setProfileEmail(parts[0]?.length > 0 ? `${parts[0].substring(0, 1)}****@${parts[1] || ""}` : email);
+        }
+        if (phone) {
+          const digits = phone.replace(/\D/g, "");
+          setProfilePhone(digits.length >= 4 ? `${digits.substring(0, 3)} *** ***${digits.substring(digits.length - 4)}` : phone);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    loadProfile();
+  }, [user]);
 
   useEffect(() => {
     fetcher.get<{ data: typeof securityCopy }>("/api/public/account-security-copy", { cache: "no-store" })
@@ -164,6 +203,76 @@ const LoginAccount = () => {
     }
   };
 
+  const handleSendEmailVerification = async () => {
+    const email = newEmail.trim();
+    if (!email) {
+      toast.error("Enter a new email address");
+      return;
+    }
+    setIsSendingEmail(true);
+    try {
+      const response = await fetcher.patch("/api/me/profile", { email });
+      const profile = (response as { data?: { email_change_pending?: boolean } })?.data;
+      if (profile?.email_change_pending) {
+        setShowEmailDialog(false);
+        setNewEmail("");
+        toast.success("Check your new email and click the confirmation link to complete the change.");
+      } else {
+        toast.success("Verification email sent.");
+        setShowEmailDialog(false);
+        setNewEmail("");
+      }
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to send verification email");
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  const handleSendPhoneOtp = async (e164: string) => {
+    if (!e164 || !e164.startsWith("+")) return;
+    setIsSendingPhoneOtp(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.updateUser({ phone: e164 });
+      if (error) throw error;
+      setPendingPhoneE164(e164);
+      setPhoneStep("enter_otp");
+      setPhoneOtpCode("");
+      toast.success("Verification code sent to your phone.");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to send code");
+    } finally {
+      setIsSendingPhoneOtp(false);
+    }
+  };
+
+  const handleVerifyPhoneOtp = async () => {
+    if (!phoneOtpCode.trim() || !pendingPhoneE164) return;
+    setIsVerifyingPhoneOtp(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.verifyOtp({
+        phone: pendingPhoneE164,
+        token: phoneOtpCode.trim(),
+        type: "phone_change",
+      });
+      if (error) throw error;
+      await fetcher.patch("/api/me/profile", { phone: pendingPhoneE164 });
+      const digits = pendingPhoneE164.replace(/\D/g, "");
+      setProfilePhone(digits.length >= 4 ? `${digits.substring(0, 3)} *** ***${digits.substring(digits.length - 4)}` : pendingPhoneE164);
+      setShowPhoneDialog(false);
+      setPhoneStep("enter_phone");
+      setPendingPhoneE164("");
+      setPhoneOtpCode("");
+      toast.success("Phone number updated successfully.");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Verification failed");
+    } finally {
+      setIsVerifyingPhoneOtp(false);
+    }
+  };
+
   const handleDeactivate = async () => {
     if (!deactivateData.password) {
       toast.error("Password is required to deactivate your account");
@@ -206,7 +315,7 @@ const LoginAccount = () => {
         >
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tighter mb-2 text-gray-900">Login & security</h1>
           <p className="text-sm md:text-base text-gray-600 font-light">
-            Manage your password, account security, and login preferences
+            Manage your password, email, phone, and login preferences
           </p>
         </motion.div>
 
@@ -335,11 +444,69 @@ const LoginAccount = () => {
                 )}
               </motion.div>
 
-              {/* Social Accounts Section */}
+              {/* Email Section */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-5 h-5 text-primary" />
+                    <h2 className="text-xl font-semibold tracking-tighter text-gray-900">Email</h2>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setNewEmail("");
+                      setShowEmailDialog(true);
+                    }}
+                    className="text-primary border-primary hover:bg-primary hover:text-white"
+                  >
+                    Change email
+                  </Button>
+                </div>
+                <p className="text-sm text-gray-600 font-light">
+                  {profileEmail || "Not set"}
+                </p>
+              </motion.div>
+
+              {/* Phone Section */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
+                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
+              >
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-5 h-5 text-primary" />
+                    <h2 className="text-xl font-semibold tracking-tighter text-gray-900">Phone</h2>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setPhoneStep("enter_phone");
+                      setPendingPhoneE164("");
+                      setPhoneOtpCode("");
+                      setShowPhoneDialog(true);
+                    }}
+                    className="text-primary border-primary hover:bg-primary hover:text-white"
+                  >
+                    Change phone
+                  </Button>
+                </div>
+                <p className="text-sm text-gray-600 font-light">
+                  {profilePhone || "Not set"}
+                </p>
+              </motion.div>
+
+              {/* Social Accounts Section */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25 }}
                 className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
               >
                 <h2 className="text-xl font-semibold tracking-tighter mb-4 text-gray-900">Social accounts</h2>
@@ -453,6 +620,116 @@ const LoginAccount = () => {
           </motion.div>
         </TabsContent>
       </Tabs>
+
+      {/* Change Email Dialog */}
+      <Dialog open={showEmailDialog} onOpenChange={(open) => { setShowEmailDialog(open); if (!open) setNewEmail(""); }}>
+        <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6 backdrop-blur-2xl bg-white/95 border border-white/40">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold tracking-tighter text-gray-900">Change email</DialogTitle>
+            <DialogDescription className="text-sm text-gray-600 font-light">
+              Enter your new email address. We&apos;ll send a verification link to confirm.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">New email address</label>
+              <Input
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="backdrop-blur-sm bg-white/60 border-white/40"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-3">
+            <Button type="button" variant="outline" onClick={() => setShowEmailDialog(false)} className="border-gray-300 hover:bg-gray-50">Cancel</Button>
+            <Button
+              type="button"
+              onClick={handleSendEmailVerification}
+              disabled={isSendingEmail || !newEmail.trim()}
+              className="bg-primary hover:bg-primary-hover text-white"
+            >
+              {isSendingEmail ? "Sending…" : "Send verification email"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Phone Dialog */}
+      <Dialog open={showPhoneDialog} onOpenChange={(open) => { if (!open) { setPhoneStep("enter_phone"); setPendingPhoneE164(""); setPhoneOtpCode(""); setDialogPhoneValue(""); } setShowPhoneDialog(open); }}>
+        <DialogContent className="max-w-[95vw] sm:max-w-md p-4 sm:p-6 backdrop-blur-2xl bg-white/95 border border-white/40">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold tracking-tighter text-gray-900">Change phone number</DialogTitle>
+            <DialogDescription className="text-sm text-gray-600 font-light">
+              {phoneStep === "enter_phone"
+                ? "Enter your new phone number. We'll send a verification code."
+                : "Enter the 6-digit code we sent to your phone."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {phoneStep === "enter_phone" ? (
+              <PhoneInput
+                value={dialogPhoneValue}
+                onChange={(v) => setDialogPhoneValue(v)}
+                defaultCountryCode="+27"
+                placeholder="Phone number"
+                className="backdrop-blur-sm bg-white/60 border-white/40"
+              />
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Verification code</label>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={phoneOtpCode}
+                  onChange={(e) => setPhoneOtpCode(e.target.value.replace(/\D/g, ""))}
+                  placeholder="000000"
+                  className="backdrop-blur-sm bg-white/60 border-white/40"
+                />
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-3">
+            {phoneStep === "enter_otp" ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => { setPhoneStep("enter_phone"); setPhoneOtpCode(""); setPendingPhoneE164(""); }}
+                  className="border-gray-300 hover:bg-gray-50"
+                >
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleVerifyPhoneOtp}
+                  disabled={isVerifyingPhoneOtp || !phoneOtpCode.trim()}
+                  className="bg-primary hover:bg-primary-hover text-white"
+                >
+                  {isVerifyingPhoneOtp ? "Verifying…" : "Verify & save"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button type="button" variant="outline" onClick={() => setShowPhoneDialog(false)} className="border-gray-300 hover:bg-gray-50">Cancel</Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const e164 = normalizeFullPhoneToE164(dialogPhoneValue) ?? dialogPhoneValue.replace(/\s/g, "").trim();
+                    if (e164 && e164.startsWith("+")) handleSendPhoneOtp(e164);
+                  }}
+                  disabled={isSendingPhoneOtp || !dialogPhoneValue.trim() || !normalizeFullPhoneToE164(dialogPhoneValue)}
+                  className="bg-primary hover:bg-primary-hover text-white"
+                >
+                  {isSendingPhoneOtp ? "Sending…" : "Send code"}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Deactivate Account Dialog */}
       <Dialog open={showDeactivateDialog} onOpenChange={setShowDeactivateDialog}>

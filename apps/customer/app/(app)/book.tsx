@@ -226,6 +226,8 @@ export default function BookScreen() {
   const [addonsList, setAddonsList] = useState<{ id: string; title?: string; name?: string; price: number; duration_minutes?: number; currency?: string; is_recommended?: boolean }[]>([]);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
   const [waitlistJoining, setWaitlistJoining] = useState(false);
+  /** Category id -> true when collapsed (services hidden). Used on service step for long lists. */
+  const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Record<string, boolean>>({});
 
   // Week navigation for date picker
   const [weekOffset, setWeekOffset] = useState(0);
@@ -535,7 +537,6 @@ export default function BookScreen() {
 
   if (!provider || !servicesData) return null;
 
-  const allServices = servicesData.categories.flatMap((c) => c.services);
   const today = new Date();
   const weekStart = addDays(today, weekOffset * 7);
   const weekDays = [...Array(7)].map((_, i) => addDays(weekStart, i)).filter((d) => d >= today || isSameDay(d, today));
@@ -593,12 +594,13 @@ export default function BookScreen() {
               </View>
             )}
 
-            {/* ── Step: Service ── */}
+            {/* ── Step: Service (grouped by category, collapsible) ── */}
             {step === "service" && (
               <View>
-                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Select service(s)</Text>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 }}>Select service(s)</Text>
+                <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 12 }}>Tap a category to expand or collapse. Add one or more services for yourself or your group.</Text>
                 {selectedServices.length > 0 && (
-                  <View style={{ marginBottom: 16, padding: 12, backgroundColor: "#F0FDF4", borderRadius: 12, borderWidth: 1, borderColor: "#BBF7D0" }}>
+                  <View style={{ marginBottom: 16, padding: 14, backgroundColor: "#F0FDF4", borderRadius: 12, borderWidth: 1, borderColor: "#BBF7D0" }}>
                     <Text style={{ fontSize: 13, fontWeight: "600", color: "#166534", marginBottom: 8 }}>Your selection ({selectedServices.length})</Text>
                     {selectedServices.map((item, idx) => (
                       <View key={`${item.offeringId}-${idx}`} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6, borderBottomWidth: idx < selectedServices.length - 1 ? 1 : 0, borderColor: "rgba(0,0,0,0.06)" }}>
@@ -610,74 +612,110 @@ export default function BookScreen() {
                     ))}
                   </View>
                 )}
-                {allServices.map((svc) => {
-                  const hasVariants = svc.variants && svc.variants.length > 1;
-                  const currency = svc.currency ?? "ZAR";
+                {servicesData.categories.map((cat) => {
+                  const isCollapsed = !!collapsedCategoryIds[cat.id];
+                  const serviceCount = cat.services?.length ?? 0;
+                  const categoryColor = (cat.color && /^#?[0-9A-Fa-f]{6}$/.test(cat.color)) ? cat.color : Colors.primary;
                   return (
-                    <View key={svc.id} style={{ marginBottom: 4 }}>
+                    <View key={cat.id} style={{ marginBottom: 20 }}>
                       <Pressable
                         onPress={() => {
-                          if (!hasVariants) {
-                            haptic.light();
-                            setSelectedService(svc);
-                            setSelectedVariant(null);
-                            const offeringId = svc.variants?.[0]?.id ?? svc.id;
-                            const dur = svc.variants?.[0]?.duration_minutes ?? svc.duration_minutes ?? 60;
-                            const price = svc.variants?.[0]?.price ?? svc.price ?? 0;
-                            setSelectedServices((prev) => [...prev, { offeringId, title: svc.title ?? "", duration_minutes: dur, price, currency }]);
-                          }
+                          haptic.light();
+                          setCollapsedCategoryIds((prev) => ({ ...prev, [cat.id]: !prev[cat.id] }));
                         }}
                         style={{
-                          flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-                          paddingVertical: 14, paddingHorizontal: 14, borderRadius: 12, marginBottom: 2,
-                          backgroundColor: "#fff",
-                          borderWidth: 1, borderColor: "#F3F4F6",
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          paddingVertical: 12,
+                          paddingHorizontal: 14,
+                          borderRadius: 12,
+                          backgroundColor: "#F9FAFB",
+                          borderLeftWidth: 4,
+                          borderLeftColor: categoryColor,
+                          marginBottom: 8,
                         }}
                         accessibilityRole="button"
-                        accessibilityLabel={`Add ${svc.title}, ${svc.duration_minutes} minutes`}
+                        accessibilityLabel={`${cat.name}, ${serviceCount} services, ${isCollapsed ? "Expand" : "Collapse"}`}
+                        accessibilityState={{ expanded: !isCollapsed }}
                       >
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontWeight: "600", color: "#111827", fontSize: 15 }}>{svc.title}</Text>
-                          <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
-                            {hasVariants ? "Multiple options — tap to choose" : `${svc.duration_minutes} min · ${currency} ${svc.price.toFixed(2)}`}
-                          </Text>
+                        <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>{cat.name}</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center" }}>
+                          <Text style={{ fontSize: 13, color: "#6B7280", marginRight: 8 }}>{serviceCount} {serviceCount === 1 ? "service" : "services"}</Text>
+                          <Ionicons name={isCollapsed ? "chevron-down" : "chevron-up"} size={20} color="#6B7280" />
                         </View>
-                        {!hasVariants && <Ionicons name="add-circle-outline" size={22} color={Colors.primary} />}
-                        {hasVariants && <Ionicons name="chevron-down" size={18} color="#9CA3AF" />}
                       </Pressable>
-                      {hasVariants && (
-                        <View style={{ paddingLeft: 12, marginBottom: 8 }}>
-                          {svc.variants!.map((v, vi) => (
+                      {!isCollapsed && (cat.services ?? []).map((svc) => {
+                        const hasVariants = svc.variants && svc.variants.length > 1;
+                        const currency = svc.currency ?? "ZAR";
+                        return (
+                          <View key={svc.id} style={{ marginBottom: 6, marginLeft: 4 }}>
                             <Pressable
-                              key={v.id}
                               onPress={() => {
-                                haptic.light();
-                                setSelectedService(svc);
-                                setSelectedVariant(v);
-                                setSelectedServices((prev) => [...prev, { offeringId: v.id, title: v.title ?? svc.title ?? "", duration_minutes: v.duration_minutes, price: v.price, currency }]);
+                                if (!hasVariants) {
+                                  haptic.light();
+                                  setSelectedService(svc);
+                                  setSelectedVariant(null);
+                                  const offeringId = svc.variants?.[0]?.id ?? svc.id;
+                                  const dur = svc.variants?.[0]?.duration_minutes ?? svc.duration_minutes ?? 60;
+                                  const price = svc.variants?.[0]?.price ?? svc.price ?? 0;
+                                  setSelectedServices((prev) => [...prev, { offeringId, title: svc.title ?? "", duration_minutes: dur, price, currency }]);
+                                }
                               }}
                               style={{
                                 flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-                                borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12,
-                                backgroundColor: "#F9FAFB",
-                                borderColor: "#E5E7EB",
-                                marginTop: vi === 0 ? 0 : 6,
+                                paddingVertical: 14, paddingHorizontal: 14, borderRadius: 12,
+                                backgroundColor: "#fff",
+                                borderWidth: 1, borderColor: "#E5E7EB",
                               }}
                               accessibilityRole="button"
-                              accessibilityLabel={`Add ${v.title ?? svc.title} ${v.duration_minutes} minutes`}
+                              accessibilityLabel={`Add ${svc.title}, ${svc.duration_minutes} minutes`}
                             >
-                              <View>
-                                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{v.title ?? `${v.duration_minutes} min`}</Text>
-                                <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{v.duration_minutes} min</Text>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontWeight: "600", color: "#111827", fontSize: 15 }}>{svc.title}</Text>
+                                <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
+                                  {hasVariants ? "Multiple options — tap to choose" : `${svc.duration_minutes} min · ${currency} ${svc.price.toFixed(2)}`}
+                                </Text>
                               </View>
-                              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                                <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.primary, marginRight: 6 }}>{currency} {v.price.toFixed(2)}</Text>
-                                <Ionicons name="add-circle-outline" size={18} color={Colors.primary} />
-                              </View>
+                              {!hasVariants && <Ionicons name="add-circle-outline" size={22} color={Colors.primary} />}
+                              {hasVariants && <Ionicons name="chevron-down" size={18} color="#9CA3AF" />}
                             </Pressable>
-                          ))}
-                        </View>
-                      )}
+                            {hasVariants && (
+                              <View style={{ paddingLeft: 8, marginTop: 6 }}>
+                                {svc.variants!.map((v, vi) => (
+                                  <Pressable
+                                    key={v.id}
+                                    onPress={() => {
+                                      haptic.light();
+                                      setSelectedService(svc);
+                                      setSelectedVariant(v);
+                                      setSelectedServices((prev) => [...prev, { offeringId: v.id, title: v.title ?? svc.title ?? "", duration_minutes: v.duration_minutes, price: v.price, currency }]);
+                                    }}
+                                    style={{
+                                      flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+                                      borderRadius: 10, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12,
+                                      backgroundColor: "#F9FAFB",
+                                      borderColor: "#E5E7EB",
+                                      marginTop: vi === 0 ? 0 : 6,
+                                    }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Add ${v.title ?? svc.title} ${v.duration_minutes} minutes`}
+                                  >
+                                    <View>
+                                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{v.title ?? `${v.duration_minutes} min`}</Text>
+                                      <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{v.duration_minutes} min</Text>
+                                    </View>
+                                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                      <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.primary, marginRight: 6 }}>{currency} {v.price.toFixed(2)}</Text>
+                                      <Ionicons name="add-circle-outline" size={18} color={Colors.primary} />
+                                    </View>
+                                  </Pressable>
+                                ))}
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
                     </View>
                   );
                 })}
@@ -1167,58 +1205,58 @@ export default function BookScreen() {
                 )}
               </View>
             )}
-          </ScrollView>
 
-          {/* ═══ Step: Add-ons (optional extras before checkout) ═══ */}
-          {step === "addons" && (
-            <View style={{ marginTop: 8, marginBottom: 24 }}>
-              <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 }}>Add extras (optional)</Text>
-              <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>
-                Optional add-ons to enhance your visit
-              </Text>
-              {addonsList.length === 0 ? (
-                <View style={{ paddingVertical: 16, paddingHorizontal: 14, borderRadius: 12, backgroundColor: "#F9FAFB", marginBottom: 12 }}>
-                  <Text style={{ fontSize: 14, color: "#6B7280" }}>No add-ons available for this service.</Text>
-                </View>
-              ) : (
-                addonsList.map((addon) => {
-                  const isSelected = selectedAddonIds.includes(addon.id);
-                  const label = addon.title ?? addon.name ?? "Add-on";
-                  const price = Number(addon.price) || 0;
-                  const currency = provider?.currency ?? "ZAR";
-                  return (
-                    <Pressable
-                      key={addon.id}
-                      onPress={() => {
-                        haptic.selection();
-                        setSelectedAddonIds((prev) =>
-                          prev.includes(addon.id) ? prev.filter((id) => id !== addon.id) : [...prev, addon.id]
-                        );
-                      }}
-                      style={{
-                        flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-                        padding: 14, borderRadius: 12, marginBottom: 8,
-                        borderWidth: 1.5, borderColor: isSelected ? Colors.primary : "#E5E7EB",
-                        backgroundColor: isSelected ? Colors.primaryLight : "#fff",
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${label} ${currency} ${price.toFixed(2)}`}
-                      accessibilityState={{ selected: isSelected }}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827" }}>{label}</Text>
-                        <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
-                          {addon.duration_minutes ? `+${addon.duration_minutes} min • ` : ""}
-                          {currency} {price.toFixed(2)}
-                        </Text>
-                      </View>
-                      {isSelected && <Ionicons name="checkmark-circle" size={24} color={Colors.primary} />}
-                    </Pressable>
-                  );
-                })
-              )}
-            </View>
-          )}
+            {/* ── Step: Add-ons (optional extras before checkout) ── */}
+            {step === "addons" && (
+              <View>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 }}>Add extras (optional)</Text>
+                <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>
+                  Optional add-ons to enhance your visit
+                </Text>
+                {addonsList.length === 0 ? (
+                  <View style={{ paddingVertical: 16, paddingHorizontal: 14, borderRadius: 12, backgroundColor: "#F9FAFB", marginBottom: 12 }}>
+                    <Text style={{ fontSize: 14, color: "#6B7280" }}>No add-ons available for this service.</Text>
+                  </View>
+                ) : (
+                  addonsList.map((addon) => {
+                    const isSelected = selectedAddonIds.includes(addon.id);
+                    const label = addon.title ?? addon.name ?? "Add-on";
+                    const price = Number(addon.price) || 0;
+                    const currency = provider?.currency ?? "ZAR";
+                    return (
+                      <Pressable
+                        key={addon.id}
+                        onPress={() => {
+                          haptic.selection();
+                          setSelectedAddonIds((prev) =>
+                            prev.includes(addon.id) ? prev.filter((id) => id !== addon.id) : [...prev, addon.id]
+                          );
+                        }}
+                        style={{
+                          flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+                          padding: 14, borderRadius: 12, marginBottom: 8,
+                          borderWidth: 1.5, borderColor: isSelected ? Colors.primary : "#E5E7EB",
+                          backgroundColor: isSelected ? Colors.primaryLight : "#fff",
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${label} ${currency} ${price.toFixed(2)}`}
+                        accessibilityState={{ selected: isSelected }}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827" }}>{label}</Text>
+                          <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                            {addon.duration_minutes ? `+${addon.duration_minutes} min • ` : ""}
+                            {currency} {price.toFixed(2)}
+                          </Text>
+                        </View>
+                        {isSelected && <Ionicons name="checkmark-circle" size={24} color={Colors.primary} />}
+                      </Pressable>
+                    );
+                  })
+                )}
+              </View>
+            )}
+          </ScrollView>
 
           {/* ═══ Sticky Bottom CTA ═══ */}
           {step === "service" && (

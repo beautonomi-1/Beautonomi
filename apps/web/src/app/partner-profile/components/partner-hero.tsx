@@ -175,9 +175,8 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
       const conversationsResponse = await Promise.race([conversationsPromise, timeoutPromise]);
       
       const conversations = conversationsResponse.data || [];
-      const existingConv = conversations.find(
-        (conv: any) => conv.provider_id === id && !conv.booking_id
-      );
+      // Prefer any existing conversation with this provider (general or booking-specific) so user sees their thread
+      const existingConv = conversations.find((conv: any) => conv.provider_id === id);
 
       if (existingConv) {
         // Navigate to messages page with existing conversation

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Platform,
@@ -25,6 +25,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { Avatar } from "@/components/ui/Avatar";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import * as Haptics from "expo-haptics";
@@ -43,8 +44,11 @@ type BookingDetail = {
   location_type?: "at_salon" | "at_home";
   current_stage?: string | null;
   arrival_otp_verified?: boolean;
-  customers?: { full_name?: string | null } | null;
+  customer_id?: string | null;
+  customers?: { id?: string; full_name?: string | null; email?: string | null; phone?: string | null } | null;
   locations?: { name?: string | null } | null;
+  custom_field_values?: Record<string, string | number | boolean | null>;
+  provider_form_responses?: Record<string, Record<string, unknown>> | null;
   address?: { line1?: string; city?: string; latitude?: number; longitude?: number } | null;
   special_requests?: string | null;
   version?: number;
@@ -216,6 +220,17 @@ export default function BookingDetailScreen() {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [loadingAuditLog, setLoadingAuditLog] = useState(false);
 
+  type CustomerProfileData = {
+    customer: { id: string; full_name?: string | null; email?: string | null; phone?: string | null; avatar_url?: string | null };
+    profile: Record<string, unknown> | null;
+    bookings: { id: string; booking_number?: string; status?: string; scheduled_at?: string; total_amount?: number; currency?: string }[];
+    reviews: { id: string; rating?: number; comment?: string | null; created_at?: string }[];
+  };
+  // Customer profile sheet (view full profile from booking)
+  const [showCustomerProfile, setShowCustomerProfile] = useState(false);
+  const [customerProfile, setCustomerProfile] = useState<CustomerProfileData | null>(null);
+  const [loadingCustomerProfile, setLoadingCustomerProfile] = useState(false);
+
   // Post-completion modal (once per booking when opening a completed booking)
   const [showProviderCompletionModal, setShowProviderCompletionModal] = useState(false);
   const [showRateClientSheet, setShowRateClientSheet] = useState(false);
@@ -349,6 +364,24 @@ export default function BookingDetailScreen() {
     }
   };
 
+  const openCustomerProfile = useCallback(async () => {
+    const b = data as BookingDetail | null | undefined;
+    const cid = b?.customer_id ?? (b?.customers as { id?: string } | undefined)?.id ?? null;
+    if (!cid) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowCustomerProfile(true);
+    setCustomerProfile(null);
+    setLoadingCustomerProfile(true);
+    try {
+      const res = await api.get<CustomerProfileData>(`/api/provider/customers/${cid}/profile`);
+      if (res.data) setCustomerProfile(res.data);
+    } catch {
+      setCustomerProfile(null);
+    } finally {
+      setLoadingCustomerProfile(false);
+    }
+  }, [data]);
+
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
@@ -374,6 +407,7 @@ export default function BookingDetailScreen() {
   const b = data as BookingDetail;
   const services = b.services ?? [];
   const customerName = b.customers?.full_name ?? "Guest";
+  const customerId = b.customer_id ?? (b.customers as { id?: string } | undefined)?.id ?? null;
   const locationName = b.locations?.name ?? null;
   const addressLine = b.address
     ? [b.address.line1, b.address.city].filter(Boolean).join(", ")
@@ -817,7 +851,19 @@ export default function BookingDetailScreen() {
       >
         <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
           <View style={twStyle("flex-row items-center justify-between mb-3")}>
-            <Text style={twStyle("font-semibold text-gray-900")}>{customerName}</Text>
+            <View style={twStyle("flex-row items-center flex-1")}>
+              <Text style={twStyle("font-semibold text-gray-900")}>{customerName}</Text>
+              {customerId ? (
+                <TouchableOpacity
+                  onPress={openCustomerProfile}
+                  style={twStyle("ml-2 p-1.5 rounded-full bg-gray-100")}
+                  accessibilityLabel="View customer profile"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="person-circle-outline" size={24} color="#4b5563" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
             <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(b.status)}`)}>
               <Text style={twStyle("text-xs font-medium text-gray-800")}>{b.status}</Text>
             </View>
@@ -1586,6 +1632,97 @@ export default function BookingDetailScreen() {
             disabled={submittingRateClient || rateClientStars < 1}
           />
         </View>
+      </BottomSheet>
+
+      {/* Customer profile (view from booking) */}
+      <BottomSheet
+        visible={showCustomerProfile}
+        onClose={() => { setShowCustomerProfile(false); setCustomerProfile(null); }}
+        title="Customer profile"
+        snapHeight="half"
+      >
+        {loadingCustomerProfile ? (
+          <View style={twStyle("py-8 items-center")}>
+            <ActivityIndicator size="large" color="#6366f1" />
+          </View>
+        ) : customerProfile ? (
+          <View style={twStyle("pb-4")}>
+            <View style={twStyle("flex-row items-center mb-4")}>
+              <Avatar
+                name={customerProfile.customer.full_name ?? "Customer"}
+                imageUrl={customerProfile.customer.avatar_url}
+                size="xl"
+              />
+              <View style={twStyle("ml-4 flex-1")}>
+                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{customerProfile.customer.full_name ?? "Customer"}</Text>
+                {customerProfile.customer.email ? (
+                  <Text style={twStyle("text-sm text-gray-600")}>{customerProfile.customer.email}</Text>
+                ) : null}
+                {customerProfile.customer.phone ? (
+                  <Text style={twStyle("text-sm text-gray-600")}>{customerProfile.customer.phone}</Text>
+                ) : null}
+              </View>
+            </View>
+            {customerProfile.profile && Object.keys(customerProfile.profile).length > 0 ? (
+              <View style={twStyle("mb-4")}>
+                <Text style={twStyle("text-xs font-semibold text-gray-500 uppercase mb-2")}>Profile details</Text>
+                <View style={twStyle("rounded-lg border border-gray-200 bg-gray-50 p-3")}>
+                  {Object.entries(customerProfile.profile).map(([key, value]) => (
+                    value != null && value !== "" && key !== "user_id" ? (
+                      <View key={key} style={twStyle("flex-row justify-between py-1.5 border-b border-gray-100")}>
+                        <Text style={twStyle("text-sm text-gray-600")}>{key.replace(/_/g, " ")}</Text>
+                        <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>{String(value)}</Text>
+                      </View>
+                    ) : null
+                  ))}
+                </View>
+              </View>
+            ) : null}
+            {(b.custom_field_values && Object.keys(b.custom_field_values).length > 0) || (b.provider_form_responses && Object.keys(b.provider_form_responses).length > 0) ? (
+              <View style={twStyle("mb-4")}>
+                <Text style={twStyle("text-xs font-semibold text-gray-500 uppercase mb-2")}>Answers for this booking</Text>
+                <View style={twStyle("rounded-lg border border-gray-200 bg-amber-50/50 p-3")}>
+                  {b.custom_field_values ? Object.entries(b.custom_field_values).map(([key, value]) => (
+                    value != null && value !== "" ? (
+                      <View key={key} style={twStyle("flex-row justify-between py-1.5 border-b border-amber-100")}>
+                        <Text style={twStyle("text-sm text-gray-600")}>{key.replace(/_/g, " ")}</Text>
+                        <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>{String(value)}</Text>
+                      </View>
+                    ) : null
+                  )) : null}
+                  {b.provider_form_responses ? Object.entries(b.provider_form_responses).map(([formId, answers]) =>
+                    typeof answers === "object" && answers !== null ? Object.entries(answers as Record<string, unknown>).map(([fieldId, val]) => (
+                      val != null && val !== "" ? (
+                        <View key={`${formId}-${fieldId}`} style={twStyle("flex-row justify-between py-1.5 border-b border-amber-100")}>
+                          <Text style={twStyle("text-sm text-gray-600")}>{String(fieldId).replace(/_/g, " ")}</Text>
+                          <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>{String(val)}</Text>
+                        </View>
+                      ) : null
+                    )) : null
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
+            <Text style={twStyle("text-xs text-gray-500 mb-2")}>
+              {customerProfile.bookings?.length ?? 0} booking(s) with you
+              {(customerProfile.reviews?.length ?? 0) > 0 ? ` · ${customerProfile.reviews.length} review(s)` : ""}
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                setShowCustomerProfile(false);
+                setCustomerProfile(null);
+                if (customerId) router.push(`/(app)/(tabs)/more/clients/${customerId}` as never);
+              }}
+              style={twStyle("rounded-lg border-2 border-primary bg-primary/5 py-3 items-center")}
+              accessibilityRole="button"
+              accessibilityLabel="See full profile"
+            >
+              <Text style={twStyle("font-semibold text-primary")}>See full profile</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Text style={twStyle("text-center text-gray-500 py-8")}>Could not load profile</Text>
+        )}
       </BottomSheet>
 
       {/* Booking audit log / history */}

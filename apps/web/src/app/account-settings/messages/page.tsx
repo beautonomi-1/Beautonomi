@@ -153,10 +153,8 @@ export default function Component() {
     try {
       setIsCreatingConversation(true);
       
-      // First, check if conversation already exists
-      const existingConv = conversations.find(
-        (conv) => conv.provider_id === providerId && !conv.booking_id
-      );
+      // First, check if conversation already exists (any thread with this provider: general or booking-specific)
+      const existingConv = conversations.find((conv) => conv.provider_id === providerId);
 
       if (existingConv) {
         // Conversation exists, select it

@@ -97,6 +97,7 @@ export default function LoginScreen() {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [pendingPhone, setPendingPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -135,13 +136,15 @@ export default function LoginScreen() {
       setFormError(err);
       return;
     }
+    const e164 = fullPhone.startsWith("+") ? fullPhone : `+${fullPhone}`;
     setLoading(true);
     try {
-      const { error } = await signInWithOtp(fullPhone);
+      const { error } = await signInWithOtp(e164);
       if (error) {
         setFormError(error.message);
         return;
       }
+      setPendingPhone(e164);
       setOtpSent(true);
       setFormSuccess("We sent you a verification code. Check your phone.");
     } catch (e: unknown) {
@@ -157,9 +160,11 @@ export default function LoginScreen() {
       setFormError("Please enter the verification code");
       return;
     }
+    const phoneToVerify = pendingPhone || fullPhone;
+    const e164 = phoneToVerify.startsWith("+") ? phoneToVerify : `+${phoneToVerify}`;
     setLoading(true);
     try {
-      const { error } = await verifyOtp(fullPhone, token.trim());
+      const { error } = await verifyOtp(e164, token.trim());
       if (error) {
         setFormError(error.message);
         return;
@@ -479,7 +484,7 @@ export default function LoginScreen() {
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => { setOtpSent(false); setToken(""); }}
+                  onPress={() => { setOtpSent(false); setToken(""); setPendingPhone(""); setFormSuccess(null); }}
                   disabled={loading}
                   style={{ paddingVertical: 8, marginTop: 12 }}
                   accessibilityLabel="Use different number"

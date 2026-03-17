@@ -100,6 +100,7 @@ export default function LoginScreen() {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [pendingPhone, setPendingPhone] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [countrySearch, setCountrySearch] = useState("");
@@ -136,15 +137,20 @@ export default function LoginScreen() {
       Alert.alert("Invalid Phone", err);
       return;
     }
+    const e164 = fullPhone.startsWith("+") ? fullPhone : `+${fullPhone}`;
     setLoading(true);
-    const { error } = await signInWithOtp(fullPhone);
-    setLoading(false);
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
+    try {
+      const { error } = await signInWithOtp(e164);
+      if (error) {
+        Alert.alert("Error", error.message);
+        return;
+      }
+      setPendingPhone(e164);
+      setOtpSent(true);
+      Alert.alert("Check your phone", "We sent you a verification code.");
+    } finally {
+      setLoading(false);
     }
-    setOtpSent(true);
-    Alert.alert("Check your phone", "We sent you a verification code.");
   }
 
   async function handleVerifyOtp() {
@@ -152,15 +158,19 @@ export default function LoginScreen() {
       Alert.alert("Error", "Please enter the verification code");
       return;
     }
+    const phoneToVerify = pendingPhone || fullPhone;
+    const e164 = phoneToVerify.startsWith("+") ? phoneToVerify : `+${phoneToVerify}`;
     setLoading(true);
-    const { error } = await verifyOtp(fullPhone, token.trim());
-    if (error) {
+    try {
+      const { error } = await verifyOtp(e164, token.trim());
+      if (error) {
+        Alert.alert("Error", error.message);
+        return;
+      }
+      router.replace("/(app)/(tabs)/home");
+    } finally {
       setLoading(false);
-      Alert.alert("Error", error.message);
-      return;
     }
-    router.replace("/(app)/(tabs)/home");
-    setLoading(false);
   }
 
   async function handleOAuth(provider: "google" | "apple" | "facebook") {
@@ -324,9 +334,10 @@ export default function LoginScreen() {
               )}
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => { setOtpSent(false); setToken(""); }}
+              onPress={() => { setOtpSent(false); setToken(""); setPendingPhone(""); }}
               disabled={loading}
               style={{ paddingVertical: 8 }}
+              accessibilityLabel="Use different number"
             >
               <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
                 Use different number
@@ -462,6 +473,7 @@ export default function LoginScreen() {
                 onPress={() => router.push("/(auth)/forgot-password" as never)}
                 style={{ paddingVertical: 8 }}
                 accessibilityRole="link"
+                accessibilityLabel="Forgot password? Reset it"
               >
                 <Text style={{ textAlign: "center", fontSize: 14, color: PRIMARY, fontWeight: "600" }}>
                   Forgot your password?

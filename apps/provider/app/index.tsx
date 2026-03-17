@@ -158,9 +158,15 @@ export default function Index() {
     };
     // runProfileCheck is intentionally omitted to avoid re-running on every identity change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portalState, session]);
+  }, [portalState, session?.user?.id]);
 
-  if (loading || portalState === "idle" || portalState === "loading") {
+  // Not logged in: redirect to login immediately (don't show Loading…)
+  if (!session) {
+    return <Redirect href="/(auth)/login" />;
+  }
+
+  // Auth still resolving
+  if (loading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -169,8 +175,14 @@ export default function Index() {
     );
   }
 
-  if (!session) {
-    return <Redirect href="/(auth)/login" />;
+  // Portal check in progress
+  if (portalState === "idle" || portalState === "loading") {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={{ marginTop: 16, fontSize: 16, color: Colors.gray[600] }}>Loading…</Text>
+      </View>
+    );
   }
 
   if (portalState === "wrong_app" && wrongPortal) {

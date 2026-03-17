@@ -5,6 +5,7 @@ import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
+import { trackReferralShared } from "@/lib/analytics";
 
 interface ReferralStats {
   total_referrals: number;
@@ -62,6 +63,7 @@ export default function ReferralsScreen() {
       await Clipboard.setStringAsync(link);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      trackReferralShared("referrals_copy");
     } catch {
       Alert.alert("Error", "Could not copy link");
     }
@@ -75,6 +77,7 @@ export default function ReferralsScreen() {
         url: link,
         title: "Join Beautonomi",
       });
+      trackReferralShared("referrals_screen");
     } catch {
       // User cancelled or error
     }

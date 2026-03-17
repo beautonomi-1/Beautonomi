@@ -101,17 +101,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithOtp = useCallback(async (phone: string) => {
+    const e164 = phone.startsWith("+") ? phone : `+${phone}`;
     const { error } = await supabase.auth.signInWithOtp({
-      phone: phone.startsWith("+") ? phone : `+${phone}`,
+      phone: e164.replace(/\s/g, ""),
+      options: { channel: "sms" },
     });
     return { error: error ? new Error(error.message) : null };
   }, []);
 
   const verifyOtp = useCallback(async (phone: string, token: string) => {
-    const normalizedPhone = phone.startsWith("+") ? phone : `+${phone}`;
+    const e164 = (phone.startsWith("+") ? phone : `+${phone}`).replace(/\s/g, "");
     const { error } = await supabase.auth.verifyOtp({
-      phone: normalizedPhone,
-      token,
+      phone: e164,
+      token: token.trim(),
       type: "sms",
     });
     return { error: error ? new Error(error.message) : null };

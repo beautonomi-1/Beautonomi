@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { ComponentProps } from "react";
 import { Tabs, router, useFocusEffect } from "expo-router";
 import { Platform, TouchableOpacity, View, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,6 +10,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { onCartUpdated } from "@/lib/cart-events";
+import { haptic } from "@/lib/haptics";
 
 function fetchCartCount(setCount: (n: number) => void, isUser: boolean) {
   if (!isUser) {
@@ -85,6 +87,22 @@ export default function TabsLayout() {
           // On web, avoid position:fixed (broken with RNW flexbox); keep tab bar in flow at bottom.
           ...(Platform.OS === "web" ? { width: "100%" } : {}),
         },
+        tabBarButton: (props) => {
+          const { onPress, ...rest } = props;
+          const touchableProps = {
+            ...rest,
+            onPress: (e: Parameters<NonNullable<typeof onPress>>[0]) => {
+              haptic.selection();
+              onPress?.(e);
+            },
+            activeOpacity: 0.7,
+            delayLongPress: rest.delayLongPress ?? undefined,
+            disabled: rest.disabled ?? undefined,
+            onBlur: rest.onBlur ?? undefined,
+            onFocus: rest.onFocus ?? undefined,
+          } as ComponentProps<typeof TouchableOpacity>;
+          return <TouchableOpacity {...touchableProps} />;
+        },
       }}
     >
       <Tabs.Screen
@@ -94,17 +112,6 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused, color }) => (
             <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name={focused ? "home" : "home-outline"} size={24} color={color} />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: t("customer.explore"),
-          tabBarIcon: ({ focused, color }) => (
-            <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name={focused ? "search" : "search-outline"} size={24} color={color} />
             </View>
           ),
         }}
@@ -153,7 +160,11 @@ export default function TabsLayout() {
           tabBarButton: (props) => (
             <TouchableOpacity
               {...(props as React.ComponentProps<typeof TouchableOpacity>)}
-              onPress={() => router.push("/(app)/cart" as any)}
+              onPress={() => {
+                haptic.selection();
+                router.push("/(app)/cart" as any);
+              }}
+              activeOpacity={0.7}
             />
           ),
         }}
@@ -181,7 +192,8 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Hidden tabs */}
+      {/* Hidden tabs (reachable from home top nav / deep links) */}
+      <Tabs.Screen name="explore" options={{ href: null }} />
       <Tabs.Screen name="search" options={{ href: null }} />
       <Tabs.Screen name="saved" options={{ href: null }} />
       </Tabs>

@@ -29,10 +29,21 @@ if (Platform.OS !== "web") {
   SplashScreen.preventAutoHideAsync();
 }
 
+/** Max time splash can stay visible (e.g. after install/update). Then hide so user sees login. */
+const MAX_SPLASH_MS = 4000;
+
 function SplashController() {
   const { loading } = useAuth();
   useEffect(() => {
-    if (!loading && Platform.OS !== "web") SplashScreen.hideAsync();
+    if (Platform.OS === "web") return;
+    if (!loading) {
+      SplashScreen.hideAsync();
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      SplashScreen.hideAsync();
+    }, MAX_SPLASH_MS);
+    return () => clearTimeout(timeoutId);
   }, [loading]);
   return null;
 }

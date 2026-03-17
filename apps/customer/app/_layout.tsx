@@ -1,6 +1,6 @@
 import "../global.css";
 import "@/lib/i18n";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Platform, View } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -18,6 +18,7 @@ import { OfflineBar } from "@/components/OfflineBar";
 import { useForceUpdate } from "@/hooks/useForceUpdate";
 import { initSentry, Sentry } from "@/lib/sentry";
 import { initSingular } from "@/lib/singular";
+import { i18n } from "@beautonomi/i18n";
 
 if (Platform.OS !== "web") {
   SplashScreen.preventAutoHideAsync();
@@ -76,6 +77,16 @@ function ThemedApp() {
   );
 }
 
+function LanguageReactiveRoot({ children }: { children: React.ReactNode }) {
+  const [, setLocale] = useState(() => i18n.language || "en");
+  useEffect(() => {
+    const handler = (lng: string) => setLocale(lng || "en");
+    i18n.on("languageChanged", handler);
+    return () => i18n.off("languageChanged", handler);
+  }, []);
+  return <>{children}</>;
+}
+
 function RootLayout() {
   const isWeb = Platform.OS === "web";
   const rootStyle: View["props"]["style"] = {
@@ -87,6 +98,7 @@ function RootLayout() {
       <View style={rootStyle}>
         <SafeAreaProvider>
           <ThemeProvider>
+            <LanguageReactiveRoot>
             <AuthProvider>
               <NotificationsProvider>
               <SelectedAddressProvider>
@@ -98,6 +110,7 @@ function RootLayout() {
               </SelectedAddressProvider>
               </NotificationsProvider>
             </AuthProvider>
+            </LanguageReactiveRoot>
           </ThemeProvider>
         </SafeAreaProvider>
       </View>

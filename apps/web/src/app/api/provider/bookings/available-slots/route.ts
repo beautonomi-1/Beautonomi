@@ -141,10 +141,10 @@ export async function GET(request: NextRequest) {
         : getSlotTimes();
     const available: string[] = [];
 
-    // Fetch all bookings for that day
+    // Fetch all bookings for that day with per-service start/end so we block by actual duration per staff
     let bookingsQuery = supabaseAdmin
       .from("bookings")
-      .select("id, scheduled_at, booking_services(duration_minutes, staff_id)")
+      .select("id, scheduled_at, booking_services(duration_minutes, staff_id, scheduled_start_at, scheduled_end_at)")
       .eq("provider_id", providerId)
       .not("status", "in", "(cancelled,no_show)")
       .gte("scheduled_at", `${dateStr}T00:00:00`)
@@ -176,26 +176,67 @@ export async function GET(request: NextRequest) {
       return staffOk && locOk;
     });
 
+    // Build blocked intervals from bookings: use per-service start/end when filtering by staff so only that staff's busy period is blocked
+    type BlockInterval = { start: Date; end: Date };
+    const blockedIntervals: BlockInterval[] = [];
+    for (const b of dayBookings || []) {
+      const services = b.booking_services || [];
+      const totalDuration = services.reduce((s: number, bs: any) => s + (bs.duration_minutes || 30), 0);
+      const bookingStart = new Date(b.scheduled_at);
+      const bookingEndDefault = addMinutes(bookingStart, totalDuration);
+
+      if (staffIds.length > 0) {
+        const bookingStaffIds = services.map((bs: any) => bs.staff_id).filter(Boolean);
+        const noStaffAssigned = bookingStaffIds.length === 0;
+        const requestedStaffInBooking = staffIds.some((sid: string) => bookingStaffIds.includes(sid));
+        if (!noStaffAssigned && !requestedStaffInBooking) continue;
+
+        if (noStaffAssigned) {
+          const end = services.every((bs: any) => bs.scheduled_start_at && bs.scheduled_end_at)
+            ? new Date(Math.max(...services.map((bs: any) => new Date(bs.scheduled_end_at).getTime())))
+            : bookingEndDefault;
+          blockedIntervals.push({ start: bookingStart, end });
+        } else {
+          let cursor = bookingStart.getTime();
+          for (const bs of services) {
+            const staffMatch = bs.staff_id && staffIds.includes(bs.staff_id);
+            if (!staffMatch) {
+              if (bs.scheduled_start_at && bs.scheduled_end_at) cursor = new Date(bs.scheduled_end_at).getTime();
+              else cursor += (bs.duration_minutes || 30) * 60000;
+              continue;
+            }
+            const dur = bs.duration_minutes ?? 30;
+            let start: Date;
+            let end: Date;
+            if (bs.scheduled_start_at && bs.scheduled_end_at) {
+              start = new Date(bs.scheduled_start_at);
+              end = new Date(bs.scheduled_end_at);
+            } else {
+              start = new Date(cursor);
+              end = addMinutes(start, dur);
+            }
+            blockedIntervals.push({ start, end });
+            cursor = end.getTime();
+          }
+        }
+      } else {
+        const start = bookingStart;
+        const end = services.every((bs: any) => bs.scheduled_start_at && bs.scheduled_end_at)
+          ? new Date(Math.max(...services.map((bs: any) => new Date(bs.scheduled_end_at).getTime())))
+          : bookingEndDefault;
+        blockedIntervals.push({ start, end });
+      }
+    }
+
     for (const slot of slotTimes) {
       const startTime = new Date(`${dateStr}T${slot}:00`);
       const endTime = addMinutes(startTime, durationMinutes);
       let blocked = false;
 
-      for (const b of dayBookings || []) {
-        const bStart = new Date(b.scheduled_at);
-        const bDuration = (b.booking_services || []).reduce((s: number, bs: any) => s + (bs.duration_minutes || 30), 0);
-        const bEnd = addMinutes(bStart, bDuration);
-        if (startTime < bEnd && endTime > bStart) {
-          if (staffIds.length > 0) {
-            const bookingStaffIds = (b.booking_services || []).map((bs: any) => bs.staff_id).filter(Boolean);
-            if (bookingStaffIds.length === 0 || staffIds.some((sid: string) => bookingStaffIds.includes(sid))) {
-              blocked = true;
-              break;
-            }
-          } else {
-            blocked = true;
-            break;
-          }
+      for (const interval of blockedIntervals) {
+        if (startTime < interval.end && endTime > interval.start) {
+          blocked = true;
+          break;
         }
       }
       if (blocked) continue;

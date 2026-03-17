@@ -8,6 +8,8 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
+import { api } from "@/lib/api-client";
+import { trackReferralShared } from "@/lib/analytics";
 
 interface ProfileCompletion {
   percentage?: number;
@@ -34,9 +36,9 @@ const GROUPS: SettingsGroup[] = [
   {
     heading: "Account",
     items: [
-      { id: "personal-info", title: "Personal info", desc: "Name, photo, email and phone", route: "personal-info", icon: "person-outline" },
+      { id: "personal-info", title: "Personal info", desc: "Name, photo, change email & phone", route: "personal-info", icon: "person-outline" },
       { id: "profile-details", title: "Profile details", desc: "Questions, interests and beauty preferences", route: "profile-details", icon: "sparkles-outline" },
-      { id: "login-and-security", title: "Login & security", desc: "Password and account protection", route: "login-and-security", icon: "lock-closed-outline" },
+      { id: "login-and-security", title: "Login & security", desc: "Email, phone & password", route: "login-and-security", icon: "lock-closed-outline" },
       { id: "identity-verification", title: "Identity verification", desc: "Verify your identity with a document", route: "identity-verification", icon: "card-outline" },
       { id: "addresses", title: "Saved addresses", desc: "Home, work and other addresses", route: "addresses", icon: "location-outline" },
       { id: "privacy-and-sharing", title: "Privacy & sharing", desc: "Data preferences and visibility", route: "privacy-and-sharing", icon: "shield-checkmark-outline" },
@@ -90,12 +92,30 @@ export default function AccountSettingsScreen() {
   const completionPct = profileCompletion?.percentage ?? profileCompletion?.completionPercentage ?? 0;
   const showCompletionBanner = profileCompletion && completionPct < 100;
 
-  const handleShare = () => {
+  const handleShare = async () => {
     getAnalyticsClient()?.track("share_app", { source: "account_settings" });
-    Share.share({
-      message: `Book beauty services on Beautonomi: ${APP_URL}`,
-      title: "Beautonomi",
-    });
+    try {
+      const res = await api.get<{ referral_link?: string }>("/api/me/referrals");
+      const link = res.data?.referral_link;
+      if (link && !res.error) {
+        await Share.share({
+          message: `Join me on Beautonomi and we both earn rewards! Use my link: ${link}`,
+          title: "Join Beautonomi",
+          url: link,
+        });
+        trackReferralShared("account_settings");
+      } else {
+        await Share.share({
+          message: `Book beauty services on Beautonomi: ${APP_URL}`,
+          title: "Beautonomi",
+        });
+      }
+    } catch {
+      await Share.share({
+        message: `Book beauty services on Beautonomi: ${APP_URL}`,
+        title: "Beautonomi",
+      });
+    }
   };
 
   const handleNavigate = (route: string) => {

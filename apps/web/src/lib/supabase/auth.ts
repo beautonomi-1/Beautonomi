@@ -186,7 +186,7 @@ export async function resendVerificationEmail(email: string) {
 export async function resetPassword(email: string) {
   const supabase = getSupabaseClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/account-settings/login-and-security/reset-password`,
+    redirectTo: `${window.location.origin}/auth/callback`,
   });
 
   if (error) {

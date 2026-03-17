@@ -467,11 +467,13 @@ const PersonalInfo: React.FC = () => {
             label="Email address"
             value={personalInfo.email}
             onEdit={() => openModal('email')}
+            editLabel="Change email"
           />
           <InfoItem
             label="Phone number"
             value={personalInfo.phone}
             onEdit={() => openModal('phone')}
+            editLabel="Change phone"
           />
           <InfoItem
             label="Government ID"
@@ -536,7 +538,7 @@ const PersonalInfo: React.FC = () => {
   );
 };
 
-const InfoItem: React.FC<{ label: string; value: string; onEdit?: () => void; onAdd?: () => void }> = ({ label, value, onEdit, onAdd }) => (
+const InfoItem: React.FC<{ label: string; value: string; onEdit?: () => void; onAdd?: () => void; editLabel?: string }> = ({ label, value, onEdit, onAdd, editLabel = "Edit" }) => (
   <div className="mb-4 md:mb-6 pb-4 md:pb-6 border-b border-gray-200">
     <div className="flex justify-between items-center mb-1 md:mb-2">
       <span className="font-medium text-sm md:text-base text-gray-900">{label}</span>
@@ -545,7 +547,7 @@ const InfoItem: React.FC<{ label: string; value: string; onEdit?: () => void; on
           className="text-sm md:text-base text-[#FF0077] hover:text-[#D60565] underline font-medium transition-colors active:opacity-70" 
           onClick={onEdit}
         >
-          Edit
+          {editLabel}
         </button>
       )}
       {onAdd && (
