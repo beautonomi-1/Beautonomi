@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -14,14 +14,19 @@ import {
   Pressable,
   FlatList,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
+import { RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
 import { APP_URL } from "@/config/public-env";
 import { haptic } from "@/lib/haptics";
+import { api } from "@/lib/api-client";
+
+const REFERRAL_REF_KEY = "referral_ref";
 
 const PRIMARY = Colors.primary;
 
@@ -82,9 +87,20 @@ function validatePhone(digits: string, countryCode: string): string | null {
   return null;
 }
 
+function parseRefFromUrl(url: string): string | null {
+  try {
+    const q = url.includes("?") ? url.slice(url.indexOf("?") + 1) : "";
+    const ref = new URLSearchParams(q).get("ref");
+    return ref?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export default function SignupScreen() {
   useScreenTracking("Signup");
   const { signUpWithEmail, signInWithOAuth } = useAuth();
+  const params = useLocalSearchParams<{ ref?: string }>();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -99,6 +115,25 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [referralCode, setReferralCode] = useState<string | null>(params.ref?.trim() ?? null);
+
+  // Capture ref from route params or from initial/deep-link URL (e.g. customer://signup?ref=CODE)
+  useEffect(() => {
+    const fromParams = params.ref?.trim();
+    if (fromParams) {
+      setReferralCode(fromParams);
+      AsyncStorage.setItem(REFERRAL_REF_KEY, fromParams).catch(() => {});
+      return;
+    }
+    Linking.getInitialURL().then((url) => {
+      if (!url) return;
+      const ref = parseRefFromUrl(url);
+      if (ref) {
+        setReferralCode(ref);
+        AsyncStorage.setItem(REFERRAL_REF_KEY, ref).catch(() => {});
+      }
+    });
+  }, [params.ref]);
 
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -153,12 +188,28 @@ export default function SignupScreen() {
       }
       if (result.requiresConfirmation) {
         haptic.success();
+        // Keep referral_ref in AsyncStorage so we attach when they log in after verifying
         Alert.alert(
           "Check Your Email",
           "We've sent a confirmation link to your email. Please confirm to activate your account.",
           [{ text: "OK", onPress: () => router.replace("/(auth)/login") }],
         );
         return;
+      }
+      // Session is available: persist phone and attach referral
+      const fullPhone =
+        phone.trim() ? `${countryCode}${stripLeadingZero(phone.replace(/\D/g, ""))}`.trim() : "";
+      if (fullPhone) {
+        api.patch("/api/me/profile", { phone: fullPhone }).catch(() => {});
+      }
+      const refToAttach = referralCode ?? (await AsyncStorage.getItem(REFERRAL_REF_KEY));
+      if (refToAttach?.trim()) {
+        try {
+          await api.post("/api/me/referrals/attach", { referral_code: refToAttach.trim() });
+        } catch {
+          // Non-blocking
+        }
+        await AsyncStorage.removeItem(REFERRAL_REF_KEY);
       }
       haptic.success();
       router.replace("/(app)/(tabs)/home");
@@ -193,7 +244,7 @@ export default function SignupScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#fff" }}
+      style={{ flex: 1, backgroundColor: Colors.gray[50] }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
     >
@@ -208,10 +259,12 @@ export default function SignupScreen() {
         <TouchableOpacity
           onPress={() => router.back()}
           style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            backgroundColor: "#F3F4F6",
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: Colors.white,
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
             alignItems: "center",
             justifyContent: "center",
             marginBottom: 20,
@@ -223,10 +276,10 @@ export default function SignupScreen() {
         </TouchableOpacity>
 
         {/* Header */}
-        <Text style={{ fontSize: 26, fontWeight: "800", color: "#111827", marginBottom: 6 }}>
+        <Text style={{ fontSize: 26, fontWeight: "800", color: Colors.gray[900], marginBottom: 6 }}>
           Create Your Account
         </Text>
-        <Text style={{ fontSize: 15, color: "#6B7280", marginBottom: 24 }}>
+        <Text style={{ fontSize: 15, color: Colors.gray[600], marginBottom: 24 }}>
           Join Beautonomi and discover the best beauty services near you
         </Text>
 
@@ -238,12 +291,12 @@ export default function SignupScreen() {
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "center",
-            borderWidth: 1.5,
-            borderColor: "#E5E7EB",
-            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
+            borderRadius: RADIUS_INPUT,
             paddingVertical: 14,
             marginBottom: 12,
-            backgroundColor: "#fff",
+            backgroundColor: Colors.white,
           }}
           accessibilityRole="button"
           accessibilityLabel="Continue with Google"
@@ -260,7 +313,7 @@ export default function SignupScreen() {
               flexDirection: "row",
               alignItems: "center",
               justifyContent: "center",
-              borderRadius: 12,
+              borderRadius: RADIUS_INPUT,
               paddingVertical: 14,
               marginBottom: 12,
               backgroundColor: "#000",
@@ -288,9 +341,9 @@ export default function SignupScreen() {
           style={{
             flexDirection: "row",
             alignItems: "center",
-            borderWidth: 1.5,
-            borderColor: errors.fullName ? "#EF4444" : "#E5E7EB",
-            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: errors.fullName ? Colors.error : Colors.gray[200],
+            borderRadius: RADIUS_INPUT,
             backgroundColor: "#FAFAFA",
             paddingHorizontal: 14,
             marginBottom: errors.fullName ? 4 : 16,
@@ -319,9 +372,9 @@ export default function SignupScreen() {
           style={{
             flexDirection: "row",
             alignItems: "center",
-            borderWidth: 1.5,
-            borderColor: errors.email ? "#EF4444" : "#E5E7EB",
-            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: errors.email ? Colors.error : Colors.gray[200],
+            borderRadius: RADIUS_INPUT,
             backgroundColor: "#FAFAFA",
             paddingHorizontal: 14,
             marginBottom: errors.email ? 4 : 16,
@@ -353,9 +406,9 @@ export default function SignupScreen() {
           style={{
             flexDirection: "row",
             alignItems: "center",
-            borderWidth: 1.5,
-            borderColor: errors.password ? "#EF4444" : "#E5E7EB",
-            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: errors.password ? Colors.error : Colors.gray[200],
+            borderRadius: RADIUS_INPUT,
             backgroundColor: "#FAFAFA",
             paddingHorizontal: 14,
             marginBottom: 4,
@@ -428,9 +481,9 @@ export default function SignupScreen() {
           style={{
             flexDirection: "row",
             alignItems: "center",
-            borderWidth: 1.5,
-            borderColor: errors.confirmPassword ? "#EF4444" : "#E5E7EB",
-            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: errors.confirmPassword ? Colors.error : Colors.gray[200],
+            borderRadius: RADIUS_INPUT,
             backgroundColor: "#FAFAFA",
             paddingHorizontal: 14,
             marginBottom: errors.confirmPassword ? 4 : 16,
@@ -459,9 +512,9 @@ export default function SignupScreen() {
         <View
           style={{
             flexDirection: "row",
-            borderWidth: 1.5,
-            borderColor: phoneError || errors.phone ? "#EF4444" : "#E5E7EB",
-            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: phoneError || errors.phone ? Colors.error : Colors.gray[200],
+            borderRadius: RADIUS_INPUT,
             overflow: "hidden",
             marginBottom: (phoneError || errors.phone) ? 4 : 16,
           }}
@@ -516,7 +569,7 @@ export default function SignupScreen() {
               width: 22,
               height: 22,
               borderRadius: 6,
-              borderWidth: 1.5,
+              borderWidth: 1,
               borderColor: agreedToTerms ? PRIMARY : errors.terms ? "#EF4444" : "#D1D5DB",
               backgroundColor: agreedToTerms ? PRIMARY : "#fff",
               alignItems: "center",
@@ -551,7 +604,7 @@ export default function SignupScreen() {
           disabled={loading}
           style={{
             backgroundColor: PRIMARY,
-            borderRadius: 12,
+            borderRadius: RADIUS_BUTTON,
             paddingVertical: 16,
             alignItems: "center",
             opacity: loading ? 0.7 : 1,

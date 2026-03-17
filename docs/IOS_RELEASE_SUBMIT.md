@@ -1,6 +1,35 @@
-# Submitting a new iOS release (Customer & Provider)
+# Submitting a new release (Customer & Provider, iOS & Android)
 
-Use this when you want to ship a new iOS build to TestFlight / App Store and **GitHub already runs production builds** when you push to `main`.
+Use this when you want to ship new builds to TestFlight / App Store and Google Play. **GitHub already runs production builds** when you push to `main`.
+
+## Submit both apps, both platforms (iOS + Android)
+
+After builds have finished on [expo.dev](https://expo.dev), from the **repo root** run:
+
+```bash
+pnpm run submit:all
+```
+
+This runs, in order:
+
+1. **Customer** → iOS (`--latest`) then Android (`--latest`)
+2. **Provider** → iOS (`--latest`) then Android (`--latest`)
+
+When prompted, choose the **new** build for each (not one already submitted). Android uploads go to **Internal testing** as a **draft**; roll them out in Play Console when ready.
+
+**Android “Version code X has already been used”:** You’re submitting an **old** AAB (built before the latest `versionCode` in `app.json`). Fix: trigger a **new** production build (push to `main` or run `eas build --profile production --platform android` from the app dir), wait for it to finish, then submit **that** build. Don’t pick an older build from the list.
+
+**Other options (from repo root):**
+
+| Command | What it does |
+|---------|----------------|
+| `pnpm run submit:all` | Customer (iOS + Android) then Provider (iOS + Android) |
+| `pnpm run submit:customer` | Customer app: iOS then Android |
+| `pnpm run submit:provider` | Provider app: iOS then Android |
+| `pnpm run submit:customer:ios` | Customer → TestFlight only |
+| `pnpm run submit:customer:android` | Customer → Play Internal testing only |
+| `pnpm run submit:provider:ios` | Provider → TestFlight only |
+| `pnpm run submit:provider:android` | Provider → Play Internal testing only |
 
 ## How builds are triggered
 
@@ -43,6 +72,29 @@ From repo root you can do:
 cd apps/customer && eas submit --profile production --platform ios --latest
 cd ../provider && eas submit --profile production --platform ios --latest
 ```
+
+---
+
+## If you see “Something went wrong when submitting to Apple App Store Connect”
+
+The submission was scheduled but failed while EAS was waiting. Do this:
+
+1. **Check the submission details**  
+   Open the link EAS printed (e.g. `https://expo.dev/accounts/.../submissions/...`). It often shows the real error (e.g. “You’ve already submitted this build”, export compliance, or an App Store Connect issue).
+
+2. **Run again with verbose output** (from the app dir):
+   ```bash
+   cd apps/customer
+   eas submit --profile production --platform ios --latest --verbose
+   ```
+   The logs may show the exact Apple/EAS error.
+
+3. **Common causes**
+   - **Build already submitted** → Use a newer build (trigger a new build, then submit that one).
+   - **Export compliance** → In App Store Connect, open the build → provide export compliance (e.g. “No” for encryption if you use only standard HTTPS). Your `app.json` already has `ITSAppUsesNonExemptEncryption: false`.
+   - **App Store Connect / API** → Confirm the app is in a valid state (e.g. no missing agreements or tax/banking). Ensure the App Store Connect API key has **App Manager** or **Admin** role.
+
+After fixing, run `pnpm run submit:customer:ios` again (or `submit:all`). You can submit **Android** in the meantime: `pnpm run submit:customer:android` (it doesn’t depend on the iOS submission).
 
 ---
 

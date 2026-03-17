@@ -87,6 +87,20 @@ export default function TeamScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(tabs)/more/time-clock" as never)}
+          style={{ marginBottom: 16, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
+          activeOpacity={0.7}
+        >
+          <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#ccfbf1" }}>
+            <Ionicons name="time-outline" size={22} color="#0d9488" />
+          </View>
+          <View style={{ marginLeft: 12, flex: 1 }}>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Time clock</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Clock in/out and view time cards</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+        </TouchableOpacity>
         {staff.length === 0 ? (
           <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="people-circle-outline" size={48} color="#9ca3af" />

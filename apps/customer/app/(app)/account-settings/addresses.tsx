@@ -17,6 +17,7 @@ import { ScreenFrame } from "@/components/ScreenFrame";
 import { AddressPicker, type AddressPickerSelection } from "@/components/AddressPicker";
 import { useAuth } from "@/providers/AuthProvider";
 import { Colors } from "@/constants/colors";
+import { RADIUS_CARD, RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
 import { Ionicons } from "@expo/vector-icons";
 
 /** Parse "Gate: 1234, Buzzer: Apt 5" into { gate: "1234", buzzer: "Apt 5" } */
@@ -306,7 +307,7 @@ export default function AddressesScreen() {
           <Text style={{ textAlign: "center", color: Colors.gray[500] }}>No saved addresses</Text>
           <TouchableOpacity
             onPress={() => setAddModalVisible(true)}
-            style={{ marginTop: 16, flexDirection: "row", alignItems: "center", borderRadius: 12, backgroundColor: Colors.primary, paddingHorizontal: 20, paddingVertical: 12 }}
+            style={{ marginTop: 16, flexDirection: "row", alignItems: "center", borderRadius: RADIUS_BUTTON, backgroundColor: Colors.primary, paddingHorizontal: 20, paddingVertical: 14 }}
             accessibilityLabel="Add address"
             accessibilityRole="button"
           >
@@ -318,7 +319,7 @@ export default function AddressesScreen() {
       {addresses.length > 0 && (
         <View style={{ paddingBottom: 24 }}>
           {addresses.map((a, index) => (
-            <View key={a.id} style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, marginTop: index === 0 ? 0 : 12 }}>
+            <View key={a.id} style={{ borderRadius: RADIUS_CARD, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 20, marginTop: index === 0 ? 0 : 16 }}>
               <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{a.label || "Address"}</Text>
@@ -347,7 +348,7 @@ export default function AddressesScreen() {
                     <TouchableOpacity
                       onPress={() => handleSetDefault(a.id)}
                       disabled={!!settingDefaultId}
-                      style={{ borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
+                      style={{ borderRadius: RADIUS_INPUT, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
                       accessibilityLabel="Set as default"
                       accessibilityRole="button"
                     >
@@ -378,7 +379,7 @@ export default function AddressesScreen() {
           ))}
           <TouchableOpacity
             onPress={() => setAddModalVisible(true)}
-            style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], paddingVertical: 16 }}
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: RADIUS_CARD, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], paddingVertical: 18 }}
             accessibilityLabel="Add new address"
             accessibilityRole="button"
           >
@@ -434,7 +435,7 @@ export default function AddressesScreen() {
           >
             <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Label (e.g. Home, Work)</Text>
             <TextInput
-              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+              style={{ marginBottom: 16, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14, color: Colors.gray[900] }}
               value={addLabel}
               onChangeText={setAddLabel}
               placeholder="Home"
@@ -443,7 +444,7 @@ export default function AddressesScreen() {
             <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address</Text>
             <TouchableOpacity
               onPress={() => setPickerVisible(true)}
-              style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12 }}
+              style={{ flexDirection: "row", alignItems: "center", borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14 }}
               accessibilityLabel="Search address"
               accessibilityRole="button"
             >
@@ -461,7 +462,7 @@ export default function AddressesScreen() {
               onUseCurrentLocation={() => setPickerVisible(false)}
             />
             {pendingAddress?.structured && (
-              <View style={{ marginTop: 16, borderRadius: 12, backgroundColor: "#F0FDF4", padding: 12 }}>
+              <View style={{ marginTop: 16, borderRadius: RADIUS_INPUT, backgroundColor: "#F0FDF4", padding: 12 }}>
                 <Text style={{ fontSize: 14, fontWeight: "500", color: "#166534" }}>Selected</Text>
                 <Text style={{ marginTop: 4, fontSize: 14, color: "#15803d" }}>
                   {pendingAddress.structured.address_line1}, {pendingAddress.structured.city},{" "}
@@ -472,7 +473,7 @@ export default function AddressesScreen() {
             <Text style={{ marginTop: 24, marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>House call details (optional)</Text>
             <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Apartment / Unit</Text>
             <TextInput
-              style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+              style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
               value={addApartmentUnit}
               onChangeText={setAddApartmentUnit}
               placeholder="e.g. 5B"
@@ -480,7 +481,7 @@ export default function AddressesScreen() {
             />
             <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Building name</Text>
             <TextInput
-              style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+              style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
               value={addBuildingName}
               onChangeText={setAddBuildingName}
               placeholder="e.g. Sunset Towers"
@@ -488,7 +489,7 @@ export default function AddressesScreen() {
             />
             <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Floor</Text>
             <TextInput
-              style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+              style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
               value={addFloorNumber}
               onChangeText={setAddFloorNumber}
               placeholder="e.g. 3"
@@ -496,7 +497,7 @@ export default function AddressesScreen() {
             />
             <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Access codes</Text>
             <TextInput
-              style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+              style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
               value={addAccessCodesText}
               onChangeText={setAddAccessCodesText}
               placeholder="Gate: 1234, Buzzer: Apt 5"
@@ -504,7 +505,7 @@ export default function AddressesScreen() {
             />
             <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Parking instructions</Text>
             <TextInput
-              style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+              style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
               value={addParkingInstructions}
               onChangeText={setAddParkingInstructions}
               placeholder="e.g. Visitor bay 12"
@@ -512,7 +513,7 @@ export default function AddressesScreen() {
             />
             <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Landmarks</Text>
             <TextInput
-              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+              style={{ marginBottom: 16, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
               value={addLocationLandmarks}
               onChangeText={setAddLocationLandmarks}
               placeholder="e.g. Next to blue pharmacy"
@@ -571,7 +572,7 @@ export default function AddressesScreen() {
               <>
                 <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Label (e.g. Home, Work)</Text>
                 <TextInput
-                  style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  style={{ marginBottom: 16, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editLabel}
                   onChangeText={setEditLabel}
                   placeholder="Home"
@@ -580,7 +581,7 @@ export default function AddressesScreen() {
                 <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address</Text>
                 <TouchableOpacity
                   onPress={() => setEditPickerVisible(true)}
-                  style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12 }}
+                  style={{ flexDirection: "row", alignItems: "center", borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12 }}
                   accessibilityLabel="Change address"
                   accessibilityRole="button"
                 >
@@ -596,9 +597,10 @@ export default function AddressesScreen() {
                   onClose={() => setEditPickerVisible(false)}
                   onSelect={handleEditAddressSelect}
                   onUseCurrentLocation={() => setEditPickerVisible(false)}
+                  initialQuery={editingAddress ? `${editingAddress.address_line1}, ${editingAddress.city}` : undefined}
                 />
                 {editPendingAddress?.structured && (
-                  <View style={{ marginTop: 16, borderRadius: 12, backgroundColor: "#F0FDF4", padding: 12 }}>
+                  <View style={{ marginTop: 16, borderRadius: RADIUS_INPUT, backgroundColor: "#F0FDF4", padding: 12 }}>
                     <Text style={{ fontSize: 14, fontWeight: "500", color: "#166534" }}>Selected</Text>
                     <Text style={{ marginTop: 4, fontSize: 14, color: "#15803d" }}>
                       {editPendingAddress.structured.address_line1}, {editPendingAddress.structured.city},{" "}
@@ -609,7 +611,7 @@ export default function AddressesScreen() {
                 <Text style={{ marginTop: 24, marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>House call details (optional)</Text>
                 <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Apartment / Unit</Text>
                 <TextInput
-                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editApartmentUnit}
                   onChangeText={setEditApartmentUnit}
                   placeholder="e.g. 5B"
@@ -617,7 +619,7 @@ export default function AddressesScreen() {
                 />
                 <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Building name</Text>
                 <TextInput
-                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editBuildingName}
                   onChangeText={setEditBuildingName}
                   placeholder="e.g. Sunset Towers"
@@ -625,7 +627,7 @@ export default function AddressesScreen() {
                 />
                 <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Floor</Text>
                 <TextInput
-                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editFloorNumber}
                   onChangeText={setEditFloorNumber}
                   placeholder="e.g. 3"
@@ -633,7 +635,7 @@ export default function AddressesScreen() {
                 />
                 <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Access codes</Text>
                 <TextInput
-                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editAccessCodesText}
                   onChangeText={setEditAccessCodesText}
                   placeholder="Gate: 1234, Buzzer: Apt 5"
@@ -641,7 +643,7 @@ export default function AddressesScreen() {
                 />
                 <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Parking instructions</Text>
                 <TextInput
-                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  style={{ marginBottom: 12, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editParkingInstructions}
                   onChangeText={setEditParkingInstructions}
                   placeholder="e.g. Visitor bay 12"
@@ -649,7 +651,7 @@ export default function AddressesScreen() {
                 />
                 <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Landmarks</Text>
                 <TextInput
-                  style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  style={{ marginBottom: 16, borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
                   value={editLocationLandmarks}
                   onChangeText={setEditLocationLandmarks}
                   placeholder="e.g. Next to blue pharmacy"

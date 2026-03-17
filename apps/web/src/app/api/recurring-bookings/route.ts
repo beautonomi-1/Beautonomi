@@ -102,16 +102,40 @@ export async function POST(request: NextRequest) {
 }
 
 /**
+ * Compute next occurrence date from start/last_booking + frequency.
+ */
+function computeNextDate(
+  startDateStr: string | null,
+  lastBookingDateStr: string | null,
+  frequency: string | null
+): string | null {
+  const base = lastBookingDateStr || startDateStr;
+  if (!base || !frequency) return startDateStr || null;
+  const baseDate = new Date(base);
+  const days =
+    frequency === "weekly"
+      ? 7
+      : frequency === "biweekly"
+        ? 14
+        : frequency === "monthly"
+          ? 30
+          : 7;
+  const next = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000);
+  return next.toISOString().split("T")[0];
+}
+
+/**
  * GET /api/recurring-bookings
- * 
- * Get user's recurring bookings
+ *
+ * Get user's recurring bookings. Enriched with service_name, provider_name,
+ * next_date, status, and optional price/currency for app and web alignment.
  */
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
     const supabase = await getSupabaseServer(request);
 
-    const { data: recurring, error } = await supabase
+    const { data: rows, error } = await supabase
       .from("recurring_appointments")
       .select(`
         *,
@@ -128,7 +152,59 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    return successResponse({ recurring: recurring || [] });
+    const recurring = rows || [];
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    // Resolve service names from metadata.services[].offering_id
+    const offeringIds = new Set<string>();
+    for (const row of recurring) {
+      const meta = row?.metadata as { services?: { offering_id?: string }[] } | null;
+      const services = meta?.services;
+      if (Array.isArray(services)) {
+        for (const s of services) {
+          if (s?.offering_id) offeringIds.add(s.offering_id);
+        }
+      }
+    }
+    let offeringsMap: Map<string, string> = new Map();
+    if (offeringIds.size > 0) {
+      const { data: offerings } = await supabase
+        .from("offerings")
+        .select("id, title")
+        .in("id", [...offeringIds]);
+      if (offerings) {
+        offeringsMap = new Map(offerings.map((o: { id: string; title: string | null }) => [o.id, o.title || "Service"]));
+      }
+    }
+
+    const enriched = recurring.map((row: any) => {
+      const provider = row.provider;
+      const providerName = provider?.business_name ?? "Provider";
+      const meta = row.metadata as { services?: { offering_id?: string }[] } | null;
+      const firstOfferingId = Array.isArray(meta?.services) && meta.services[0]?.offering_id ? meta.services[0].offering_id : null;
+      const serviceName = firstOfferingId ? offeringsMap.get(firstOfferingId) ?? "Recurring appointment" : "Recurring appointment";
+      const frequency = row.frequency ?? "weekly";
+      const startDate = row.start_date ?? null;
+      const lastBooking = row.last_booking_date ?? null;
+      const endDate = row.end_date ?? null;
+      const isActive = row.is_active !== false;
+      const nextDate = computeNextDate(startDate, typeof lastBooking === "string" ? lastBooking : lastBooking ? new Date(lastBooking).toISOString().split("T")[0] : null, frequency);
+      let status: "active" | "paused" | "cancelled" = "active";
+      if (!isActive) status = endDate && endDate < todayStr ? "cancelled" : "paused";
+      else if (endDate && endDate < todayStr) status = "cancelled";
+
+      return {
+        ...row,
+        service_name: serviceName,
+        provider_name: providerName,
+        next_date: nextDate ?? startDate,
+        status,
+        price: row.price ?? null,
+        currency: row.currency ?? "ZAR",
+      };
+    });
+
+    return successResponse({ recurring: enriched });
   } catch (error) {
     return handleApiError(error, "Failed to fetch recurring bookings");
   }

@@ -6,6 +6,8 @@ import {
   ScrollView,
   Share,
   RefreshControl,
+  Linking,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
@@ -40,6 +42,7 @@ export default function ProfileScreen() {
     verified: boolean;
     ratingAverage: number;
     reviewCount: number;
+    avatarUrl: string | null;
   } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -53,8 +56,10 @@ export default function ProfileScreen() {
         api.get<any>("/api/me/rating"),
       ]);
 
-      const comp =
-        compRes.status === "fulfilled" ? compRes.value.data : null;
+      const compRaw = compRes.status === "fulfilled" ? compRes.value.data : null;
+      const comp = compRaw && typeof compRaw === "object" && compRaw !== null && "data" in compRaw
+        ? (compRaw as { data: { percentage?: number; topItems?: { id: string; label: string }[]; checklistItems?: ChecklistItem[]; avatar_url?: string | null } }).data
+        : compRaw;
       const loyalty =
         loyaltyRes.status === "fulfilled" ? loyaltyRes.value.data : null;
       const verify =
@@ -69,14 +74,16 @@ export default function ProfileScreen() {
         rawLoyalty?.points ??
         0;
 
+      const checklist = Array.isArray(comp?.checklistItems) ? comp.checklistItems : [];
       setProfileData({
         completion: comp?.percentage ?? 0,
         topItems: comp?.topItems ?? [],
-        checklistItems: comp?.checklistItems ?? [],
+        checklistItems: checklist,
         loyaltyPoints: Number(points) || 0,
         verified: verify?.verified ?? false,
         ratingAverage: Number(rating?.rating_average) || 0,
         reviewCount: Number(rating?.review_count) || 0,
+        avatarUrl: comp?.avatar_url ?? null,
       });
     } catch {}
   }, [user]);
@@ -85,6 +92,7 @@ export default function ProfileScreen() {
     fetchProfileData();
   }, [fetchProfileData]);
 
+  // Refetch when tab gains focus (e.g. return from Loyalty after redemption so points count updates)
   useFocusEffect(
     useCallback(() => {
       if (user) fetchProfileData();
@@ -109,7 +117,14 @@ export default function ProfileScreen() {
     user.email?.split("@")[0] ||
     "User";
 
-  const hasAvatar = !!user.user_metadata?.avatar_url;
+  const avatarUrl =
+    profileData?.avatarUrl ??
+    user.user_metadata?.avatar_url ??
+    (typeof user.user_metadata?.picture === "string"
+      ? user.user_metadata.picture
+      : (user.user_metadata?.picture as { data?: { url?: string } } | undefined)?.data?.url) ??
+    null;
+  const hasAvatar = !!avatarUrl;
   const emailVerified = !!user.email_confirmed_at;
   const phoneVerified = !!user.phone_confirmed_at || !!user.phone;
   const isVerified = profileData?.verified ?? false;
@@ -195,7 +210,7 @@ export default function ProfileScreen() {
             >
               {hasAvatar ? (
                 <Image
-                  source={{ uri: user.user_metadata.avatar_url }}
+                  source={{ uri: avatarUrl! }}
                   style={{ width: 72, height: 72 }}
                   contentFit="cover"
                   cachePolicy="memory-disk"
@@ -269,7 +284,7 @@ export default function ProfileScreen() {
       </View>
 
       {/* ── Profile completion card ── */}
-      {(completionPct < 100 || checklistItems.length > 0) && (
+      {(checklistItems.length > 0 || completionPct < 100) && (
         <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
           <View style={{ backgroundColor: Colors.white, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.gray[100] }}>
             <TouchableOpacity
@@ -327,7 +342,7 @@ export default function ProfileScreen() {
             {/* Checklist: incomplete items are tappable and deep-link to the right screen */}
             {checklistItems.length > 0 && (
               <View style={{ marginTop: 12 }}>
-                {checklistItems.slice(0, 5).map((item, index) => {
+                {checklistItems.map((item, index) => {
                   const done = item.completed;
                   const mandatoryMissing = !item.completed && item.required;
                   const iconName = done
@@ -403,13 +418,13 @@ export default function ProfileScreen() {
               width: 44,
               height: 44,
               borderRadius: 22,
-              backgroundColor: "#FEF3C7",
+              backgroundColor: "#DCFCE7",
               alignItems: "center",
               justifyContent: "center",
               marginRight: 12,
             }}
           >
-            <Ionicons name="trophy" size={22} color="#D97706" />
+            <Ionicons name="trophy" size={22} color="#22C55E" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>
@@ -553,9 +568,18 @@ export default function ProfileScreen() {
           <MenuItem
             icon="chatbubble-ellipses-outline"
             label="Give us feedback"
-            onPress={() =>
-              router.push({ pathname: "/(app)/in-app-browser", params: { url: encodeURIComponent(`${APP_URL}/contact`), title: "Contact" } })
-            }
+            onPress={() => {
+              const iosAppId = (Constants.expoConfig?.extra as { iosAppId?: string })?.iosAppId;
+              if (Platform.OS === "ios" && iosAppId) {
+                Linking.openURL(`https://apps.apple.com/app/id${iosAppId}?action=write-review`).catch(() => {
+                  Linking.openURL(`https://apps.apple.com/app/id${iosAppId}`).catch(() => {});
+                });
+              } else if (Platform.OS === "android") {
+                Linking.openURL("https://play.google.com/store/apps/details?id=com.beautonomi").catch(() => {});
+              } else {
+                router.push({ pathname: "/(app)/in-app-browser", params: { url: encodeURIComponent(`${APP_URL}/contact`), title: "Contact" } });
+              }
+            }}
           />
           <MenuItem
             icon="information-circle-outline"

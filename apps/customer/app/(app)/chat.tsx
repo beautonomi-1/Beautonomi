@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -311,6 +311,34 @@ export default function ChatScreen() {
       hour12: true,
     });
 
+  const formatDateLabel = (iso: string) => {
+    const d = new Date(iso);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dDay = new Date(d);
+    dDay.setHours(0, 0, 0, 0);
+    if (dDay.getTime() === today.getTime()) return "Today";
+    if (dDay.getTime() === yesterday.getTime()) return "Yesterday";
+    return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  };
+
+  type ListItem = { type: "date"; key: string; label: string } | { type: "message"; key: string; message: Message };
+  const listItems = useMemo((): ListItem[] => {
+    const out: ListItem[] = [];
+    let lastDate = "";
+    for (const m of messages) {
+      const dateKey = new Date(m.created_at).toDateString();
+      if (dateKey !== lastDate) {
+        lastDate = dateKey;
+        out.push({ type: "date", key: `date-${dateKey}`, label: formatDateLabel(m.created_at) });
+      }
+      out.push({ type: "message", key: m.id, message: m });
+    }
+    return out;
+  }, [messages]);
+
   if (authLoading) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center" }}>
@@ -367,8 +395,8 @@ export default function ChatScreen() {
           <>
             <FlatList
               ref={flatListRef}
-              data={messages}
-              keyExtractor={(m) => m.id}
+              data={listItems}
+              keyExtractor={(item) => item.key}
               contentContainerStyle={{ padding: contentPadding, paddingBottom: 8 }}
               onScroll={({ nativeEvent }) => {
                 if (nativeEvent.contentOffset.y < 80) {
@@ -394,9 +422,19 @@ export default function ChatScreen() {
                 </View>
               }
               renderItem={({ item }) => {
-                const isMe = item.sender_id === user.id;
-                const urls = Array.isArray(item.attachments)
-                  ? item.attachments
+                if (item.type === "date") {
+                  return (
+                    <View style={{ alignItems: "center", marginVertical: 12 }}>
+                      <View style={{ backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8 }}>
+                        <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>{item.label}</Text>
+                      </View>
+                    </View>
+                  );
+                }
+                const msg = item.message;
+                const isMe = msg.sender_id === user.id;
+                const urls = Array.isArray(msg.attachments)
+                  ? msg.attachments
                       .map((a: any) => (typeof a === "string" ? a : a?.url))
                       .filter(Boolean)
                   : [];
@@ -408,9 +446,14 @@ export default function ChatScreen() {
                         borderRadius: 16,
                         paddingHorizontal: 16,
                         paddingVertical: 10,
-                        backgroundColor: isMe ? Colors.primary : Colors.gray[100],
-                        borderBottomRightRadius: isMe ? 8 : 16,
-                        borderBottomLeftRadius: isMe ? 16 : 8,
+                        backgroundColor: isMe ? Colors.primary : "#E5E7EB",
+                        borderBottomRightRadius: isMe ? 4 : 16,
+                        borderBottomLeftRadius: isMe ? 16 : 4,
+                        shadowColor: "#000",
+                        shadowOffset: { width: 0, height: 1 },
+                        shadowOpacity: 0.05,
+                        shadowRadius: 2,
+                        elevation: 1,
                       }}
                     >
                       {urls.length > 0 && (
@@ -432,17 +475,17 @@ export default function ChatScreen() {
                           ))}
                         </View>
                       )}
-                      {item.content ? (
-                        <Text style={{ color: isMe ? Colors.white : Colors.gray[900], fontSize: 15 }}>
-                          {item.content}
+                      {msg.content ? (
+                        <Text style={{ color: isMe ? Colors.white : Colors.gray[900], fontSize: 15, lineHeight: 20 }}>
+                          {msg.content}
                         </Text>
                       ) : null}
-                      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4, gap: 4 }}>
-                        <Text style={{ fontSize: 11, color: isMe ? "rgba(255,255,255,0.7)" : Colors.gray[400] }}>
-                          {formatTime(item.created_at)}
+                      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4, gap: 4, justifyContent: "flex-end" }}>
+                        <Text style={{ fontSize: 11, color: isMe ? "rgba(255,255,255,0.7)" : Colors.gray[500] }}>
+                          {formatTime(msg.created_at)}
                         </Text>
-                        {isMe && (item.is_read || item.read_at) ? (
-                          <Ionicons name="checkmark-done" size={14} color="rgba(255,255,255,0.8)" />
+                        {isMe && (msg.is_read || msg.read_at) ? (
+                          <Ionicons name="checkmark-done" size={14} color="rgba(255,255,255,0.9)" />
                         ) : isMe ? (
                           <Ionicons name="checkmark" size={14} color="rgba(255,255,255,0.6)" />
                         ) : null}

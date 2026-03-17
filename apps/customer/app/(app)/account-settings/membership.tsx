@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState, useCallback } from "react";
 import { View, Text, TouchableOpacity, Alert, ScrollView, Platform } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -44,9 +44,11 @@ export default function MembershipScreen() {
     }
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [])
+  );
 
   const cancelMembership = () => {
     Alert.alert(

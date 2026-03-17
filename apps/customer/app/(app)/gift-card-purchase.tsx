@@ -110,7 +110,7 @@ export default function GiftCardPurchaseScreen() {
             <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>ZAR {total.toLocaleString()}</Text>
           </View>
           <TouchableOpacity onPress={purchase} disabled={finalAmount <= 0 || loading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: finalAmount <= 0 || loading ? 0.5 : 1 }}>
-            {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>Pay with Paystack</Text>}
+            {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>Pay with card</Text>}
           </TouchableOpacity>
           <Text style={{ fontSize: 12, color: Colors.gray[500], textAlign: "center", marginTop: 16 }}>You will be redirected to complete payment securely.</Text>
         </ScrollView>

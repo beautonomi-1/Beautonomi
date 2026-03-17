@@ -15,7 +15,9 @@ function getEnv(key: string): string {
           ? process.env.EXPO_PUBLIC_APP_URL
           : key === "EXPO_PUBLIC_ONESIGNAL_APP_ID"
             ? process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID
-            : undefined;
+            : key === "EXPO_PUBLIC_IOS_APP_STORE_ID"
+              ? process.env.EXPO_PUBLIC_IOS_APP_STORE_ID
+              : undefined;
   const fromExtra = (Constants.expoConfig?.extra as Record<string, string> | undefined)?.[key];
   const isPlaceholder = fromProcess === "YOUR_SUPABASE_URL" || fromProcess === "YOUR_SUPABASE_ANON_KEY";
   const val = fromExtra ?? (isPlaceholder ? undefined : fromProcess) ?? "";
@@ -44,3 +46,6 @@ export const APP_URL = getEnv("EXPO_PUBLIC_APP_URL") ?? "";
 
 /** OneSignal App ID – optional; push notifications disabled if unset */
 export const ONE_SIGNAL_APP_ID = getEnv("EXPO_PUBLIC_ONESIGNAL_APP_ID");
+
+/** iOS App Store ID (e.g. 1234567890) – optional; used for force-update / "Update" store link. Set when app is published. */
+export const IOS_APP_STORE_ID = getEnv("EXPO_PUBLIC_IOS_APP_STORE_ID") || "0000000000";

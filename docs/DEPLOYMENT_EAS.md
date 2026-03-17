@@ -216,6 +216,8 @@ Repeat the same process for **Beautonomi Partner (provider)** in its own App sig
 
 Bump `versionCode` in each app’s `app.json` whenever you need a higher code than what’s currently on the store.
 
+**Play Console recommendations** (edge-to-edge deprecated, 16 KB alignment, technical quality): see [GOOGLE_PLAY_RELEASE_NOTES.md](./GOOGLE_PLAY_RELEASE_NOTES.md).
+
 ## Environment Variables
 
 Set these in EAS secrets at [expo.dev](https://expo.dev):

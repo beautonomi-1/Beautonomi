@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, Stack, router } from "expo-router";
+import { useLocalSearchParams, Stack, router, useFocusEffect } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { APP_URL } from "@/config/public-env";
@@ -100,6 +100,8 @@ export default function BookingDetailScreen() {
   const [isResending, setIsResending] = useState(false);
   const [pinSecondsLeft, setPinSecondsLeft] = useState<number | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [payRemainingLoading, setPayRemainingLoading] = useState(false);
+  const hasLoadedOnce = useRef(false);
 
   const load = async () => {
     if (!id) return;
@@ -112,6 +114,7 @@ export default function BookingDetailScreen() {
         setBooking(null);
       } else {
         setBooking(res.data);
+        hasLoadedOnce.current = true;
       }
     } catch (e) {
       setError(getApiErrorMessage(e as Error, "Failed to load"));
@@ -126,6 +129,14 @@ export default function BookingDetailScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load on id change only
   }, [id]);
 
+  // Refetch when screen gains focus after initial load (e.g. return from in-app browser after paying additional charge)
+  useFocusEffect(
+    useCallback(() => {
+      if (id && hasLoadedOnce.current) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load when focused
+    }, [id])
+  );
+
   // Show post-completion modal once per booking when opening a completed booking
   useEffect(() => {
     if (!id || !booking || booking.status !== "completed") return;
@@ -139,7 +150,7 @@ export default function BookingDetailScreen() {
       }
     })();
     return () => { mounted = false; };
-  }, [id, booking?.id, booking?.status]);
+  }, [id, booking]);
 
   const dismissCompletionModal = useCallback((markSeen: boolean) => {
     if (markSeen && id) {
@@ -271,6 +282,37 @@ export default function BookingDetailScreen() {
     });
     if (result.dismissed) {
       load();
+    }
+  };
+
+  const showPayRemaining =
+    booking &&
+    booking.payment_status === "partially_paid" &&
+    typeof booking.outstanding_balance === "number" &&
+    booking.outstanding_balance > 0;
+
+  const handlePayRemaining = async () => {
+    if (!id || !booking) return;
+    haptic.light();
+    setPayRemainingLoading(true);
+    try {
+      const res = await api.post<{ authorization_url?: string }>(
+        `/api/me/bookings/${id}/pay-remaining`,
+        {}
+      );
+      const url = res.data?.authorization_url;
+      if (res.error || !url) {
+        Alert.alert("Error", getApiErrorMessage(res.error || { message: "Could not start payment" }, "Pay remaining balance"));
+        return;
+      }
+      router.push({
+        pathname: "/(app)/in-app-browser",
+        params: { url: encodeURIComponent(url), title: "Pay remaining balance" },
+      } as never);
+    } catch (e) {
+      Alert.alert("Error", getApiErrorMessage(e as Error, "Pay remaining balance"));
+    } finally {
+      setPayRemainingLoading(false);
     }
   };
 
@@ -662,6 +704,17 @@ export default function BookingDetailScreen() {
             {needsPayment && (
               <Pressable onPress={handlePay} disabled={payLoading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginBottom: 12 }} accessibilityRole="button" accessibilityLabel="Pay now">
                 {payLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>Pay Now</Text>}
+              </Pressable>
+            )}
+            {showPayRemaining && (
+              <Pressable
+                onPress={handlePayRemaining}
+                disabled={payRemainingLoading}
+                style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", marginBottom: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel="Pay remaining balance"
+              >
+                {payRemainingLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>Pay remaining balance</Text>}
               </Pressable>
             )}
             {(() => {

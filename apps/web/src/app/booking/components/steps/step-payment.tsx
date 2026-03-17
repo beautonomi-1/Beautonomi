@@ -76,7 +76,7 @@ export default function StepPayment({
   const walletEnabled = flagsLoading ? true : (featureFlags["payment_wallet"] ?? false);
 
   const SAVE_CARD_INFO =
-    "We'll save your card securely when you pay. To verify your card, Paystack may place a small temporary charge (e.g. R1) and reverse it—this confirms your card for future use.";
+    "We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.";
 
   // When Paystack or gift cards are disabled, switch away from that method
   useEffect(() => {
@@ -489,9 +489,18 @@ export default function StepPayment({
 
         {/* Services */}
         <div className="p-4 bg-gray-50 rounded-lg space-y-3">
-          <h3 className="font-semibold text-gray-900">
-            {bookingState.isGroupBooking ? "Group Booking" : "Services"}
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-gray-900">
+              {bookingState.isGroupBooking ? "Group Booking" : "Services"}
+            </h3>
+            <button
+              type="button"
+              onClick={() => updateBookingState({ currentStepIndex: 0 })}
+              className="text-sm font-medium text-primary hover:underline"
+            >
+              Change
+            </button>
+          </div>
           {bookingState.isGroupBooking && bookingState.groupParticipants ? (
             // Show participants for group bookings
             bookingState.groupParticipants.map((participant) => {
@@ -578,16 +587,25 @@ export default function StepPayment({
 
         {/* Date & Time */}
         {bookingState.selectedDate && bookingState.selectedTimeSlot && (
-          <div className="p-4 bg-gray-50 rounded-lg flex items-center gap-3">
-            <Calendar className="w-5 h-5 text-gray-400" />
-            <div>
-              <p className="text-sm font-medium text-gray-900">
-                {formatDate(bookingState.selectedDate)}
-              </p>
-              <p className="text-xs text-gray-600">
-                {formatTime(bookingState.selectedTimeSlot)}
-              </p>
+          <div className="p-4 bg-gray-50 rounded-lg flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Calendar className="w-5 h-5 text-gray-400 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-gray-900">
+                  {formatDate(bookingState.selectedDate)}
+                </p>
+                <p className="text-xs text-gray-600">
+                  {formatTime(bookingState.selectedTimeSlot)}
+                </p>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => updateBookingState({ currentStepIndex: 4 })}
+              className="text-sm font-medium text-primary hover:underline shrink-0"
+            >
+              Change
+            </button>
           </div>
         )}
 

@@ -54,6 +54,17 @@ const consumeBodySchema = z.object({
     .nullable(),
   resource_ids: z.array(z.string().uuid()).optional(),
   reschedule_booking_id: z.string().uuid().optional(),
+  products: z
+    .array(
+      z.object({
+        productId: z.string().uuid("Invalid product ID"),
+        quantity: z.number().int().positive("Quantity must be positive"),
+        unitPrice: z.number().min(0, "Unit price must be non-negative"),
+        totalPrice: z.number().min(0, "Total price must be non-negative"),
+      })
+    )
+    .optional(),
+  package_id: z.string().uuid().optional().nullable(),
 });
 
 export async function POST(
@@ -105,6 +116,8 @@ export async function POST(
     const saveCard = parsed.success ? parsed.data.save_card : undefined;
     const setAsDefault = parsed.success ? parsed.data.set_as_default : undefined;
     const rescheduleBookingId = parsed.success ? parsed.data.reschedule_booking_id : undefined;
+    const products = parsed.success ? parsed.data.products : undefined;
+    const packageId = parsed.success ? parsed.data.package_id : undefined;
 
     if (giftCardCode?.trim()) {
       const giftCardsEnabled = await isFeatureEnabledServer("gift_cards");
@@ -256,6 +269,12 @@ export async function POST(
     if (isGroupBooking === true && Array.isArray(groupParticipants) && groupParticipants.length > 0) {
       draft.is_group_booking = true;
       draft.group_participants = groupParticipants;
+    }
+    if (products && products.length > 0) {
+      draft.products = products;
+    }
+    if (packageId) {
+      draft.package_id = packageId;
     }
     const resourceIds = resourceIdsFromBody ?? resourceIdsFromHold;
     if (resourceIds && resourceIds.length > 0) {

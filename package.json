@@ -43,7 +43,14 @@
     "build:customer:ios": "cd apps/customer && eas build --profile production --platform ios",
     "build:customer:android": "cd apps/customer && eas build --profile production --platform android",
     "build:provider:ios": "cd apps/provider && eas build --profile production --platform ios",
-    "build:provider:android": "cd apps/provider && eas build --profile production --platform android"
+    "build:provider:android": "cd apps/provider && eas build --profile production --platform android",
+    "submit:customer:ios": "cd apps/customer && eas submit --profile production --platform ios --latest",
+    "submit:customer:android": "cd apps/customer && eas submit --profile production --platform android --latest",
+    "submit:customer": "cd apps/customer && eas submit --profile production --platform ios --latest && eas submit --profile production --platform android --latest",
+    "submit:provider:ios": "cd apps/provider && eas submit --profile production --platform ios --latest",
+    "submit:provider:android": "cd apps/provider && eas submit --profile production --platform android --latest",
+    "submit:provider": "cd apps/provider && eas submit --profile production --platform ios --latest && eas submit --profile production --platform android --latest",
+    "submit:all": "pnpm run submit:customer && pnpm run submit:provider"
   },
   "devDependencies": {
     "turbo": "^2.8.8"

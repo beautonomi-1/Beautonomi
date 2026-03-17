@@ -13,7 +13,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 
 const SAVE_CARD_INFO =
-  "We'll save your card securely when you pay. To verify your card, Paystack may place a small temporary charge (e.g. R1) and reverse it—this confirms your card for future use.";
+  "We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.";
 
 const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; onClose: () => void; onCardAdded?: () => void }) => {
   const [addingCard, setAddingCard] = useState(false);
@@ -99,7 +99,7 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
                 {[
                   "Book a service with a provider",
                   "Proceed to checkout and payment",
-                  "Pay securely with Paystack",
+                  "Pay with your card",
                   "Select 'Save this card for future payments'",
                   "Your card will be saved for future bookings"
                 ].map((step, index) => (
@@ -135,7 +135,7 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
               <div className="flex items-start gap-2">
                 <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
                 <p className="text-sm text-green-800">
-                  <strong>Secure:</strong> All payment information is encrypted and processed securely through Paystack. 
+                  <strong>Secure:</strong> All payment information is encrypted and processed securely. 
                   We never store your full card details.
                 </p>
               </div>

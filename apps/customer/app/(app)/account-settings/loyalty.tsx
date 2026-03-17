@@ -54,14 +54,19 @@ interface LoyaltyData {
   milestones?: Milestone[];
   available_milestones?: Milestone[];
   history?: Transaction[];
+  recent_transactions?: Transaction[];
   can_redeem?: boolean;
   minimum_redemption?: number;
   referral_code?: string;
+  /** From API: rate, currency, display, can_redeem_amount */
+  conversion?: { rate?: number; currency?: string; display?: string; can_redeem_amount?: number };
+  /** From API: min_redemption_points, etc. */
+  config?: { min_redemption_points?: number; max_redemption_percentage?: number; points_expiry_days?: number; earning_rate?: number };
 }
 
 type Tab = "overview" | "history" | "milestones";
 
-function AnimatedProgressBar({ progress, color = "#F59E0B" }: { progress: number; color?: string }) {
+function AnimatedProgressBar({ progress, color = "#22C55E" }: { progress: number; color?: string }) {
   const width = useSharedValue(0);
   useEffect(() => {
     width.value = withTiming(Math.min(100, Math.max(0, progress)), { duration: 800, easing: Easing.out(Easing.cubic) });
@@ -114,11 +119,11 @@ export default function LoyaltyScreen() {
 
   const points = data?.points_balance ?? data?.balance?.available ?? data?.points ?? 0;
   const lifetimePoints = data?.lifetime_points ?? data?.balance?.total_earned ?? points;
-  const rate = data?.redemption_rate ?? 100;
-  const currency = data?.redemption_currency ?? "ZAR";
+  const rate = data?.redemption_rate ?? data?.conversion?.rate ?? 100;
+  const currency = data?.redemption_currency ?? data?.conversion?.currency ?? "ZAR";
   const redemptionValue = data?.redemption_value ?? (rate > 0 ? points / rate : 0);
   const earnDesc = data?.earning_rate_description ?? "Earn points with every booking";
-  const minRedeem = data?.minimum_redemption ?? 100;
+  const minRedeem = data?.minimum_redemption ?? data?.config?.min_redemption_points ?? 100;
   const canRedeem = points > 0 && points >= minRedeem;
 
   async function handleRedeem() {
@@ -198,17 +203,17 @@ export default function LoyaltyScreen() {
       onRefresh={handleRefresh}
     >
       <View style={{ flex: 1 }}>
-        <View style={{ borderRadius: 16, backgroundColor: "#FFFBEB", padding: 24, alignItems: "center", marginBottom: 16 }}>
-          <Text style={{ fontSize: 14, color: "#B45309", fontWeight: "500", textTransform: "uppercase", letterSpacing: 0.5 }}>Your Points</Text>
-          <Text style={{ fontSize: 36, fontWeight: "700", color: "#78350F", marginTop: 4 }}>{points.toLocaleString()}</Text>
+        <View style={{ borderRadius: 16, backgroundColor: "#F0FDF4", padding: 24, alignItems: "center", marginBottom: 16 }}>
+          <Text style={{ fontSize: 14, color: "#166534", fontWeight: "500", textTransform: "uppercase", letterSpacing: 0.5 }}>Your Points</Text>
+          <Text style={{ fontSize: 36, fontWeight: "700", color: "#166534", marginTop: 4 }}>{points.toLocaleString()}</Text>
           {rate > 0 && (
-            <Text style={{ fontSize: 14, color: "#B45309", marginTop: 4 }}>Worth {currency} {redemptionValue.toFixed(2)}</Text>
+            <Text style={{ fontSize: 14, color: "#166534", marginTop: 4 }}>Worth {currency} {redemptionValue.toFixed(2)}</Text>
           )}
-          <Text style={{ fontSize: 12, color: "#D97706", marginTop: 8 }}>{earnDesc}</Text>
+          <Text style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>{earnDesc}</Text>
           <TouchableOpacity
             onPress={handleRedeem}
             disabled={!canRedeem || redeeming}
-            style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 9999, backgroundColor: canRedeem ? "#D97706" : "#FCD34D" }}
+            style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 9999, backgroundColor: canRedeem ? "#22C55E" : "#BBF7D0" }}
             accessibilityRole="button"
             accessibilityLabel="Redeem points"
             accessibilityState={{ disabled: !canRedeem }}
@@ -227,7 +232,7 @@ export default function LoyaltyScreen() {
           </View>
           <View style={{ flex: 1, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12, alignItems: "center" }}>
             <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Available</Text>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: "#D97706" }}>{points.toLocaleString()}</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: "#22C55E" }}>{points.toLocaleString()}</Text>
           </View>
         </View>
         <TouchableOpacity
@@ -260,8 +265,8 @@ export default function LoyaltyScreen() {
               const pointsRequired = next.points_required ?? next.points_threshold ?? 0;
               const rewardDesc = next.reward_description ?? next.description ?? next.name ?? "";
               return pointsRequired > 0 ? (
-                <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#FCD34D", backgroundColor: "rgba(255,251,235,0.5)", padding: 16 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#78350F", marginBottom: 4 }}>Next Milestone</Text>
+                <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#86EFAC", backgroundColor: "#F0FDF4", padding: 16 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#166534", marginBottom: 4 }}>Next Milestone</Text>
                   <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{next.name}</Text>
                   <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 2 }}>{rewardDesc}</Text>
                   <View style={{ marginTop: 12 }}>
@@ -279,8 +284,8 @@ export default function LoyaltyScreen() {
                 { icon: "people-outline" as const, label: "Refer a friend", desc: "Both of you earn bonus points" },
               ].map((item, i) => (
                 <View key={i} style={{ flexDirection: "row", alignItems: "center", marginBottom: i < 2 ? 12 : 0 }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#FEF3C7", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name={item.icon} size={18} color="#92400e" />
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#DCFCE7", alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name={item.icon} size={18} color="#166534" />
                   </View>
                   <View style={{ marginLeft: 12, flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{item.label}</Text>
@@ -301,9 +306,10 @@ export default function LoyaltyScreen() {
                 <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 4 }}>Points will appear here after your first booking</Text>
               </View>
             ) : (
-              data.history.map((tx: any) => {
+              (data.history ?? data.recent_transactions ?? []).map((tx: any) => {
                 const txType = tx.type ?? (tx.transaction_type === "earned" ? "earn" : tx.transaction_type === "redeemed" ? "redeem" : tx.transaction_type === "expired" ? "expire" : "earn");
                 const desc = tx.description ?? (txType === "earn" ? "Points earned" : txType === "redeem" ? "Points redeemed" : "Points expired");
+                const pts = Number(tx.points ?? tx.points_amount ?? 0) || 0;
                 return (
                   <View key={tx.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
                     <View style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: txType === "earn" ? "#DCFCE7" : txType === "redeem" ? "#DBEAFE" : "#FEE2E2" }}>
@@ -313,7 +319,7 @@ export default function LoyaltyScreen() {
                       <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{desc}</Text>
                       <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{formatDate(tx.created_at)}</Text>
                     </View>
-                    <Text style={{ fontSize: 14, fontWeight: "600", color: txType === "earn" ? "#16a34a" : txType === "redeem" ? "#2563eb" : "#dc2626" }}>{txType === "earn" ? "+" : "-"}{Math.abs(Number(tx.points) || 0)}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: txType === "earn" ? "#16a34a" : txType === "redeem" ? "#2563eb" : "#dc2626" }}>{txType === "earn" ? "+" : "-"}{Math.abs(pts)}</Text>
                   </View>
                 );
               })
@@ -348,7 +354,7 @@ export default function LoyaltyScreen() {
                     </View>
                     {!completed && (
                       <View style={{ marginTop: 8, marginLeft: 52 }}>
-                        <AnimatedProgressBar progress={milestoneProgress} color="#FBBF24" />
+                        <AnimatedProgressBar progress={milestoneProgress} color="#22C55E" />
                       </View>
                     )}
                   </View>

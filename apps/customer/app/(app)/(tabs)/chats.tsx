@@ -21,6 +21,8 @@ import { ConversationSkeleton } from "@/components/Skeleton";
 
 interface Conversation {
   id: string;
+  provider_id?: string | null;
+  booking_id?: string | null;
   provider?: { business_name?: string; thumbnail_url?: string | null };
   last_message_preview?: string | null;
   last_message_at?: string | null;
@@ -63,7 +65,32 @@ export default function ChatsScreen() {
         const list = Array.isArray(data)
           ? data
           : ((data as { data?: Conversation[] })?.data ?? []);
-        setConversations(list);
+        // One thread per provider: group by provider_id, show general thread (booking_id === null) or latest by message
+        const byProvider = new Map<string, Conversation[]>();
+        for (const c of list as Conversation[]) {
+          const pid = c.provider_id ?? c.provider?.business_name ?? c.id;
+          if (!byProvider.has(pid)) byProvider.set(pid, []);
+          byProvider.get(pid)!.push(c);
+        }
+        const onePerProvider: Conversation[] = [];
+        byProvider.forEach((threads) => {
+          const general = threads.find((t) => t.booking_id == null);
+          const latest = threads.sort(
+            (a, b) => new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
+          )[0];
+          const display = general ?? latest;
+          const unreadTotal = threads.reduce((s, t) => s + (t.unread_count_customer ?? 0), 0);
+          onePerProvider.push({
+            ...display,
+            id: display.id,
+            unread_count_customer: unreadTotal,
+          });
+        });
+        // Sort by last message time (most recent first)
+        onePerProvider.sort(
+          (a, b) => new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
+        );
+        setConversations(onePerProvider);
       }
     } catch (e) {
       setError(getApiErrorMessage(e, "Failed to load"));
@@ -91,9 +118,18 @@ export default function ChatsScreen() {
   }, [authLoading, user, refreshSession]);
 
   const renderItem = useCallback(
-    ({ item }: { item: Conversation }) => (
+    ({ item }: { item: Conversation }) => {
+      const openChat = () => {
+        const name = item.provider?.business_name || "Provider";
+        if (item.provider_id) {
+          router.push({ pathname: "/(app)/chat", params: { provider_id: item.provider_id, provider_name: name } });
+        } else {
+          router.push({ pathname: "/(app)/chat", params: { id: item.id } });
+        }
+      };
+      return (
       <Pressable
-        onPress={() => router.push({ pathname: "/(app)/chat", params: { id: item.id } })}
+        onPress={openChat}
         style={{ flexDirection: "row", alignItems: "center", paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}
         accessibilityRole="button"
         accessibilityLabel={`Chat with ${item.provider?.business_name || "Provider"}${item.last_message_preview ? `, last message: ${item.last_message_preview}` : ""}`}
@@ -126,7 +162,8 @@ export default function ChatsScreen() {
           ) : null}
         </View>
       </Pressable>
-    ),
+      );
+    },
     []
   );
 

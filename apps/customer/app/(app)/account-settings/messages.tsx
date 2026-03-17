@@ -19,7 +19,27 @@ export default function MessagesScreen() {
       if (res.error) setError(getApiErrorMessage(res.error, "Failed to load"));
       else {
         const raw = res.data;
-        setData(Array.isArray(raw) ? raw : raw?.data ?? raw?.conversations ?? []);
+        const list = Array.isArray(raw) ? raw : raw?.data ?? raw?.conversations ?? [];
+        // One thread per provider (same as Chats tab): group by provider_id
+        const byProvider = new Map<string, any[]>();
+        for (const c of list) {
+          const pid = c.provider_id ?? c.provider?.business_name ?? c.id;
+          if (!byProvider.has(pid)) byProvider.set(pid, []);
+          byProvider.get(pid)!.push(c);
+        }
+        const onePerProvider = Array.from(byProvider.values()).map((threads) => {
+          const general = threads.find((t: any) => t.booking_id == null);
+          const sorted = [...threads].sort(
+            (a: any, b: any) => new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
+          );
+          const display = general ?? sorted[0];
+          const unreadTotal = threads.reduce((s: number, t: any) => s + (t.unread_count_customer ?? t.unread_count ?? 0), 0);
+          return { ...display, unread_count_customer: unreadTotal, unread_count: unreadTotal };
+        });
+        onePerProvider.sort(
+          (a: any, b: any) => new Date(b.last_message_at ?? 0).getTime() - new Date(a.last_message_at ?? 0).getTime()
+        );
+        setData(onePerProvider);
       }
     } catch (e) {
       setError(getApiErrorMessage(e, "Failed to load"));
@@ -41,7 +61,13 @@ export default function MessagesScreen() {
           {convos.map((c: any, index: number) => (
             <TouchableOpacity
               key={c.id}
-              onPress={() => router.push({ pathname: "/(app)/chat", params: { id: c.id } })}
+              onPress={() => {
+                if (c.provider_id) {
+                  router.push({ pathname: "/(app)/chat", params: { provider_id: c.provider_id, provider_name: c.provider_name || c.provider?.business_name || "Provider" } });
+                } else {
+                  router.push({ pathname: "/(app)/chat", params: { id: c.id } });
+                }
+              }}
               style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: Colors.gray[100], marginTop: index === 0 ? 0 : 12 }}
             >
               {c.avatar || c.provider?.thumbnail_url ? (

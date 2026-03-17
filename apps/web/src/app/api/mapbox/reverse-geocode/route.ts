@@ -9,8 +9,9 @@ const reverseGeocodeSchema = z.object({
 
 /**
  * POST /api/mapbox/reverse-geocode
- * 
- * Reverse geocode coordinates to address
+ *
+ * Body: { longitude, latitude }. Returns single Mapbox feature (place_name, center, text, context?)
+ * for client alignment (e.g. customer app AddressPicker).
  */
 export async function POST(request: Request) {
   try {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
+import { RADIUS_INPUT, RADIUS_CARD, RADIUS_BUTTON } from "@/constants/layout";
 import { APP_URL } from "@/config/public-env";
 
 const PRIMARY = Colors.primary;
@@ -79,6 +80,20 @@ export default function LoginScreen() {
     signInWithEmail,
     signUpWithEmail,
   } = useAuth();
+
+  // Deep link: if app opened with signup?ref=, go to signup with ref
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    Linking.getInitialURL().then((url) => {
+      if (!url) return;
+      const path = url.includes("?") ? url.slice(0, url.indexOf("?")) : url;
+      const query = url.includes("?") ? url.slice(url.indexOf("?") + 1) : "";
+      const ref = new URLSearchParams(query).get("ref")?.trim();
+      if ((path.endsWith("signup") || path.includes("/signup")) && ref) {
+        router.replace({ pathname: "/(auth)/signup", params: { ref } } as never);
+      }
+    });
+  }, []);
 
   const [countryCode, setCountryCode] = useState("+27");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -223,7 +238,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: "#fff" }}
+      style={{ flex: 1, backgroundColor: Colors.gray[50] }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
     >
@@ -234,15 +249,15 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={formStyle}>
+        <View style={[formStyle, { backgroundColor: Colors.white, borderRadius: RADIUS_CARD + 4, padding: 24, ...(formNarrow ? { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3 } : {}) }]}>
         {/* Logo accent */}
-        <View style={{ alignItems: "center", marginBottom: 8 }}>
+        <View style={{ alignItems: "center", marginBottom: 12 }}>
           <Image
             source={require("../../assets/favicon.png")}
             style={{
-              width: 56,
-              height: 56,
-              borderRadius: 28,
+              width: 64,
+              height: 64,
+              borderRadius: 32,
             }}
           />
         </View>
@@ -266,17 +281,17 @@ export default function LoginScreen() {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                borderWidth: 1.5,
-                borderColor: "#E5E7EB",
-                borderRadius: 12,
-                backgroundColor: "#FAFAFA",
-                paddingHorizontal: 14,
+                borderWidth: 1,
+                borderColor: Colors.gray[200],
+                borderRadius: RADIUS_INPUT,
+                backgroundColor: Colors.gray[50],
+                paddingHorizontal: 16,
                 marginBottom: 16,
               }}
             >
-              <Ionicons name="keypad-outline" size={18} color="#9CA3AF" />
+              <Ionicons name="keypad-outline" size={18} color={Colors.gray[400]} />
               <TextInput
-                style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827", letterSpacing: 6 }}
+                style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: Colors.gray[900], letterSpacing: 6 }}
                 placeholder="000000"
                 placeholderTextColor="#9CA3AF"
                 value={token}
@@ -292,7 +307,7 @@ export default function LoginScreen() {
               disabled={loading}
               style={{
                 backgroundColor: PRIMARY,
-                borderRadius: 12,
+                borderRadius: RADIUS_BUTTON,
                 paddingVertical: 16,
                 alignItems: "center",
                 opacity: loading ? 0.7 : 1,
@@ -333,15 +348,15 @@ export default function LoginScreen() {
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
-                    borderWidth: 1.5,
-                    borderColor: "#E5E7EB",
-                    borderRadius: 12,
-                    backgroundColor: "#FAFAFA",
-                    paddingHorizontal: 14,
+                    borderWidth: 1,
+                    borderColor: Colors.gray[200],
+                    borderRadius: RADIUS_INPUT,
+                    backgroundColor: Colors.gray[50],
+                    paddingHorizontal: 16,
                     marginBottom: 16,
                   }}
                 >
-                  <Ionicons name="person-outline" size={18} color="#9CA3AF" />
+                  <Ionicons name="person-outline" size={18} color={Colors.gray[400]} />
                   <TextInput
                     style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }}
                     placeholder="Your full name"
@@ -362,17 +377,17 @@ export default function LoginScreen() {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                borderWidth: 1.5,
-                borderColor: "#E5E7EB",
-                borderRadius: 12,
-                backgroundColor: "#FAFAFA",
-                paddingHorizontal: 14,
+                borderWidth: 1,
+                borderColor: Colors.gray[200],
+                borderRadius: RADIUS_INPUT,
+                backgroundColor: Colors.gray[50],
+                paddingHorizontal: 16,
                 marginBottom: 16,
               }}
             >
-              <Ionicons name="mail-outline" size={18} color="#9CA3AF" />
+              <Ionicons name="mail-outline" size={18} color={Colors.gray[400]} />
               <TextInput
-                style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }}
+                style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: Colors.gray[900] }}
                 placeholder="you@example.com"
                 placeholderTextColor="#9CA3AF"
                 value={email}
@@ -391,17 +406,17 @@ export default function LoginScreen() {
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                borderWidth: 1.5,
-                borderColor: "#E5E7EB",
-                borderRadius: 12,
-                backgroundColor: "#FAFAFA",
-                paddingHorizontal: 14,
+                borderWidth: 1,
+                borderColor: Colors.gray[200],
+                borderRadius: RADIUS_INPUT,
+                backgroundColor: Colors.gray[50],
+                paddingHorizontal: 16,
                 marginBottom: 20,
               }}
             >
-              <Ionicons name="lock-closed-outline" size={18} color="#9CA3AF" />
+              <Ionicons name="lock-closed-outline" size={18} color={Colors.gray[400]} />
               <TextInput
-                style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: "#111827" }}
+                style={{ flex: 1, paddingVertical: 14, paddingHorizontal: 10, fontSize: 15, color: Colors.gray[900] }}
                 placeholder={isSignup ? "Min. 8 characters" : "Your password"}
                 placeholderTextColor="#9CA3AF"
                 value={password}
@@ -423,7 +438,7 @@ export default function LoginScreen() {
               disabled={loading}
               style={{
                 backgroundColor: PRIMARY,
-                borderRadius: 12,
+                borderRadius: RADIUS_INPUT,
                 paddingVertical: 16,
                 alignItems: "center",
                 opacity: loading ? 0.7 : 1,
@@ -486,9 +501,9 @@ export default function LoginScreen() {
             <View
               style={{
                 flexDirection: "row",
-                borderWidth: 1.5,
+                borderWidth: 1,
                 borderColor: phoneError ? "#EF4444" : "#E5E7EB",
-                borderRadius: 12,
+                borderRadius: RADIUS_INPUT,
                 overflow: "hidden",
                 marginBottom: phoneError ? 4 : 12,
               }}
@@ -546,7 +561,7 @@ export default function LoginScreen() {
               disabled={loading}
               style={{
                 backgroundColor: PRIMARY,
-                borderRadius: 12,
+                borderRadius: RADIUS_INPUT,
                 paddingVertical: 16,
                 alignItems: "center",
                 opacity: loading ? 0.7 : 1,
@@ -578,9 +593,9 @@ export default function LoginScreen() {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                borderWidth: 1.5,
+                borderWidth: 1,
                 borderColor: "#E5E7EB",
-                borderRadius: 12,
+                borderRadius: RADIUS_INPUT,
                 paddingVertical: 14,
                 marginBottom: 12,
                 backgroundColor: "#fff",
@@ -600,9 +615,9 @@ export default function LoginScreen() {
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
-                  borderWidth: 1.5,
+                  borderWidth: 1,
                   borderColor: "#E5E7EB",
-                  borderRadius: 12,
+                  borderRadius: RADIUS_INPUT,
                   paddingVertical: 14,
                   marginBottom: 12,
                   backgroundColor: "#fff",
@@ -622,9 +637,9 @@ export default function LoginScreen() {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                borderWidth: 1.5,
+                borderWidth: 1,
                 borderColor: "#E5E7EB",
-                borderRadius: 12,
+                borderRadius: RADIUS_INPUT,
                 paddingVertical: 14,
                 marginBottom: 12,
                 backgroundColor: "#fff",
@@ -643,9 +658,9 @@ export default function LoginScreen() {
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                borderWidth: 1.5,
+                borderWidth: 1,
                 borderColor: "#E5E7EB",
-                borderRadius: 12,
+                borderRadius: RADIUS_INPUT,
                 paddingVertical: 14,
                 marginBottom: 12,
                 backgroundColor: "#fff",

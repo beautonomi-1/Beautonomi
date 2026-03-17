@@ -50,13 +50,14 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     // Calculate completion for each item
+    const isCustomer = user.role === "customer";
     const checklistItems = [
       {
         id: "photo",
         label: "Add profile photo",
         timeEstimate: "30 sec",
         completed: !!userData.avatar_url,
-        required: false,
+        required: isCustomer,
       },
       {
         id: "email",
@@ -91,14 +92,14 @@ export async function GET(request: NextRequest) {
         label: "Add phone",
         timeEstimate: "1 min",
         completed: hasPhone,
-        required: false,
+        required: isCustomer,
       },
       {
         id: "address",
         label: "Add address",
         timeEstimate: "2 min",
         completed: false, // Will check address separately
-        required: false,
+        required: isCustomer,
       },
       {
         id: "emergency_contact",
@@ -183,6 +184,7 @@ export async function GET(request: NextRequest) {
       percentage,
       checklistItems,
       topItems,
+      avatar_url: userData.avatar_url ?? null,
     });
   } catch (error) {
     return handleApiError(error, "Failed to calculate profile completion");

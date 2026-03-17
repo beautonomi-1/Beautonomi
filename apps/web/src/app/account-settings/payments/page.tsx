@@ -44,7 +44,7 @@ const PaymentPage = () => {
   const [addingCard, setAddingCard] = useState(false);
 
   const SAVE_CARD_INFO =
-    "We'll save your card securely when you pay. To verify your card, Paystack may place a small temporary charge (e.g. R1) and reverse it—this confirms your card for future use.";
+    "We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.";
 
   // Only show payouts tab for providers
   const isProvider = user?.role === 'provider_owner' || user?.role === 'provider_staff';
@@ -292,7 +292,7 @@ const PaymentPage = () => {
                   </button>
                 </div>
                 <p className="text-base mb-3 font-light text-gray-600">
-                  We&apos;ll save your card securely when you pay. To verify your card, Paystack may place a small temporary charge (e.g. R1) and reverse it—this confirms your card for future use.
+                  We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.
                 </p>
                 
                 {isLoading ? (
@@ -316,7 +316,7 @@ const PaymentPage = () => {
                     <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                     <p className="text-gray-600 mb-2 font-medium">No payment methods saved</p>
                     <p className="text-sm text-gray-500 mb-4">
-                      Cards are saved automatically when you make a payment with Paystack
+                      Cards are saved automatically when you pay with a card
                     </p>
                     <Link href="/">
                       <motion.button

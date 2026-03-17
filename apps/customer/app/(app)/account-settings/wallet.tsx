@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
+import { useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
@@ -34,6 +35,7 @@ export default function WalletScreen() {
   };
 
   useEffect(() => { load(); }, []);
+  useFocusEffect(useCallback(() => { load(); }, []));
 
   const balance = wallet?.balance ?? 0;
   const currency = wallet?.currency ?? "ZAR";
@@ -105,7 +107,7 @@ export default function WalletScreen() {
             {toppingUp ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={{ color: Colors.white, fontWeight: "600" }}>Top up with Paystack</Text>
+              <Text style={{ color: Colors.white, fontWeight: "600" }}>Top up with card</Text>
             )}
           </TouchableOpacity>
         </View>

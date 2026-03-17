@@ -252,7 +252,7 @@ export default function PayAdditionalChargePage() {
               </Button>
 
               <p className="text-xs text-gray-500 text-center mt-4">
-                Secure payment powered by Paystack
+                Secure payment with card
               </p>
             </div>
           </div>

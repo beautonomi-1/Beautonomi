@@ -22,6 +22,8 @@ type SettingsItem = {
   href: string;
   /** Native screen route (all settings are native). */
   mobileRoute?: string;
+  /** Open this path in the in-app browser (web portal). Used for web-only settings. */
+  webPath?: string;
   isUpgrade?: boolean;
   /** Special action instead of navigation (e.g. signOut) */
   action?: "signOut";
@@ -69,6 +71,10 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
       { title: "Closed periods", description: "Holiday and closure dates", href: "/provider/settings/appointment-activity/closed-periods", mobileRoute: "/(app)/(tabs)/more/settings/closed-periods" },
       { title: "Blocked time types", description: "Blocked time options", href: "/provider/settings/appointment-activity/blocked-time", mobileRoute: "/(app)/(tabs)/more/settings/blocked-time" },
       { title: "Calendar integration", description: "Google, Apple, Outlook sync", href: "/provider/settings/calendar-integration", mobileRoute: "/(app)/(tabs)/more/settings/calendar-integration" },
+      { title: "Calendar display", description: "Display options for the calendar", href: "/provider/settings/calendar/display-preferences", mobileRoute: "/(app)/(tabs)/more/settings/calendar-preferences" },
+      { title: "Calendar colors & icons", description: "Colors and icons for appointments", href: "/provider/settings/calendar/colors-icons", mobileRoute: "/(app)/(tabs)/more/settings/calendar-colors-icons" },
+      { title: "Calendar links", description: "Booking and calendar links", href: "/provider/settings/calendar/links", mobileRoute: "/(app)/(tabs)/more/settings/calendar-links" },
+      { title: "Waitlist settings", description: "Waitlist configuration", href: "/provider/settings/appointment-activity/waitlist", mobileRoute: "/(app)/(tabs)/more/settings/waitlist-settings" },
     ],
   },
   {
@@ -98,6 +104,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     title: "Sales",
     description: "Payments and receipts",
     items: [
+      { title: "Payout center", description: "Balance, statements and payouts", href: "/provider/payouts", mobileRoute: "/(app)/(tabs)/more/payouts" },
       { title: "Payout accounts", description: "Bank accounts for payouts", href: "/provider/settings/payout-accounts", mobileRoute: "/(app)/(tabs)/more/settings/payout-accounts" },
       { title: "Yoco integration", description: "Yoco payment devices", href: "/provider/settings/sales/yoco-integration", mobileRoute: "/(app)/(tabs)/more/settings/yoco-devices" },
       { title: "Receipt sequencing", description: "Receipt numbering", href: "/provider/settings/sales/receipt-sequencing", mobileRoute: "/(app)/(tabs)/more/settings/receipt-template" },
@@ -116,6 +123,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     description: "Team and permissions",
     items: [
       { title: "Team members", description: "Manage your team", href: "/provider/team/members", mobileRoute: "/(app)/(tabs)/more/team" },
+      { title: "Time clock", description: "Clock in/out and time cards", href: "/provider/team/time-clock", mobileRoute: "/(app)/(tabs)/more/time-clock" },
       { title: "Roles", description: "Team roles and permissions", href: "/provider/settings/team/roles", mobileRoute: "/(app)/(tabs)/more/settings/team-roles" },
       { title: "Permissions", description: "Team permissions", href: "/provider/settings/team/permissions", mobileRoute: "/(app)/(tabs)/more/settings/staff-permissions" },
       { title: "Commissions", description: "Commission rates", href: "/provider/settings/team/commissions", mobileRoute: "/(app)/(tabs)/more/settings/team-commissions" },
@@ -185,6 +193,13 @@ export default function SettingsAccountHubScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (item.action === "signOut") {
         handleSignOut();
+        return;
+      }
+      if (item.webPath) {
+        router.push({
+          pathname: "/(app)/(tabs)/more/portal",
+          params: { path: item.webPath, title: item.title },
+        } as never);
         return;
       }
       if (item.mobileRoute) {

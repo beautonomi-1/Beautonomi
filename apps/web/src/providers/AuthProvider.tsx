@@ -377,6 +377,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      // Provider context: when on provider portal, resolve effective role (e.g. customer+staff -> provider_staff)
+      if (
+        typeof window !== "undefined" &&
+        window.location?.pathname?.startsWith("/provider") &&
+        userRole === "customer"
+      ) {
+        try {
+          const res = await fetch("/api/me/role?portal=provider", {
+            credentials: "include",
+          });
+          const json = (await res.json()) as { data?: { role?: UserRole } };
+          if (res.ok && json?.data?.role) {
+            userRole = json.data.role;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       // Fetch user profile from database with timeout
       const timeoutPromise = new Promise<null>((resolve) => {
         setTimeout(() => resolve(null), 3000); // Increased to 3 seconds for better reliability
@@ -519,6 +538,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoadingRef.current = isLoading;
     sessionRef.current = session;
   }, [user, isLoading, session]);
+
+  // When navigating to provider portal with role customer, re-resolve role (e.g. staff get provider_staff)
+  useEffect(() => {
+    if (
+      _pathname?.startsWith("/provider") &&
+      user &&
+      role === "customer" &&
+      !refreshInProgress.current
+    ) {
+      refreshUser().catch(() => {});
+    }
+  }, [_pathname, user, role, refreshUser]);
 
   useEffect(() => {
     // Supabase client is null during SSR; effect runs on client so we need it

@@ -90,7 +90,7 @@ export default function ExplorePostsScreen() {
 
   const [commentBody, setCommentBody] = useState("");
 
-  const posts: ExplorePost[] = data ?? [];
+  const posts = useMemo(() => (data ?? []) as ExplorePost[], [data]);
   const comments: ExploreComment[] = commentsResp?.data ?? [];
 
   const onRefresh = useCallback(async () => {
@@ -182,7 +182,7 @@ export default function ExplorePostsScreen() {
     if (updated) setViewPost(updated);
     setEditMode(false);
     refresh();
-  }, [viewPost, editCaption, editPublishNow, updatePost, refresh]);
+  }, [viewPost, editCaption, editPublishNow, editPrimaryCategorySlug, updatePost, refresh]);
 
   const openCreate = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

@@ -17,8 +17,9 @@ const geocodeSchema = z.object({
 
 /**
  * POST /api/mapbox/geocode
- * 
- * Geocode an address to coordinates
+ *
+ * Geocode an address to coordinates. Response shape aligned with Mapbox Geocoding API:
+ * { data: Array<{ place_name, center [lng,lat], text, context? }> } for client (e.g. customer app AddressPicker).
  */
 export async function POST(request: Request) {
   try {

@@ -213,7 +213,18 @@ export async function requireRoleInApi(
           .eq("id", authUser.id)
           .single();
         if (!userData || !userData.role) throw new Error("User profile not found. Please contact support.");
-        const userRole = userData.role as UserRole;
+        let userRole = userData.role as UserRole;
+        // Customer with active provider_staff row gets provider_staff access for provider APIs
+        if (userRole === "customer" && roles.includes("provider_staff")) {
+          const { data: staffRow } = await supabase
+            .from("provider_staff")
+            .select("id")
+            .eq("user_id", userData.id)
+            .eq("is_active", true)
+            .limit(1)
+            .maybeSingle();
+          if (staffRow) userRole = "provider_staff";
+        }
         if (!roles.includes(userRole))
           throw new Error(`Insufficient permissions: requires one of ${roles.join(", ")}`);
         return { user: { id: userData.id, role: userRole, email: authUser.email, user_metadata: authUser.user_metadata, full_name: userData.full_name } };
@@ -260,9 +271,24 @@ export async function requireRoleInApi(
     if (!user) {
       throw new Error('Authentication required');
     }
+
+    // Customer with active provider_staff row gets provider_staff access for provider APIs
+    let effectiveUser = result.user;
+    if (effectiveUser.role === "customer" && roles.includes("provider_staff")) {
+      const { data: staffRow } = await supabase
+        .from("provider_staff")
+        .select("id")
+        .eq("user_id", effectiveUser.id)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      if (staffRow) {
+        effectiveUser = { ...effectiveUser, role: "provider_staff" as UserRole };
+      }
+    }
     
     // Return user object (session not needed, using getUser() for security)
-    return { user: result.user };
+    return { user: effectiveUser };
   } catch (error) {
     // Re-throw network errors and other specific errors with their original message
     if (error instanceof Error && (

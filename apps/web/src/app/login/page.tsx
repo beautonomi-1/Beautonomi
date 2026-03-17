@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslation } from "@beautonomi/i18n";
 import { Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
-import { FaGoogle, FaApple } from "react-icons/fa6";
+import { FaGoogle, FaApple, FaFacebook } from "react-icons/fa6";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -102,7 +102,7 @@ export default function LoginPage() {
     }
   }
 
-  async function handleOAuth(provider: "google" | "apple") {
+  async function handleOAuth(provider: "google" | "apple" | "facebook") {
     setFormError(null);
     setLoading(true);
     try {
@@ -234,6 +234,16 @@ export default function LoginPage() {
           >
             <FaApple className="text-lg" aria-hidden />
             <span>{t("auth.continueWithApple")}</span>
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleOAuth("facebook")}
+            disabled={loading}
+            className="w-full h-12 rounded-xl border-gray-200 justify-center gap-2.5"
+          >
+            <FaFacebook className="text-lg text-[#1877F2]" aria-hidden />
+            <span>{t("auth.continueWithFacebook") ?? "Continue with Facebook"}</span>
           </Button>
         </div>
         <p className="text-center text-sm text-gray-500 mt-6">

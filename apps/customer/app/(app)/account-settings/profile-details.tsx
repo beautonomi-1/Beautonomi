@@ -38,6 +38,13 @@ const PROFILE_QUESTION_FIELDS = [
   { key: "pets", label: "Pets" },
 ] as const;
 
+const DECADE_BORN_OPTIONS = ["1950s", "1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "Prefer not to say"];
+const HAIR_TYPE_OPTIONS = ["Straight", "Wavy", "Curly", "Coily", "Coloured", "Natural", "Relaxed", "Thin", "Thick"];
+const SKIN_TYPE_OPTIONS = ["Normal", "Oily", "Dry", "Combination", "Sensitive", "Mature"];
+const THINGS_TO_AVOID_OPTIONS = ["Strong fragrances", "Alcohol-based products", "Sulfates", "Parabens", "Essential oils", "Latex", "Nickel", "Dyes", "Formaldehyde"];
+const APPOINTMENT_STYLE_OPTIONS = ["Quick & efficient", "Relaxed & unhurried", "Social & chatty", "Quiet & minimal", "Flexible"];
+const PRODUCT_PREFERENCE_OPTIONS = ["Vegan", "Cruelty-free", "Natural / organic", "Fragrance-free", "Hypoallergenic", "Luxury", "Budget-friendly", "No preference"];
+
 export default function ProfileDetailsScreen() {
   useScreenTracking("Profile Details");
   const [loading, setLoading] = useState(true);
@@ -72,7 +79,7 @@ export default function ProfileDetailsScreen() {
       const q: Record<string, string> = {};
       PROFILE_QUESTION_FIELDS.forEach(({ key }) => {
         const v = pd?.[key];
-        q[key] = typeof v === "string" ? v : "";
+        q[key] = v != null && v !== "" ? String(v).trim() : "";
       });
       setProfileQuestions(q);
       const ints = pd?.interests;
@@ -84,9 +91,11 @@ export default function ProfileDetailsScreen() {
       setSkinType((bp.skin_type as string) ?? "");
       const allergyList = bp.allergies;
       setAllergies(Array.isArray(allergyList) ? (allergyList as string[]) : []);
-      setThingsToAvoid((bp.things_to_avoid as string) ?? "");
+      const rawAvoid = bp.things_to_avoid;
+      setThingsToAvoid(Array.isArray(rawAvoid) ? (rawAvoid as string[]).join(", ") : (rawAvoid as string) ?? "");
       setAppointmentStyle((bp.appointment_style as string) ?? "");
-      setProductPreferences((bp.product_preferences as string) ?? "");
+      const rawProduct = bp.product_preferences;
+      setProductPreferences(Array.isArray(rawProduct) ? (rawProduct as string[]).join(", ") : (rawProduct as string) ?? "");
     } catch (e) {
       setError(getApiErrorMessage(e, "Failed to load"));
     } finally {
@@ -103,8 +112,15 @@ export default function ProfileDetailsScreen() {
   const handleSaveAll = useCallback(async () => {
     setSaving(true);
     try {
+      const profilePayload: Record<string, unknown> = {};
+      PROFILE_QUESTION_FIELDS.forEach(({ key }) => {
+        const v = profileQuestions[key] ?? "";
+        if (String(v).trim().length > 0) profilePayload[key] = String(v).trim();
+      });
+      if (interests.length > 0) profilePayload.interests = interests;
+
       const [profileRes, beautyRes] = await Promise.all([
-        api.post("/api/me/profile-data", { ...profileQuestions, interests: interests.length ? interests : undefined }),
+        api.post("/api/me/profile-data", profilePayload),
         api.patch("/api/me/beauty-preferences", {
           hair_type: hairType.trim() || undefined,
           skin_type: skinType.trim() || undefined,
@@ -161,22 +177,46 @@ export default function ProfileDetailsScreen() {
             {PROFILE_QUESTION_FIELDS.map(({ key, label }) => (
               <View key={key} style={{ marginBottom: 12 }}>
                 <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{label}</Text>
-                <TextInput
-                  style={{
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: Colors.gray[200],
-                    backgroundColor: Colors.white,
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    fontSize: 15,
-                    color: Colors.gray[900],
-                  }}
-                  value={profileQuestions[key] ?? ""}
-                  onChangeText={(t) => setProfileQuestions((prev) => ({ ...prev, [key]: t }))}
-                  placeholder={`e.g. ${key === "decade_born" ? "1990s" : "..."}`}
-                  placeholderTextColor={Colors.gray[400]}
-                />
+                {key === "decade_born" ? (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                    {DECADE_BORN_OPTIONS.map((opt) => {
+                      const selected = (profileQuestions[key] ?? "").trim() === opt;
+                      return (
+                        <TouchableOpacity
+                          key={opt}
+                          onPress={() => setProfileQuestions((prev) => ({ ...prev, [key]: opt }))}
+                          style={{
+                            paddingHorizontal: 14,
+                            paddingVertical: 10,
+                            borderRadius: 12,
+                            borderWidth: 1.5,
+                            borderColor: selected ? Colors.primary : Colors.gray[200],
+                            backgroundColor: selected ? Colors.primaryLight : Colors.white,
+                          }}
+                        >
+                          <Text style={{ fontSize: 14, fontWeight: "500", color: selected ? Colors.primary : Colors.gray[700] }}>{opt}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <TextInput
+                    style={{
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: Colors.gray[200],
+                      backgroundColor: Colors.white,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      fontSize: 15,
+                      color: Colors.gray[900],
+                    }}
+                    value={profileQuestions[key] ?? ""}
+                    onChangeText={(t) => setProfileQuestions((prev) => ({ ...prev, [key]: t }))}
+                    placeholder="..."
+                    placeholderTextColor={Colors.gray[400]}
+                  />
+                )}
               </View>
             ))}
           </View>
@@ -211,33 +251,100 @@ export default function ProfileDetailsScreen() {
             <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12 }}>
               Help providers personalise your experience
             </Text>
-            {[
-              { label: "Hair type", value: hairType, set: setHairType, placeholder: "e.g. Curly, Coloured" },
-              { label: "Skin type", value: skinType, set: setSkinType, placeholder: "e.g. Oily, Sensitive" },
-              { label: "Things to avoid", value: thingsToAvoid, set: setThingsToAvoid, placeholder: "e.g. Strong fragrances" },
-              { label: "Appointment style", value: appointmentStyle, set: setAppointmentStyle, placeholder: "e.g. Quick, Relaxed" },
-              { label: "Product preferences", value: productPreferences, set: setProductPreferences, placeholder: "e.g. Vegan, Cruelty-free" },
-            ].map(({ label, value, set, placeholder }) => (
-              <View key={label} style={{ marginBottom: 12 }}>
-                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>{label}</Text>
-                <TextInput
-                  style={{
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: Colors.gray[200],
-                    backgroundColor: Colors.white,
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    fontSize: 15,
-                    color: Colors.gray[900],
-                  }}
-                  value={value}
-                  onChangeText={set}
-                  placeholder={placeholder}
-                  placeholderTextColor={Colors.gray[400]}
-                />
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Hair type</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {HAIR_TYPE_OPTIONS.map((opt) => {
+                  const selected = hairType.trim() === opt;
+                  return (
+                    <TouchableOpacity
+                      key={opt}
+                      onPress={() => setHairType(opt)}
+                      style={{
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                        borderRadius: 12,
+                        borderWidth: 1.5,
+                        borderColor: selected ? Colors.primary : Colors.gray[200],
+                        backgroundColor: selected ? Colors.primaryLight : Colors.white,
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: "500", color: selected ? Colors.primary : Colors.gray[700] }}>{opt}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            ))}
+            </View>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Skin type</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {SKIN_TYPE_OPTIONS.map((opt) => {
+                  const selected = skinType.trim() === opt;
+                  return (
+                    <TouchableOpacity
+                      key={opt}
+                      onPress={() => setSkinType(opt)}
+                      style={{
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                        borderRadius: 12,
+                        borderWidth: 1.5,
+                        borderColor: selected ? Colors.primary : Colors.gray[200],
+                        backgroundColor: selected ? Colors.primaryLight : Colors.white,
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: "500", color: selected ? Colors.primary : Colors.gray[700] }}>{opt}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Things to avoid</Text>
+              <ChipCombobox
+                value={thingsToAvoid.trim() ? thingsToAvoid.split(/,\s*/).map((s) => s.trim()).filter(Boolean) : []}
+                onChange={(arr) => setThingsToAvoid(arr.join(", "))}
+                staticSuggestions={THINGS_TO_AVOID_OPTIONS.map((o) => ({ value: o, label: o }))}
+                allowFreeForm
+                placeholder="Select or type (e.g. fragrances, sulfates)"
+                accessibilityLabel="Things to avoid"
+              />
+            </View>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Appointment style</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                {APPOINTMENT_STYLE_OPTIONS.map((opt) => {
+                  const selected = appointmentStyle.trim() === opt;
+                  return (
+                    <TouchableOpacity
+                      key={opt}
+                      onPress={() => setAppointmentStyle(opt)}
+                      style={{
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                        borderRadius: 12,
+                        borderWidth: 1.5,
+                        borderColor: selected ? Colors.primary : Colors.gray[200],
+                        backgroundColor: selected ? Colors.primaryLight : Colors.white,
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: "500", color: selected ? Colors.primary : Colors.gray[700] }}>{opt}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Product preferences</Text>
+              <ChipCombobox
+                value={productPreferences.trim() ? productPreferences.split(/,\s*/).map((s) => s.trim()).filter(Boolean) : []}
+                onChange={(arr) => setProductPreferences(arr.join(", "))}
+                staticSuggestions={PRODUCT_PREFERENCE_OPTIONS.map((o) => ({ value: o, label: o }))}
+                allowFreeForm
+                placeholder="Select or type (e.g. Vegan, Cruelty-free)"
+                accessibilityLabel="Product preferences"
+              />
+            </View>
             <View style={{ marginBottom: 12 }}>
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Allergies & sensitivities</Text>
               <ChipCombobox

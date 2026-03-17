@@ -41,6 +41,7 @@ interface Booking {
   status: string;
   scheduled_at: string | null;
   total_amount: number | null;
+  location_type?: "at_salon" | "at_home" | null;
   customers?: BookingCustomer | null;
   services?: BookingService[];
 }
@@ -165,6 +166,9 @@ export default function BookingsListScreen() {
                       {serviceName}
                     </Text>
                     <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>{scheduled}</Text>
+                    {b.location_type === "at_home" && (
+                      <Text style={{ marginTop: 2, fontSize: 11, fontWeight: "500", color: Colors.gray[600] }}>At home</Text>
+                    )}
                     {b.total_amount != null && b.total_amount > 0 && (
                       <Text style={{ marginTop: 2, fontSize: 12, fontWeight: "500", color: Colors.gray[700] }}>
                         R{b.total_amount.toFixed(2)}

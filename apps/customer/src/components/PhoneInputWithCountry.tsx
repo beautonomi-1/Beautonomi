@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
+import { RADIUS_INPUT } from "@/constants/layout";
 import { COUNTRY_CODES, type CountryCodeEntry } from "@/constants/phone";
 
 type Props = {
@@ -73,9 +74,9 @@ export function PhoneInputWithCountry({
           style={{
             flexDirection: "row",
             alignItems: "center",
-            borderRadius: 12,
+            borderRadius: RADIUS_INPUT,
             borderWidth: 1,
-            borderColor: Colors.gray[300],
+            borderColor: Colors.gray[200],
             backgroundColor: Colors.white,
             overflow: "hidden",
           }}

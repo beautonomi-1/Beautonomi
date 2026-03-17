@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { AvailabilitySlot } from "@/types/beautonomi";
 
 type WorkingHoursDay = {
@@ -223,6 +224,35 @@ export async function GET(
       .gt("end_at", startOfDayIso)
       .lt("start_at", endOfDayIso);
     if (blocksError) throw blocksError;
+
+    // Fetch staff time off for this date: treat as all-day busy for that staff
+    const staffIdsToCheck =
+      anyoneMode && staffList.length > 0
+        ? staffList.map((s) => s.id)
+        : effectiveStaffId
+          ? [effectiveStaffId]
+          : [];
+    if (staffIdsToCheck.length > 0) {
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data: timeOffRows, error: timeOffError } = await supabaseAdmin
+        .from("staff_time_off")
+        .select("staff_id")
+        .eq("provider_id", provider.id)
+        .lte("start_date", date)
+        .gte("end_date", date)
+        .in("staff_id", staffIdsToCheck);
+      if (!timeOffError && timeOffRows?.length) {
+        for (const row of timeOffRows) {
+          if (row.staff_id) {
+            busyIntervals.push({
+              start: startOfDayIso,
+              end: endOfDayIso,
+              staff_id: row.staff_id,
+            });
+          }
+        }
+      }
+    }
 
     const step = 15;
     const slotDuration = durationMinutes;

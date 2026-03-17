@@ -59,6 +59,29 @@ function statusStyle(status: RecurringBooking["status"]): { bg: string; text: st
   }
 }
 
+/** Map API row (enriched or raw) to RecurringBooking for display. */
+function normalizeRecurringItem(row: any): RecurringBooking {
+  const provider = row.provider;
+  const providerName = row.provider_name ?? provider?.business_name ?? "Provider";
+  const serviceName = row.service_name ?? "Recurring appointment";
+  const nextDate = row.next_date ?? row.start_date ?? new Date().toISOString().split("T")[0];
+  let status: RecurringBooking["status"] = "active";
+  if (row.status === "cancelled" || row.status === "paused") status = row.status;
+  else if (row.is_active === false) status = "paused";
+  const price = typeof row.price === "number" ? row.price : 0;
+  const currency = row.currency ?? "ZAR";
+  return {
+    id: row.id,
+    service_name: serviceName,
+    provider_name: providerName,
+    frequency: row.frequency ?? "weekly",
+    next_date: nextDate,
+    price,
+    currency,
+    status,
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Screen                                                             */
 /* ------------------------------------------------------------------ */
@@ -71,6 +94,7 @@ export default function RecurringBookingsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -83,9 +107,8 @@ export default function RecurringBookingsScreen() {
         setBookings([]);
       } else {
         const data = res.data;
-        const items = Array.isArray(data)
-          ? (data as unknown as RecurringBooking[])
-          : data?.recurring ?? [];
+        const raw = Array.isArray(data) ? (data as unknown as any[]) : data?.recurring ?? [];
+        const items = (Array.isArray(raw) ? raw : []).map(normalizeRecurringItem);
         setBookings(items);
       }
     } catch (e) {
@@ -111,9 +134,8 @@ export default function RecurringBookingsScreen() {
           setBookings([]);
         } else {
           const data = res.data;
-          const items = Array.isArray(data)
-            ? (data as unknown as RecurringBooking[])
-            : data?.recurring ?? [];
+          const raw = Array.isArray(data) ? (data as unknown as any[]) : data?.recurring ?? [];
+          const items = (Array.isArray(raw) ? raw : []).map(normalizeRecurringItem);
           setBookings(items);
         }
       } catch (e) {
@@ -132,6 +154,34 @@ export default function RecurringBookingsScreen() {
       cancelled = true;
     };
   }, []);
+
+  const togglePauseResume = useCallback(
+    async (booking: RecurringBooking) => {
+      if (booking.status === "cancelled") return;
+      setTogglingId(booking.id);
+      try {
+        const res = await api.patch(`/api/recurring-bookings/${booking.id}`, {
+          is_active: booking.status === "paused",
+        });
+        if (res.error) {
+          Alert.alert("Error", res.error.message || "Failed to update");
+        } else {
+          setBookings((prev) =>
+            prev.map((b) =>
+              b.id === booking.id
+                ? { ...b, status: (booking.status === "paused" ? "active" : "paused") as RecurringBooking["status"] }
+                : b
+            )
+          );
+        }
+      } catch {
+        Alert.alert("Error", "Failed to update. Please try again.");
+      } finally {
+        setTogglingId(null);
+      }
+    },
+    []
+  );
 
   const cancelBooking = useCallback(
     (booking: RecurringBooking) => {
@@ -169,6 +219,8 @@ export default function RecurringBookingsScreen() {
     ({ item }: { item: RecurringBooking }) => {
       const badge = statusStyle(item.status);
       const isCancelling = cancellingId === item.id;
+      const isToggling = togglingId === item.id;
+      const canPauseResume = item.status === "active" || item.status === "paused";
 
       return (
         <View style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.gray[100] }}>
@@ -190,25 +242,32 @@ export default function RecurringBookingsScreen() {
             </View>
           </View>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.gray[100] }}>
-            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.currency ?? "ZAR"} {item.price?.toFixed(2)}</Text>
-            {item.status !== "cancelled" && (
-              <TouchableOpacity
-                onPress={() => cancelBooking(item)}
-                disabled={isCancelling}
-                style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: "#FECACA", backgroundColor: "#FEF2F2" }}
-              >
-                {isCancelling ? (
-                  <ActivityIndicator size="small" color={Colors.error} />
-                ) : (
-                  <Text style={{ fontSize: 14, fontWeight: "500", color: "#DC2626" }}>Cancel</Text>
-                )}
-              </TouchableOpacity>
-            )}
+            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.currency} {item.price != null && item.price > 0 ? item.price.toFixed(2) : "—"}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              {canPauseResume && (
+                <TouchableOpacity
+                  onPress={() => togglePauseResume(item)}
+                  disabled={isToggling}
+                  style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.gray[50] }}
+                >
+                  {isToggling ? <ActivityIndicator size="small" color={Colors.gray[600]} /> : <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{item.status === "paused" ? "Resume" : "Pause"}</Text>}
+                </TouchableOpacity>
+              )}
+              {item.status !== "cancelled" && (
+                <TouchableOpacity
+                  onPress={() => cancelBooking(item)}
+                  disabled={isCancelling}
+                  style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: "#FECACA", backgroundColor: "#FEF2F2" }}
+                >
+                  {isCancelling ? <ActivityIndicator size="small" color={Colors.error} /> : <Text style={{ fontSize: 14, fontWeight: "500", color: "#DC2626" }}>Cancel</Text>}
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         </View>
       );
     },
-    [cancellingId, cancelBooking],
+    [cancellingId, togglingId, cancelBooking, togglePauseResume],
   );
 
   if (loading && bookings.length === 0) {

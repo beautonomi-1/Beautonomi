@@ -38,6 +38,18 @@ export default function ProductPaymentCallback() {
           setOrderNumber(response.data.orderNumber ?? "");
           setMessage("Payment successful! Your order has been confirmed.");
 
+          // Notify customer app WebView so it can close and navigate to orders
+          const win = typeof window !== "undefined" ? window as unknown as { ReactNativeWebView?: { postMessage: (s: string) => void } } : null;
+          if (win?.ReactNativeWebView?.postMessage) {
+            try {
+              win.ReactNativeWebView.postMessage(
+                JSON.stringify({ type: "checkout_success", payment_type: "product_order" })
+              );
+            } catch {
+              // ignore
+            }
+          }
+
           setTimeout(() => {
             router.push("/account-settings/orders");
           }, 4000);

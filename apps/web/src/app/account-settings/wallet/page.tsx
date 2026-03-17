@@ -187,7 +187,7 @@ export default function WalletPage() {
                     </motion.button>
                     
                     <p className="text-xs text-gray-500 font-light mt-2">
-                      You&apos;ll be redirected to Paystack to complete the top up.
+                      You'll be redirected to complete the top up with your card.
                     </p>
                   </div>
                 </motion.div>

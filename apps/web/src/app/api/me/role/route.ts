@@ -19,9 +19,14 @@ export async function GET(request: NextRequest) {
 
     let role = user.role;
 
-    // Provider app: allow customers who are actually provider owners (role may not have been upgraded)
+    // Provider context: web provider portal or provider app (X-App: provider or ?portal=provider)
     const isProviderApp = request.headers.get("X-App") === "provider";
-    if (isProviderApp && role === "customer") {
+    const isProviderPortal =
+      request.nextUrl?.searchParams?.get("portal") === "provider";
+    const isProviderContext = isProviderApp || isProviderPortal;
+
+    // Provider context: allow customers who are actually provider owners (role may not have been upgraded)
+    if (isProviderContext && role === "customer") {
       const supabaseAdmin = getSupabaseAdmin();
       const [ownerOfProvider, staffAsOwner] = await Promise.all([
         supabaseAdmin
@@ -46,6 +51,21 @@ export async function GET(request: NextRequest) {
           .from("users")
           .update({ role: "provider_owner" })
           .eq("id", user.id);
+      }
+    }
+
+    // Provider context: customers who are active staff (any role) get provider_staff for this request only (no DB write)
+    if (isProviderContext && role === "customer") {
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data: staffRow } = await supabaseAdmin
+        .from("provider_staff")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      if (staffRow) {
+        role = "provider_staff";
       }
     }
 
