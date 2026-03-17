@@ -4,8 +4,16 @@ import React, { useMemo } from "react";
 import dynamic from "next/dynamic";
 import "react-quill/dist/quill.snow.css";
 
-// Dynamically import ReactQuill to avoid SSR issues
-const ReactQuill = dynamic(() => import("react-quill"), { ssr: false }) as any;
+// Dynamically import ReactQuill to avoid SSR issues (no type export from react-quill)
+const ReactQuill = dynamic(() => import("react-quill"), { ssr: false }) as React.ComponentType<{
+  value?: string;
+  onChange?: (value: string) => void;
+  placeholder?: string;
+  className?: string;
+  modules?: Record<string, unknown>;
+  formats?: string[];
+  theme?: string;
+}>;
 
 interface WysiwygEditorProps {
   value: string;

@@ -62,7 +62,14 @@ export default function MessagesScreen() {
                   <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }} numberOfLines={1}>{c.last_message_preview}</Text>
                 )}
               </View>
-              <Text style={{ color: Colors.primary, fontWeight: "600" }}>›</Text>
+              <View style={{ alignItems: "flex-end" }}>
+                {(c.unread_count ?? c.unread_count_customer ?? 0) > 0 && (
+                  <View style={{ marginBottom: 4, backgroundColor: Colors.primary, minWidth: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 }}>
+                    <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>{(c.unread_count ?? c.unread_count_customer ?? 0)}</Text>
+                  </View>
+                )}
+                <Text style={{ color: Colors.primary, fontWeight: "600" }}>›</Text>
+              </View>
             </TouchableOpacity>
           ))}
         </View>

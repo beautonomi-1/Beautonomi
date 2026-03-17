@@ -1,11 +1,11 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   handleApiError,
   successResponse,
   notFoundResponse,
   errorResponse,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 
@@ -23,8 +23,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRoleInApi(["superadmin"], request);
-    if (!auth) throw new Error("Authentication required");
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) throw new Error("Authentication required");
     const supabase = getSupabaseAdmin();
     const { id } = await params;
     const body = await request.json();
@@ -54,8 +54,8 @@ export async function PATCH(
     }
 
     // Update verification status
-    const { data: updatedProvider, error: updateError } = await (supabase
-      .from("providers") as any)
+    const { data: updatedProvider, error: updateError } = await supabase
+      .from("providers")
       .update({
         is_verified: verified,
         updated_at: new Date().toISOString(),
@@ -70,8 +70,8 @@ export async function PATCH(
 
     // Audit + notify provider owner user
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.provider.verify",
       entity_type: "provider",
       entity_id: id,
@@ -86,16 +86,22 @@ export async function PATCH(
         .eq("id", id)
         .single();
 
-      const providerUserId = (providerRow as any)?.user_id;
+      const providerRowTyped = providerRow as { user_id?: string; business_name?: string } | null;
+      const providerUserId = providerRowTyped?.user_id;
       if (providerUserId) {
-        await sendToUser(providerUserId, {
-          title: verified ? "Account Verified" : "Verification Updated",
-          message: verified
-            ? `Your business ${(providerRow as any)?.business_name || ""} has been verified.`
-            : `Your verification status has been updated.`,
-          data: { type: "provider_verification", provider_id: id, verified },
-          url: `/provider`,
-        });
+        await sendToUser(
+          providerUserId,
+          {
+            title: verified ? "Account Verified" : "Verification Updated",
+            message: verified
+              ? `Your business ${providerRowTyped?.business_name ?? ""} has been verified.`
+              : `Your verification status has been updated.`,
+            data: { type: "provider_verification", provider_id: id, verified },
+            url: `/provider`,
+          },
+          ["push"],
+          { appType: "provider" }
+        );
       }
     } catch (e) {
       console.error("Failed to notify provider verification:", e);

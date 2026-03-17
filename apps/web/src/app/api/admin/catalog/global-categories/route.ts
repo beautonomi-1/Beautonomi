@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const globalCategorySchema = z.object({
@@ -24,7 +25,7 @@ void _updateGlobalCategorySchema;
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
 
@@ -38,9 +39,9 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    // Get provider count for each category
+    type CategoryRow = { id: string; [key: string]: unknown };
     const categoriesWithCounts = await Promise.all(
-      (categories || []).map(async (category: any) => {
+      (categories || []).map(async (category: CategoryRow) => {
         try {
           const { count } = await supabase
             .from("provider_global_category_associations")
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
     let body;
@@ -116,8 +117,8 @@ export async function POST(request: NextRequest) {
       return handleApiError(new Error("Category with this slug already exists"), "Duplicate slug", 409);
     }
 
-    const { data: category, error } = await (supabase
-      .from("global_service_categories") as any)
+    const { data: category, error } = await supabase
+      .from("global_service_categories")
       .insert({
         name,
         slug: normalizedSlug,

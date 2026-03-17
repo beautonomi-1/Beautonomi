@@ -4,7 +4,7 @@ import React from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
-import { DollarSign, Calendar, Building2, Users, ArrowRight, Gift } from "lucide-react";
+import { DollarSign, Calendar, Building2, Users, ArrowRight, Gift, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function ReportsPage() {
@@ -43,6 +43,13 @@ export default function ReportsPage() {
       href: "/admin/reports/gift-cards",
       icon: Gift,
       color: "text-green-600",
+    },
+    {
+      title: "Yoco reconciliation",
+      description: "Yoco payments vs booking_payments sync status (debug sync issues)",
+      href: "/admin/reports/yoco-reconciliation",
+      icon: CreditCard,
+      color: "text-indigo-600",
     },
   ];
 

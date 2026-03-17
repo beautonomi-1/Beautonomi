@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 const updateCitySchema = z.object({
   name: z.string().min(1).optional(),
@@ -22,8 +24,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -53,13 +55,13 @@ export async function GET(
     const { count } = await supabase
       .from("providers")
       .select("*", { count: "exact", head: true })
-      .eq("city", (city as any).name)
-      .eq("country", (city as any).country)
+      .eq("city", (city as { name: string; country: string }).name)
+      .eq("country", (city as { name: string; country: string }).country)
       .eq("status", "active");
 
     return NextResponse.json({
       data: {
-        ...(city as Record<string, any>),
+        ...(city as Record<string, unknown>),
         provider_count: count || 0,
       },
       error: null,
@@ -89,8 +91,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -114,8 +116,8 @@ export async function PUT(
       );
     }
 
-    const { data: city, error } = await (supabase
-      .from("featured_cities") as any)
+    const { data: city, error } = await supabase
+      .from("featured_cities")
       .update(validationResult.data)
       .eq("id", id)
       .select()
@@ -136,8 +138,8 @@ export async function PUT(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.content.featured_city.update",
       entity_type: "featured_city",
       entity_id: id,
@@ -173,8 +175,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -182,8 +184,8 @@ export async function DELETE(
     const supabase = await getSupabaseServer(request);
 
     // Soft delete by setting is_active to false
-    const { data: city, error } = await (supabase
-      .from("featured_cities") as any)
+    const { data: city, error } = await supabase
+      .from("featured_cities")
       .update({ is_active: false })
       .eq("id", id)
       .select()
@@ -204,8 +206,8 @@ export async function DELETE(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.content.featured_city.delete",
       entity_type: "featured_city",
       entity_id: id,

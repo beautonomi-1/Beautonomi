@@ -15,6 +15,7 @@ import { supabase } from "@/lib/supabase/client";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { Colors } from "@/constants/colors";
 import { WaitingIllustration } from "@/components/on-demand/WaitingIllustration";
+import { playRingtone } from "@/lib/on-demand/ringtone";
 
 interface OnDemandRequest {
   id: string;
@@ -122,6 +123,7 @@ export default function OnDemandWaitingScreen() {
       return;
     }
     if (request.status === "accepted") {
+      playRingtone(onDemandConfig).catch(() => {});
       if (request.booking_id) {
         router.replace({ pathname: "/(app)/booking-detail", params: { id: request.booking_id } });
       } else {

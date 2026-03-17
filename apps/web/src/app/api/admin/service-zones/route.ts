@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
   errorResponse,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -19,7 +19,7 @@ const createSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
 
     const { data, error } = await supabase
@@ -30,7 +30,8 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    const zones = (data || []).map((row: any) => ({
+    type ZoneRow = { id: string; name?: string; country_code?: string; status?: string; version?: number; bbox?: unknown; created_at?: string; updated_at?: string; geometry?: unknown };
+    const zones = (data || []).map((row: ZoneRow) => ({
       id: row.id,
       name: row.name,
       country_code: row.country_code,
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const parse = createSchema.safeParse(body);

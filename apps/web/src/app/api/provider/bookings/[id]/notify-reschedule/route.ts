@@ -32,7 +32,8 @@ export async function POST(
       .select("provider_id")
       .eq("id", id)
       .single();
-    if (!booking || (booking as any).provider_id !== providerId) {
+    const row = booking as { provider_id?: string } | null;
+    if (!row || row.provider_id !== providerId) {
       return notFoundResponse("Booking not found");
     }
 

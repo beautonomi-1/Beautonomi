@@ -5,12 +5,14 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useApi } from "@/hooks/useApi";
+import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { Avatar } from "@/components/ui/Avatar";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -42,6 +44,7 @@ interface ClientDetail {
   customer_id: string;
   customer: ClientCustomer;
   notes: string | null;
+  tags?: string[] | null;
   total_bookings: number;
   total_spent: number;
   history: HistoryItem[];
@@ -71,6 +74,7 @@ export default function ClientDetailScreen() {
   } = useApi<ClientDetail>(`/api/provider/clients/${clientId}`, {
     enabled: !!clientId,
   });
+  const { execute: patchClient } = useApiMutation("patch");
 
   const onRefresh = useCallback(() => {
     refresh();
@@ -79,6 +83,19 @@ export default function ClientDetailScreen() {
   const goBackToClients = useCallback(() => {
     router.replace("/(app)/(tabs)/clients" as never);
   }, [router]);
+
+  const handleTagsChange = useCallback(
+    async (tags: string[]) => {
+      if (!clientId) return;
+      const { error: err } = await patchClient(`/api/provider/clients/${clientId}`, { tags });
+      if (err) {
+        Alert.alert("Error", err);
+        return;
+      }
+      refresh();
+    },
+    [clientId, patchClient, refresh]
+  );
 
   if (loading && !client) {
     return (
@@ -107,6 +124,7 @@ export default function ClientDetailScreen() {
   const customer = client.customer ?? {};
   const name = customer.full_name ?? "Client";
   const history = client.history ?? [];
+  const clientTags = client.tags ?? [];
 
   return (
     <ScreenContainer
@@ -148,6 +166,21 @@ export default function ClientDetailScreen() {
                 {formatCurrency(client.total_spent, "ZAR")}
               </Text>
             </View>
+          </View>
+
+          <View style={twStyle("mt-3 border-t border-gray-100 pt-3")}>
+            <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Tags</Text>
+            <ChipCombobox
+              value={clientTags}
+              onChange={handleTagsChange}
+              staticSuggestions={[
+                { value: "VIP", label: "VIP" },
+                { value: "Regular", label: "Regular" },
+                { value: "New", label: "New" },
+              ]}
+              placeholder="Add tags (e.g. VIP, Regular)"
+              accessibilityLabel="Client tags"
+            />
           </View>
         </View>
 

@@ -53,16 +53,41 @@ export async function GET(request: NextRequest) {
     const slice = hasMore ? items.slice(0, limit) : items;
     const last = slice[slice.length - 1];
 
-    const likedRes = await supabaseAdmin
-      .from("explore_events")
-      .select("post_id")
-      .eq("actor_type", "authed")
-      .eq("actor_key", user.id)
-      .eq("event_type", "like")
-      .in("post_id", slice.map((r: any) => r.id));
+    const postIdsSlice = slice.map((r: any) => r.id);
+    const [likedRes, collectionLinks] = await Promise.all([
+      supabaseAdmin
+        .from("explore_events")
+        .select("post_id")
+        .eq("actor_type", "authed")
+        .eq("actor_key", user.id)
+        .eq("event_type", "like")
+        .in("post_id", postIdsSlice),
+      postIdsSlice.length > 0
+        ? (async () => {
+            const { data: userColls } = await supabaseAdmin
+              .from("explore_collections")
+              .select("id")
+              .eq("user_id", user.id);
+            const collIds = (userColls || []).map((c: any) => c.id);
+            if (collIds.length === 0) return [] as { post_id: string; collection_id: string }[];
+            const { data: links } = await supabaseAdmin
+              .from("explore_collection_posts")
+              .select("post_id, collection_id")
+              .in("collection_id", collIds)
+              .in("post_id", postIdsSlice);
+            return links || [];
+          })()
+        : Promise.resolve([]),
+    ]);
     const likedIds = new Set((likedRes.data || []).map((r: any) => r.post_id));
+    const postToCollectionIds = new Map<string, string[]>();
+    for (const link of collectionLinks as { post_id: string; collection_id: string }[]) {
+      const arr = postToCollectionIds.get(link.post_id) ?? [];
+      arr.push(link.collection_id);
+      postToCollectionIds.set(link.post_id, arr);
+    }
 
-    const data: ExplorePost[] = slice.map((r: any) => ({
+    const data: (ExplorePost & { collection_ids?: string[] })[] = slice.map((r: any) => ({
       id: r.id,
       provider_id: r.provider_id,
       provider: r.provider_business_name
@@ -80,6 +105,7 @@ export async function GET(request: NextRequest) {
       updated_at: r.updated_at,
       is_saved: true,
       is_liked: likedIds.has(r.id),
+      collection_ids: postToCollectionIds.get(r.id) ?? [],
     }));
 
     let nextCursor: string | undefined;

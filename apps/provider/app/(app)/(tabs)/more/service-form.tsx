@@ -12,14 +12,13 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
-import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { twStyle } from "@/lib/twStyle";
 
 interface ServiceCategory {
@@ -148,12 +147,9 @@ export default function ServiceFormScreen() {
   const taxRateOptions = refObj.tax_rate?.length ? refObj.tax_rate : [{ value: "0", label: "No tax" }, { value: "15", label: "15% VAT" }];
 
   const [form, setForm] = useState(defaultForm);
-  const [categorySheetOpen, setCategorySheetOpen] = useState(false);
   const [serviceTypeSheetOpen, setServiceTypeSheetOpen] = useState(false);
   const [availabilitySheetOpen, setAvailabilitySheetOpen] = useState(false);
   const [taxSheetOpen, setTaxSheetOpen] = useState(false);
-  const [teamSheetOpen, setTeamSheetOpen] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
 
   useEffect(() => {
     if (service) {
@@ -183,25 +179,25 @@ export default function ServiceFormScreen() {
     }
   }, [service, serviceId]);
 
-  const handleCreateCategory = useCallback(async () => {
-    const name = newCategoryName.trim();
-    if (!name) {
-      Alert.alert("Validation", "Category name is required.");
-      return;
-    }
-    const res = await postMutation("/api/provider/categories", { name }) as { data?: { id: string }; error?: string };
-    if (res.error) {
-      Alert.alert("Error", res.error);
-      return;
-    }
-    setNewCategoryName("");
-    await refreshCategories();
-    if (res.data?.id) {
-      setForm((p) => ({ ...p, categoryId: res.data!.id }));
-    }
-    setCategorySheetOpen(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [newCategoryName, postMutation, refreshCategories]);
+  const handleCreateCategory = useCallback(
+    async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return null;
+      const res = (await postMutation("/api/provider/categories", {
+        name: trimmed,
+      })) as { data?: { id: string }; error?: string };
+      if (res.error) {
+        Alert.alert("Error", res.error);
+        return null;
+      }
+      await refreshCategories();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      return res.data?.id
+        ? { value: res.data.id, label: trimmed }
+        : null;
+    },
+    [postMutation, refreshCategories]
+  );
 
   const handleSave = useCallback(async () => {
     const name = form.name.trim();
@@ -340,16 +336,16 @@ export default function ServiceFormScreen() {
 
             <View style={twStyle("mb-3")}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Category *</Text>
-              <TouchableOpacity
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
-                onPress={() => setCategorySheetOpen(true)}
-                accessibilityLabel={`Category, ${form.categoryId ? categories.find((c: ServiceCategory) => c.id === form.categoryId)?.name ?? "Selected" : "Select category"}`}
-                accessibilityRole="button"
-              >
-                <Text style={twStyle(form.categoryId ? "text-base text-gray-900" : "text-base text-gray-400")}>
-                  {form.categoryId ? categories.find((c: ServiceCategory) => c.id === form.categoryId)?.name ?? "Selected" : "Select category"}
-                </Text>
-              </TouchableOpacity>
+              <ChipCombobox
+                singleSelect
+                value={form.categoryId || null}
+                onChange={(v) => setForm((p) => ({ ...p, categoryId: v ?? "" }))}
+                staticSuggestions={categories.map((c: ServiceCategory) => ({ value: c.id, label: c.name }))}
+                onCreateNew={handleCreateCategory}
+                placeholder="Select or add category"
+                accessibilityLabel="Category"
+                accessibilityHint="Select a category or type to add a new one"
+              />
             </View>
 
             <View style={twStyle("mb-3")}>
@@ -439,18 +435,23 @@ export default function ServiceFormScreen() {
 
             <View style={twStyle("mb-3")}>
               <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Team members</Text>
-              <TouchableOpacity
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
-                onPress={() => setTeamSheetOpen(true)}
-                accessibilityLabel={`Team members, ${form.teamMemberIds.length ? `${form.teamMemberIds.length} selected` : "Any team member"}`}
-                accessibilityRole="button"
-              >
-                <Text style={twStyle("text-base text-gray-900")}>
-                  {form.teamMemberIds.length === 0
-                    ? "Any team member"
-                    : `${form.teamMemberIds.length} selected`}
-                </Text>
-              </TouchableOpacity>
+              <ChipCombobox
+                value={form.teamMemberIds}
+                onChange={(ids) => {
+                  if (ids.includes("__any__")) {
+                    setForm((p) => ({ ...p, teamMemberIds: [] }));
+                  } else {
+                    setForm((p) => ({ ...p, teamMemberIds: ids.filter((id) => id !== "__any__") }));
+                  }
+                }}
+                staticSuggestions={[
+                  { value: "__any__", label: "Any team member" },
+                  ...staff.map((m: StaffMember) => ({ value: m.id, label: m.name })),
+                ]}
+                placeholder="Any or select staff"
+                accessibilityLabel="Team members"
+                accessibilityHint="Add or remove team members who can perform this service"
+              />
             </View>
 
             <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
@@ -511,42 +512,6 @@ export default function ServiceFormScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {/* Category BottomSheet */}
-      <BottomSheet
-        visible={categorySheetOpen}
-        onClose={() => setCategorySheetOpen(false)}
-        title="Category"
-        subtitle="Select or create a category"
-      >
-        <ScrollView style={twStyle("max-h-80")} keyboardShouldPersistTaps="handled">
-          {categories.map((c: ServiceCategory) => (
-            <TouchableOpacity
-              key={c.id}
-              style={twStyle("border-b border-gray-100 py-3.5")}
-              onPress={() => {
-                setForm((p) => ({ ...p, categoryId: c.id }));
-                setCategorySheetOpen(false);
-              }}
-              accessibilityLabel={c.name}
-              accessibilityRole="button"
-            >
-              <Text style={twStyle("text-base text-gray-900")}>{c.name}</Text>
-            </TouchableOpacity>
-          ))}
-          <View style={twStyle("mt-4 border-t border-gray-200 pt-4")}>
-            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Add new category</Text>
-            <TextInput
-              style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-              placeholder="Category name"
-              placeholderTextColor="#9ca3af"
-              value={newCategoryName}
-              onChangeText={setNewCategoryName}
-            />
-            <ActionButton label="Create & select" onPress={handleCreateCategory} fullWidth />
-          </View>
-        </ScrollView>
-      </BottomSheet>
 
       <BottomSheet
         visible={serviceTypeSheetOpen}
@@ -617,48 +582,6 @@ export default function ServiceFormScreen() {
         </ScrollView>
       </BottomSheet>
 
-      <BottomSheet
-        visible={teamSheetOpen}
-        onClose={() => setTeamSheetOpen(false)}
-        title="Team members"
-        subtitle="Who can perform this service"
-      >
-        <ScrollView style={twStyle("max-h-80")}>
-          <TouchableOpacity
-            style={twStyle("border-b border-gray-100 py-3.5")}
-            onPress={() => {
-              setForm((p) => ({ ...p, teamMemberIds: [] }));
-              setTeamSheetOpen(false);
-            }}
-            accessibilityLabel="Any team member"
-            accessibilityRole="button"
-          >
-            <Text style={twStyle("text-base text-gray-500")}>Any team member</Text>
-          </TouchableOpacity>
-          {staff.map((m: StaffMember) => {
-            const selected = form.teamMemberIds.includes(m.id);
-            return (
-              <TouchableOpacity
-                key={m.id}
-                style={twStyle("border-b border-gray-100 py-3.5 flex-row items-center justify-between")}
-                onPress={() => {
-                  setForm((p) => ({
-                    ...p,
-                    teamMemberIds: selected
-                      ? p.teamMemberIds.filter((id) => id !== m.id)
-                      : [...p.teamMemberIds, m.id],
-                  }));
-                }}
-                accessibilityLabel={`${m.name}, ${selected ? "selected" : "not selected"}`}
-                accessibilityRole="button"
-              >
-                <Text style={twStyle("text-base text-gray-900")}>{m.name}</Text>
-                {selected && <Ionicons name="checkmark-circle" size={22} color="#6366f1" />}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </BottomSheet>
     </ScreenContainer>
   );
 }

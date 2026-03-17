@@ -23,7 +23,7 @@ export async function GET(
 
     const { data: link, error: linkError } = await supabase
       .from("express_booking_links")
-      .select("id, provider_id, name, slug, service_ids, staff_ids, is_active, expires_at, max_uses, use_count")
+      .select("id, provider_id, name, slug, service_ids, staff_ids, location_id, location_type, is_active, expires_at, max_uses, use_count")
       .eq("slug", slug)
       .eq("is_active", true)
       .maybeSingle();
@@ -66,6 +66,8 @@ export async function GET(
       link_name: link.name,
       service_ids: link.service_ids ?? [],
       staff_ids: link.staff_ids ?? [],
+      location_id: link.location_id ?? null,
+      location_type: link.location_type ?? null,
     });
   } catch (error) {
     return handleApiError(error, "Failed to resolve booking link");

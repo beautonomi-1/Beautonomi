@@ -74,7 +74,7 @@ export function getPortalForUser(params: {
 }): Portal {
   const { role, provider_status } = params;
 
-  if (role === "superadmin") return "admin";
+  if (role === "superadmin" || role?.startsWith("admin_")) return "admin";
   if (role === "customer") return "customer";
 
   if (role === "provider_owner" || role === "provider_staff") {

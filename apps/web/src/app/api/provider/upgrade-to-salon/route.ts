@@ -55,11 +55,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if already upgraded (via capabilities)
+    const capabilities = provider.capabilities as Record<string, unknown> | null;
     if (
-      provider.capabilities &&
-      typeof provider.capabilities === "object" &&
-      (provider.capabilities as any).upgraded_from === "freelancer"
+      capabilities &&
+      typeof capabilities === "object" &&
+      capabilities.upgraded_from === "freelancer"
     ) {
       return handleApiError(
         new Error("Already upgraded"),
@@ -77,8 +77,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (plan?.features) {
-        const features = plan.features as any;
-        // If subscription explicitly disallows upgrade, block it
+        const features = plan.features as Record<string, unknown>;
         if (features.allows_salon_upgrade === false) {
           return handleApiError(
             new Error("Subscription doesn't allow upgrade"),
@@ -113,11 +112,9 @@ export async function POST(request: NextRequest) {
       provider: updatedProvider,
       details: upgradeResult,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error upgrading to salon:", error);
-    return handleApiError(
-      error,
-      error.message || "Failed to upgrade to salon"
-    );
+    const message = error instanceof Error ? error.message : "Failed to upgrade to salon";
+    return handleApiError(error, message);
   }
 }

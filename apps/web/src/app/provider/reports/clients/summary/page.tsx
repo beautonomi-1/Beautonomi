@@ -12,7 +12,7 @@ import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
-import { exportToCSV, exportToPDF, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface ClientSummaryData {
   totalClients: number;
@@ -89,7 +89,7 @@ export default function ClientSummaryReport() {
   const handleExport = (format: "csv" | "pdf" = "csv") => {
     if (!data) return;
     if (format === "csv") {
-      const exportData = formatReportDataForExport(data, "client-summary");
+      const exportData = formatReportDataForExport(data as unknown as ReportRow, "client-summary");
       exportToCSV(exportData, "client-summary-report");
     } else {
       exportToPDF("client-summary-report", "client-summary-report", "Client Summary Report");

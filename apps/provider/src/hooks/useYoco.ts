@@ -218,6 +218,9 @@ export function useYocoDevices() {
 
 /* ─── Payment Processing ─── */
 
+const POLL_INTERVAL_MS = 3000;
+const POLL_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+
 export function useYocoPayment() {
   const [processing, setProcessing] = useState(false);
 
@@ -229,14 +232,42 @@ export function useYocoPayment() {
           "/api/provider/yoco/payments",
           request as unknown as Record<string, unknown>,
         );
-        if (res.error) {
-          Alert.alert(
-            "Payment Failed",
-            res.error.message || "Card payment could not be processed",
-          );
+        const err = (res as { error?: { message?: string; code?: string } })?.error;
+        if (err) {
+          const code = err.code;
+          const msg =
+            code === "SUBSCRIPTION_REQUIRED"
+              ? "Upgrade your plan to use Yoco card payments."
+              : err.message || "Card payment could not be processed";
+          Alert.alert(code === "SUBSCRIPTION_REQUIRED" ? "Yoco not available" : "Payment Failed", msg);
           return null;
         }
-        return res.data ?? null;
+        const data = (res as { data?: YocoPaymentResult })?.data ?? null;
+        if (!data) return null;
+
+        // If still pending, poll until success/fail or timeout (avoids "check the device" without follow-up)
+        if (data.status === "pending" && data.id) {
+          const deadline = Date.now() + POLL_TIMEOUT_MS;
+          while (Date.now() < deadline) {
+            await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+            try {
+              const pollRes = await api.get<YocoPaymentResult>(
+                `/api/provider/yoco/payments/${data.id}`,
+              );
+              const pollData = (pollRes as { data?: YocoPaymentResult })?.data ?? (pollRes as unknown as YocoPaymentResult);
+              const status = pollData?.status;
+              if (status === "successful" || status === "failed") {
+                return { ...data, ...pollData, status } as YocoPaymentResult;
+              }
+            } catch {
+              // continue polling
+            }
+          }
+          Alert.alert("Payment timed out", "You can try again.");
+          return null;
+        }
+
+        return data;
       } catch {
         Alert.alert("Payment Failed", "Could not process card payment");
         return null;

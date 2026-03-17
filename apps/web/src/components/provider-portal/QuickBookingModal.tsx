@@ -70,8 +70,8 @@ export default function QuickBookingModal({
       onClose();
       setSelectedSlot("");
       onSuccess?.();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to create booking. Please try again.");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to create booking. Please try again.");
     } finally {
       setIsSubmitting(false);
     }

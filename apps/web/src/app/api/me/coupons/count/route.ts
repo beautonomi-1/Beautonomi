@@ -5,7 +5,7 @@ import { requireRoleInApi, handleApiError, successResponse } from "@/lib/supabas
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Count active coupons for the user
     const { count, error } = await supabase

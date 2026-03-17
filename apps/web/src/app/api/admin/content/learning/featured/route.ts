@@ -5,9 +5,11 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 const patchSchema = z.object({
   article_ids: z.array(z.string().uuid()),
@@ -15,8 +17,8 @@ const patchSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) return unauthorizedResponse("Authentication required");
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) return unauthorizedResponse("Authentication required");
 
     const supabase = await getSupabaseServer(request);
     if (!supabase) {
@@ -43,8 +45,8 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) return unauthorizedResponse("Authentication required");
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) return unauthorizedResponse("Authentication required");
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -82,8 +84,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as { role?: string }).role ?? "superadmin",
+      actor_user_id: user.id,
+      actor_role: (user as { role?: string }).role ?? "superadmin",
       action: "admin.content.learning.featured.update",
       entity_type: "learning_homepage_sections",
       entity_id: row.id,

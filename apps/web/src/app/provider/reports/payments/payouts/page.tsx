@@ -11,7 +11,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays, format } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface PayoutsData {
   totalPayouts: number;
@@ -84,7 +84,7 @@ export default function PayoutsReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data, "payouts");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "payouts");
     exportToCSV(exportData, "payouts-report");
   };
 

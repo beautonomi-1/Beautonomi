@@ -162,7 +162,7 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!id || !user) return;
     api.post(`/api/me/conversations/${id}/read`).catch(() => {});
-  }, [id, user?.id]);
+  }, [id, user]);
 
   // Realtime subscription
   useEffect(() => {

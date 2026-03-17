@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/bookings/[id]
@@ -12,7 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
 
     const { id } = await params;
     const supabase = getSupabaseAdmin();
@@ -61,7 +62,7 @@ export async function GET(
       .single();
 
     return successResponse({
-      ...(booking as any),
+      ...(booking as Record<string, unknown>),
       payment_transaction: transaction || null,
     });
   } catch (error) {
@@ -79,7 +80,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const { id } = await params;
     const supabase = getSupabaseAdmin();
     const body = await request.json();
@@ -95,8 +96,7 @@ export async function PATCH(
       return notFoundResponse("Booking not found");
     }
 
-    // Prepare update data
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
 
@@ -157,15 +157,23 @@ export async function PATCH(
           .single();
 
         if (bookingData) {
-          await sendToUser((bookingData as any).customer_id, {
-            title: "Booking Updated",
-            message: `Your booking ${(bookingData as any).booking_number} has been updated.`,
-            data: {
-              type: "booking_updated",
-              booking_id: id,
-            },
-            url: `/account-settings/bookings/${id}`,
-          });
+          const bd = bookingData as { customer_id?: string; booking_number?: string };
+          if (bd.customer_id) {
+            await sendToUser(
+              bd.customer_id,
+              {
+                title: "Booking Updated",
+                message: `Your booking ${bd.booking_number ?? ""} has been updated.`,
+                data: {
+                  type: "booking_updated",
+                  booking_id: id,
+                },
+                url: `/account-settings/bookings/${id}`,
+              },
+              ["push"],
+              { appType: "customer" }
+            );
+          }
         }
       } catch (notifError) {
         console.error("Error sending notification:", notifError);

@@ -10,7 +10,7 @@ import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabas
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") || "50");

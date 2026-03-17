@@ -2,13 +2,14 @@
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Play, X } from "lucide-react";
+import { Play } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 import { usePageContent } from "@/hooks/usePageContent";
 import { getVideoEmbedUrl } from "../lib/video-embed";
 import { DemoBookingModal } from "./demo-booking-modal";
+import { VideoTourModal } from "./video-tour-modal";
 
 interface PartnerHeroProps {
   activeTab: string;
@@ -20,7 +21,7 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
   const { user, role, isLoading } = useAuth();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalMode, _setLoginModalMode] = useState<"login" | "signup">("login");
-  const [showVideoSection, setShowVideoSection] = useState(false);
+  const [showVideoModal, setShowVideoModal] = useState(false);
   const [showDemoModal, setShowDemoModal] = useState(false);
   const { getSectionContent } = usePageContent("become-a-partner");
 
@@ -35,7 +36,7 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
 
   const handleVideoTour = () => {
     if (videoEmbedUrl) {
-      setShowVideoSection((prev) => !prev);
+      setShowVideoModal(true);
       return;
     }
     if (!user) {
@@ -166,33 +167,7 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
               </Button>
             </div>
 
-            {/* Inline expandable video section (CMS: video_tour_url) */}
-            {showVideoSection && videoEmbedUrl && (
-              <div className="mb-8 md:mb-12 px-4">
-                <div className="relative max-w-4xl mx-auto rounded-xl overflow-hidden border-2 border-pink-200 bg-black/5 shadow-lg">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full bg-white/90 hover:bg-white shadow"
-                    onClick={() => setShowVideoSection(false)}
-                    aria-label="Close video"
-                  >
-                    <X className="h-4 w-4 text-gray-700" />
-                  </Button>
-                  <div className="aspect-video w-full">
-                    <iframe
-                      title="Video tour"
-                      src={videoEmbedUrl}
-                      className="absolute inset-0 w-full h-full"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-          {/* Feature Pills/Tabs */}
+            {/* Feature Pills/Tabs */}
           <div className="flex flex-wrap justify-center gap-2 sm:gap-3 md:gap-4 px-4 mb-8 md:mb-12">
             {[
               "CALENDAR",
@@ -228,6 +203,11 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
         onOpenChange={setShowDemoModal}
         embedType={demoBookingType}
         embedContent={demoBookingEmbed}
+      />
+      <VideoTourModal
+        open={showVideoModal}
+        onOpenChange={setShowVideoModal}
+        embedUrl={videoEmbedUrl}
       />
     </>
   );

@@ -40,7 +40,10 @@ export async function GET(request: NextRequest) {
       query = query.is("location_type", null);
     }
 
-    const { data: policies, error } = await query.order("location_type", { ascending: false }); // null last
+    const { data: policies, error } = await query
+      .order("location_type", { ascending: false }) // specific location first
+      .order("is_default", { ascending: false })  // default policy first when multiple match
+      .order("created_at", { ascending: false });
 
     if (error) {
       return handleApiError(
@@ -50,7 +53,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Return the first matching policy (specific location type takes precedence)
+    // Return the first matching policy (location type then is_default then newest)
     if (policies && policies.length > 0) {
       return successResponse([policies[0]]);
     }

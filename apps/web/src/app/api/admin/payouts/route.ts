@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getPaginationParams } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, getPaginationParams  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/payouts
@@ -9,7 +10,7 @@ import { requireRoleInApi, getPaginationParams } from "@/lib/supabase/api-helper
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = await getSupabaseServer(request);
 
     if (!supabase) {
@@ -77,28 +78,23 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch provider data separately
-    const providerIds = [
-      ...new Set(payouts.map((p: any) => p.provider_id).filter(Boolean)),
-    ];
+    type PayoutRow = { provider_id?: string; recipient_code?: string; [key: string]: unknown };
+    const providerIds = [...new Set((payouts as PayoutRow[]).map((p) => p.provider_id).filter(Boolean))];
 
-    let providerMap = new Map();
+    let providerMap = new Map<string, { id: string; business_name?: string; slug?: string }>();
     if (providerIds.length > 0) {
       const { data: providers } = await supabase
         .from("providers")
         .select("id, business_name, slug")
         .in("id", providerIds);
-
       if (providers) {
-        providerMap = new Map(providers.map((p: any) => [p.id, p]));
+        providerMap = new Map(providers.map((p: { id: string; business_name?: string; slug?: string }) => [p.id, p]));
       }
     }
 
-    // Fetch bank account data: by recipient_code (stored on payout) and by provider_id (for pending payouts without recipient_code yet)
-    const recipientCodes = payouts
-      .map((p: any) => p.recipient_code)
-      .filter(Boolean);
+    const recipientCodes = (payouts as PayoutRow[]).map((p) => p.recipient_code).filter(Boolean);
 
-    let bankAccountByRecipient = new Map();
+    let bankAccountByRecipient = new Map<string, { recipient_code?: string; account_name?: string; account_number_last4?: string; bank_name?: string; bank_code?: string }>();
     if (recipientCodes.length > 0) {
       const { data: bankAccounts } = await supabase
         .from("provider_payout_accounts")
@@ -106,10 +102,10 @@ export async function GET(request: NextRequest) {
         .in("recipient_code", recipientCodes)
         .eq("active", true)
         .is("deleted_at", null);
-
       if (bankAccounts) {
+        type AccRow = { recipient_code?: string };
         bankAccountByRecipient = new Map(
-          bankAccounts.map((acc: any) => [acc.recipient_code, acc])
+          bankAccounts.map((acc: AccRow) => [acc.recipient_code ?? "", acc])
         );
       }
     }
@@ -134,8 +130,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Transform payouts to include provider and bank account data
-    const enrichedPayouts = payouts.map((payout: any) => {
+    const enrichedPayouts = (payouts as PayoutRow[]).map((payout) => {
       const bankFromRecipient = payout.recipient_code
         ? bankAccountByRecipient.get(payout.recipient_code) || null
         : null;

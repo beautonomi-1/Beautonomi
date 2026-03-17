@@ -16,7 +16,7 @@ const createSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const body = createSchema.parse(await request.json());
     const { provider_id, booking_id } = body;

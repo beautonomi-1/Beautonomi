@@ -13,7 +13,7 @@ export async function GET(
 ) {
   try {
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id: wishlistId } = await params;
 
     // Verify wishlist belongs to user

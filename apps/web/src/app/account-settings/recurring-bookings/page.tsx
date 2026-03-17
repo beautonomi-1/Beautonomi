@@ -26,7 +26,7 @@ interface RecurringBooking {
   };
   metadata: {
     services?: Array<{ offering_id: string; staff_id?: string }>;
-    address?: any;
+    address?: { line1?: string; city?: string; state?: string; country?: string; postal_code?: string };
   };
   created_at: string;
 }

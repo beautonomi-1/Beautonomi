@@ -19,7 +19,7 @@ export async function DELETE(
       return notFoundResponse("Conversation ID is required");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Verify the conversation belongs to this user (as customer)
     const { data: conversation, error: fetchError } = await supabase

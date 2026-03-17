@@ -6,6 +6,9 @@ import BackButton from "../components/back-button";
 import AuthGuard from "@/components/auth/auth-guard";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { normalizeFullPhoneToE164 } from "@/lib/phone";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 interface PersonalInfoData {
   legalName: { first: string; last: string };
@@ -78,6 +81,11 @@ const PersonalInfo: React.FC = () => {
   const [languages] = useState<string[]>(['English']);
   const [_selectedFile, setSelectedFile] = useState<File | null>(null);
   const [_filePreview, setFilePreview] = useState<string | null>(null);
+  // Phone change verification (Supabase OTP)
+  const [phoneStep, setPhoneStep] = useState<'enter_phone' | 'enter_otp'>('enter_phone');
+  const [pendingPhoneE164, setPendingPhoneE164] = useState<string>('');
+  const [phoneOtpCode, setPhoneOtpCode] = useState<string>('');
+  const [isSendingPhoneOtp, setIsSendingPhoneOtp] = useState(false);
 
   // Load countries, default country code, and profile data
   useEffect(() => {
@@ -196,45 +204,50 @@ const PersonalInfo: React.FC = () => {
 
   const closeModal = () => {
     setModalContent(null);
+    setPhoneStep('enter_phone');
+    setPendingPhoneE164('');
+    setPhoneOtpCode('');
     // Reset file state when modal closes
     setSelectedFile(null);
     setFilePreview(null);
   };
 
-  const saveChanges = async (type: keyof PersonalInfoData, newValue: any) => {
+  const saveChanges = async (type: keyof PersonalInfoData, newValue: Record<string, unknown>) => {
     try {
       setIsSaving(true);
       
       // Map form data to API format
-      const updateData: any = {};
+      const updateData: Record<string, unknown> = {};
       
       if (type === 'legalName') {
-        updateData.first_name = newValue.first;
-        updateData.last_name = newValue.last;
+        updateData.first_name = newValue.first as string;
+        updateData.last_name = newValue.last as string;
       } else if (type === 'preferredName') {
-        updateData.preferred_name = newValue.preferredName || null;
+        updateData.preferred_name = (newValue.preferredName as string) || null;
       } else if (type === 'email') {
-        updateData.email = newValue.email;
+        updateData.email = newValue.email as string;
       } else if (type === 'phone') {
-        // Extract country code from select value (e.g., "Pakistan (+92)" -> "+92")
-        const countryCodeMatch = newValue.countryCode?.match(/\(([^)]+)\)/);
-        const countryCode = countryCodeMatch ? countryCodeMatch[1] : '';
-        updateData.phone = countryCode ? `${countryCode}${newValue.phone}` : newValue.phone;
+        // Accept full E164 from PhoneInput (e.g. "+27823456789") or legacy countryCode + phone
+        if (typeof newValue.phone === "string" && newValue.phone.startsWith("+")) {
+          updateData.phone = (newValue.phone as string).replace(/\s/g, "");
+        } else {
+          const countryCode = (newValue.countryCode as string)?.match(/\(([^)]+)\)/)?.[1] ?? "";
+          updateData.phone = countryCode ? `${countryCode}${newValue.phone}` : newValue.phone;
+        }
       } else if (type === 'address') {
         updateData.address = {
           country: newValue.country,
           line1: newValue.street,
-          line2: newValue.apt || '',
+          line2: (newValue.apt as string) || '',
           city: newValue.city,
           state: newValue.state,
           postal_code: newValue.zip,
         };
       } else if (type === 'emergencyContact') {
         // Extract country code from select value
-        const countryCodeMatch = newValue.countryCode?.match(/\(([^)]+)\)/);
-        const countryCode = countryCodeMatch ? countryCodeMatch[1] : '';
+        const countryCode = ((newValue.countryCode as string)?.match(/\(([^)]+)\)/)?.[1]) ?? '';
         updateData.emergency_contact = {
-          name: newValue.name || null,
+          name: (newValue.name as string) || null,
           relationship: newValue.relationship || null,
           language: newValue.language || null,
           email: newValue.email || null,
@@ -268,13 +281,13 @@ const PersonalInfo: React.FC = () => {
           "Passport": "passport",
           "National ID": "identity",
         };
-        const apiDocumentType = documentTypeMap[documentType] || "identity";
+        const apiDocumentType = documentTypeMap[String(documentType)] || "identity";
 
         // Create FormData for file upload
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('file', file as Blob);
         formData.append('document_type', apiDocumentType);
-        formData.append('country', country);
+        formData.append('country', String(country));
 
         const verificationResponse = await fetch("/api/me/verification", {
           method: "POST",
@@ -306,9 +319,14 @@ const PersonalInfo: React.FC = () => {
       });
 
       if (response.ok) {
-        // Use PATCH response body (updated profile) so UI shows what was just saved (avoids cache)
         const json = await response.json();
         const profile = json?.data;
+        if (profile?.email_change_pending) {
+          closeModal();
+          toast.success("Check your new email and click the confirmation link to complete the change.");
+          router.refresh();
+          return;
+        }
         if (profile) {
           let maskedEmail = '';
           if (profile.email) {
@@ -354,6 +372,63 @@ const PersonalInfo: React.FC = () => {
     } catch (error) {
       console.error("Error saving changes:", error);
       toast.error("An error occurred. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSendPhoneOtp = async (e164: string) => {
+    if (!e164 || !e164.startsWith("+")) return;
+    setIsSendingPhoneOtp(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.updateUser({ phone: e164 });
+      if (error) throw error;
+      setPendingPhoneE164(e164);
+      setPhoneStep('enter_otp');
+      setPhoneOtpCode('');
+      toast.success("Verification code sent to your phone.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send code";
+      toast.error(msg);
+    } finally {
+      setIsSendingPhoneOtp(false);
+    }
+  };
+
+  const handleVerifyPhoneOtp = async (otp: string) => {
+    if (!otp.trim() || !pendingPhoneE164) return;
+    setIsSaving(true);
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.verifyOtp({
+        phone: pendingPhoneE164,
+        token: otp.trim(),
+        type: "phone_change",
+      });
+      if (error) throw error;
+      const response = await fetch("/api/me/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: pendingPhoneE164 }),
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error?.message || "Failed to save phone");
+      }
+      const json = await response.json();
+      const profile = json?.data;
+      if (profile?.phone) {
+        const phoneStr = profile.phone.replace(/\D/g, "");
+        const maskedPhone = phoneStr.length >= 4 ? `${phoneStr.substring(0, 3)} *** ***${phoneStr.substring(phoneStr.length - 4)}` : profile.phone;
+        setPersonalInfo((prev) => ({ ...prev, phone: maskedPhone }));
+      }
+      closeModal();
+      toast.success("Phone number updated successfully!");
+      router.refresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Verification failed";
+      toast.error(msg);
     } finally {
       setIsSaving(false);
     }
@@ -446,6 +521,14 @@ const PersonalInfo: React.FC = () => {
           defaultCountryCode={defaultCountryCode}
           defaultCountry={defaultCountry}
           languages={languages}
+          phoneStep={phoneStep}
+          pendingPhoneE164={pendingPhoneE164}
+          phoneOtpCode={phoneOtpCode}
+          setPhoneOtpCode={setPhoneOtpCode}
+          setPhoneStep={setPhoneStep}
+          onSendPhoneOtp={handleSendPhoneOtp}
+          onVerifyPhoneOtp={handleVerifyPhoneOtp}
+          isSendingPhoneOtp={isSendingPhoneOtp}
         />
       )}
       </div>
@@ -478,9 +561,9 @@ const InfoItem: React.FC<{ label: string; value: string; onEdit?: () => void; on
   </div>
 );
 
-const InfoCard: React.FC<{ title: string; content: string; img: any }> = ({ title, content, img }) => (
+const InfoCard: React.FC<{ title: string; content: string; img: string | { src: string } }> = ({ title, content, img }) => (
   <div className="mb-4 md:mb-5 pb-4 md:pb-5 border-b border-gray-200 last:border-0">
-   <Image src={img} width={35} height={35} alt={title} className="mb-2" />
+   <Image src={typeof img === "string" ? img : img.src} width={35} height={35} alt={title} className="mb-2" />
     <h3 className="font-medium text-sm md:text-base my-2 text-gray-900">{title}</h3>
     <p className="text-xs md:text-sm text-gray-600 font-light leading-relaxed">{content}</p>
   </div>
@@ -489,16 +572,42 @@ const InfoCard: React.FC<{ title: string; content: string; img: any }> = ({ titl
 interface ModalProps {
   content: ModalContent;
   onClose: () => void;
-  onSave: (newValue: any) => void;
+  onSave: (newValue: Record<string, unknown>) => void;
   isSaving: boolean;
   initialData?: PersonalInfoData;
   countries?: Country[];
   defaultCountryCode?: string;
   defaultCountry?: string;
   languages?: string[];
+  phoneStep?: 'enter_phone' | 'enter_otp';
+  pendingPhoneE164?: string;
+  phoneOtpCode?: string;
+  setPhoneOtpCode?: (v: string) => void;
+  setPhoneStep?: (step: 'enter_phone' | 'enter_otp') => void;
+  onSendPhoneOtp?: (e164: string) => void | Promise<void>;
+  onVerifyPhoneOtp?: (otp: string) => void | Promise<void>;
+  isSendingPhoneOtp?: boolean;
 }
 
-const Modal: React.FC<ModalProps> = ({ content, onClose, onSave, isSaving, initialData, countries = [], defaultCountryCode = "+27", defaultCountry = "South Africa", languages = ['English'] }) => {
+const Modal: React.FC<ModalProps> = ({
+  content,
+  onClose,
+  onSave,
+  isSaving,
+  initialData,
+  countries = [],
+  defaultCountryCode = "+27",
+  defaultCountry = "South Africa",
+  languages = ['English'],
+  phoneStep = 'enter_phone',
+  pendingPhoneE164 = '',
+  phoneOtpCode = '',
+  setPhoneOtpCode,
+  setPhoneStep,
+  onSendPhoneOtp,
+  onVerifyPhoneOtp,
+  isSendingPhoneOtp = false,
+}) => {
   // Initialize form data with existing values
   const getInitialFormData = () => {
     if (!initialData) return {};
@@ -520,13 +629,7 @@ const Modal: React.FC<ModalProps> = ({ content, onClose, onSave, isSaving, initi
           email: '',
         };
       case 'phone':
-        // For phone, we can't extract the full number from masked value
-        // So we'll just use default values and let user re-enter
-        const defaultPhoneCountry = countries.find(c => c.phone_country_code === defaultCountryCode) || countries[0];
-        return {
-          countryCode: defaultPhoneCountry ? `${defaultPhoneCountry.name} (${defaultPhoneCountry.phone_country_code})` : `${defaultCountry} (${defaultCountryCode})`,
-          phone: '',
-        };
+        return { phoneFull: '' };
       case 'address':
         return {
           country: initialData.address.country || defaultCountry,
@@ -563,7 +666,7 @@ const Modal: React.FC<ModalProps> = ({ content, onClose, onSave, isSaving, initi
     }
   };
 
-  const [formData, setFormData] = useState<any>(getInitialFormData());
+  const [formData, setFormData] = useState<Record<string, unknown>>(getInitialFormData());
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
 
@@ -599,9 +702,11 @@ const Modal: React.FC<ModalProps> = ({ content, onClose, onSave, isSaving, initi
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Include file in form data if it's a government ID upload
-    if (content.type === 'governmentId' && selectedFile) {
+    if (content.type === "governmentId" && selectedFile) {
       onSave({ ...formData, file: selectedFile });
+    } else if (content.type === "phone") {
+      // Phone uses OTP flow: Send code → Verify; handled by onSendPhoneOtp / onVerifyPhoneOtp
+      return;
     } else {
       onSave(formData);
     }
@@ -628,7 +733,49 @@ const Modal: React.FC<ModalProps> = ({ content, onClose, onSave, isSaving, initi
         </div>
         <p className="mb-4 text-gray-600 text-sm">{content.description}</p>
         <form onSubmit={handleSubmit}>
-          {content.fields.map((field) => (
+          {content.type === "phone" && phoneStep === "enter_otp" ? (
+            <div className="mb-6">
+              <p className="text-sm text-gray-600 mb-2">
+                We sent a 6-digit code to <span className="font-medium text-gray-900">{pendingPhoneE164}</span>
+              </p>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="000000"
+                value={phoneOtpCode}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+                  setPhoneOtpCode?.(v);
+                }}
+                className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF0077] text-center text-lg tracking-widest font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setPhoneStep?.("enter_phone");
+                  setPhoneOtpCode?.("");
+                }}
+                className="mt-3 text-sm text-[#FF0077] hover:text-[#D60565] underline font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={isSaving}
+              >
+                Wrong number? Go back
+              </button>
+            </div>
+          ) : content.type === "phone" ? (
+            <div className="mb-6">
+              <PhoneInput
+                label="Phone number"
+                value={String(formData.phoneFull ?? "")}
+                onChange={(v) => setFormData((prev) => ({ ...prev, phoneFull: v }))}
+                placeholder="e.g. 82 123 4567"
+              />
+              <p className="text-xs text-gray-500 mt-2">
+                We&apos;ll send a verification code to this number. Your number will only update after you verify.
+              </p>
+            </div>
+          ) : (
+          content.fields.map((field) => (
             <div key={field.name} className="mb-4">
               <label className="block mb-2 text-sm font-medium text-gray-700" htmlFor={field.name}>
                 {field.label}
@@ -662,7 +809,7 @@ const Modal: React.FC<ModalProps> = ({ content, onClose, onSave, isSaving, initi
                 <select
                   id={field.name}
                   name={field.name}
-                  value={formData[field.name] || ''}
+                  value={String(formData[field.name] ?? "")}
                   className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF0077] focus:border-transparent"
                   onChange={handleChange}
                   required={field.name !== 'apt' && field.name !== 'line2'}
@@ -677,36 +824,62 @@ const Modal: React.FC<ModalProps> = ({ content, onClose, onSave, isSaving, initi
                   type={field.type}
                   id={field.name}
                   name={field.name}
-                  value={formData[field.name] || ''}
+                  value={String(formData[field.name] ?? "")}
                   className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF0077] focus:border-transparent"
                   onChange={handleChange}
                   required={field.name !== 'apt' && field.name !== 'line2' && field.name !== 'preferredName'}
                 />
               )}
             </div>
-          ))}
+          ))
+          )}
           <div className="flex justify-end gap-3 mt-6">
             <button
               type="button"
               onClick={onClose}
-              disabled={isSaving}
+              disabled={isSaving || isSendingPhoneOtp}
               className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={isSaving || (content.type === 'governmentId' && !selectedFile)}
-              className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSaving
-                ? "Uploading..."
-                : content.type === "phone"
-                ? "Verify"
-                : content.type === "governmentId"
-                ? "Upload for Verification"
-                : "Save"}
-            </button>
+            {content.type === "phone" && phoneStep === "enter_phone" ? (
+              <button
+                type="button"
+                disabled={!normalizeFullPhoneToE164(String(formData.phoneFull ?? "")) || isSendingPhoneOtp}
+                onClick={() => {
+                  const e164 = normalizeFullPhoneToE164(String(formData.phoneFull ?? "")) ?? "";
+                  if (e164) onSendPhoneOtp?.(e164);
+                }}
+                className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSendingPhoneOtp ? "Sending…" : "Send verification code"}
+              </button>
+            ) : content.type === "phone" && phoneStep === "enter_otp" ? (
+              <button
+                type="button"
+                disabled={phoneOtpCode.length < 4 || isSaving}
+                onClick={() => onVerifyPhoneOtp?.(String(phoneOtpCode))}
+                className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSaving ? "Verifying…" : "Verify and save"}
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={
+                  isSaving ||
+                  (content.type === "governmentId" && !selectedFile) ||
+                  (content.type === "phone" && !normalizeFullPhoneToE164(String(formData.phoneFull ?? "")))
+                }
+                className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSaving
+                  ? "Uploading..."
+                  : content.type === "governmentId"
+                  ? "Upload for Verification"
+                  : "Save"}
+              </button>
+            )}
           </div>
         </form>
       </div>
@@ -750,7 +923,7 @@ const getModalContent = (type: keyof PersonalInfoData, countries: Country[] = []
       return {
         type: 'email',
         title: 'Email address',
-        description: 'Use an address you\'ll always have access to.',
+        description: 'Use an address you\'ll always have access to. We\'ll send a confirmation link to the new address—you must click it to complete the change.',
         fields: [
           { name: 'email', label: 'Email address', type: 'email' },
         ],

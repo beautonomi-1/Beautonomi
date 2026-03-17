@@ -40,7 +40,6 @@ Step-by-step plan to achieve full feature parity between apps/web (client portal
 | **account_membership** | View, cancel | api | S | [ ] Cancel works |
 | **account_loyalty** | Points, redeem | api | M | [ ] Redeem flow |
 | **account_referrals** | Share link | api | S | [ ] Share works |
-| **account_business** | Business services | api | S | [ ] List loads |
 | **explore_post** | Post detail, comments, save | api | M | [ ] Comments; [ ] Save; [ ] explore_save fires |
 | **saved** | Saved posts (redirect or list) | api | S | [ ] Redirect to wishlists when auth |
 | **chats** | Conversation list + chat thread | api | M | [ ] Send message; [ ] message_sent fires |

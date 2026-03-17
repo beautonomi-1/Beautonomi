@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, errorResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/gamification/point-rules
@@ -8,7 +9,7 @@ import { requireRoleInApi, successResponse, errorResponse, handleApiError } from
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = getSupabaseAdmin();
 
     const { data, error } = await supabase
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = getSupabaseAdmin();
     const body = await request.json();
     const { rules } = body as { rules: Array<{ source: string; points: number }> };

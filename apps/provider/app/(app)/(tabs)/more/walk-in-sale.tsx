@@ -18,6 +18,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { Colors } from "@/constants/colors";
 
 interface Product {
@@ -62,6 +63,7 @@ export default function WalkInSaleScreen() {
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "yoco">("cash");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [showYocoPayment, setShowYocoPayment] = useState(false);
 
   const { data: productsData, loading: loadingProducts } = useApi<ProductsResponse>(
     "/api/provider/products?limit=200"
@@ -114,31 +116,44 @@ export default function WalkInSaleScreen() {
 
   const cartTotal = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
 
+  const submitSale = useCallback(
+    async (paymentRef?: string) => {
+      const items = cart.map((c) => ({ product_id: c.product_id, quantity: c.quantity }));
+      const { error: err } = await postSale("/api/provider/product-sales", {
+        items,
+        payment_method: paymentMethod,
+        payment_reference: paymentRef,
+        customer_name: customerName.trim() || undefined,
+        customer_phone: customerPhone.trim() || undefined,
+      });
+      if (err) {
+        Alert.alert("Error", err);
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setCreateOpen(false);
+      setShowYocoPayment(false);
+      setCart([]);
+      setCustomerName("");
+      setCustomerPhone("");
+      setPaymentMethod("cash");
+      refresh();
+    },
+    [cart, paymentMethod, customerName, customerPhone, postSale, refresh]
+  );
+
   const handleCompleteSale = useCallback(async () => {
     if (cart.length === 0) {
       Alert.alert("Empty cart", "Add at least one product.");
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const items = cart.map((c) => ({ product_id: c.product_id, quantity: c.quantity }));
-    const { error: err } = await postSale("/api/provider/product-sales", {
-      items,
-      payment_method: paymentMethod,
-      customer_name: customerName.trim() || undefined,
-      customer_phone: customerPhone.trim() || undefined,
-    });
-    if (err) {
-      Alert.alert("Error", err);
+    if (paymentMethod === "yoco") {
+      setShowYocoPayment(true);
       return;
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setCreateOpen(false);
-    setCart([]);
-    setCustomerName("");
-    setCustomerPhone("");
-    setPaymentMethod("cash");
-    refresh();
-  }, [cart, paymentMethod, customerName, customerPhone, postSale, refresh]);
+    await submitSale();
+  }, [cart, paymentMethod, submitSale]);
 
   if (loadingSales && !salesData) {
     return (
@@ -377,6 +392,17 @@ export default function WalkInSaleScreen() {
           </>
         )}
       </BottomSheet>
+
+      <YocoPaymentSheet
+        visible={showYocoPayment}
+        onClose={() => setShowYocoPayment(false)}
+        amountCents={Math.round(cartTotal * 100)}
+        currency="ZAR"
+        description="Walk-in sale"
+        onPaymentSuccess={async (result) => {
+          await submitSale(result.reference);
+        }}
+      />
     </ScreenContainer>
   );
 }

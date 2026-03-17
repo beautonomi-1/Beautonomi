@@ -81,9 +81,9 @@ export function ImpersonationBanner() {
       } else {
         toast.error("Failed to end impersonation");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error ending impersonation:", error);
-      toast.error(error.message || "Failed to end impersonation");
+      toast.error(error instanceof Error ? error.message : "Failed to end impersonation");
     } finally {
       setIsLoading(false);
     }

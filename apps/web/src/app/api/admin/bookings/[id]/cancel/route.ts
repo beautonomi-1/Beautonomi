@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, notFoundResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 /**
@@ -13,8 +14,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRoleInApi(["superadmin"], request);
-    if (!auth) throw new Error("Authentication required");
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) throw new Error("Authentication required");
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -30,7 +31,9 @@ export async function POST(
       return notFoundResponse("Booking not found");
     }
 
-    if ((booking as any).status === "cancelled") {
+    type BookingRow = { status?: string; customer_id?: string; booking_number?: string };
+    const bookingRow = booking as BookingRow;
+    if (bookingRow.status === "cancelled") {
       return errorResponse("Booking is already cancelled", "INVALID_STATE", 400);
     }
 
@@ -51,29 +54,35 @@ export async function POST(
       return handleApiError(updateError, "Failed to cancel booking");
     }
 
-    // Notify customer
     try {
       const { sendToUser } = await import("@/lib/notifications/onesignal");
-      await sendToUser((booking as any).customer_id, {
-        title: "Booking Cancelled",
-        message: `Your booking ${(booking as any).booking_number} has been cancelled.`,
-        data: {
-          type: "booking_cancelled",
-          booking_id: id,
-        },
-        url: `/account-settings/bookings/${id}`,
-      });
+      if (bookingRow.customer_id) {
+        await sendToUser(
+          bookingRow.customer_id,
+          {
+            title: "Booking Cancelled",
+            message: `Your booking ${bookingRow.booking_number ?? ""} has been cancelled.`,
+            data: {
+              type: "booking_cancelled",
+              booking_id: id,
+            },
+            url: `/account-settings/bookings/${id}`,
+          },
+          ["push"],
+          { appType: "customer" }
+        );
+      }
     } catch (notifError) {
       console.error("Error sending notification:", notifError);
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as { role?: string })?.role ?? "superadmin",
+      actor_user_id: user.id,
+      actor_role: (user as { role?: string })?.role ?? "superadmin",
       action: "admin.booking.cancel",
       entity_type: "booking",
       entity_id: id,
-      metadata: { reason: body.reason ?? null, booking_number: (booking as any).booking_number },
+      metadata: { reason: body.reason ?? null, booking_number: bookingRow.booking_number },
     });
 
     return successResponse(updatedBooking);

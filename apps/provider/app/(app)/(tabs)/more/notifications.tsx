@@ -11,6 +11,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
+import { useNotificationsCount } from "@/providers/NotificationsCountContext";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -120,14 +121,16 @@ function SwipeableNotificationItem({
   notif,
   onPress,
   onDelete,
+  isUnread: isUnreadProp,
 }: {
   notif: Notification;
   onPress: () => void;
   onDelete: () => void;
+  isUnread?: boolean;
 }) {
   const translateX = useRef(new Animated.Value(0)).current;
   const iconInfo = getNotificationIcon(notif.type);
-  const isUnread = !notif.read_at;
+  const isUnread = isUnreadProp ?? !(notif.read_at || (notif as any).read === true || (notif as any).is_read === true);
 
   function handleSwipeRelease() {
     Animated.spring(translateX, {
@@ -197,6 +200,7 @@ export default function NotificationsScreen() {
   const [filter, setFilter] = useState<FilterValue>("all");
 
   const { session } = useAuth();
+  const { refresh: refreshCount } = useNotificationsCount();
   const {
     data: rawData,
     loading,
@@ -204,24 +208,25 @@ export default function NotificationsScreen() {
     mutate: mutateRaw,
   } = useApi<NotificationsResponse>("/api/provider/notifications", { enabled: !!session });
   const notifications = rawData?.notifications ?? null;
-  const mutate = (updated: Notification[]) => mutateRaw({ notifications: updated, total_unread: updated.filter((n) => !n.read_at).length });
+  const isUnread = (n: Notification) => !(n.read_at || (n as any).read === true || (n as any).is_read === true);
+  const mutate = (updated: Notification[]) => mutateRaw({ notifications: updated, total_unread: updated.filter((n) => isUnread(n)).length });
   const { execute: patchNotification } = useApiMutation("patch");
   const { execute: postAction } = useApiMutation("post");
   const { execute: deleteNotification } = useApiMutation("delete");
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
+    await Promise.all([refresh(), refreshCount()]);
     setRefreshing(false);
-  }, [refresh]);
+  }, [refresh, refreshCount]);
 
-  const unreadCount = notifications?.filter((n) => !n.read_at).length ?? 0;
+  const unreadCount = notifications?.filter((n) => isUnread(n)).length ?? 0;
 
   const filteredNotifications = useMemo(() => {
     if (!notifications) return [];
     switch (filter) {
       case "unread":
-        return notifications.filter((n) => !n.read_at);
+        return notifications.filter((n) => isUnread(n));
       case "bookings":
         return notifications.filter((n) => isBookingType(n.type));
       case "payments":
@@ -243,13 +248,15 @@ export default function NotificationsScreen() {
       const updated = notifications.map((n) => ({
         ...n,
         read_at: n.read_at ?? new Date().toISOString(),
+        is_read: true,
       }));
       mutate(updated);
+      await refreshCount();
     }
   }
 
   async function handleMarkRead(notif: Notification) {
-    if (notif.read_at) {
+    if (notif.read_at || (notif as any).is_read || (notif as any).read) {
       navigateToNotification(notif);
       return;
     }
@@ -259,9 +266,10 @@ export default function NotificationsScreen() {
     );
     if (!error && notifications) {
       const updated = notifications.map((n) =>
-        n.id === notif.id ? { ...n, read_at: new Date().toISOString() } : n
+        n.id === notif.id ? { ...n, read_at: new Date().toISOString(), is_read: true } : n
       );
       mutate(updated);
+      await refreshCount();
     }
     navigateToNotification(notif);
   }
@@ -282,6 +290,7 @@ export default function NotificationsScreen() {
     } else if (notifications) {
       const updated = notifications.filter((n) => n.id !== notif.id);
       mutate(updated);
+      await refreshCount();
     }
   }
 
@@ -345,6 +354,7 @@ export default function NotificationsScreen() {
           renderItem={({ item: notif }: { item: Notification }) => (
             <SwipeableNotificationItem
               notif={notif}
+              isUnread={isUnread(notif)}
               onPress={() => handleMarkRead(notif)}
               onDelete={() => handleDelete(notif)}
             />

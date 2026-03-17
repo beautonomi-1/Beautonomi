@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request,
     );
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     );
     const body = await request.json();
     const parsed = createOrderSchema.parse(body);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     if (parsed.fulfillment_type === "delivery" && !parsed.delivery_address_id) {
       return errorResponse("Delivery address is required for delivery orders", "VALIDATION", 400);

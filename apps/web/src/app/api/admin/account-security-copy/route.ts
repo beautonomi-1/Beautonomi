@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
+
+type SettingsRow = { id: string; settings?: Record<string, unknown> };
 
 /**
  * GET /api/admin/account-security-copy
@@ -13,7 +15,7 @@ import { writeAuditLog } from "@/lib/audit/audit";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const supabase = await getSupabaseServer(request);
     const { data: row } = await supabase
       .from("platform_settings")
@@ -22,8 +24,8 @@ export async function GET(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    const settings = (row as any)?.settings ?? {};
-    const copy = settings.account_security_copy ?? {
+    const settings = ((row as SettingsRow | null)?.settings ?? {}) as Record<string, unknown>;
+    const copy = (settings.account_security_copy as Record<string, unknown> | undefined) ?? {
       title: "Keeping your account secure",
       body: "We regularly review accounts to make sure they're as secure as possible. We'll also let you know if there's more we can do to increase the security of your account.",
       safety_tips_customer: { label: "Safety tips for customers", url: "/help#customer" },
@@ -41,7 +43,7 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(req: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], req);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, req);
     const supabase = await getSupabaseServer(req);
     const body = await req.json();
 
@@ -56,19 +58,20 @@ export async function PATCH(req: NextRequest) {
       return successResponse({ message: "No platform settings row to update; account security copy will use defaults until a row exists." });
     }
 
-    const currentSettings = (row as any).settings ?? {};
+    const currentSettings = ((row as SettingsRow).settings ?? {}) as Record<string, unknown>;
+    const acc = currentSettings.account_security_copy as Record<string, unknown> | undefined;
     const updatedSettings = {
       ...currentSettings,
       account_security_copy: {
-        title: body.title ?? currentSettings.account_security_copy?.title ?? "Keeping your account secure",
-        body: body.body ?? currentSettings.account_security_copy?.body ?? "",
+        title: body.title ?? (acc?.title as string) ?? "Keeping your account secure",
+        body: body.body ?? (acc?.body as string) ?? "",
         safety_tips_customer:
           body.safety_tips_customer && typeof body.safety_tips_customer === "object"
             ? {
                 label: body.safety_tips_customer.label ?? "Safety tips for customers",
                 url: body.safety_tips_customer.url ?? "/help#customer",
               }
-            : currentSettings.account_security_copy?.safety_tips_customer ?? {
+            : (acc?.safety_tips_customer as Record<string, unknown>) ?? {
                 label: "Safety tips for customers",
                 url: "/help#customer",
               },
@@ -78,7 +81,7 @@ export async function PATCH(req: NextRequest) {
                 label: body.safety_tips_provider.label ?? "Safety tips for providers",
                 url: body.safety_tips_provider.url ?? "/help#provider",
               }
-            : currentSettings.account_security_copy?.safety_tips_provider ?? {
+            : (acc?.safety_tips_provider as Record<string, unknown>) ?? {
                 label: "Safety tips for providers",
                 url: "/help#provider",
               },
@@ -91,7 +94,7 @@ export async function PATCH(req: NextRequest) {
         settings: updatedSettings,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", (row as any).id);
+      .eq("id", (row as SettingsRow).id);
 
     if (error) throw error;
 

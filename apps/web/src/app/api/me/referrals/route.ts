@@ -10,7 +10,7 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Get user profile to find referral code (handle or id) – select id first in case handle column is missing
     let referralCode = user.id?.slice(0, 8).toUpperCase() || "BEAUTY";

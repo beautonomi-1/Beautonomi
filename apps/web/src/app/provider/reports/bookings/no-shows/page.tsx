@@ -11,7 +11,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays, format } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface NoShowsData {
   totalNoShows: number;
@@ -86,7 +86,7 @@ export default function NoShowsReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data, "no-shows");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "no-shows");
     exportToCSV(exportData, "no-shows-report");
   };
 

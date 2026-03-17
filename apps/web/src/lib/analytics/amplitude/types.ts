@@ -61,13 +61,14 @@ export const EVENT_CATEGORY_VIEW = "category_view";
 export const EVENT_SEARCH_VIEW = "search_view";
 export const EVENT_SEARCH_FILTERS_APPLIED = "search_filters_applied";
 export const EVENT_SEARCH_RESULT_IMPRESSION = "search_result_impression";
-export const EVENT_SEARCH_RESULT_CLICK = "search_result_click";
+/** @see docs/analytics/EVENT_TAXONOMY.md — use taxonomy names for cross-platform funnels */
+export const EVENT_SEARCH_RESULT_CLICK = "search_result_clicked";
 export const EVENT_PROVIDER_PROFILE_VIEW = "provider_profile_view";
 export const EVENT_EXPLORE_FEED_VIEW = "explore_feed_view";
 export const EVENT_EXPLORE_POST_IMPRESSION = "explore_post_impression";
 export const EVENT_EXPLORE_POST_CLICK = "explore_post_click";
-export const EVENT_EXPLORE_SAVE = "explore_save";
-export const EVENT_EXPLORE_UNSAVE = "explore_unsave";
+export const EVENT_EXPLORE_SAVE = "explore_post_save";
+export const EVENT_EXPLORE_UNSAVE = "explore_post_unsave";
 export const EVENT_BOOKING_START = "booking_start";
 export const EVENT_BOOKING_HOLD_CREATED = "booking_hold_created";
 export const EVENT_BOOKING_DETAILS_COMPLETED = "booking_details_completed";

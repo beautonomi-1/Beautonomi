@@ -8,3 +8,4 @@ export type {
   AnalyticsTrackOptions,
   IAnalytics,
 } from "./types";
+export * from "./events";

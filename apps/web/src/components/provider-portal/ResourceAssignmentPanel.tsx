@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Check, AlertCircle, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -49,12 +49,7 @@ export default function ResourceAssignmentPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [selectedResourceId, setSelectedResourceId] = useState<string>("");
 
-  useEffect(() => {
-    loadResources();
-    loadAssignedResources();
-  }, [bookingId]);
-
-  const loadResources = async () => {
+  const loadResources = useCallback(async () => {
     setIsLoading(true);
     try {
       const response = await fetcher.get<{ data?: Resource[]; resources?: Resource[] }>(
@@ -62,14 +57,14 @@ export default function ResourceAssignmentPanel({
       );
       const list = response.data ?? response.resources ?? [];
       setAvailableResources(Array.isArray(list) ? list : []);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to load resources");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to load resources");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const loadAssignedResources = async () => {
+  const loadAssignedResources = useCallback(async () => {
     try {
       const response = await fetcher.get<{ data?: { resources?: BookingResource[] }; resources?: BookingResource[] }>(
         `/api/provider/bookings/${bookingId}/resources`
@@ -79,7 +74,12 @@ export default function ResourceAssignmentPanel({
     } catch {
       setAssignedResources([]);
     }
-  };
+  }, [bookingId]);
+
+  useEffect(() => {
+    loadResources();
+    loadAssignedResources();
+  }, [bookingId, loadResources, loadAssignedResources]);
 
   const handleAssignResource = async () => {
     if (!selectedResourceId) return;
@@ -94,8 +94,8 @@ export default function ResourceAssignmentPanel({
       setSelectedResourceId("");
       loadAssignedResources();
       onUpdate?.();
-    } catch (error: any) {
-      const msg = (error as { message?: string })?.message ?? "Failed to assign resource";
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Failed to assign resource";
       toast.error(msg.includes("not available") ? "This resource is not available at this time" : msg);
     } finally {
       setIsLoading(false);
@@ -111,8 +111,8 @@ export default function ResourceAssignmentPanel({
       toast.success("Resource removed successfully");
       loadAssignedResources();
       onUpdate?.();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to remove resource");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to remove resource");
     } finally {
       setIsLoading(false);
     }

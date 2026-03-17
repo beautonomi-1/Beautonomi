@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveFlagsForUser } from "@/lib/config";
 import type { Platform, Environment } from "@/lib/config/types";
@@ -14,7 +15,7 @@ const ENVS: Environment[] = ["production", "staging", "development"];
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const body = await request.json().catch(() => ({}));
     const userId = body.user_id ?? null;
     const role = body.role ?? null;

@@ -1,8 +1,12 @@
 /**
  * Yoco Payment Utilities
- * 
- * Server-side utilities for Yoco Web POS payment processing
+ *
+ * Server-side utilities for Yoco Web POS payment processing.
  * Following official Yoco API documentation: https://developer.yoco.com/api-reference
+ *
+ * Auth: Yoco API (api.yoco.com) uses Bearer token. We store provider_yoco_integrations.secret_key
+ * from the Yoco dashboard and send it as Authorization: Bearer <secret_key> for Web POS device
+ * and payment calls. Confirm with Yoco docs whether this is a long-lived API key or OAuth JWT.
  */
 
 /**

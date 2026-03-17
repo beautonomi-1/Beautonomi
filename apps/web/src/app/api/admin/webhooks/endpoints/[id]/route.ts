@@ -1,23 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/auth/requireRole";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
-    const result = await requireRole(["superadmin"]);
-    
-    if (!result) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
     const { id } = await params;
 
     const { data, error } = await supabase
@@ -43,10 +35,10 @@ export async function GET(
       },
       events: events || [],
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching webhook endpoint:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to fetch webhook endpoint" },
+      { error: error instanceof Error ? error.message : "Failed to fetch webhook endpoint" },
       { status: 500 }
     );
   }
@@ -57,7 +49,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
@@ -73,7 +65,7 @@ export async function PATCH(
       headers,
     } = body;
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
     if (url !== undefined) updateData.url = url;
     if (events !== undefined) updateData.events = events;
@@ -97,7 +89,7 @@ export async function PATCH(
         secret: undefined,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return handleApiError(error, "Failed to update webhook endpoint");
   }
 }
@@ -107,7 +99,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
@@ -120,7 +112,7 @@ export async function DELETE(
     if (error) throw error;
 
     return successResponse({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return handleApiError(error, "Failed to delete webhook endpoint");
   }
 }

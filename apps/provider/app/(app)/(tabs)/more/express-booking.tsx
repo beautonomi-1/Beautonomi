@@ -6,10 +6,10 @@ import {
   TextInput,
   Share,
   Alert,
-  Linking,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import QRCode from "react-native-qrcode-svg";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -37,9 +37,12 @@ interface ExpressLinkRow {
   slug: string;
   is_active?: boolean;
   use_count?: number;
+  location_id?: string | null;
+  location_type?: string | null;
 }
 
 export default function ExpressBookingScreen() {
+  const router = useRouter();
   const { data: link, loading, refresh } = useApi<BookingLink>(
     "/api/provider/booking-link"
   );
@@ -298,6 +301,7 @@ export default function ExpressBookingScreen() {
                   <View>
                     {expressLinks.map((el, idx) => {
                       const fullUrl = `${(APP_URL || "").replace(/\/$/, "")}/book/l/${encodeURIComponent(el.slug)}`;
+                      const embedUrl = `${fullUrl}?embed=1`;
                       const isCopied = copiedShortId === el.id;
                       return (
                         <View key={el.id} style={{ marginTop: idx === 0 ? 0 : 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16 }}>
@@ -305,9 +309,17 @@ export default function ExpressBookingScreen() {
                             <View style={{ flex: 1 }}>
                               <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{el.name}</Text>
                               <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }} numberOfLines={1}>{fullUrl}</Text>
-                              {el.use_count != null && (
-                                <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[400] }}>{el.use_count} click{el.use_count !== 1 ? "s" : ""}</Text>
-                              )}
+                              <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4, gap: 8 }}>
+                                {el.location_type === "at_home" && (
+                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>At home</Text>
+                                )}
+                                {(el.location_type === "at_salon" || el.location_id) && (
+                                  <Text style={{ fontSize: 11, color: Colors.gray[500] }}>At salon</Text>
+                                )}
+                                {el.use_count != null && (
+                                  <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{el.use_count} click{el.use_count !== 1 ? "s" : ""}</Text>
+                                )}
+                              </View>
                             </View>
                             <View style={{ flexDirection: "row" }}>
                               <TouchableOpacity
@@ -329,6 +341,22 @@ export default function ExpressBookingScreen() {
                               </TouchableOpacity>
                               <TouchableOpacity
                                 style={{ marginRight: 8, borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
+                                onPress={async () => {
+                                  try {
+                                    await Clipboard.setStringAsync(embedUrl);
+                                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                    Alert.alert("Copied", "Embed URL copied. Use it in your website iframe.");
+                                  } catch {
+                                    Alert.alert("Error", "Failed to copy");
+                                  }
+                                }}
+                                accessibilityLabel="Copy embed URL"
+                                accessibilityRole="button"
+                              >
+                                <Ionicons name="code-slash-outline" size={18} color="#6b7280" />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={{ marginRight: 8, borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
                                 onPress={() => Share.share({ message: `Book with me: ${fullUrl}`, url: fullUrl })}
                                 accessibilityLabel="Share short link"
                                 accessibilityRole="button"
@@ -338,7 +366,13 @@ export default function ExpressBookingScreen() {
                               {APP_URL && (
                                 <TouchableOpacity
                                   style={{ marginRight: 8, borderRadius: 8, backgroundColor: "#e0e7ff", paddingHorizontal: 12, paddingVertical: 8 }}
-                                  onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/provider/express-booking`)}
+                                  onPress={() => {
+                    const url = `${(APP_URL || "").replace(/\/$/, "")}/provider/express-booking`;
+                    router.push({
+                      pathname: "/(app)/(tabs)/more/in-app-browser",
+                      params: { url: encodeURIComponent(url), title: "Express booking" },
+                    } as never);
+                  }}
                                   accessibilityLabel="Manage links on web"
                                   accessibilityRole="button"
                                 >

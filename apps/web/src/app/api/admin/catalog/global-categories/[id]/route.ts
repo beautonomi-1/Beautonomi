@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, notFoundResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const updateGlobalCategorySchema = z.object({
@@ -25,7 +26,7 @@ export async function GET(
   try {
     const { id } = await params;
     
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
 
@@ -66,7 +67,7 @@ export async function PUT(
   try {
     const { id } = await params;
     
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -74,7 +75,7 @@ export async function PUT(
     // Validate request body
     const validated = updateGlobalCategorySchema.parse(body);
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (validated.name !== undefined) updateData.name = validated.name;
     if (validated.slug !== undefined)
       updateData.slug = validated.slug.toLowerCase();
@@ -90,8 +91,8 @@ export async function PUT(
 
     updateData.updated_at = new Date().toISOString();
 
-    const { data: category, error } = await (supabase
-      .from("global_service_categories") as any)
+    const { data: category, error } = await supabase
+      .from("global_service_categories")
       .update(updateData)
       .eq("id", id)
       .select()
@@ -126,12 +127,12 @@ export async function DELETE(
   try {
     const { id } = await params;
     
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
 
-    const { data: category, error } = await (supabase
-      .from("global_service_categories") as any)
+    const { data: category, error } = await supabase
+      .from("global_service_categories")
       .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq("id", id)
       .select()

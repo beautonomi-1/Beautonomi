@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requireAdminSection, requireRoleInApi, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { z } from 'zod';
 
 const travelFeesSchema = z.object({
@@ -21,10 +22,10 @@ const travelFeesSchema = z.object({
  * Get platform travel fee settings
  * Allows providers to read limits (for validation), but only superadmins can modify
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     // Allow providers and superadmins to read platform limits
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin']);
+    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = getSupabaseAdmin();
 
     const { data: platformSettings, error } = await supabase
@@ -77,7 +78,7 @@ export async function GET(_request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = getSupabaseAdmin();
     const body = await request.json();
 
@@ -91,8 +92,10 @@ export async function PATCH(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    const currentSettings = (existing as any)?.settings || {};
-    const currentTravelFees = currentSettings.travel_fees || {};
+    type SettingsRow = { id?: string; settings?: Record<string, unknown> };
+    const existingRow = existing as SettingsRow | null;
+    const currentSettings = (existingRow?.settings ?? {}) as Record<string, unknown>;
+    const currentTravelFees = (currentSettings.travel_fees ?? {}) as Record<string, unknown>;
 
     const updatedTravelFees = {
       ...currentTravelFees,
@@ -104,19 +107,20 @@ export async function PATCH(request: NextRequest) {
       travel_fees: updatedTravelFees,
     };
 
-    if (existing && (existing as any).id) {
+    if (existingRow?.id) {
       const { data: updated, error: updateError } = await supabase
         .from('platform_settings')
         .update({
           settings: newSettings,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', (existing as any).id)
+        .eq('id', existingRow.id)
         .select('settings')
         .single();
 
       if (updateError) throw updateError;
-      return successResponse((updated as any).settings.travel_fees);
+      const updatedRow = updated as SettingsRow | null;
+      return successResponse((updatedRow?.settings as Record<string, unknown> | undefined)?.travel_fees);
     }
 
     // No row: create one
@@ -143,11 +147,12 @@ export async function PATCH(request: NextRequest) {
       .single();
 
     if (createError) throw createError;
-    return successResponse((created as any).settings.travel_fees);
+    const createdRow = created as SettingsRow | null;
+    return successResponse((createdRow?.settings as Record<string, unknown> | undefined)?.travel_fees);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(
-        new Error(error.issues.map((e: any) => e.message).join(', ')),
+        new Error(error.issues.map((e: { message: string }) => e.message).join(', ')),
         'Validation failed',
         'VALIDATION_ERROR',
         400

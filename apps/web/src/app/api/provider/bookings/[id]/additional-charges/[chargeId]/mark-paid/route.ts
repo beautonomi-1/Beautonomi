@@ -51,7 +51,7 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, provider_id, customer_id, booking_number, ref_number, currency")
+      .select("id, provider_id, customer_id, booking_number, ref_number, currency, total_amount")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
@@ -141,6 +141,33 @@ export async function POST(
       // Payment was created but charge status update failed - log but don't fail
     }
 
+    // Update booking total_amount so booking total = services + all additional charges (aligned with Paystack flow)
+    const bookingTotalAmount = Number((booking as any).total_amount || 0);
+    const { error: bookingUpdateError } = await supabaseAdmin
+      .from("bookings")
+      .update({
+        total_amount: bookingTotalAmount + chargeAmount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", bookingId);
+
+    if (bookingUpdateError) {
+      console.warn("Error updating booking total_amount:", bookingUpdateError);
+    }
+
+    // Audit/reporting ledger row (walk-in = provider took payment; not included in payout balance)
+    await supabaseAdmin.from("finance_transactions").insert({
+      booking_id: bookingId,
+      provider_id: booking.provider_id,
+      transaction_type: "walk_in_additional_charge",
+      amount: chargeAmount,
+      fees: 0,
+      commission: 0,
+      net: chargeAmount,
+      description: `Walk-in additional charge: ${charge.description || "Add-on"}`,
+      created_at: new Date().toISOString(),
+    });
+
     // Create booking event
     await supabaseAdmin
       .from("booking_events")
@@ -188,7 +215,8 @@ export async function POST(
             booking_id: bookingId,
             charge_description: charge.description,
           },
-          ["push", "email"]
+          ["push", "email"],
+          { appType: "customer" }
         );
       } catch (pushError) {
         console.warn("OneSignal push notification failed:", pushError);

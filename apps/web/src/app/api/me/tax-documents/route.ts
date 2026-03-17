@@ -10,7 +10,7 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 export async function GET(request: NextRequest) {
   try {
     await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const _supabase = await getSupabaseServer();
+    const _supabase = await getSupabaseServer(request);
 
     const { searchParams } = new URL(request.url);
     const year = searchParams.get("year");

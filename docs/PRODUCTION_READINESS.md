@@ -78,3 +78,51 @@ Never commit `.env.local` or any file containing real secrets.
 - **Before every production deploy**: Run `pnpm run release:check` (or `prepare:production` if you want a full build).
 - **Before first EAS production build**: Set EAS secrets, run `expo-doctor` in each app, then build with `--profile production`.
 - **Both mobile apps**: Same env/stub and init patterns; production builds use `APP_ENV=production` for OneSignal and config.
+
+---
+
+## Risks and mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Secret leakage from public endpoints | Whitelisting in analytics-config, third-party-config, branding, config-bundle; tests and `verify-public-endpoints.mjs`. |
+| Provider data accessed across tenants | getProviderIdForUser() used in provider API routes; readiness-check heuristics flag routes missing it. |
+| Admin routes accessible to non-superadmin | requireRoleInApi(['superadmin']) at start of each admin handler; auth-guards tests. |
+| Paystack webhook replay or forgery | HMAC-SHA512 verification; idempotency via webhook_events table. |
+| Inconsistent API response shape | Standard `{ data, error }` in api-helpers; some legacy routes may differ—document and normalize over time. |
+| Env handling (missing or wrong env) | ENVIRONMENT_MATRIX.md and .env.example per app; fallbacks in code where safe (e.g. default branding). |
+| Expo peer dependency warnings | Documented "known good" versions; build without Turbo per app. |
+
+---
+
+## Changes applied (reference)
+
+- **Public endpoint safety:** Branding route returns whitelisted fields only; `public-config-safety.test.ts` covers analytics-config, third-party-config, branding.
+- **Documentation:** ENVIRONMENT_MATRIX.md, SECURITY_HARDENING.md, OBSERVABILITY_AND_ALERTS.md, RELEASE_CHECKLIST.md.
+- **Scripts:** `scripts/prod/readiness-check.mjs`, `scripts/prod/verify-public-endpoints.mjs`, `scripts/prod/verify-rls-and-roles.md`.
+
+No changes to existing API contracts or backward compatibility.
+
+---
+
+## API response standard
+
+- **Standard:** `{ data: T | null, error: { message, code?, details? } | null }` from `apps/web/src/lib/supabase/api-helpers.ts` (`successResponse`, `errorResponse`).
+- **Exceptions:** Some legacy or external-facing routes may return different shapes (e.g. plain `{ enabled }` for feature-flags/check).
+- **Recommendation:** Prefer successResponse/errorResponse for new routes; migrate legacy responses gradually.
+
+---
+
+## Dependency stability (Expo)
+
+- **Known good versions (Expo 54):** react-native-reanimated ~4.1.6, @react-native-async-storage/async-storage ~2.2.0. expo ~54.0.33, react-native 0.81.5.
+- **Peer warnings:** Some packages may warn about peer ranges; if builds pass, treat as warn-only.
+- **Build without Turbo:** `pnpm --filter web build`, `pnpm --filter customer typecheck`, `pnpm --filter provider typecheck` (and lint); EAS build for mobile.
+
+---
+
+## GO / NO-GO criteria
+
+**GO** when: All migrations applied; required env vars set (ENVIRONMENT_MATRIX); no secrets in PUBLIC vars; `readiness-check.mjs` passes; `verify-public-endpoints.mjs` passes for public config; smoke tests pass; Paystack webhook configured and tested.
+
+**NO-GO** if: Any public endpoint returns a known secret field; provider route that mutates data does not use getProviderIdForUser; migrations pending or failing; build or typecheck fails; critical payment or webhook path broken in smoke test.

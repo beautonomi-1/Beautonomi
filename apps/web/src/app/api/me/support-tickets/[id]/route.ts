@@ -23,7 +23,7 @@ export async function GET(
       request
     );
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: ticket, error: ticketError } = await supabase
       .from("support_tickets")

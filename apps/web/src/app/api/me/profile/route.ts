@@ -3,6 +3,26 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, notFoundResponse, handleApiError, requireRoleInApi } from "@/lib/supabase/api-helpers";
 import type { User } from "@/types/beautonomi";
 
+/** User row from users table (select *) with optional profile fields */
+type UserRow = {
+  id: string;
+  full_name?: string | null;
+  email?: string | null;
+  preferred_name?: string | null;
+  handle?: string | null;
+  email_verified?: boolean;
+  phone_verified?: boolean;
+  emergency_contact_name?: string | null;
+  emergency_contact_relationship?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_email?: string | null;
+  emergency_contact_country_code?: string | null;
+  preferred_language?: string | null;
+  identity_verification_status?: string | null;
+  password_changed_at?: string | null;
+  [key: string]: unknown;
+};
+
 /**
  * GET /api/me/profile
  * 
@@ -21,6 +41,16 @@ export async function GET(request: NextRequest) {
 
     if (error || !userData) {
       return notFoundResponse("User not found");
+    }
+
+    const u = userData as UserRow;
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (authUser?.email && u.email !== authUser.email) {
+      await supabase
+        .from("users")
+        .update({ email: authUser.email })
+        .eq("id", user.id);
+      u.email = authUser.email;
     }
 
     // Get default address, verification, and profile data in parallel for better performance
@@ -55,19 +85,17 @@ export async function GET(request: NextRequest) {
     const first_name = nameParts[0] || "";
     const last_name = nameParts.slice(1).join(" ") || "";
 
-    // Determine verification status
-    const verificationStatus = verification?.status || (userData as any).identity_verification_status || 'none';
-    const identityVerified = verificationStatus === 'approved';
+    const verificationStatus = verification?.status || u.identity_verification_status || "none";
+    const identityVerified = verificationStatus === "approved";
 
-    // Format response to match frontend expectations
     const formattedData = {
       ...userData,
       first_name,
       last_name,
-      preferred_name: (userData as any).preferred_name || null,
-      handle: (userData as any).handle || null,
-      email_verified: (userData as any).email_verified || false,
-      phone_verified: (userData as any).phone_verified || false,
+      preferred_name: u.preferred_name ?? null,
+      handle: u.handle ?? null,
+      email_verified: u.email_verified ?? false,
+      phone_verified: u.phone_verified ?? false,
       address: defaultAddress ? {
         country: defaultAddress.country || "",
         line1: defaultAddress.address_line1 || "",
@@ -80,24 +108,24 @@ export async function GET(request: NextRequest) {
         zip: defaultAddress.postal_code || "",
       } : null,
       emergency_contact: {
-        name: userData.emergency_contact_name || "",
-        relationship: userData.emergency_contact_relationship || "",
-        language: userData.preferred_language || "",
-        email: (userData as any).emergency_contact_email || "",
-        country_code: (userData as any).emergency_contact_country_code || "",
-        phone: userData.emergency_contact_phone || "",
+        name: u.emergency_contact_name || "",
+        relationship: u.emergency_contact_relationship || "",
+        language: u.preferred_language || "",
+        email: u.emergency_contact_email ?? "",
+        country_code: u.emergency_contact_country_code ?? "",
+        phone: u.emergency_contact_phone || "",
       },
       identity_verified: identityVerified,
       identity_verification_status: verificationStatus,
-      identity_verification_submitted_at: verification?.submitted_at || null,
-      identity_verification_rejection_reason: verification?.rejection_reason || null,
+      identity_verification_submitted_at: verification?.submitted_at ?? null,
+      identity_verification_rejection_reason: verification?.rejection_reason ?? null,
       beauty_preferences: profileData?.beauty_preferences || {},
       privacy_settings: profileData?.privacy_settings || { services_booked_visible: false },
       business_preferences: profileData?.business_preferences || { email: null, enabled: false },
-      password_changed_at: (userData as any).password_changed_at || null,
+      password_changed_at: u.password_changed_at ?? null,
     };
 
-    return successResponse(formattedData as any);
+    return successResponse(formattedData);
   } catch (error) {
     // Log the error for debugging
     console.error("Error in GET /api/me/profile:", error);
@@ -243,7 +271,8 @@ export async function PATCH(request: NextRequest) {
         .select("business_preferences")
         .eq("user_id", user.id)
         .maybeSingle();
-      const current = (existingProfile as any)?.business_preferences || { email: null, enabled: false };
+      type ProfileRow = { business_preferences?: { email?: string | null; enabled?: boolean } | null };
+      const current = (existingProfile as ProfileRow)?.business_preferences ?? { email: null, enabled: false };
       const businessPreferences = {
         email: body.business_email !== undefined ? (body.business_email || null) : current.email,
         enabled: body.business_features_enabled !== undefined ? Boolean(body.business_features_enabled) : current.enabled,
@@ -262,7 +291,9 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    // Update email in auth.users if provided
+    // Update email in auth: Supabase sends a confirmation link to the new email;
+    // the email is only updated after the user verifies. Do not write to users table until then.
+    let emailChangePending = false;
     if (body.email !== undefined) {
       const { error: emailError } = await supabase.auth.updateUser({
         email: body.email,
@@ -270,7 +301,74 @@ export async function PATCH(request: NextRequest) {
       if (emailError) {
         throw new Error(`Failed to update email: ${emailError.message}`);
       }
-      updates.email = body.email;
+      emailChangePending = true;
+      // Do not set updates.email – sync from auth after user confirms (see GET profile)
+    }
+
+    // If only email change, no DB update; return current profile and tell frontend to show verification message
+    if (emailChangePending && Object.keys(updates).length === 0) {
+      const { data: userData } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+      if (userData) {
+        const u = userData as UserRow;
+        const fullName = u.full_name || "";
+        const nameParts = fullName.trim().split(/\s+/);
+        const { data: defaultAddress } = await supabase
+          .from("user_addresses")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("is_default", true)
+          .maybeSingle();
+        const { data: verification } = await supabase
+          .from("user_verifications")
+          .select("id, status")
+          .eq("user_id", user.id)
+          .eq("status", "approved")
+          .limit(1)
+          .maybeSingle();
+        const { data: updatedProfileData } = await supabase
+          .from("user_profiles")
+          .select("beauty_preferences, privacy_settings")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        const formattedData = {
+          ...userData,
+          first_name: nameParts[0] || "",
+          last_name: nameParts.slice(1).join(" ") || "",
+          preferred_name: u.preferred_name ?? null,
+          handle: u.handle ?? null,
+          email_verified: u.email_verified ?? false,
+          phone_verified: u.phone_verified ?? false,
+          address: defaultAddress ? {
+            country: defaultAddress.country || "",
+            line1: defaultAddress.address_line1 || "",
+            line2: defaultAddress.address_line2 || "",
+            city: defaultAddress.city || "",
+            state: defaultAddress.state || "",
+            postal_code: defaultAddress.postal_code || "",
+            street: defaultAddress.address_line1 || "",
+            apt: defaultAddress.address_line2 || "",
+            zip: defaultAddress.postal_code || "",
+          } : null,
+          emergency_contact: {
+            name: u.emergency_contact_name || "",
+            relationship: u.emergency_contact_relationship || "",
+            language: u.preferred_language || "",
+            email: u.emergency_contact_email ?? "",
+            country_code: u.emergency_contact_country_code ?? "",
+            phone: u.emergency_contact_phone || "",
+          },
+          identity_verified: !!verification,
+          identity_verification_status: verification?.status ?? u.identity_verification_status ?? null,
+          beauty_preferences: updatedProfileData?.beauty_preferences || {},
+          privacy_settings: updatedProfileData?.privacy_settings || { services_booked_visible: false },
+          email_change_pending: true,
+        };
+        return successResponse(formattedData);
+      }
     }
 
     // Update user record
@@ -302,12 +400,12 @@ export async function PATCH(request: NextRequest) {
         .limit(1)
         .single();
 
-      const fullName = userData.full_name || "";
+      const u = userData as UserRow;
+      const fullName = u.full_name || "";
       const nameParts = fullName.trim().split(/\s+/);
       const first_name = nameParts[0] || "";
       const last_name = nameParts.slice(1).join(" ") || "";
 
-      // Get updated profile data
       const { data: updatedProfileData } = await supabase
         .from("user_profiles")
         .select("beauty_preferences, privacy_settings")
@@ -318,10 +416,10 @@ export async function PATCH(request: NextRequest) {
         ...userData,
         first_name,
         last_name,
-        preferred_name: (userData as any).preferred_name || null,
-        handle: (userData as any).handle || null,
-        email_verified: (userData as any).email_verified || false,
-        phone_verified: (userData as any).phone_verified || false,
+        preferred_name: u.preferred_name ?? null,
+        handle: u.handle ?? null,
+        email_verified: u.email_verified ?? false,
+        phone_verified: u.phone_verified ?? false,
         address: defaultAddress ? {
           country: defaultAddress.country || "",
           line1: defaultAddress.address_line1 || "",
@@ -334,20 +432,21 @@ export async function PATCH(request: NextRequest) {
           zip: defaultAddress.postal_code || "",
         } : null,
         emergency_contact: {
-          name: userData.emergency_contact_name || "",
-          relationship: userData.emergency_contact_relationship || "",
-          language: userData.preferred_language || "",
-          email: (userData as any).emergency_contact_email || "",
-          country_code: (userData as any).emergency_contact_country_code || "",
-          phone: userData.emergency_contact_phone || "",
+          name: u.emergency_contact_name || "",
+          relationship: u.emergency_contact_relationship || "",
+          language: u.preferred_language || "",
+          email: u.emergency_contact_email ?? "",
+          country_code: u.emergency_contact_country_code ?? "",
+          phone: u.emergency_contact_phone || "",
         },
-        identity_verified: verification ? true : false,
-        identity_verification_status: verification?.status || (userData as any).identity_verification_status || null,
+        identity_verified: !!verification,
+        identity_verification_status: verification?.status ?? u.identity_verification_status ?? null,
         beauty_preferences: updatedProfileData?.beauty_preferences || {},
         privacy_settings: updatedProfileData?.privacy_settings || { services_booked_visible: false },
+        ...(emailChangePending ? { email_change_pending: true } : {}),
       };
 
-      return successResponse(formattedData as any);
+      return successResponse(formattedData);
     }
 
     // If no updates, return current data

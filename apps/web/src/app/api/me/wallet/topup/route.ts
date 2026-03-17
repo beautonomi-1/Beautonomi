@@ -6,13 +6,13 @@ import { convertToSmallestUnit } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 
 const schema = z.object({
-  amount: z.number().positive(),
+  amount: z.number().min(1, "Minimum top up amount is 1"),
 });
 
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const body = schema.parse(await request.json());
 

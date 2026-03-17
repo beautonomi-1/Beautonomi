@@ -71,12 +71,23 @@ export async function GET(
 
     const { data: stat } = await supabase.from("learning_article_stats").select("view_count, helpful_yes_count, helpful_no_count").eq("article_id", article.id).single();
 
+    const { data: relatedRows } = await supabase
+      .from("learning_articles")
+      .select("id, title, slug, summary")
+      .eq("category_id", article.category_id)
+      .eq("status", "published")
+      .eq("is_internal", false)
+      .neq("id", article.id)
+      .order("updated_at", { ascending: false })
+      .limit(3);
+
     return NextResponse.json({
       data: {
         ...article,
         parents,
         parent_slugs,
         stats: stat ?? { view_count: 0, helpful_yes_count: 0, helpful_no_count: 0 },
+        related_articles: relatedRows ?? [],
       },
       error: null,
     });

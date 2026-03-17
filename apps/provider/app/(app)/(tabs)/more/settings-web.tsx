@@ -5,15 +5,22 @@
 import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Colors } from "@/constants/colors";
 
+interface ProviderProfile {
+  business_name: string | null;
+}
+
 export default function SettingsWebScreen() {
   const router = useRouter();
   const { title, description } = useLocalSearchParams<{ title?: string; description?: string }>();
+  const { data: profile } = useApi<ProviderProfile>("/api/provider/profile");
   const displayTitle = title ? decodeURIComponent(title) : "Settings";
   const displayDescription = description ? decodeURIComponent(description) : "Manage this in the app.";
+  const businessName = profile?.business_name?.trim();
 
   return (
     <ScreenContainer>
@@ -26,7 +33,9 @@ export default function SettingsWebScreen() {
           <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[900] }}>{displayTitle}</Text>
           <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600], lineHeight: 20 }}>{displayDescription}</Text>
           <Text style={{ marginTop: 16, fontSize: 14, color: Colors.gray[500] }}>
-            All settings are available in-app. Go to More → Settings & account to manage this and other settings without leaving the app.
+            {businessName
+              ? `All settings for ${businessName} are available in-app. Go to More → Settings & account to manage this and other settings without leaving the app.`
+              : "All settings are available in-app. Go to More → Settings & account to manage this and other settings without leaving the app."}
           </Text>
           <TouchableOpacity
             onPress={() => router.back()}

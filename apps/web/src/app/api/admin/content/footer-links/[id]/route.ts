@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requireAdminSection  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 export async function GET(
   request: NextRequest,
@@ -39,7 +40,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const { id } = await params;
 
     const supabase = await getSupabaseServer(request);
@@ -47,7 +48,7 @@ export async function PUT(
 
     const { section, title, href, display_order, is_external, is_active } = body;
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (section !== undefined) updateData.section = section;
     if (title !== undefined) updateData.title = title;
     if (href !== undefined) updateData.href = href;
@@ -71,9 +72,10 @@ export async function PUT(
     }
 
     return NextResponse.json({ data, error: null });
-  } catch (error: any) {
-    if (error.status) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+  } catch (error: unknown) {
+    const err = error && typeof error === "object" && "status" in error ? error as { status: number; message?: string } : null;
+    if (err && typeof err.status === "number") {
+      return NextResponse.json({ error: err.message ?? "Error" }, { status: err.status });
     }
     console.error("Error in PUT /api/admin/content/footer-links/[id]:", error);
     return NextResponse.json(
@@ -88,7 +90,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const { id } = await params;
 
     const supabase = await getSupabaseServer(request);
@@ -107,9 +109,10 @@ export async function DELETE(
     }
 
     return NextResponse.json({ data: null, error: null });
-  } catch (error: any) {
-    if (error.status) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+  } catch (error: unknown) {
+    const err = error && typeof error === "object" && "status" in error ? error as { status: number; message?: string } : null;
+    if (err && typeof err.status === "number") {
+      return NextResponse.json({ error: err.message ?? "Error" }, { status: err.status });
     }
     console.error("Error in DELETE /api/admin/content/footer-links/[id]:", error);
     return NextResponse.json(

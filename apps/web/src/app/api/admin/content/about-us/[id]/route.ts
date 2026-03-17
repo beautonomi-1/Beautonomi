@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, handleApiError, successResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
@@ -30,19 +31,19 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const { id } = await params;
 
     const { title, content, display_order, is_active, image_url } = body;
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (title !== undefined) updateData.title = title;
     if (content !== undefined) updateData.content = content;
     if (display_order !== undefined) updateData.display_order = display_order;
     if (is_active !== undefined) updateData.is_active = is_active;
-    if (image_url !== undefined) updateData.image_url = image_url || null;
+    if (image_url !== undefined) updateData.image_url = image_url ?? null;
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
@@ -51,7 +52,8 @@ export async function PUT(
       );
     }
 
-    const { data, error } = await (supabase.from("about_us_content") as any)
+    const { data, error } = await supabase
+      .from("about_us_content")
       .update(updateData)
       .eq('id', id)
       .select()
@@ -70,7 +72,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 

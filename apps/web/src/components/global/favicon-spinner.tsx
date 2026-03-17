@@ -21,56 +21,23 @@ export default function FaviconSpinner() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
-  // Set up console interceptors once (only in development)
+  // Detect Fast Refresh via dev-only message events (avoids patching console so log call sites stay correct)
   useEffect(() => {
     if (process.env.NODE_ENV !== "development") {
       return;
     }
-
-    const originalLog = console.log;
-    const originalWarn = console.warn;
-    const originalError = console.error;
-    
-    const checkFastRefresh = (message: string) => {
-      if (message.includes("[Fast Refresh] rebuilding")) {
+    const handleMessage = (e: MessageEvent) => {
+      const msg = e?.data?.message ?? e?.data ?? "";
+      const s = typeof msg === "string" ? msg : "";
+      if (s.includes("[Fast Refresh] rebuilding")) {
         setIsFastRefreshRebuilding(true);
       }
-      if (message.includes("[Fast Refresh] done")) {
-        setTimeout(() => {
-          setIsFastRefreshRebuilding(false);
-        }, 300);
+      if (s.includes("[Fast Refresh] done")) {
+        setTimeout(() => setIsFastRefreshRebuilding(false), 300);
       }
     };
-    
-    console.log = function(...args: any[]) {
-      const message = args.join(" ");
-      if (message.includes("[Fast Refresh]")) {
-        checkFastRefresh(message);
-      }
-      originalLog.apply(console, args);
-    };
-    
-    console.warn = function(...args: any[]) {
-      const message = args.join(" ");
-      if (message.includes("[Fast Refresh]")) {
-        checkFastRefresh(message);
-      }
-      originalWarn.apply(console, args);
-    };
-    
-    console.error = function(...args: any[]) {
-      const message = args.join(" ");
-      if (message.includes("[Fast Refresh]")) {
-        checkFastRefresh(message);
-      }
-      originalError.apply(console, args);
-    };
-
-    return () => {
-      console.log = originalLog;
-      console.warn = originalWarn;
-      console.error = originalError;
-    };
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   }, []);
 
   // Set up canvas once

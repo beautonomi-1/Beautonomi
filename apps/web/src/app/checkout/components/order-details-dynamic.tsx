@@ -32,6 +32,9 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
   const [otp, setOtp] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [showOTPInput, setShowOTPInput] = useState(false);
+  const [resendCooldownUntil, setResendCooldownUntil] = useState<number | null>(null);
+  const [isResending, setIsResending] = useState(false);
+  const [pinSecondsLeft, setPinSecondsLeft] = useState<number | null>(null);
 
   useEffect(() => {
     if (!initialBooking) {
@@ -85,8 +88,9 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
   };
 
   const handleVerifyOTP = async () => {
-    if (!otp || otp.length !== 6) {
-      toast.error("Please enter a valid 6-digit OTP");
+    const code = otp.replace(/\D/g, "");
+    if (!code || code.length < 4) {
+      toast.error("Please enter a valid 4 or 6 digit code");
       return;
     }
 
@@ -94,23 +98,62 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
     try {
       const response = await fetcher.post<{ data: { booking: Booking }; error: null }>(
         `/api/me/bookings/${bookingId}/verify-arrival`,
-        { otp }
+        { otp: code }
       );
       setBooking(response.data.booking);
       setShowOTPInput(false);
       setOtp("");
       toast.success("Provider arrival verified successfully!");
+      loadBooking();
       loadEvents();
     } catch (error) {
       if (error instanceof FetchError) {
         toast.error(error.message);
       } else {
-        toast.error("Failed to verify OTP");
+        toast.error("Failed to verify");
       }
     } finally {
       setIsVerifying(false);
     }
   };
+
+  const handleResendPin = async () => {
+    if (isResending || (resendCooldownUntil != null && Date.now() < resendCooldownUntil)) return;
+    setIsResending(true);
+    try {
+      await fetcher.post<{ data: { arrival_otp_expires_at?: string }; error: { message?: string; code?: string } }>(
+        `/api/me/bookings/${bookingId}/resend-arrival-otp`,
+        {}
+      );
+      setResendCooldownUntil(Date.now() + 90000);
+      toast.success("New code sent. Check your notifications.");
+      loadBooking();
+    } catch (error) {
+      if (error instanceof FetchError) {
+        toast.error(error.message);
+      } else {
+        toast.error("Failed to resend");
+      }
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  // Countdown for PIN expiry
+  const pinExpiresAt = booking?.arrival_otp_expires_at;
+  useEffect(() => {
+    if (!booking?.arrival_otp_verified && pinExpiresAt) {
+      const tick = () => {
+        const left = Math.max(0, Math.ceil((new Date(pinExpiresAt).getTime() - Date.now()) / 1000));
+        setPinSecondsLeft(left);
+      };
+      tick();
+      const interval = setInterval(tick, 1000);
+      return () => clearInterval(interval);
+    } else {
+      setPinSecondsLeft(null);
+    }
+  }, [booking?.arrival_otp_verified, pinExpiresAt]);
 
   const getSteps = (): BookingStep[] => {
     if (!booking) return [];
@@ -273,59 +316,95 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
         </div>
       </div>
 
-      {/* OTP Verification Section */}
+      {/* Customer-holds-PIN: show code for provider to enter */}
       {needsOTPVerification && (
         <div className="border-t pt-4 mt-4 bg-blue-50 p-4 rounded-lg">
           <div className="flex items-start gap-3 mb-3">
-            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
             <div className="flex-1">
-              <h3 className="font-semibold text-blue-900 mb-1">Provider Arrived - Verification Required</h3>
+              <h3 className="font-semibold text-blue-900 mb-1">Your verification code</h3>
               <p className="text-sm text-blue-700">
-                Please enter the 6-digit code sent to your phone/email to confirm the provider's arrival.
+                Give this code to your provider when they arrive.
               </p>
             </div>
           </div>
-          {!showOTPInput ? (
-            <Button onClick={() => setShowOTPInput(true)} className="w-full">
-              Enter Verification Code
-            </Button>
+          {booking.arrival_otp ? (
+            <>
+              <div className="text-center my-4">
+                <span className="text-3xl font-bold tracking-[0.25em] text-blue-900">
+                  {formatOTP(booking.arrival_otp)}
+                </span>
+              </div>
+              {pinSecondsLeft != null && (
+                <p className="text-sm text-blue-700 mb-3">
+                  {pinSecondsLeft > 0
+                    ? `Code expires in ${Math.floor(pinSecondsLeft / 60)}:${String(pinSecondsLeft % 60).padStart(2, "0")}`
+                    : "Code expired"}
+                </p>
+              )}
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  onClick={handleResendPin}
+                  disabled={isResending || (resendCooldownUntil != null && Date.now() < resendCooldownUntil) || (pinSecondsLeft != null && pinSecondsLeft <= 0)}
+                  variant="default"
+                >
+                  {isResending ? "Sending…" : "Resend code"}
+                </Button>
+                {!showOTPInput ? (
+                  <Button variant="outline" onClick={() => setShowOTPInput(true)}>
+                    Having trouble? Enter code here
+                  </Button>
+                ) : (
+                  <div className="w-full pt-3 mt-3 border-t border-blue-200 space-y-3">
+                    <Label htmlFor="otp-fallback" className="text-sm font-medium">Enter code (fallback)</Label>
+                    <Input
+                      id="otp-fallback"
+                      type="text"
+                      maxLength={6}
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                      placeholder="1234"
+                      className="text-center text-xl tracking-widest"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handleVerifyOTP}
+                        disabled={isVerifying || otp.replace(/\D/g, "").length < 4}
+                        className="flex-1"
+                      >
+                        {isVerifying ? "Verifying…" : "Verify"}
+                      </Button>
+                      <Button variant="outline" onClick={() => { setShowOTPInput(false); setOtp(""); }}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
             <div className="space-y-3">
-              <div>
-                <Label htmlFor="otp" className="text-sm font-medium">
-                  Verification Code
-                </Label>
-                <Input
-                  id="otp"
-                  type="text"
-                  maxLength={6}
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                  placeholder="123456"
-                  className="mt-1 text-center text-2xl tracking-widest"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Enter the 6-digit code: {formatOTP(otp) || "------"}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleVerifyOTP}
-                  disabled={isVerifying || otp.length !== 6}
-                  className="flex-1"
-                >
-                  {isVerifying ? "Verifying..." : "Verify"}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowOTPInput(false);
-                    setOtp("");
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
+              <p className="text-sm text-blue-700">Check your phone or email for the code, or resend below.</p>
+              <Button onClick={handleResendPin} disabled={isResending}>Resend code</Button>
+              <Button variant="outline" onClick={() => setShowOTPInput(true)}>Enter code here</Button>
+              {showOTPInput && (
+                <div className="pt-3 space-y-3">
+                  <Input
+                    type="text"
+                    maxLength={6}
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                    placeholder="1234"
+                    className="text-center text-xl tracking-widest"
+                  />
+                  <div className="flex gap-2">
+                    <Button onClick={handleVerifyOTP} disabled={isVerifying || otp.replace(/\D/g, "").length < 4}>
+                      {isVerifying ? "Verifying…" : "Verify"}
+                    </Button>
+                    <Button variant="outline" onClick={() => { setShowOTPInput(false); setOtp(""); }}>Cancel</Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

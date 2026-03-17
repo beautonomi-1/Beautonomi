@@ -1,12 +1,9 @@
 "use client";
-import { useRef, useEffect, useState } from "react";
-import "slick-carousel/slick/slick.css";
-import "slick-carousel/slick/slick-theme.css";
+import { useCallback, useEffect, useState } from "react";
 import Image, { type StaticImageData } from "next/image";
-
-type ImgSrc = StaticImageData | string;
-import Slider from "react-slick";
 import { usePathname } from "next/navigation";
+import { EmblaSlider, type EmblaSliderApi } from "@/components/ui/embla-slider";
+type ImgSrc = StaticImageData | string;
 import Link from "next/link";
 import { EssentialsButtons } from "@/app/category/components/amenties";
 import { Button } from "@/components/ui/button";
@@ -56,11 +53,11 @@ interface FilterItemProps {
 }
 
 const FilterSlider = () => {
-  const sliderRef = useRef<any>(null);
   const pathname = usePathname();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState(["wifi", "kitchen"]);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
+  const [sliderApi, setSliderApi] = useState<EmblaSliderApi | null>(null);
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -73,17 +70,8 @@ const FilterSlider = () => {
     return () => window.removeEventListener("resize", checkScreenSize);
   }, []);
 
-  const handleNext = () => {
-    if (sliderRef.current) {
-      sliderRef.current.slickNext();
-    }
-  };
-
-  const handlePrev = () => {
-    if (sliderRef.current) {
-      sliderRef.current.slickPrev();
-    }
-  };
+  const handleNext = useCallback(() => sliderApi?.scrollNext(), [sliderApi]);
+  const handlePrev = useCallback(() => sliderApi?.scrollPrev(), [sliderApi]);
 
   const toggleOption = (option: string) => {
     setSelectedOptions((prev: string[]) =>
@@ -91,46 +79,6 @@ const FilterSlider = () => {
         ? prev.filter((item: string) => item !== option)
         : [...prev, option]
     );
-  };
-
-  const settings = {
-    infinite: true,
-    slidesToShow: 8,
-    slidesToScroll: 4,
-    speed: 500,
-    arrows: false,
-    responsive: [
-      {
-        breakpoint: 2340,
-        settings: {
-          slidesToShow: 9,
-        },
-      },
-      {
-        breakpoint: 1580,
-        settings: {
-          slidesToShow: 8,
-        },
-      },
-      {
-        breakpoint: 1280,
-        settings: {
-          slidesToShow: 8,
-        },
-      },
-      {
-        breakpoint: 1024,
-        settings: {
-          slidesToShow: 7,
-        },
-      },
-      {
-        breakpoint: 768,
-        settings: {
-          slidesToShow: 6,
-        },
-      },
-    ],
   };
 
   const Filter = [
@@ -294,7 +242,12 @@ const FilterSlider = () => {
                 />
               ))
             ) : (
-              <Slider ref={sliderRef} {...settings}>
+              <EmblaSlider
+                slidesToShow={8}
+                loop
+                setApi={setSliderApi}
+                contentClassName="mr-16 ml-8"
+              >
                 {Filter.map((item, index) => (
                   <FilterItem
                     key={index}
@@ -303,7 +256,7 @@ const FilterSlider = () => {
                     isActive={item.link === pathname}
                   />
                 ))}
-              </Slider>
+              </EmblaSlider>
             )}
           </div>
           {!isSmallScreen && (

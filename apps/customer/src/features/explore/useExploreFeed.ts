@@ -19,7 +19,10 @@ export interface ExploreFeedFilters {
   category?: string | null;
   search?: string | null;
   tags?: string[] | null;
-  sort?: "chronological" | "trending";
+  sort?: "chronological" | "trending" | "nearby" | "for_you";
+  lat?: number | null;
+  lng?: number | null;
+  radius_km?: number;
 }
 
 export function useExploreFeed() {
@@ -65,6 +68,13 @@ export function useExploreFeed() {
       if (f.search) params.set("search", f.search);
       if (f.tags && f.tags.length > 0) params.set("tags", f.tags.join(","));
       if (f.sort === "trending") params.set("sort", "trending");
+      if (f.sort === "for_you") params.set("sort", "for_you");
+      if (f.sort === "nearby" && f.lat != null && f.lng != null) {
+        params.set("sort", "nearby");
+        params.set("lat", String(f.lat));
+        params.set("lng", String(f.lng));
+        params.set("radius_km", String(f.radius_km ?? 50));
+      }
 
       const res = await api.get<ExploreFeedResponse | ExplorePost[]>(
         `/api/explore/posts?${params.toString()}`
@@ -121,6 +131,12 @@ export function useExploreFeed() {
     [load],
   );
 
+  const setPostSaved = useCallback((postId: string, is_saved: boolean) => {
+    setPosts((prev) =>
+      prev.map((p) => (p.id === postId ? { ...p, is_saved } : p))
+    );
+  }, []);
+
   return {
     posts,
     loading,
@@ -132,5 +148,6 @@ export function useExploreFeed() {
     loadMore,
     initialLoad: () => load({}),
     applyFilters,
+    setPostSaved,
   };
 }

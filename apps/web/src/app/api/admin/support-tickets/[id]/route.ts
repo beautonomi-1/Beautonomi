@@ -58,10 +58,11 @@ export async function GET(
       messages: messages || [],
       notes: notes || [],
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching support ticket:", error);
+    const message = error instanceof Error ? error.message : "Failed to fetch support ticket";
     return NextResponse.json(
-      { error: error.message || "Failed to fetch support ticket" },
+      { error: message },
       { status: 500 }
     );
   }
@@ -92,7 +93,7 @@ export async function PATCH(
       tags,
     } = body;
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (status !== undefined) {
       updateData.status = status;
       if (status === "resolved") {
@@ -134,10 +135,11 @@ export async function PATCH(
     }
 
     return NextResponse.json({ ticket: data });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error updating support ticket:", error);
+    const message = error instanceof Error ? error.message : "Failed to update support ticket";
     return NextResponse.json(
-      { error: error.message || "Failed to update support ticket" },
+      { error: message },
       { status: 500 }
     );
   }

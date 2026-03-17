@@ -65,6 +65,9 @@ export function YocoPaymentDialog({
     }
   };
 
+  const POLL_INTERVAL_MS = 3000;
+  const POLL_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+
   const handleProcessPayment = async () => {
     if (!selectedDeviceId) {
       toast.error("Please select a payment device");
@@ -82,7 +85,7 @@ export function YocoPaymentDialog({
       setPaymentResult(null);
 
       // API expects amount in Rands (will convert to cents server-side)
-      const payment = await providerApi.createYocoPayment({
+      let payment = await providerApi.createYocoPayment({
         device_id: selectedDeviceId,
         amount: amount, // Amount in Rands
         currency: "ZAR",
@@ -94,6 +97,23 @@ export function YocoPaymentDialog({
         },
       });
 
+      // If pending, poll until success/fail or timeout (same behavior as provider app)
+      if (payment.status === "pending" && payment.id) {
+        const deadline = Date.now() + POLL_TIMEOUT_MS;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+          try {
+            const updated = await providerApi.getYocoPayment(payment.id);
+            if (updated.status === "successful" || updated.status === "failed") {
+              payment = updated;
+              break;
+            }
+          } catch {
+            // continue polling
+          }
+        }
+      }
+
       setPaymentResult(payment);
 
       if (payment.status === "successful") {
@@ -102,6 +122,8 @@ export function YocoPaymentDialog({
         setTimeout(() => {
           onOpenChange(false);
         }, 2000);
+      } else if (payment.status === "pending") {
+        toast.error("Payment timed out. You can try again.");
       } else {
         toast.error(payment.error_message || "Payment failed");
       }
@@ -140,6 +162,18 @@ export function YocoPaymentDialog({
                     <div>Payment ID: {paymentResult.yoco_payment_id}</div>
                     <div>Amount: <Money amount={paymentResult.amount / 100} /></div>
                     <div>Device: {paymentResult.device_name}</div>
+                    {paymentResult.receipt_url && (
+                      <div>
+                        <a
+                          href={paymentResult.receipt_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-pink-600 hover:underline font-medium"
+                        >
+                          View receipt
+                        </a>
+                      </div>
+                    )}
                   </div>
                 </AlertDescription>
               </Alert>

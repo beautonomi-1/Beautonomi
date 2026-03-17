@@ -9,6 +9,7 @@ import {
   Share,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import QRCode from "react-native-qrcode-svg";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -230,11 +231,11 @@ export default function BookingLinkScreen() {
         </View>
       )}
 
-      {/* QR Code placeholder */}
+      {/* QR Code for booking page */}
       {link?.url && (
         <View style={twStyle("mb-4 items-center rounded-xl border border-gray-100 bg-white p-4")}>
-          <View style={twStyle("h-32 w-32 items-center justify-center rounded-xl bg-gray-50")}>
-            <Ionicons name="qr-code-outline" size={48} color="#d1d5db" />
+          <View style={twStyle("rounded-xl bg-white p-2")}>
+            <QRCode value={link.url} size={128} />
           </View>
           <Text style={twStyle("mt-2 text-xs text-gray-500")}>
             QR code for your booking page
@@ -243,9 +244,9 @@ export default function BookingLinkScreen() {
             style={twStyle("mt-2 flex-row items-center rounded-lg bg-gray-100 px-3 py-1.5")}
             onPress={handleShare}
           >
-            <Ionicons name="download-outline" size={14} color="#6366f1" />
+            <Ionicons name="share-outline" size={14} color="#6366f1" />
             <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
-              Share QR Code
+              Share link
             </Text>
           </TouchableOpacity>
         </View>

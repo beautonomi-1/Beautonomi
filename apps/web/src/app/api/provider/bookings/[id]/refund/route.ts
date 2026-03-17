@@ -65,7 +65,8 @@ export async function POST(
         total_amount, 
         payment_status,
         provider_id, 
-        customer_id
+        customer_id,
+        currency
       `)
       .eq("id", bookingId)
       .eq("provider_id", providerId)
@@ -104,38 +105,31 @@ export async function POST(
       );
     }
 
-    // Get the most recent completed payment for this booking
-    const { data: payments } = await supabase
-      .from("booking_payments")
-      .select("id, amount, payment_provider, payment_provider_id")
-      .eq("booking_id", bookingId)
-      .eq("status", "completed")
-      .order("created_at", { ascending: false })
-      .limit(1);
+    // Refunds always credit the customer's wallet (platform policy: same as admin refunds)
+    const { error: walletError } = await (supabaseAdmin.rpc as any)("wallet_credit_admin", {
+      p_user_id: booking.customer_id,
+      p_amount: amount,
+      p_currency: booking.currency || "ZAR",
+      p_description: `Refund for booking ${booking.booking_number || booking.ref_number || bookingId.slice(0, 8)}: ${reason}`,
+      p_reference_id: bookingId,
+      p_reference_type: "booking_refund",
+    });
 
-    const originalPayment = payments?.[0];
-
-    // Determine refund method based on original payment provider
-    let refundMethod = 'manual';
-    if (originalPayment?.payment_provider === 'paystack') {
-      refundMethod = 'original'; // Refund via Paystack
-    } else if (originalPayment?.payment_provider === 'yoco') {
-      refundMethod = 'manual'; // Yoco terminal refunds are manual
-    } else if (originalPayment?.payment_provider === 'cash') {
-      refundMethod = 'cash'; // Cash refund
+    if (walletError) {
+      console.error("Wallet credit failed:", walletError);
+      return errorResponse("Failed to credit customer wallet", "WALLET_ERROR", 500);
     }
 
-    // Create refund record
+    // Create refund record (triggers update_booking_payment_status)
     const { data: refund, error: refundError } = await supabaseAdmin
       .from("booking_refunds")
       .insert({
         booking_id: bookingId,
-        payment_id: originalPayment?.id || null,
         amount,
         reason,
-        refund_method: refundMethod,
-        status: refundMethod === 'manual' || refundMethod === 'cash' ? 'completed' : 'pending',
-        notes: notes || `Refund via ${refundMethod}`,
+        refund_method: "store_credit",
+        status: "completed",
+        notes: notes || "Provider refund – credited to customer wallet",
         created_by: user.id,
       })
       .select()
@@ -143,106 +137,45 @@ export async function POST(
 
     if (refundError || !refund) {
       console.error("Error creating refund record:", refundError);
-      throw new Error("Failed to create refund record");
+      return errorResponse("Failed to create refund record", "REFUND_ERROR", 500);
     }
 
-    // If payment was via Paystack, process Paystack refund
-    if (originalPayment?.payment_provider === 'paystack' && originalPayment?.payment_provider_id) {
-      try {
-        const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
-        if (!PAYSTACK_SECRET_KEY) {
-          throw new Error("Paystack secret key not configured");
-        }
-
-        const paystackResponse = await fetch('https://api.paystack.co/refund', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${PAYSTACK_SECRET_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            transaction: originalPayment.payment_provider_id,
-            amount: Math.round(amount * 100), // Convert to kobo/cents
-          }),
-        });
-
-        const paystackRefund = await paystackResponse.json();
-
-        if (paystackRefund.status) {
-          // Paystack refund initiated successfully
-          await supabaseAdmin
-            .from("booking_refunds")
-            .update({
-              refund_provider_id: paystackRefund.data?.id?.toString() || null,
-              status: 'completed',
-              notes: `Paystack refund processed. Refund ID: ${paystackRefund.data?.id}`,
-            })
-            .eq("id", refund.id);
-        } else {
-          // Paystack returned an error
-          await supabaseAdmin
-            .from("booking_refunds")
-            .update({
-              status: 'failed',
-              notes: `Paystack error: ${paystackRefund.message || 'Unknown error'}`,
-            })
-            .eq("id", refund.id);
-          throw new Error(`Paystack refund failed: ${paystackRefund.message}`);
-        }
-      } catch (paystackError: any) {
-        console.error("Paystack refund failed:", paystackError);
-        await supabaseAdmin
-          .from("booking_refunds")
-          .update({
-            status: 'failed',
-            notes: `Paystack error: ${paystackError.message || 'Unknown error'}`,
-          })
-          .eq("id", refund.id);
-        throw new Error("Failed to process Paystack refund");
-      }
-    }
-
-    // Note: Booking payment status will be automatically updated by database trigger
+    // Note: Booking payment status is updated by database trigger on booking_refunds
     // The trigger update_booking_payment_status() recalculates totals and status
     const newTotalRefunded = totalRefunded + amount;
     const isFullyRefunded = newTotalRefunded >= totalPaid;
 
-    // Create notification for customer (will be sent via OneSignal)
+    // Notify customer that refund was added to wallet
+    const bookingRef = booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
+    const currency = booking.currency || "ZAR";
     try {
-      const bookingRef = booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
-      
       await supabaseAdmin.from("notifications").insert({
         user_id: booking.customer_id,
         type: "refund_processed",
-        title: "Refund Processed",
-        message: `A refund of R${amount.toFixed(2)} has been processed for booking ${bookingRef}. Reason: ${reason}`,
+        title: "Refund added to wallet",
+        message: `A refund of ${currency} ${amount.toFixed(2)} for booking ${bookingRef} has been added to your wallet. Use it for your next booking or request a payout.`,
         metadata: {
           booking_id: bookingId,
           booking_ref: bookingRef,
-          refund_id: refund.id,
+          refund_id: (refund as { id: string }).id,
           amount,
           reason,
         },
-        link: `/account-settings/bookings/${bookingId}`,
+        link: "/account-settings/wallet",
       });
 
-      // Send push notification via OneSignal using template
-      try {
-        const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
-        await sendTemplateNotification(
-          "refund_processed",
-          [booking.customer_id],
-          {
-            amount: `R${amount.toFixed(2)}`,
-            booking_number: bookingRef,
-            refund_reason: reason || "Refund processed",
-            booking_id: bookingId,
-          },
-          ["push", "email"]
-        );
-      } catch (pushError) {
-        console.warn("OneSignal push notification failed:", pushError);
-      }
+      const { sendToUser } = await import("@/lib/notifications/onesignal");
+      await sendToUser(
+        booking.customer_id,
+        {
+          title: "Refund added to wallet",
+          message: `A refund of ${currency} ${amount.toFixed(2)} for booking ${bookingRef} has been added to your wallet. Use it for your next booking or request a payout.`,
+          data: { type: "refund_processed", booking_id: bookingId, refund_id: (refund as { id: string }).id },
+          url: "/account-settings/wallet",
+        },
+        ["push"],
+        { appType: "customer" }
+      );
     } catch (notifError) {
       console.warn("Failed to create refund notification:", notifError);
     }

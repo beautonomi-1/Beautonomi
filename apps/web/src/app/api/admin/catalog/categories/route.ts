@@ -1,6 +1,8 @@
-import { NextResponse } from "next/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 const categorySchema = z.object({
   name: z.string().min(1, "Category name is required"),
@@ -15,10 +17,10 @@ const categorySchema = z.object({
  * 
  * Get all categories with service counts
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -50,8 +52,8 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
     const body = await request.json();

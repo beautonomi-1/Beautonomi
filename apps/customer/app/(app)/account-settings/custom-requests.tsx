@@ -6,7 +6,6 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
-  Linking,
   Alert,
   Platform,
   AppState,
@@ -312,14 +311,10 @@ export default function CustomRequestsScreen() {
         }
         if (paymentUrl) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          const canOpen = await Linking.canOpenURL(paymentUrl);
-          if (canOpen) {
-            await Linking.openURL(paymentUrl);
-          } else {
-            Alert.alert("Payment", "Complete payment in your browser.", [
-              { text: "OK" },
-            ]);
-          }
+          router.push({
+            pathname: "/(app)/in-app-browser",
+            params: { url: encodeURIComponent(paymentUrl), title: "Complete payment" },
+          });
         } else {
           Alert.alert("Payment", "No payment link was returned. Please try again.");
         }

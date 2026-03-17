@@ -4,7 +4,7 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 import { z } from "zod";
 
 const checkSchema = z.object({
-  item_type: z.enum(["provider", "offering", "package"]),
+  item_type: z.enum(["provider", "offering", "package", "product"]),
   item_id: z.string().uuid(),
 });
 
@@ -17,7 +17,7 @@ const checkSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const body = checkSchema.parse(await request.json());
 

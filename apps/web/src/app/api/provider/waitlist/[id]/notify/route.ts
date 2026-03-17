@@ -107,7 +107,8 @@ export async function POST(
             provider_id: providerId,
             waitlist_entry_id: entry.id,
           },
-          channels
+          channels,
+          { appType: "customer" }
         );
 
         if (!notificationResult.success) {

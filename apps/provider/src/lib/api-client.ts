@@ -1,6 +1,7 @@
 /**
- * API client for provider app - calls apps/web with Bearer token.
- * Includes session recovery: on 401, refresh session and retry once; if still 401, sign out.
+ * API client for provider app - calls apps/web with Bearer token only (no cookies).
+ * Session recovery: on 401, refresh and retry once; sign out only when session is invalid,
+ * not on network errors, so the app won't randomly logout.
  */
 import { createApiClient } from "@beautonomi/api";
 import type { ApiResponse } from "@beautonomi/types";
@@ -52,7 +53,31 @@ function getApi(): ReturnType<typeof createApiClient> {
   return _api;
 }
 
-/** On 401: refresh session, retry request once; if still 401, sign out. */
+/** True if error indicates session is invalid (expired/revoked); network errors are transient. */
+function isSessionInvalidError(error: { message?: string } | null): boolean {
+  if (!error?.message) return false;
+  const msg = error.message.toLowerCase();
+  if (
+    msg.includes("network") ||
+    msg.includes("fetch failed") ||
+    msg.includes("timeout") ||
+    msg.includes("abort") ||
+    msg.includes("connection")
+  ) {
+    return false;
+  }
+  return (
+    msg.includes("refresh") ||
+    msg.includes("session") ||
+    msg.includes("token") ||
+    msg.includes("expired") ||
+    msg.includes("invalid") ||
+    msg.includes("revoked") ||
+    msg.includes("not found")
+  );
+}
+
+/** On 401: refresh session, retry once. Only sign out if session invalid (not on network errors). */
 async function withSessionRecovery<T>(
   fn: () => Promise<ApiResponse<T>>
 ): Promise<ApiResponse<T>> {
@@ -61,7 +86,9 @@ async function withSessionRecovery<T>(
   if (status !== 401) return res;
   const { error: refreshError } = await supabase.auth.refreshSession();
   if (refreshError) {
-    await supabase.auth.signOut();
+    if (isSessionInvalidError(refreshError)) {
+      await supabase.auth.signOut();
+    }
     return res;
   }
   const retry = await fn();

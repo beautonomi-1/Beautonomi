@@ -68,9 +68,10 @@ export async function GET(
       );
     }
 
-    const formattedReviews = (reviews || []).map((review: any) => {
-      const user = review.users || {};
-      const reviewerName = user.full_name || "Anonymous";
+    const formattedReviews = (reviews || []).map((review: { id: string; rating?: number; comment?: string; created_at: string; users?: { full_name?: string; avatar_url?: string } | Array<{ full_name?: string; avatar_url?: string }> | null }) => {
+      const userRaw = review.users;
+      const user = userRaw == null ? {} : (Array.isArray(userRaw) ? userRaw[0] : userRaw) as { full_name?: string; avatar_url?: string };
+      const reviewerName = user.full_name ?? "Anonymous";
       const reviewerInitial = reviewerName.charAt(0).toUpperCase();
       
       return {
@@ -85,9 +86,9 @@ export async function GET(
           hour: "numeric",
           minute: "2-digit",
         }),
-        rating: review.rating || 5,
-        text: review.comment || "",
-        avatar_url: user.avatar_url,
+        rating: review.rating ?? 5,
+        text: review.comment ?? "",
+        avatar_url: user.avatar_url ?? "",
       };
     });
 

@@ -52,6 +52,8 @@ This keeps one consistent flow for every payment type (Paystack, wallet, gift ca
 
 - **Admin Refunds page (Process)** – `POST /api/admin/refunds/[id]`: credits customer wallet, updates `payment_transactions`, inserts `booking_refunds` (store_credit), notifies customer.
 - **Admin booking refund** – `POST /api/admin/bookings/[id]/refund`: credits customer wallet, inserts `booking_refunds` (store_credit), updates booking status if full refund.
+- **Provider booking refund** – `POST /api/provider/bookings/[id]/refund`: provider (with `process_payments` permission) can issue a refund; credits customer wallet, inserts `booking_refunds` (store_credit), notifies customer. Used from provider app booking detail (Refund modal; amount + reason required).
+- **Customer cancellation refund** – when a customer cancels and the cancellation policy allows full or partial refund, `processBookingRefund` in `refund-processing.ts` credits the customer wallet and inserts `booking_refunds` (store_credit); no Paystack call.
 - **Payment transaction refund** – `POST /api/admin/payments/[txId]/refund`: credits customer wallet (no Paystack call), updates transaction and booking, inserts `booking_refunds`, ledger and notifications.
 - **Dispute resolve** – `POST /api/admin/bookings/[id]/dispute/resolve`: when resolution is refund_full/refund_partial, credits customer wallet, inserts `booking_refunds`, optionally marks `payment_transactions` as refunded; works even when there is no Paystack transaction.
 

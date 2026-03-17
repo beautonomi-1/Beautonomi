@@ -29,6 +29,7 @@ interface MangomintSettings {
   deposit_required: boolean;
   deposit_amount: number | null;
   deposit_percent: number | null;
+  on_demand_accept_enabled: boolean;
 }
 
 interface OnlineBookingSettings {
@@ -104,9 +105,11 @@ export default function OnlineBookingSettings() {
         deposit_required: false,
         deposit_amount: null,
         deposit_percent: null,
+        on_demand_accept_enabled: false,
       };
-      setMangomint(m ?? mangomintDefaults);
-      setOriginalMangomint(m ?? mangomintDefaults);
+      const merged = m ? { ...mangomintDefaults, ...m } : mangomintDefaults;
+      setMangomint(merged);
+      setOriginalMangomint(merged);
     } catch (err) {
       const errorMessage =
         err instanceof FetchError
@@ -540,6 +543,26 @@ export default function OnlineBookingSettings() {
                       <Label htmlFor="allow_pay_in_person" className="cursor-pointer">
                         Allow pay at venue
                       </Label>
+                    </div>
+                    <div className="flex items-center space-x-2 pt-8">
+                      <Switch
+                        id="on_demand_accept_enabled"
+                        checked={mangomint.on_demand_accept_enabled}
+                        onCheckedChange={(v) =>
+                          setMangomint({
+                            ...mangomint,
+                            on_demand_accept_enabled: v,
+                          })
+                        }
+                      />
+                      <div>
+                        <Label htmlFor="on_demand_accept_enabled" className="cursor-pointer">
+                          Accept on-demand requests
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Let clients use &quot;Request now&quot;; you can accept or decline within the time window.
+                        </p>
+                      </div>
                     </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">

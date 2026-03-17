@@ -1,10 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  successResponse,
+import { requireAdminSection, successResponse,
   errorResponse,
-  handleApiError,
-} from "@/lib/supabase/api-helpers";
+  handleApiError, } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 
 /**
@@ -17,7 +16,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const { id } = await params;
     const body = await request.json();
 

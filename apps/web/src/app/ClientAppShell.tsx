@@ -14,6 +14,7 @@ import I18nInit from "@/components/i18n/I18nInit";
 import { ConfigBundleProvider } from "@/providers/ConfigBundleProvider";
 import OneSignalProvider from "@/components/global/OneSignalProvider";
 import { DownloadBannerContainer } from "@/components/download-banner";
+import MaintenanceGate from "@/components/maintenance/MaintenanceGate";
 import type { OsType } from "@/lib/utils/os-type";
 
 interface ClientAppShellProps {
@@ -35,7 +36,7 @@ export default function ClientAppShell({ children, osType }: ClientAppShellProps
             <SessionTracker />
             <ImpersonationBanner />
             <AccountStatusGuard>
-              {children}
+              <MaintenanceGate>{children}</MaintenanceGate>
             </AccountStatusGuard>
             <Toaster position="top-center" />
             <DownloadBannerContainer osType={osType} />

@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       return successResponse([]);
     }
     
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Get all wishlists for user
     const { data: wishlists, error: wishlistError } = await (supabase.from("wishlists") as any)

@@ -7,6 +7,8 @@ import { ScreenFrame } from "@/components/ScreenFrame";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { Colors } from "@/constants/colors";
+import { PhoneInputWithCountry } from "@/components/PhoneInputWithCountry";
+import { parsePhoneToCountryAndNational, getNationalFromStored } from "@/constants/phone";
 
 export default function PersonalInfoScreen() {
   useScreenTracking("Personal Info");
@@ -15,24 +17,43 @@ export default function PersonalInfoScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phoneCountryCode, setPhoneCountryCode] = useState("+27");
+  const [phoneNational, setPhoneNational] = useState("");
   const [emergencyName, setEmergencyName] = useState("");
-  const [emergencyPhone, setEmergencyPhone] = useState("");
+  const [emergencyCountryCode, setEmergencyCountryCode] = useState("+27");
+  const [emergencyPhoneNational, setEmergencyPhoneNational] = useState("");
   const [emergencyRelationship, setEmergencyRelationship] = useState("");
+  const [about, setAbout] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get<any>("/api/me/profile");
-      if (res.error) {
-        setError(getApiErrorMessage(res.error, "Failed to load"));
+      const [profileSettled, profileDataSettled] = await Promise.allSettled([
+        api.get<any>("/api/me/profile"),
+        api.get<any>("/api/me/profile-data"),
+      ]);
+      const profileRes = profileSettled.status === "fulfilled" ? profileSettled.value : null;
+      const profileDataRes = profileDataSettled.status === "fulfilled" ? profileDataSettled.value : null;
+      if (!profileRes || profileRes.error) {
+        setError(getApiErrorMessage(profileRes?.error, "Failed to load"));
         setProfile(null);
       } else {
-        const p = res.data;
+        const p = profileRes.data;
         setProfile(p);
         setFullName(p?.full_name || [p?.first_name, p?.last_name].filter(Boolean).join(" ") || "");
+        const main = parsePhoneToCountryAndNational(p?.phone);
+        setPhoneCountryCode(main.countryCode);
+        setPhoneNational(main.national);
+        const ec = p?.emergency_contact;
+        setEmergencyName(ec?.name ?? "");
+        setEmergencyCountryCode(ec?.country_code || "+27");
+        setEmergencyPhoneNational(getNationalFromStored(ec?.country_code, ec?.phone));
+        setEmergencyRelationship(ec?.relationship ?? "");
+      }
+      if (profileDataRes && !profileDataRes.error && profileDataRes.data) {
+        setAbout(profileDataRes.data.about ?? "");
       }
     } catch (e) {
       setError(getApiErrorMessage(e, "Failed to load"));
@@ -78,24 +99,35 @@ export default function PersonalInfoScreen() {
       const parts = fullName.trim().split(/\s+/);
       const first = parts[0] || "";
       const last = parts.slice(1).join(" ") || "";
-      const payload: Record<string, unknown> = {
+      const fullPhone = phoneNational.trim()
+        ? `${phoneCountryCode}${phoneNational.replace(/\D/g, "")}`
+        : null;
+      const emergencyPhoneDigits = emergencyPhoneNational.trim().replace(/\D/g, "");
+      const profilePayload: Record<string, unknown> = {
         first_name: first,
         last_name: last,
         full_name: fullName.trim(),
-        phone: phone.trim() || null,
+        phone: fullPhone,
         emergency_contact: {
           name: emergencyName.trim() || null,
-          phone: emergencyPhone.trim() || null,
+          country_code: emergencyPhoneDigits ? emergencyCountryCode : null,
+          phone: emergencyPhoneDigits || null,
           relationship: emergencyRelationship.trim() || null,
         },
       };
-      const res = await api.patch<any>("/api/me/profile", payload);
+      const res = await api.patch<any>("/api/me/profile", profilePayload);
       if (res.error) {
         Alert.alert("Error", getApiErrorMessage(res.error, "Failed to save"));
+        return;
+      }
+      const aboutValue = about.trim() || null;
+      const profileDataRes = await api.post<any>("/api/me/profile-data", { about: aboutValue });
+      if (profileDataRes.error) {
+        Alert.alert("Error", getApiErrorMessage(profileDataRes.error, "Profile saved but About me could not be updated."));
       } else {
         Alert.alert("Saved", "Your profile has been updated.");
-        load();
       }
+      load();
     } catch (e) {
       Alert.alert("Error", getApiErrorMessage(e, "Failed to save"));
     } finally {
@@ -139,15 +171,27 @@ export default function PersonalInfoScreen() {
             <Text style={{ paddingVertical: 12, color: Colors.gray[600] }}>{profile.email || "-"}</Text>
           </View>
           <View style={{ marginTop: 16 }}>
-            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Phone</Text>
-            <TextInput
-              style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-              value={phone}
-              onChangeText={setPhone}
+            <PhoneInputWithCountry
+              label="Phone"
+              countryCode={phoneCountryCode}
+              onCountryCodeChange={setPhoneCountryCode}
+              nationalValue={phoneNational}
+              onNationalChange={setPhoneNational}
               placeholder="Your phone number"
+              accessibilityLabel="Your phone number"
+            />
+          </View>
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>About me</Text>
+            <TextInput
+              style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900], minHeight: 80, textAlignVertical: "top" }}
+              value={about}
+              onChangeText={setAbout}
+              placeholder="A short bio for your profile (optional)"
               placeholderTextColor={Colors.gray[400]}
-              keyboardType="phone-pad"
-              accessibilityLabel="Phone number"
+              multiline
+              numberOfLines={3}
+              accessibilityLabel="About me"
               accessibilityRole="none"
             />
           </View>
@@ -165,14 +209,14 @@ export default function PersonalInfoScreen() {
               />
             </View>
             <View style={{ marginBottom: 12 }}>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Phone</Text>
-              <TextInput
-                style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                value={emergencyPhone}
-                onChangeText={setEmergencyPhone}
+              <PhoneInputWithCountry
+                label="Phone"
+                countryCode={emergencyCountryCode}
+                onCountryCodeChange={setEmergencyCountryCode}
+                nationalValue={emergencyPhoneNational}
+                onNationalChange={setEmergencyPhoneNational}
                 placeholder="Their phone number"
-                placeholderTextColor={Colors.gray[400]}
-                keyboardType="phone-pad"
+                accessibilityLabel="Emergency contact phone number"
               />
             </View>
             <View style={{ marginBottom: 4 }}>

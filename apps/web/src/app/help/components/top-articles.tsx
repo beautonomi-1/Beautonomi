@@ -5,33 +5,33 @@ const articles = [
   {
     title: "Canceling your booking",
     description: "Your plans have changed and you need to cancel your booking. Here’s how to do it and what to expect.",
-    link: "#"
+    link: "/learn/article/canceling-your-booking",
   },
   {
     title: "Change the date or time of your appointment",
     description: "You booked a service, but the date or time no longer works? You can request to reschedule...",
-    link: "#"
+    link: "/learn/article/reschedule-booking",
   },
   {
     title: "If your provider cancels your booking",
     description: "Sometimes a provider may need to cancel a booking. We’ll help you rebook or get a refund.",
-    link: "#"
+    link: "/learn/article/if-provider-cancels",
   },
   {
     title: "Payment methods accepted",
     description: "Beautonomi supports different payment methods, depending on your country and payment ...",
-    link: "#"
+    link: "/learn/article/payment-methods-accepted",
   },
   {
     title: "Editing, removing, or adding a payment method",
     description: "If an existing payment method on your account is incorrect (e.g. an expired card)...",
-    link: "#"
+    link: "/learn/article/edit-payment-method",
   },
   {
     title: "When you’ll pay for your booking",
     description: "You just made a booking—here’s what happens next and when your payment method is charged.",
-    link: "#"
-  }
+    link: "/learn/article/when-you-pay-booking",
+  },
 ];
 
 export default function TopArticles() {
@@ -45,7 +45,7 @@ export default function TopArticles() {
         {articles.map((article, index) => (
           <div key={index} className='border-b pb-8 mb-8'>
             <h3 className="font-normal  text-lg mb-1">
-              <Link href={article.link || `/help/articles/${article.title.toLowerCase().replace(/\s+/g, '-')}`} className="underline hover:text-primary">
+              <Link href={article.link} className="underline hover:text-primary">
                 {article.title}
               </Link>
             </h3>

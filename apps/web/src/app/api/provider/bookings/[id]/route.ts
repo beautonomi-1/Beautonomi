@@ -4,17 +4,142 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import type { Booking } from "@/types/beautonomi";
-import { mapStatusToProvider, mapStatusFromProvider } from "@/lib/utils/booking-status";
+import {
+  mapStatusToProvider,
+  mapStatusFromProvider,
+  type BookingStatus,
+  type ProviderBookingStatus,
+} from "@/lib/utils/booking-status";
+import { checkBookingConflict } from "@/lib/bookings/conflict-check";
+import { awardPointsForBooking } from "@/lib/services/provider-gamification";
 
-// Map frontend status to database enum values
 function mapStatusToDatabase(frontendStatus: string): string {
-  return mapStatusFromProvider(frontendStatus as any);
+  return mapStatusFromProvider(frontendStatus as ProviderBookingStatus);
 }
 
-// Map database status to frontend status
 function mapStatusFromDatabase(dbStatus: string): string {
-  return mapStatusToProvider(dbStatus as any);
+  return mapStatusToProvider(dbStatus as BookingStatus);
 }
+
+/** Raw booking row from DB with joined booking_services, booking_products, group_bookings */
+type BookingDbRow = Record<string, unknown> & {
+  id?: string;
+  booking_number?: string;
+  customer_id?: string;
+  provider_id?: string;
+  status?: string;
+  location_type?: string;
+  location_id?: string;
+  address_line1?: string;
+  address_line2?: string | null;
+  address_city?: string;
+  address_state?: string | null;
+  address_country?: string;
+  address_postal_code?: string | null;
+  address_latitude?: number | null;
+  address_longitude?: number | null;
+  apartment_unit?: string | null;
+  building_name?: string | null;
+  floor_number?: string | null;
+  access_codes?: unknown;
+  parking_instructions?: string | null;
+  location_landmarks?: string | null;
+  house_call_instructions?: string | null;
+  scheduled_at?: string;
+  completed_at?: string | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
+  package_id?: string | null;
+  subtotal?: number;
+  discount_amount?: number;
+  discount_code?: string | null;
+  discount_reason?: string | null;
+  tax_amount?: number;
+  tax_rate?: number;
+  service_fee_percentage?: number;
+  service_fee_amount?: number;
+  tip_amount?: number;
+  travel_fee?: number;
+  total_amount?: number;
+  total_paid?: number;
+  total_refunded?: number;
+  currency?: string;
+  payment_status?: string;
+  special_requests?: string | null;
+  loyalty_points_earned?: number;
+  current_stage?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  version?: number;
+  referral_source_id?: string | null;
+  provider_form_responses?: Record<string, Record<string, unknown>> | null;
+  customers?: unknown;
+  locations?: unknown;
+  is_group_booking?: boolean;
+  group_booking_id?: string | null;
+  booking_services?: Array<{
+    id: string;
+    offering_id?: string;
+    staff_id?: string;
+    duration_minutes?: number;
+    price?: number;
+    scheduled_start_at?: string;
+    scheduled_end_at?: string;
+    guest_name?: string | null;
+    offerings?: { title?: string } | Array<{ title?: string }>;
+    staff?: { name?: string } | Array<{ name?: string }>;
+  }>;
+  booking_products?: Array<{
+    id: string;
+    product_id?: string;
+    product_variant_id?: string | null;
+    product_variant?: unknown;
+    quantity?: number;
+    unit_price?: number;
+    total_price?: number;
+    products?: { name?: string } | Array<{ name?: string }>;
+  }>;
+  group_bookings?: { ref_number?: string; booking_participants?: Array<{ id?: string; participant_name?: string; participant_email?: string; participant_phone?: string; is_primary_contact?: boolean }> } | Array<{ ref_number?: string; booking_participants?: unknown[] }>;
+};
+
+/** Booking response with optional provider-only fields */
+type BookingResponse = Booking & { custom_field_values?: Record<string, string | number | boolean | null>; provider_points_earned?: number | null };
+
+/** Minimal booking row fields read in PATCH (from .select("*")) */
+type BookingRow = {
+  version?: number;
+  updated_at?: string;
+  scheduled_at?: string;
+  location_type?: string;
+  customer_id?: string;
+  status?: string;
+  booking_number?: string;
+  subtotal?: number;
+  currency?: string;
+  loyalty_points_earned?: number;
+  ref_number?: string;
+  staff_id?: string;
+  total_amount?: number;
+  payment_status?: string;
+  service_name?: string;
+};
+
+/** booking_services row with offerings (for conflict check); Supabase can return offerings as array */
+type BookingServiceConflictRow = {
+  staff_id?: string;
+  scheduled_start_at?: string;
+  duration_minutes?: number;
+  offerings?: { buffer_minutes?: number } | Array<{ buffer_minutes?: number }>;
+};
+
+/** Refetched booking after PATCH (with joins) for notifications/response */
+type RefetchedBookingRow = BookingDbRow & {
+  ref_number?: string;
+  scheduled_at?: string;
+  total_amount?: number;
+  payment_status?: string;
+  service_name?: string;
+};
 
 /**
  * GET /api/provider/bookings/[id]
@@ -52,7 +177,7 @@ export async function GET(
         `
         *,
         version,
-        customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
+        customers:users!bookings_customer_id_fkey(id, full_name, email, phone, rating_average, review_count),
         locations:provider_locations(id, name, address_line1, city),
         group_bookings!bookings_group_booking_id_fkey(ref_number, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact)),
         booking_services(
@@ -88,15 +213,14 @@ export async function GET(
       return notFoundResponse("Booking not found");
     }
 
-    // Transform to match Booking type
-    const bookingData = booking as any;
-    const transformedBooking: Booking = {
+    const bookingData = booking as BookingDbRow;
+    const transformedBooking = {
       id: bookingData.id,
       booking_number: bookingData.booking_number,
       customer_id: bookingData.customer_id,
       provider_id: bookingData.provider_id,
-      status: mapStatusFromDatabase(bookingData.status),
-      location_type: bookingData.location_type,
+      status: mapStatusFromDatabase(bookingData.status ?? "") as BookingResponse["status"],
+      location_type: (bookingData.location_type ?? "at_salon") as BookingResponse["location_type"],
       location_id: bookingData.location_id,
       // Construct address object from individual columns (including house call specific fields)
       address: bookingData.address_line1 ? {
@@ -123,32 +247,39 @@ export async function GET(
       cancelled_at: bookingData.cancelled_at || null,
       cancellation_reason: bookingData.cancellation_reason || null,
       // Services are fetched via booking_services join (include guest_name for group bookings)
-      services: (bookingData.booking_services || []).map((bs: any) => ({
+      services: (bookingData.booking_services ?? []).map((bs) => {
+        const offering = Array.isArray(bs.offerings) ? bs.offerings[0] : bs.offerings;
+        const staffObj = Array.isArray(bs.staff) ? bs.staff[0] : bs.staff;
+        return {
         id: bs.id,
         offering_id: bs.offering_id,
         service_id: bs.offering_id,
-        offering_name: bs.offerings?.title || "Unknown Service",
-        service_name: bs.offerings?.title || "Unknown Service",
+        offering_name: offering?.title ?? "Unknown Service",
+        service_name: offering?.title ?? "Unknown Service",
         staff_id: bs.staff_id,
-        staff_name: bs.staff?.name,
-        staff: bs.staff,
+        staff_name: staffObj?.name,
+        staff: staffObj,
         duration_minutes: bs.duration_minutes,
         price: bs.price,
         scheduled_start_at: bs.scheduled_start_at,
         scheduled_end_at: bs.scheduled_end_at,
-        guest_name: bs.guest_name || null,
+        guest_name: bs.guest_name ?? null,
         customization: null,
-      })),
-      products: (bookingData.booking_products || []).map((bp: any) => ({
+      };
+      }),
+      products: (bookingData.booking_products ?? []).map((bp) => {
+        const product = Array.isArray(bp.products) ? bp.products[0] : bp.products;
+        return {
         id: bp.id,
         product_id: bp.product_id,
         product_variant_id: bp.product_variant_id,
         product_variant: bp.product_variant,
-        product_name: bp.products?.name || "Unknown Product",
+        product_name: product?.name ?? "Unknown Product",
         quantity: bp.quantity,
         unit_price: bp.unit_price,
         total_price: bp.total_price,
-      })),
+      };
+      }),
       addons: [], // Would need separate fetch from booking_addons
       package_id: bookingData.package_id || null,
       subtotal: bookingData.subtotal || 0,
@@ -165,11 +296,11 @@ export async function GET(
       total_paid: bookingData.total_paid || 0,
       total_refunded: bookingData.total_refunded || 0,
       currency: bookingData.currency || "ZAR",
-      payment_status: bookingData.payment_status,
+      payment_status: (bookingData.payment_status ?? "pending") as BookingResponse["payment_status"],
       payment_method: null, // payment_method_id is the actual column
       special_requests: bookingData.special_requests || null,
       loyalty_points_earned: bookingData.loyalty_points_earned || 0,
-      current_stage: bookingData.current_stage || null,
+      current_stage: (bookingData.current_stage ?? null) as BookingResponse["current_stage"],
       created_at: bookingData.created_at,
       updated_at: bookingData.updated_at,
       version: bookingData.version || 0,
@@ -189,7 +320,8 @@ export async function GET(
       participants: (() => {
         const gb = bookingData.group_bookings;
         const one = Array.isArray(gb) ? gb[0] : gb;
-        return (one?.booking_participants || []).map((p: any) => ({
+        const participants = (one as { booking_participants?: Array<{ id?: string; participant_name?: string; participant_email?: string; participant_phone?: string; is_primary_contact?: boolean }> })?.booking_participants ?? [];
+        return participants.map((p) => ({
           id: p.id,
           participant_name: p.participant_name,
           participant_email: p.participant_email,
@@ -197,7 +329,7 @@ export async function GET(
           is_primary_contact: p.is_primary_contact,
         }));
       })(),
-    } as Booking & { version: number; is_group_booking?: boolean; group_booking_id?: string | null; group_booking_ref?: string | null; participants?: any[] };
+    } as BookingResponse;
 
     // Load booking custom field values (provider can read their bookings' values via RLS)
     const { data: valueRows } = await supabase
@@ -224,7 +356,27 @@ export async function GET(
         else if (r.value === undefined) val = null;
         customFieldValues[name] = val as string | number | boolean | null;
       }
-      (transformedBooking as any).custom_field_values = customFieldValues;
+      transformedBooking.custom_field_values = customFieldValues;
+    }
+
+    // For completed bookings, include provider points earned (from provider_point_transactions)
+    if (bookingData.status === "completed" && providerId && id) {
+      try {
+        const { data: tx, error: txError } = await supabaseAdmin
+          .from("provider_point_transactions")
+          .select("points")
+          .eq("provider_id", providerId)
+          .eq("source", "booking_completed")
+          .eq("source_id", id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const points = txError ? null : (tx?.points ?? null);
+        transformedBooking.provider_points_earned =
+          typeof points === "number" && Number.isFinite(points) && points >= 0 ? points : null;
+      } catch {
+        transformedBooking.provider_points_earned = null;
+      }
     }
 
     return successResponse(transformedBooking);
@@ -339,7 +491,7 @@ export async function PATCH(
     const { version, updated_at } = body;
     if (version !== undefined) {
       // Using version number for optimistic locking
-      const currentVersion = (currentBooking as any).version || 0;
+      const currentVersion = (currentBooking as BookingRow).version || 0;
       if (version !== currentVersion) {
         return errorResponse(
           "This booking was modified by another user. Please refresh and try again.",
@@ -349,7 +501,7 @@ export async function PATCH(
       }
     } else if (updated_at) {
       // Alternative: Using updated_at timestamp for conflict detection
-      const currentUpdatedAt = new Date((currentBooking as any).updated_at).getTime();
+      const currentUpdatedAt = new Date((currentBooking as BookingRow).updated_at).getTime();
       const providedUpdatedAt = new Date(updated_at).getTime();
       if (Math.abs(currentUpdatedAt - providedUpdatedAt) > 1000) {
         // More than 1 second difference indicates a conflict
@@ -361,8 +513,72 @@ export async function PATCH(
       }
     }
 
+    // Slot conflict check when rescheduling (scheduled_at or services with new times)
+    const isReschedule = scheduled_at != null || (Array.isArray(services) && services.some((s: { scheduled_start_at?: string | null }) => s.scheduled_start_at != null));
+    if (isReschedule) {
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data: currentServices } = await supabaseAdmin
+        .from("booking_services")
+        .select("staff_id, scheduled_start_at, scheduled_end_at, duration_minutes, offerings(buffer_minutes)")
+        .eq("booking_id", id)
+        .order("scheduled_start_at", { ascending: true });
+
+      let newStart: Date;
+      let newEnd: Date;
+      let staffId: string | null = staff_id ?? null;
+      let bufferMinutes = 15;
+
+      if (Array.isArray(services) && services.length > 0) {
+        const firstWithTime = services.find((s: { scheduled_start_at?: string }) => s.scheduled_start_at);
+        const baseAt = scheduled_at ?? (currentBooking as BookingRow).scheduled_at ?? currentServices?.[0]?.scheduled_start_at;
+        const startAt = firstWithTime?.scheduled_start_at ?? baseAt;
+        newStart = new Date(startAt);
+        let endMs = newStart.getTime();
+        for (const s of services) {
+          const dur = (s.duration ?? s.duration_minutes ?? 60) * 60 * 1000;
+          endMs += dur;
+        }
+        newEnd = new Date(endMs);
+        if (staff_id === undefined && currentServices?.[0]) {
+          staffId = (currentServices[0] as BookingServiceConflictRow).staff_id ?? null;
+        }
+        const firstBsAlt = (currentServices?.[0]) as BookingServiceConflictRow | undefined;
+        const firstOffering = firstBsAlt?.offerings != null ? (Array.isArray(firstBsAlt.offerings) ? firstBsAlt.offerings[0] : firstBsAlt.offerings) : undefined;
+        if (firstOffering?.buffer_minutes != null) bufferMinutes = Number(firstOffering.buffer_minutes);
+      } else {
+        newStart = new Date(scheduled_at);
+        const servicesList = (currentServices ?? []) as BookingServiceConflictRow[];
+        const duration = servicesList.reduce((sum: number, bs: BookingServiceConflictRow) => sum + (Number(bs.duration_minutes) || 0), 0) || 60;
+        newEnd = new Date(newStart.getTime() + duration * 60 * 1000);
+        if (staff_id === undefined && servicesList[0]) {
+          staffId = servicesList[0].staff_id ?? null;
+        }
+        const firstBs = servicesList[0];
+        const firstOff = firstBs?.offerings != null ? (Array.isArray(firstBs.offerings) ? firstBs.offerings[0] : firstBs.offerings) : undefined;
+        if (firstOff?.buffer_minutes != null) bufferMinutes = Number(firstOff.buffer_minutes);
+      }
+
+      if (staffId) {
+        const conflictResult = await checkBookingConflict(
+          supabaseAdmin,
+          staffId,
+          newStart,
+          newEnd,
+          bufferMinutes,
+          id
+        );
+        if (conflictResult.hasConflict) {
+          return errorResponse(
+            "This time slot is no longer available. Please choose another time.",
+            "SLOT_CONFLICT",
+            409
+          );
+        }
+      }
+    }
+
     // Update booking
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
 
@@ -373,7 +589,7 @@ export async function PATCH(
 
     // Update current_stage (e.g. client_arrived for in-salon check-in, or null when starting service)
     if (current_stage !== undefined) {
-      const locationType = (currentBooking as any)?.location_type;
+      const locationType = (currentBooking as BookingRow)?.location_type;
       // client_arrived only applies to at-salon; at-home uses provider_on_way/provider_arrived
       if (current_stage === "client_arrived" && locationType === "at_home") {
         // Ignore: house calls don't have "client arrived" concept
@@ -493,13 +709,13 @@ export async function PATCH(
     }
 
     // Increment version for optimistic locking
-    const currentVersion = (currentBooking as any).version || 0;
+    const currentVersion = (currentBooking as BookingRow).version || 0;
     updateData.version = currentVersion + 1;
 
     // Update current_stage for at-home bookings
     // Use the mapped database status for the check
     const dbStatus = updateData.status;
-    const locationType = (currentBooking as any)?.location_type;
+    const locationType = (currentBooking as BookingRow)?.location_type;
     
     if (dbStatus && locationType === "at_home") {
       // At-home bookings have additional stages
@@ -526,8 +742,8 @@ export async function PATCH(
       }
     }
 
-    const { error: updateError } = await (supabase
-      .from("bookings") as any)
+    const { error: updateError } = await supabase
+      .from("bookings")
       .update(updateData)
       .eq("id", id);
 
@@ -592,7 +808,7 @@ export async function PATCH(
     // Update booking_services if staff_id is changed (for reschedule to different staff)
     // Allow null to unassign staff, so check for undefined instead of truthy
     if (staff_id !== undefined) {
-      const bsUpdate: Record<string, any> = { staff_id };
+      const bsUpdate: Record<string, unknown> = { staff_id };
       if (scheduled_at) {
         bsUpdate.scheduled_start_at = scheduled_at;
         // Preserve duration: fetch first service's duration and set scheduled_end_at
@@ -659,16 +875,17 @@ export async function PATCH(
 
       // Insert new services
       if (services.length > 0) {
-        const baseScheduledAt = scheduled_at || (currentBooking as any).scheduled_at;
-        const servicesToInsert = services.map((service: any) => {
+        const baseScheduledAt = scheduled_at || (currentBooking as BookingRow).scheduled_at;
+        type ServiceUpdateInput = { scheduled_start_at?: string; duration?: number; serviceId?: string; offering_id?: string; price?: number; currency?: string };
+        const servicesToInsert = services.map((service: ServiceUpdateInput) => {
           const startAt = service.scheduled_start_at || baseScheduledAt;
-          const duration = service.duration || 60;
+          const duration = service.duration ?? 60;
           const start = new Date(startAt);
           const end = new Date(start.getTime() + duration * 60 * 1000);
           return {
             booking_id: id,
             offering_id: service.serviceId || service.offering_id,
-            staff_id: staff_id ?? (currentBooking as any).staff_id ?? null,
+            staff_id: staff_id ?? (currentBooking as BookingRow).staff_id ?? null,
             duration_minutes: duration,
             price: service.price || 0,
             currency: service.currency || "ZAR",
@@ -737,12 +954,13 @@ export async function PATCH(
           .not("staff_id", "is", null)
           .limit(1);
         const primaryStaffId = bookingServices?.[0]?.staff_id ?? null;
-        const productsToInsert = products.map((product: any) => ({
+        type ProductUpdateInput = { productId: string; productVariantId?: string | null; quantity?: number; unitPrice?: number; totalPrice?: number };
+        const productsToInsert = products.map((product: ProductUpdateInput) => ({
           booking_id: id,
           product_id: product.productId,
           product_variant_id: product.productVariantId ?? null,
-          quantity: product.quantity || 1,
-          unit_price: product.unitPrice || 0,
+          quantity: product.quantity ?? 1,
+          unit_price: product.unitPrice ?? 0,
           total_price: product.totalPrice || (product.unitPrice || 0) * (product.quantity || 1),
           staff_id: primaryStaffId,
         }));
@@ -759,8 +977,8 @@ export async function PATCH(
     }
 
     // Get customer ID for notifications
-    const customerId = (currentBooking as any).customer_id;
-    const previousStatus = (currentBooking as any).status;
+    const customerId = (currentBooking as BookingRow).customer_id;
+    const previousStatus = (currentBooking as BookingRow).status;
 
     // Send notifications for status changes
     if (dbStatus && dbStatus !== previousStatus) {
@@ -769,7 +987,7 @@ export async function PATCH(
         
         if (dbStatus === "cancelled") {
           // Reverse loyalty points if they were earned for this booking
-          const loyaltyPointsEarned = (currentBooking as any).loyalty_points_earned || 0;
+          const loyaltyPointsEarned = (currentBooking as BookingRow).loyalty_points_earned || 0;
           if (loyaltyPointsEarned > 0 && customerId) {
             try {
               // Check if points were already earned (transaction exists)
@@ -789,7 +1007,7 @@ export async function PATCH(
                       user_id: customerId,
                       transaction_type: "redeemed",
                       points: loyaltyPointsEarned,
-                      description: `Points reversed for cancelled booking ${(currentBooking as any).booking_number || id}`,
+                      description: `Points reversed for cancelled booking ${(currentBooking as BookingRow).booking_number || id}`,
                       reference_id: id,
                       reference_type: "booking",
                       expires_at: null,
@@ -811,16 +1029,16 @@ export async function PATCH(
         } else if (dbStatus === "confirmed" && previousStatus === "pending") {
           // Send confirmation notification
           await sendBookingConfirmationNotification(id);
-        } else if (scheduled_at && scheduled_at !== (currentBooking as any).scheduled_at) {
+        } else if (scheduled_at && scheduled_at !== (currentBooking as BookingRow).scheduled_at) {
           // Send reschedule notification
           await sendRescheduleNotification(
             id,
-            new Date((currentBooking as any).scheduled_at),
+            new Date((currentBooking as BookingRow).scheduled_at),
             new Date(scheduled_at)
           );
         } else if (dbStatus === "completed") {
           // Award customer loyalty points for completed booking
-          const subtotal = (currentBooking as any).subtotal || 0;
+          const subtotal = (currentBooking as BookingRow).subtotal || 0;
           
           if (subtotal > 0 && customerId) {
             try {
@@ -834,7 +1052,7 @@ export async function PATCH(
                 .maybeSingle();
 
               if (!existingTransaction) {
-                const currency = (currentBooking as any).currency || "ZAR";
+                const currency = (currentBooking as BookingRow).currency || "ZAR";
                 const pointsEarned = await calculateLoyaltyPoints(subtotal, supabase, currency);
 
                 if (pointsEarned > 0) {
@@ -845,7 +1063,7 @@ export async function PATCH(
                       user_id: customerId,
                       transaction_type: "earned",
                       points: pointsEarned,
-                      description: `Points earned for completed booking ${(currentBooking as any).booking_number || id}`,
+                      description: `Points earned for completed booking ${(currentBooking as BookingRow).booking_number || id}`,
                       reference_id: id,
                       reference_type: "booking",
                       expires_at: null, // Or set expiry based on config
@@ -868,6 +1086,13 @@ export async function PATCH(
               console.error('Failed to award customer loyalty points on completion:', loyaltyError);
             }
           }
+
+          // Award provider points for completed booking (same as complete-service)
+          if (providerId && id) {
+            awardPointsForBooking(providerId, id).catch((err) =>
+              console.error("Failed to award provider points on completion:", err)
+            );
+          }
           
           // Completion notification is handled by the database notification system below
           // No additional action needed here
@@ -886,7 +1111,7 @@ export async function PATCH(
       cancelled: "cancelled",
     };
 
-    const eventType = dbStatus ? eventTypeMap[dbStatus] : null;
+    const eventType = dbStatus ? eventTypeMap[String(dbStatus)] : null;
     if (eventType) {
       // Create booking event (existing system)
       await supabase
@@ -895,7 +1120,7 @@ export async function PATCH(
           booking_id: id,
           event_type: eventType,
           event_data: {
-            previous_status: (currentBooking as any)?.status,
+            previous_status: (currentBooking as BookingRow)?.status,
             new_status: status,
           },
           created_by: user.id,
@@ -915,10 +1140,10 @@ export async function PATCH(
             booking_id: id,
             event_type: "status_changed",
             event_data: {
-              previous_status: (currentBooking as any)?.status,
+              previous_status: (currentBooking as BookingRow)?.status,
               new_status: status,
               field: "status",
-              old_value: (currentBooking as any)?.status,
+              old_value: (currentBooking as BookingRow)?.status,
               new_value: status,
               reason: body.cancellation_reason || null,
             },
@@ -935,10 +1160,10 @@ export async function PATCH(
     if (customerId) {
       try {
         // Create database notification
-        const bookingNumber = (updatedBooking as any)?.ref_number || (currentBooking as any)?.ref_number || "";
-        const previousStatus = (currentBooking as any)?.status;
+        const bookingNumber = (updatedBooking as RefetchedBookingRow)?.ref_number || (currentBooking as BookingRow)?.ref_number || "";
+        const previousStatus = (currentBooking as BookingRow)?.status;
         const newStatus = dbStatus || previousStatus;
-        const wasRescheduled = scheduled_at && scheduled_at !== (currentBooking as any)?.scheduled_at;
+        const wasRescheduled = scheduled_at && scheduled_at !== (currentBooking as BookingRow)?.scheduled_at;
 
         let notificationTitle = "Booking Update";
         let notificationMessage = "";
@@ -955,9 +1180,9 @@ export async function PATCH(
             completed: "Your service has been completed.",
             cancelled: "Your booking has been cancelled.",
           };
-          notificationMessage = statusMessages[newStatus] || `Your booking ${bookingNumber ? `(${bookingNumber}) ` : ""}status has been updated.`;
+          notificationMessage = statusMessages[String(newStatus)] || `Your booking ${bookingNumber ? `(${bookingNumber}) ` : ""}status has been updated.`;
           notificationType = "booking_status_update";
-        } else if (staff_id && staff_id !== (currentBooking as any)?.staff_id) {
+        } else if (staff_id && staff_id !== (currentBooking as BookingRow)?.staff_id) {
           notificationTitle = "Staff Assigned";
           notificationMessage = `A staff member has been assigned to your booking ${bookingNumber ? `(${bookingNumber}) ` : ""}.`;
           notificationType = "booking_staff_changed";
@@ -986,8 +1211,8 @@ export async function PATCH(
           const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
           
           // Get booking details for template variables
-          const bookingScheduledAt = (updatedBooking as any)?.scheduled_at || (currentBooking as any)?.scheduled_at;
-          const previousScheduledAt = (currentBooking as any)?.scheduled_at;
+          const bookingScheduledAt = (updatedBooking as RefetchedBookingRow)?.scheduled_at || (currentBooking as BookingRow)?.scheduled_at;
+          const previousScheduledAt = (currentBooking as BookingRow)?.scheduled_at;
           
           // Format dates and times
           const formatDate = (dateStr: string | null | undefined) => {
@@ -1024,8 +1249,8 @@ export async function PATCH(
               provider_name: providerName,
               booking_date: scheduledDate || "your appointment",
               booking_time: scheduledTime || "",
-              services: (updatedBooking as any)?.service_name || (currentBooking as any)?.service_name || "service",
-              total_amount: `R${((updatedBooking as any)?.total_amount || (currentBooking as any)?.total_amount || 0).toFixed(2)}`,
+              services: (updatedBooking as RefetchedBookingRow)?.service_name || (currentBooking as BookingRow)?.service_name || "service",
+              total_amount: `R${((updatedBooking as RefetchedBookingRow)?.total_amount || (currentBooking as BookingRow)?.total_amount || 0).toFixed(2)}`,
               booking_number: bookingNumber || "",
               booking_id: id,
             };
@@ -1035,7 +1260,7 @@ export async function PATCH(
               provider_name: providerName,
               booking_date: scheduledDate || "your appointment",
               booking_number: bookingNumber || "",
-              refund_info: ((updatedBooking as any)?.payment_status || (currentBooking as any)?.payment_status) === "paid" 
+              refund_info: ((updatedBooking as RefetchedBookingRow)?.payment_status || (currentBooking as BookingRow)?.payment_status) === "paid" 
                 ? "A refund will be processed within 3-5 business days."
                 : "No payment was required.",
               booking_id: id,
@@ -1054,7 +1279,7 @@ export async function PATCH(
             templateKey = "service_completed";
             templateVariables = {
               provider_name: providerName,
-              services: (updatedBooking as any)?.service_name || (currentBooking as any)?.service_name || "service",
+              services: (updatedBooking as RefetchedBookingRow)?.service_name || (currentBooking as BookingRow)?.service_name || "service",
               booking_id: id,
             };
           }
@@ -1065,7 +1290,8 @@ export async function PATCH(
               templateKey,
               [customerId],
               templateVariables,
-              ["push", "email"]
+              ["push", "email"],
+              { appType: "customer" }
             );
           }
           // Note: For other status changes without specific templates, notifications are skipped
@@ -1081,7 +1307,7 @@ export async function PATCH(
     }
 
     // Transform the fetched booking to match Booking type (same as GET endpoint)
-    const bookingData = updatedBooking as any;
+    const bookingData = updatedBooking as BookingDbRow;
     const transformedBooking: Booking = {
       id: bookingData.id,
       booking_number: bookingData.booking_number,
@@ -1111,26 +1337,35 @@ export async function PATCH(
       completed_at: bookingData.completed_at || null,
       cancelled_at: bookingData.cancelled_at || null,
       cancellation_reason: bookingData.cancellation_reason || null,
-      services: (bookingData.booking_services || []).map((bs: any) => ({
+      services: (bookingData.booking_services ?? []).map((bs) => {
+        const offering = Array.isArray(bs.offerings) ? bs.offerings[0] : bs.offerings;
+        const staffObj = Array.isArray(bs.staff) ? bs.staff[0] : bs.staff;
+        return {
         id: bs.id,
+        offering_id: bs.offering_id,
         service_id: bs.offering_id,
-        service_name: bs.offerings?.title || "Unknown Service",
+        offering_name: offering?.title ?? "Unknown Service",
+        service_name: offering?.title ?? "Unknown Service",
         staff_id: bs.staff_id,
-        staff_name: bs.staff?.name || null,
+        staff_name: staffObj?.name ?? null,
         duration_minutes: bs.duration_minutes,
         price: bs.price,
         customization: null,
-      })),
-      products: (bookingData.booking_products || []).map((bp: any) => ({
+      };
+      }),
+      products: (bookingData.booking_products ?? []).map((bp) => {
+        const product = Array.isArray(bp.products) ? bp.products[0] : bp.products;
+        return {
         id: bp.id,
         product_id: bp.product_id,
         product_variant_id: bp.product_variant_id,
         product_variant: bp.product_variant,
-        product_name: bp.products?.name || "Unknown Product",
+        product_name: product?.name ?? "Unknown Product",
         quantity: bp.quantity,
         unit_price: bp.unit_price,
         total_price: bp.total_price,
-      })),
+      };
+      }),
       addons: [],
       package_id: bookingData.package_id || null,
       subtotal: bookingData.subtotal || 0,
@@ -1153,7 +1388,7 @@ export async function PATCH(
       created_at: bookingData.created_at,
       updated_at: bookingData.updated_at,
       version: bookingData.version || 0,
-    } as Booking & { version: number };
+    } as unknown as Booking & { version: number };
 
     return successResponse({ booking: transformedBooking });
   } catch (error) {

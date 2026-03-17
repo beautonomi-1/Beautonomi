@@ -5,14 +5,17 @@ import { z } from "zod";
 
 const toggleSchema = z.object({
   wishlist_id: z.string().uuid().optional(),
-  item_type: z.enum(["provider", "offering", "package"]),
+  item_type: z.enum(["provider", "offering", "package", "product"]),
   item_id: z.string().uuid(),
 });
 
-async function getOrCreateDefaultWishlistId(userId: string): Promise<string> {
-  const supabase = await getSupabaseServer();
+async function getOrCreateDefaultWishlistId(
+  userId: string,
+  req: NextRequest
+): Promise<string> {
+  const supabase = await getSupabaseServer(req);
 
-  const { data: existing, error: existingError } = await (supabase.from("wishlists") as any)
+  const { data: existing, error: existingError } = await supabase.from("wishlists")
     .select("id")
     .eq("user_id", userId)
     .eq("is_default", true)
@@ -20,7 +23,7 @@ async function getOrCreateDefaultWishlistId(userId: string): Promise<string> {
 
   if (!existingError && existing?.id) return existing.id as string;
 
-  const { data: created, error: createError } = await (supabase.from("wishlists") as any)
+  const { data: created, error: createError } = await supabase.from("wishlists")
     .insert({
       user_id: userId,
       name: "Favorites",
@@ -42,14 +45,14 @@ async function getOrCreateDefaultWishlistId(userId: string): Promise<string> {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const body = toggleSchema.parse(await request.json());
 
-    const wishlistId = body.wishlist_id || (await getOrCreateDefaultWishlistId(user.id));
+    const wishlistId = body.wishlist_id || (await getOrCreateDefaultWishlistId(user.id, request));
 
     // Ensure wishlist belongs to user
-    const { data: wishlist, error: wlError } = await (supabase.from("wishlists") as any)
+    const { data: wishlist, error: wlError } = await supabase.from("wishlists")
       .select("id")
       .eq("id", wishlistId)
       .eq("user_id", user.id)
@@ -58,7 +61,7 @@ export async function POST(request: NextRequest) {
       return successResponse({ success: false, message: "Wishlist not found" }, 404);
     }
 
-    const { data: existing, error: existingError } = await (supabase.from("wishlist_items") as any)
+    const { data: existing, error: existingError } = await supabase.from("wishlist_items")
       .select("id")
       .eq("wishlist_id", wishlistId)
       .eq("item_type", body.item_type)
@@ -71,7 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (existing?.id) {
-      const { error: delError } = await (supabase.from("wishlist_items") as any)
+      const { error: delError } = await supabase.from("wishlist_items")
         .delete()
         .eq("id", existing.id)
         .eq("wishlist_id", wishlistId);
@@ -79,7 +82,7 @@ export async function POST(request: NextRequest) {
       return successResponse({ success: true, action: "removed", wishlist_id: wishlistId });
     }
 
-    const { error: insError } = await (supabase.from("wishlist_items") as any).insert({
+    const { error: insError } = await supabase.from("wishlist_items").insert({
       wishlist_id: wishlistId,
       item_type: body.item_type,
       item_id: body.item_id,

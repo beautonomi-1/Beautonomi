@@ -14,7 +14,8 @@ import type { BookingDraft } from "@/types/beautonomi";
 
 /**
  * POST /api/provider/on-demand/requests/[id]/accept
- * Accept an on-demand request (atomic). Creates booking from request_payload and links it.
+ * Accept an on-demand request: create booking from request_payload, then single UPDATE
+ * (status + booking_id) so realtime sends one state and customer can navigate to booking.
  */
 export async function POST(
   request: NextRequest,
@@ -31,18 +32,17 @@ export async function POST(
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
 
     const now = new Date().toISOString();
-    const { data: updatedRow, error: updateError } = await supabase
+    const { data: requestRow, error: fetchError } = await supabase
       .from("on_demand_requests")
-      .update({ status: "accepted", accepted_at: now, updated_at: now })
+      .select("*")
       .eq("id", id)
       .eq("provider_id", providerId)
       .eq("status", "requested")
       .gt("expires_at", now)
-      .select()
       .maybeSingle();
 
-    if (updateError) throw updateError;
-    if (!updatedRow) {
+    if (fetchError) throw fetchError;
+    if (!requestRow) {
       return errorResponse(
         "Request already handled or expired",
         "ALREADY_HANDLED_OR_EXPIRED",
@@ -50,8 +50,8 @@ export async function POST(
       );
     }
 
-    const customerId = updatedRow.customer_id as string;
-    const requestPayload = (updatedRow.request_payload ?? {}) as Record<string, unknown>;
+    const customerId = requestRow.customer_id as string;
+    const requestPayload = (requestRow.request_payload ?? {}) as Record<string, unknown>;
     const admin = getSupabaseAdmin();
 
     // Enrich client_info from users if missing so booking gets guest_name
@@ -73,7 +73,7 @@ export async function POST(
 
     // Build draft from request_payload (same shape as booking create body)
     const draft: BookingDraft = {
-      provider_id: updatedRow.provider_id as string,
+      provider_id: requestRow.provider_id as string,
       services: Array.isArray(requestPayload.services)
         ? (requestPayload.services as { offering_id: string; staff_id?: string }[]).map((s) => ({
             offering_id: s.offering_id,
@@ -155,13 +155,30 @@ export async function POST(
 
     const { booking } = createResult;
 
-    await admin
+    // Single UPDATE so realtime sends status + booking_id together; customer can go straight to booking-detail
+    const { data: updatedRow, error: updateError } = await admin
       .from("on_demand_requests")
       .update({
+        status: "accepted",
+        accepted_at: now,
         booking_id: booking.id,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("provider_id", providerId)
+      .eq("status", "requested")
+      .gt("expires_at", now)
+      .select()
+      .maybeSingle();
+
+    if (updateError) throw updateError;
+    if (!updatedRow) {
+      return errorResponse(
+        "Request already handled or expired",
+        "ALREADY_HANDLED_OR_EXPIRED",
+        409
+      );
+    }
 
     // Notify customer
     await admin.from("notifications").insert({
@@ -177,7 +194,7 @@ export async function POST(
     });
 
     return successResponse({
-      request: { ...updatedRow, booking_id: booking.id },
+      request: updatedRow,
       booking_id: booking.id,
     });
   } catch (error) {

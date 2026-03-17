@@ -34,6 +34,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .single();
     if (!reqRow) return notFoundResponse("Custom request not found");
 
+    type ReqRow = { customer_id?: string; providers?: { business_name?: string } };
+    const req = reqRow as ReqRow;
+    const customerId = req.customer_id ?? "";
+
     // Validate staff_id and location_id belong to this provider
     if (body.staff_id) {
       const { data: staffRow } = await supabase
@@ -87,7 +91,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Also send via messages: post an offer message in the customer<->provider conversation (best-effort)
     try {
-      const customerId = (reqRow as any).customer_id as string;
       // Use the most recently active conversation so the offer appears in the same thread the customer is likely in
       const { data: existingConv } = await supabase
         .from("conversations")
@@ -119,8 +122,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           .select("id")
           .single();
         
+        type ConvRow = { id: string };
         if (!convError && newConv) {
-          convId = (newConv as any)?.id;
+          convId = (newConv as ConvRow)?.id;
         }
       }
 
@@ -137,7 +141,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               {
                 type: "custom_offer",
                 request_id: id,
-                offer_id: (offer as any).id,
+                offer_id: (offer as { id: string }).id,
                 price: body.price,
                 currency: body.currency,
                 duration_minutes: body.duration_minutes,
@@ -162,7 +166,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               last_message_at: new Date().toISOString(),
               last_message_preview: messageContent,
               last_message_sender_id: user.id,
-              unread_count_customer: ((currentConv as any)?.unread_count_customer || 0) + 1,
+              unread_count_customer: ((currentConv as { unread_count_customer?: number } | null)?.unread_count_customer ?? 0) + 1,
               updated_at: new Date().toISOString(),
             })
             .eq("id", convId);
@@ -180,15 +184,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (template && template.enabled) {
         await sendTemplateNotification(
           "customer_custom_offer",
-          [(reqRow as any).customer_id],
+          [customerId],
           {
-            provider_name: (reqRow as any)?.providers?.business_name || "A provider",
+            provider_name: req?.providers?.business_name ?? "A provider",
             price: body.price.toString(),
             currency: body.currency,
             request_id: id,
-            offer_id: (offer as any).id,
+            offer_id: (offer as { id: string }).id,
           },
-          template.channels || ["push", "email"]
+          template.channels || ["push", "email"],
+          { appType: "customer" }
         );
       } else {
         console.warn("Notification template 'customer_custom_offer' not found, skipping notification");

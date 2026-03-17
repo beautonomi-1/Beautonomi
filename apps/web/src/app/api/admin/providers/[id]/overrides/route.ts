@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 
 const overridesSchema = z.object({
   commission_override: z.number().min(0).max(100).optional().nullable(),
@@ -20,8 +22,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -66,7 +68,11 @@ export async function PUT(
     }
 
     // Update provider with overrides
-    const updateData: any = {};
+    const updateData: {
+      commission_override?: number | null;
+      is_featured?: boolean;
+      priority?: number | null;
+    } = {};
     if (validationResult.data.commission_override !== undefined) {
       updateData.commission_override = validationResult.data.commission_override;
     }
@@ -77,8 +83,8 @@ export async function PUT(
       updateData.priority = validationResult.data.priority;
     }
 
-    const { data: updatedProvider, error } = await (supabase
-      .from("providers") as any)
+    const { data: updatedProvider, error } = await supabase
+      .from("providers")
       .update(updateData)
       .eq("id", id)
       .select()
@@ -99,8 +105,8 @@ export async function PUT(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.provider.overrides.update",
       entity_type: "provider",
       entity_id: id,

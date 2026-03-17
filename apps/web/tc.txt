@@ -1,0 +1,305 @@
+﻿
+> web@0.1.0 typecheck C:\Users\NoloSehlolo\Documents\Beautonomi\apps\web
+> tsc --noEmit
+
+src/app/api/admin/analytics/route.ts(57,28): error TS2345: Argument of type '(item: RowWithDate) => void' is not assignable to parameter of type '(value: GenericStringError, index: number, array: GenericStringError[]) => void'.
+  Types of parameters 'item' and 'value' are incompatible.
+    Type 'GenericStringError' is not assignable to type 'RowWithDate'.
+      Type 'GenericStringError' is not assignable to type 'Record<string, unknown>'.
+        Index signature for type 'string' is missing in type '{ error: true; } & String'.
+src/app/api/admin/export/bookings/route.ts(98,42): error TS2345: Argument of type '(booking: BookingRow) => { "Booking ID": string; "Booking Number": string; Status: string; "Payment Status": string; "Total Amount": string | number; "Created At": string; ... 5 more ...; "Provider Name": string; }' is not assignable to parameter of type '(value: { id: any; booking_number: any; status: any; payment_status: any; total_amount: any; created_at: any; scheduled_at: any; customer: { id: any; email: any; full_name: any; }[]; provider: { id: any; business_name: any; }[]; }, index: number, array: { ...; }[]) => { ...; }'.
+  Types of parameters 'booking' and 'value' are incompatible.
+    Type '{ id: any; booking_number: any; status: any; payment_status: any; total_amount: any; created_at: any; scheduled_at: any; customer: { id: any; email: any; full_name: any; }[]; provider: { id: any; business_name: any; }[]; }' is not assignable to type 'BookingRow'.
+      Types of property 'customer' are incompatible.
+        Type '{ id: any; email: any; full_name: any; }[]' has no properties in common with type '{ id?: string; email?: string; full_name?: string; }'.
+src/app/api/admin/export/providers/route.ts(88,43): error TS2345: Argument of type '(provider: ProviderRow) => { "Provider ID": string; "Business Name": string; Status: string; "Is Verified": string; "Created At": string; "Owner ID": string; "Owner Email": string; "Owner Name": string; }' is not assignable to parameter of type '(value: { id: any; business_name: any; status: any; is_verified: any; created_at: any; owner: { id: any; email: any; full_name: any; }[]; }, index: number, array: { id: any; business_name: any; status: any; is_verified: any; created_at: any; owner: { ...; }[]; }[]) => { ...; }'.
+  Types of parameters 'provider' and 'value' are incompatible.
+    Type '{ id: any; business_name: any; status: any; is_verified: any; created_at: any; owner: { id: any; email: any; full_name: any; }[]; }' is not assignable to type 'ProviderRow'.
+      Types of property 'owner' are incompatible.
+        Type '{ id: any; email: any; full_name: any; }[]' has no properties in common with type '{ id?: string; email?: string; full_name?: string; }'.
+src/app/api/admin/finance/transactions/route.ts(95,26): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+src/app/api/admin/finance/transactions/route.ts(96,24): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+src/app/api/admin/finance/transactions/route.ts(97,30): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+src/app/api/admin/finance/transactions/route.ts(98,23): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+src/app/api/admin/gods-eye/map-state/route.ts(140,29): error TS2339: Property 'provider_last_lat' does not exist on type '{ lat: number; lng: number; recorded_at: string; booking_id: string; } | TrackingRow'.
+  Property 'provider_last_lat' does not exist on type '{ lat: number; lng: number; recorded_at: string; booking_id: string; }'.
+src/app/api/admin/gods-eye/map-state/route.ts(141,29): error TS2339: Property 'provider_last_lng' does not exist on type '{ lat: number; lng: number; recorded_at: string; booking_id: string; } | TrackingRow'.
+  Property 'provider_last_lng' does not exist on type '{ lat: number; lng: number; recorded_at: string; booking_id: string; }'.
+src/app/api/admin/gods-eye/map-state/route.ts(142,28): error TS2339: Property 'provider_last_at' does not exist on type '{ lat: number; lng: number; recorded_at: string; booking_id: string; } | TrackingRow'.
+  Property 'provider_last_at' does not exist on type '{ lat: number; lng: number; recorded_at: string; booking_id: string; }'.
+src/app/api/admin/promotions/route.ts(60,28): error TS2352: Conversion of type '{ type: string; start_date: string; end_date: string; min_purchase: number; max_discount: number; used_count: number; applicable_to: string; valid_from?: string; valid_until?: string; min_purchase_amount?: number; max_discount_amount?: number; usage_count?: number; applicable_categories?: unknown[]; applicable_provi...' to type 'Promotion[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ type: string; start_date: string; end_date: string; min_purchase: number; max_discount: number; used_count: number; applicable_to: string; valid_from?: string; valid_until?: string; min_purchase_amount?: number; max_discount_amount?: number; usage_count?: number; applicable_categories?: unknown[]; applicable_provi...' is missing the following properties from type 'Promotion': id, name, code, value, is_active
+src/app/api/admin/providers/route.ts(83,23): error TS2339: Property 'created_at' does not exist on type 'ProviderRow'.
+src/app/api/admin/providers/route.ts(84,19): error TS2339: Property 'rating_average' does not exist on type 'ProviderRow'.
+src/app/api/admin/providers/route.ts(85,25): error TS2339: Property 'review_count' does not exist on type 'ProviderRow'.
+src/app/api/admin/settings/route.ts(324,24): error TS2352: Conversion of type '{ [x: string]: unknown; }' to type 'PlatformSettings' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ [x: string]: unknown; }' is missing the following properties from type 'PlatformSettings': branding, localization, payouts, notifications, and 10 more.
+src/app/api/admin/settings/route.ts(475,30): error TS2352: Conversion of type 'Record<string, unknown>' to type 'PlatformSettings' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Record<string, unknown>' is missing the following properties from type 'PlatformSettings': branding, localization, payouts, notifications, and 10 more.
+src/app/api/admin/settings/route.ts(503,26): error TS2352: Conversion of type 'Record<string, unknown>' to type 'PlatformSettings' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type 'Record<string, unknown>' is missing the following properties from type 'PlatformSettings': branding, localization, payouts, notifications, and 10 more.
+src/app/api/admin/settings/sales/route.ts(95,24): error TS2339: Property 'defaults' does not exist on type 'unknown'.
+src/app/api/admin/settings/sales/route.ts(105,24): error TS2339: Property 'constraints' does not exist on type 'unknown'.
+src/app/api/admin/settings/sales/route.ts(150,30): error TS2339: Property 'defaults' does not exist on type 'unknown'.
+src/app/api/admin/settings/sales/route.ts(151,35): error TS2339: Property 'defaults' does not exist on type 'unknown'.
+src/app/api/admin/settings/sales/route.ts(157,30): error TS2339: Property 'constraints' does not exist on type 'unknown'.
+src/app/api/admin/settings/sales/route.ts(158,35): error TS2339: Property 'constraints' does not exist on type 'unknown'.
+src/app/api/admin/settings/sales/route.ts(193,33): error TS2339: Property 'defaults' does not exist on type 'unknown'.
+src/app/api/admin/settings/sales/route.ts(194,36): error TS2339: Property 'constraints' does not exist on type 'unknown'.
+src/app/api/admin/settings/sales/route.ts(223,33): error TS2339: Property 'defaults' does not exist on type 'unknown'.
+src/app/api/admin/settings/sales/route.ts(224,36): error TS2339: Property 'constraints' does not exist on type 'unknown'.
+src/app/api/admin/staff/route.ts(71,39): error TS2345: Argument of type '(s: StaffRow) => StaffWithRole' is not assignable to parameter of type '(value: { id: any; provider_id: any; user_id: any; name: any; email: any; phone: any; role: any; avatar_url: any; bio: any; is_active: any; commission_percentage: any; created_at: any; updated_at: any; provider: { ...; }[]; users: { ...; }[]; }, index: number, array: { ...; }[]) => StaffWithRole'.
+  Types of parameters 's' and 'value' are incompatible.
+    Type '{ id: any; provider_id: any; user_id: any; name: any; email: any; phone: any; role: any; avatar_url: any; bio: any; is_active: any; commission_percentage: any; created_at: any; updated_at: any; provider: { ...; }[]; users: { ...; }[]; }' is not assignable to type 'StaffRow'.
+      Types of property 'users' are incompatible.
+        Type '{ role: any; }[]' has no properties in common with type '{ role?: string; }'.
+src/app/api/admin/subscription-metrics/route.ts(67,8): error TS2352: Conversion of type '{ id: any; provider_id: any; plan_id: any; status: any; billing_period: any; started_at: any; next_payment_date: any; subscription_plans: { id: any; name: any; price_monthly: any; price_yearly: any; currency: any; }[]; providers: { ...; }[]; }[]' to type 'SubWithPlan[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ id: any; provider_id: any; plan_id: any; status: any; billing_period: any; started_at: any; next_payment_date: any; subscription_plans: { id: any; name: any; price_monthly: any; price_yearly: any; currency: any; }[]; providers: { ...; }[]; }' is not comparable to type 'SubWithPlan'.
+    Types of property 'subscription_plans' are incompatible.
+      Property 'id' is missing in type '{ id: any; name: any; price_monthly: any; price_yearly: any; currency: any; }[]' but required in type '{ id: string; name?: string; price_monthly?: number; price_yearly?: number; }'.
+src/app/api/admin/subscription-metrics/route.ts(185,10): error TS2352: Conversion of type '{ billing_period: any; status: any; started_at: any; expires_at: any; subscription_plans: { price_monthly: any; price_yearly: any; }[]; }[]' to type 'SubWithPlan[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ billing_period: any; status: any; started_at: any; expires_at: any; subscription_plans: { price_monthly: any; price_yearly: any; }[]; }' is not comparable to type 'SubWithPlan'.
+    Types of property 'subscription_plans' are incompatible.
+      Property 'id' is missing in type '{ price_monthly: any; price_yearly: any; }[]' but required in type '{ id: string; name?: string; price_monthly?: number; price_yearly?: number; }'.
+src/app/api/admin/subscription-metrics/route.ts(210,8): error TS2352: Conversion of type '{ id: any; provider_id: any; plan_id: any; status: any; billing_period: any; started_at: any; next_payment_date: any; subscription_plans: { id: any; name: any; price_monthly: any; price_yearly: any; currency: any; }[]; providers: { ...; }[]; }[]' to type 'SubWithPlan[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ id: any; provider_id: any; plan_id: any; status: any; billing_period: any; started_at: any; next_payment_date: any; subscription_plans: { id: any; name: any; price_monthly: any; price_yearly: any; currency: any; }[]; providers: { ...; }[]; }' is not comparable to type 'SubWithPlan'.
+    Types of property 'subscription_plans' are incompatible.
+      Property 'id' is missing in type '{ id: any; name: any; price_monthly: any; price_yearly: any; currency: any; }[]' but required in type '{ id: string; name?: string; price_monthly?: number; price_yearly?: number; }'.
+src/app/api/admin/subscription-plans/route.ts(294,61): error TS2698: Spread types may only be created from object types.
+src/app/api/admin/travel-fees/route.ts(101,7): error TS2698: Spread types may only be created from object types.
+src/app/api/explore/posts/[id]/comments/route.ts(92,57): error TS2345: Argument of type '(r: CommentRow) => { id: string; post_id: string; user_id: string; author: { id: string; full_name: string; avatar_url: string; }; body: string; mentioned_user_ids: string[]; created_at: string; updated_at: string; }' is not assignable to parameter of type '(value: { id: any; post_id: any; user_id: any; body: any; mentioned_user_ids: any; created_at: any; updated_at: any; users: { id: any; full_name: any; avatar_url: any; }[]; }, index: number, array: { id: any; post_id: any; ... 5 more ...; users: { ...; }[]; }[]) => { ...; }'.
+  Types of parameters 'r' and 'value' are incompatible.
+    Type '{ id: any; post_id: any; user_id: any; body: any; mentioned_user_ids: any; created_at: any; updated_at: any; users: { id: any; full_name: any; avatar_url: any; }[]; }' is not assignable to type 'CommentRow'.
+      Types of property 'users' are incompatible.
+        Property 'id' is missing in type '{ id: any; full_name: any; avatar_url: any; }[]' but required in type '{ id: string; full_name?: string; avatar_url?: string; }'.
+src/app/api/explore/posts/[id]/route.ts(49,5): error TS2322: Type 'string' is not assignable to type '"draft" | "published"'.
+src/app/api/me/bookings/[id]/resend-arrival-otp/route.ts(126,34): error TS2339: Property 'customer' does not exist on type 'ResendOtpBookingRow'.
+src/app/api/me/bookings/[id]/resend-arrival-otp/route.ts(135,38): error TS2339: Property 'booking_number' does not exist on type 'ResendOtpBookingRow'.
+src/app/api/me/bookings/[id]/resend-arrival-otp/route.ts(136,37): error TS2339: Property 'provider' does not exist on type 'ResendOtpBookingRow'.
+src/app/api/me/custom-offers/[id]/accept/route.ts(71,7): error TS2322: Type 'string' is not assignable to type '"at_home" | "at_salon"'.
+src/app/api/me/group-bookings/[id]/reschedule/route.ts(89,29): error TS2345: Argument of type '(s: ServiceRow) => void' is not assignable to parameter of type '(value: { duration_minutes: any; offerings: { buffer_minutes: any; }[]; }, index: number, array: { duration_minutes: any; offerings: { buffer_minutes: any; }[]; }[]) => void'.
+  Types of parameters 's' and 'value' are incompatible.
+    Type '{ duration_minutes: any; offerings: { buffer_minutes: any; }[]; }' is not assignable to type 'ServiceRow'.
+      Types of property 'offerings' are incompatible.
+        Type '{ buffer_minutes: any; }[]' has no properties in common with type '{ buffer_minutes?: number; }'.
+src/app/api/payments/webhook/_handlers/charge-success.ts(718,53): error TS2339: Property 'travel_fee' does not exist on type 'OfferRow'.
+src/app/api/payments/webhook/_handlers/charge-success.ts(718,109): error TS2339: Property 'travel_fee' does not exist on type 'OfferRow'.
+src/app/api/payments/webhook/_handlers/refund-events.ts(38,63): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'number'.
+src/app/api/payments/webhook/_handlers/subscription-events.ts(398,32): error TS2339: Property 'provider_id' does not exist on type 'SubDetailsRow'.
+src/app/api/payments/webhook/subscription-handlers.ts(20,42): error TS2339: Property 'customer_code' does not exist on type 'unknown'.
+src/app/api/payments/webhook/subscription-handlers.ts(21,34): error TS2339: Property 'plan_code' does not exist on type 'unknown'.
+src/app/api/payments/webhook/subscription-handlers.ts(34,36): error TS2339: Property 'email' does not exist on type 'unknown'.
+src/app/api/payments/webhook/subscription-handlers.ts(83,57): error TS2339: Property 'authorization_code' does not exist on type 'unknown'.
+src/app/api/payments/webhook/subscription-handlers.ts(86,51): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number'.
+src/app/api/payments/webhook/subscription-handlers.ts(87,46): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number'.
+src/app/api/payments/webhook/subscription-handlers.ts(144,50): error TS2339: Property 'subscription_code' does not exist on type 'unknown'.
+src/app/api/payments/webhook/subscription-handlers.ts(177,47): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number'.
+src/app/api/payments/webhook/subscription-handlers.ts(192,39): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'number'.
+src/app/api/payments/webhook/subscription-handlers.ts(193,37): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'number'.
+src/app/api/payments/webhook/subscription-handlers.ts(194,43): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/payments/webhook/subscription-handlers.ts(194,52): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/payments/webhook/subscription-handlers.ts(207,54): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'number'.
+src/app/api/payments/webhook/subscription-handlers.ts(208,52): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'number'.
+src/app/api/payments/webhook/subscription-handlers.ts(230,55): error TS2769: No overload matches this call.
+  Overload 1 of 4, '(value: string | number | Date): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number | Date'.
+  Overload 2 of 4, '(value: string | number): Date', gave the following error.
+    Argument of type 'unknown' is not assignable to parameter of type 'string | number'.
+src/app/api/products/[id]/reviews/route.ts(158,9): error TS2345: Argument of type '(oi: OrderItemRow) => boolean' is not assignable to parameter of type '(value: { id: any; order: { customer_id: any; status: any; }[]; }, index: number, array: { id: any; order: { customer_id: any; status: any; }[]; }[]) => unknown'.
+  Types of parameters 'oi' and 'value' are incompatible.
+    Type '{ id: any; order: { customer_id: any; status: any; }[]; }' is not assignable to type 'OrderItemRow'.
+      Types of property 'order' are incompatible.
+        Type '{ customer_id: any; status: any; }[]' has no properties in common with type '{ customer_id?: string; status?: string; }'.
+src/app/api/provider/bookings/[id]/route.ts(164,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(165,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(166,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(167,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(168,7): error TS2322: Type 'string' is not assignable to type '"pending" | "cancelled" | "no_show" | "confirmed" | "in_progress" | "completed"'.
+src/app/api/provider/bookings/[id]/route.ts(168,37): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(169,7): error TS2322: Type 'unknown' is not assignable to type '"at_home" | "at_salon"'.
+src/app/api/provider/bookings/[id]/route.ts(170,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(172,7): error TS2322: Type '{ line1: unknown; line2: unknown; city: unknown; state: unknown; country: unknown; postal_code: unknown; latitude: unknown; longitude: unknown; apartment_unit: unknown; building_name: unknown; floor_number: unknown; access_codes: any; parking_instructions: unknown; location_landmarks: unknown; }' is not assignable to type 'BookingAddress'.
+  Types of property 'line1' are incompatible.
+    Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(190,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(191,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(192,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(193,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(194,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(223,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(224,7): error TS2322: Type 'unknown' is not assignable to type 'number'.
+src/app/api/provider/bookings/[id]/route.ts(232,7): error TS2322: Type 'unknown' is not assignable to type 'number'.
+src/app/api/provider/bookings/[id]/route.ts(234,7): error TS2322: Type 'unknown' is not assignable to type 'number'.
+src/app/api/provider/bookings/[id]/route.ts(237,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(238,7): error TS2322: Type 'unknown' is not assignable to type '"failed" | "pending" | "paid" | "refunded" | "partially_refunded"'.
+src/app/api/provider/bookings/[id]/route.ts(240,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(241,7): error TS2322: Type 'unknown' is not assignable to type 'number'.
+src/app/api/provider/bookings/[id]/route.ts(242,7): error TS2322: Type 'unknown' is not assignable to type '"service_started" | "service_completed" | "confirmed" | "provider_on_way" | "provider_arrived"'.
+src/app/api/provider/bookings/[id]/route.ts(243,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(244,7): error TS2322: Type 'unknown' is not assignable to type 'string'.
+src/app/api/provider/bookings/[id]/route.ts(245,7): error TS2322: Type 'unknown' is not assignable to type 'number'.
+src/app/api/provider/bookings/[id]/route.ts(247,7): error TS2322: Type 'unknown' is not assignable to type 'Record<string, Record<string, unknown>>'.
+  Index signature for type 'string' is missing in type '{}'.
+src/app/api/provider/bookings/[id]/route.ts(488,50): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(callbackfn: (previousValue: { staff_id: any; scheduled_start_at: any; scheduled_end_at: any; duration_minutes: any; offerings: { buffer_minutes: any; }[]; }, currentValue: { staff_id: any; scheduled_start_at: any; scheduled_end_at: any; duration_minutes: any; offerings: { ...; }[]; }, currentIndex: number, array: { ...; }[]) => { ...; }, initialValue: { ...; }): { ...; }', gave the following error.
+    Argument of type '(sum: number, bs: BookingServiceConflictRow) => number' is not assignable to parameter of type '(previousValue: { staff_id: any; scheduled_start_at: any; scheduled_end_at: any; duration_minutes: any; offerings: { buffer_minutes: any; }[]; }, currentValue: { staff_id: any; scheduled_start_at: any; scheduled_end_at: any; duration_minutes: any; offerings: { ...; }[]; }, currentIndex: number, array: { ...; }[]) =>...'.
+      Types of parameters 'sum' and 'previousValue' are incompatible.
+        Type '{ staff_id: any; scheduled_start_at: any; scheduled_end_at: any; duration_minutes: any; offerings: { buffer_minutes: any; }[]; }' is not assignable to type 'number'.
+  Overload 2 of 3, '(callbackfn: (previousValue: number, currentValue: { staff_id: any; scheduled_start_at: any; scheduled_end_at: any; duration_minutes: any; offerings: { buffer_minutes: any; }[]; }, currentIndex: number, array: { ...; }[]) => number, initialValue: number): number', gave the following error.
+    Argument of type '(sum: number, bs: BookingServiceConflictRow) => number' is not assignable to parameter of type '(previousValue: number, currentValue: { staff_id: any; scheduled_start_at: any; scheduled_end_at: any; duration_minutes: any; offerings: { buffer_minutes: any; }[]; }, currentIndex: number, array: { ...; }[]) => number'.
+      Types of parameters 'bs' and 'currentValue' are incompatible.
+        Type '{ staff_id: any; scheduled_start_at: any; scheduled_end_at: any; duration_minutes: any; offerings: { buffer_minutes: any; }[]; }' is not assignable to type 'BookingServiceConflictRow'.
+          Types of property 'offerings' are incompatible.
+            Type '{ buffer_minutes: any; }[]' has no properties in common with type '{ buffer_minutes?: number; }'.
+src/app/api/provider/bookings/[id]/route.ts(489,48): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/provider/bookings/[id]/route.ts(900,32): error TS2339: Property 'totalPrice' does not exist on type 'ProductUpdateInput'.
+src/app/api/provider/bookings/[id]/route.ts(1050,47): error TS2538: Type 'unknown' cannot be used as an index type.
+src/app/api/provider/bookings/[id]/route.ts(1119,48): error TS2538: Type 'unknown' cannot be used as an index type.
+src/app/api/provider/bookings/[id]/route.ts(1247,41): error TS2352: Conversion of type '{ id: unknown; booking_number: unknown; customer_id: unknown; provider_id: unknown; status: string; location_type: unknown; location_id: unknown; address: { line1: unknown; line2: unknown; city: unknown; state: unknown; country: unknown; postal_code: unknown; latitude: unknown; longitude: unknown; apartment_unit: un...' to type 'Booking & { version: number; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Type '{ id: unknown; booking_number: unknown; customer_id: unknown; provider_id: unknown; status: string; location_type: unknown; location_id: unknown; address: { line1: unknown; line2: unknown; city: unknown; state: unknown; country: unknown; postal_code: unknown; latitude: unknown; longitude: unknown; apartment_unit: un...' is not comparable to type 'Booking'.
+    Types of property 'services' are incompatible.
+      Type '{ id: string; service_id: string; service_name: string; staff_id: string; staff_name: string; duration_minutes: number; price: number; customization: any; }[]' is not comparable to type 'BookingServiceDetail[]'.
+        Type '{ id: string; service_id: string; service_name: string; staff_id: string; staff_name: string; duration_minutes: number; price: number; customization: any; }' is missing the following properties from type 'BookingServiceDetail': offering_id, offering_name
+src/app/api/provider/bookings/[id]/route.ts(1252,37): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+src/app/api/provider/custom-requests/[id]/offers/route.ts(125,32): error TS2304: Cannot find name 'ConvRow'.
+src/app/api/provider/custom-requests/[id]/offers/route.ts(185,12): error TS2304: Cannot find name 'customerId'.
+src/app/api/provider/custom-requests/[id]/offers/route.ts(187,28): error TS2304: Cannot find name 'req'.
+src/app/api/provider/reports/bookings/summary/route.ts(135,40): error TS2345: Argument of type '(bs: BookingServiceRow) => void' is not assignable to parameter of type '(value: { id: any; price: any; offering_id: any; staff_id: any; offerings: { title: any; }[]; }, index: number, array: { id: any; price: any; offering_id: any; staff_id: any; offerings: { title: any; }[]; }[]) => void'.
+  Types of parameters 'bs' and 'value' are incompatible.
+    Type '{ id: any; price: any; offering_id: any; staff_id: any; offerings: { title: any; }[]; }' is not assignable to type 'BookingServiceRow'.
+      Types of property 'offerings' are incompatible.
+        Type '{ title: any; }[]' has no properties in common with type '{ title?: string; }'.
+src/app/api/provider/staff/route.ts(612,22): error TS2339: Property 'name' does not exist on type '{ id: any; user_id: any; provider_id: any; role: any; is_active: any; users: { id: any; full_name: any; email: any; phone: any; }[]; }'.
+src/app/api/provider/staff/route.ts(612,46): error TS2339: Property 'full_name' does not exist on type '{ id: any; full_name: any; email: any; phone: any; }[]'.
+src/app/api/provider/staff/route.ts(613,23): error TS2339: Property 'email' does not exist on type '{ id: any; user_id: any; provider_id: any; role: any; is_active: any; users: { id: any; full_name: any; email: any; phone: any; }[]; }'.
+src/app/api/provider/staff/route.ts(613,48): error TS2339: Property 'email' does not exist on type '{ id: any; full_name: any; email: any; phone: any; }[]'.
+src/app/api/provider/staff/route.ts(614,23): error TS2339: Property 'phone' does not exist on type '{ id: any; user_id: any; provider_id: any; role: any; is_active: any; users: { id: any; full_name: any; email: any; phone: any; }[]; }'.
+src/app/api/provider/staff/route.ts(614,48): error TS2339: Property 'phone' does not exist on type '{ id: any; full_name: any; email: any; phone: any; }[]'.
+src/app/api/provider/yoco/payments/[id]/route.ts(113,33): error TS2339: Property 'receipt_url' does not exist on type 'unknown'.
+src/app/api/provider/yoco/payments/[id]/route.ts(113,58): error TS2339: Property 'yoco_response' does not exist on type 'unknown'.
+src/app/api/provider/yoco/payments/[id]/route.ts(114,20): error TS2339: Property 'yoco_response' does not exist on type 'unknown'.
+src/app/api/provider/yoco/webhook/route.ts(298,9): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+src/app/api/public/providers/[slug]/reviews/route.ts(71,50): error TS2345: Argument of type '(review: { id: string; rating?: number; comment?: string; created_at: string; users?: { full_name?: string; avatar_url?: string; } | null; }) => { id: string; reviewerName: string; ... 4 more ...; avatar_url: string; }' is not assignable to parameter of type '(value: { id: any; rating: any; comment: any; created_at: any; users: { id: any; full_name: any; avatar_url: any; }[]; }, index: number, array: { id: any; rating: any; comment: any; created_at: any; users: { id: any; full_name: any; avatar_url: any; }[]; }[]) => { ...; }'.
+  Types of parameters 'review' and 'value' are incompatible.
+    Type '{ id: any; rating: any; comment: any; created_at: any; users: { id: any; full_name: any; avatar_url: any; }[]; }' is not assignable to type '{ id: string; rating?: number; comment?: string; created_at: string; users?: { full_name?: string; avatar_url?: string; }; }'.
+      Types of property 'users' are incompatible.
+        Type '{ id: any; full_name: any; avatar_url: any; }[]' has no properties in common with type '{ full_name?: string; avatar_url?: string; }'.
+src/app/api/staff/[id]/calendar.ics/route.ts(95,59): error TS2345: Argument of type '(apt: AptRow) => { id: string; booking_number: string; scheduled_at: string; duration_minutes: number; customer_name: string; customer_email: string; service_title: string; location_name: string; location_address: string; provider_name: string; status: string; }' is not assignable to parameter of type '(value: { id: any; scheduled_start_at: any; scheduled_end_at: any; duration_minutes: any; bookings: { id: any; booking_number: any; scheduled_at: any; status: any; guest_name: any; location_type: any; location_id: any; customers: { ...; }[]; providers: { ...; }[]; locations: { ...; }[]; }[]; offerings: { ...; }[]; }...'.
+  Types of parameters 'apt' and 'value' are incompatible.
+    Type '{ id: any; scheduled_start_at: any; scheduled_end_at: any; duration_minutes: any; bookings: { id: any; booking_number: any; scheduled_at: any; status: any; guest_name: any; location_type: any; location_id: any; customers: { ...; }[]; providers: { ...; }[]; locations: { ...; }[]; }[]; offerings: { ...; }[]; }' is not assignable to type 'AptRow'.
+      Types of property 'offerings' are incompatible.
+        Type '{ title: any; }[]' has no properties in common with type '{ title?: string; }'.
+src/app/profile/page.tsx(108,69): error TS2339: Property 'length' does not exist on type 'unknown'.
+src/app/profile/page.tsx(132,17): error TS2339: Property 'school' does not exist on type '{ about?: string; interests?: unknown; }'.
+src/app/profile/page.tsx(133,17): error TS2339: Property 'work' does not exist on type '{ about?: string; interests?: unknown; }'.
+src/app/profile/page.tsx(134,17): error TS2339: Property 'location' does not exist on type '{ about?: string; interests?: unknown; }'.
+src/app/profile/page.tsx(135,17): error TS2339: Property 'decade_born' does not exist on type '{ about?: string; interests?: unknown; }'.
+src/app/profile/page.tsx(136,17): error TS2339: Property 'favorite_song' does not exist on type '{ about?: string; interests?: unknown; }'.
+src/app/profile/page.tsx(137,17): error TS2339: Property 'obsessed_with' does not exist on type '{ about?: string; interests?: unknown; }'.
+src/app/profile/page.tsx(138,17): error TS2339: Property 'fun_fact' does not exist on type '{ about?: string; interests?: unknown; }'.
+src/app/profile/page.tsx(139,17): error TS2339: Property 'useless_skill' does not exist on type '{ about?: string; interests?: unknown; }'.
+src/app/profile/page.tsx(140,17): error TS2339: Property 'biography_title' does not exist on type '{ about?: string; interests?: unknown; }'.
+src/app/profile/page.tsx(141,17): error TS2339: Property 'spend_time' does not exist on type '{ about?: string; interests?: unknown; }'.
+src/app/profile/page.tsx(142,17): error TS2339: Property 'pets' does not exist on type '{ about?: string; interests?: unknown; }'.
+src/app/profile/page.tsx(148,36): error TS2339: Property 'beauty_preferences' does not exist on type '{ about?: string; interests?: unknown; }'.
+src/app/provider/bookings/page.tsx(111,53): error TS2448: Block-scoped variable 'loadBookingsFresh' used before its declaration.
+src/app/provider/bookings/page.tsx(613,26): error TS2339: Property 'customer_name' does not exist on type 'Booking'.
+src/app/provider/bookings/page.tsx(643,64): error TS2339: Property 'location_name' does not exist on type 'Booking'.
+src/app/provider/bookings/page.tsx(646,55): error TS2339: Property 'location_name' does not exist on type 'Booking'.
+src/app/provider/bookings/page.tsx(649,24): error TS2339: Property 'staff_name' does not exist on type 'Booking'.
+src/app/provider/bookings/page.tsx(652,55): error TS2339: Property 'staff_name' does not exist on type 'Booking'.
+src/app/provider/catalogue/products/components/ProductCreateEditDialog.tsx(139,9): error TS2322: Type 'unknown[]' is not assignable to type 'ProductVariantOptionType[]'.
+  Type '{}' is missing the following properties from type 'ProductVariantOptionType': name, values
+src/app/provider/marketing/automations/page.tsx(191,21): error TS2339: Property 'name' does not exist on type 'unknown'.
+src/app/provider/marketing/automations/page.tsx(192,29): error TS2339: Property 'trigger_type' does not exist on type 'unknown'.
+src/app/provider/marketing/automations/page.tsx(193,31): error TS2339: Property 'trigger_config' does not exist on type 'unknown'.
+src/app/provider/marketing/automations/page.tsx(194,28): error TS2339: Property 'action_type' does not exist on type 'unknown'.
+src/app/provider/marketing/automations/page.tsx(195,30): error TS2339: Property 'action_config' does not exist on type 'unknown'.
+src/app/provider/marketing/automations/page.tsx(196,30): error TS2339: Property 'delay_minutes' does not exist on type 'unknown'.
+src/app/provider/marketing/automations/page.tsx(198,28): error TS2339: Property 'description' does not exist on type 'unknown'.
+src/app/provider/reports/bookings/cancellations/page.tsx(90,50): error TS2352: Conversion of type 'CancellationsData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'CancellationsData'.
+src/app/provider/reports/bookings/no-shows/page.tsx(89,50): error TS2352: Conversion of type 'NoShowsData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'NoShowsData'.
+src/app/provider/reports/bookings/status/page.tsx(143,62): error TS2352: Conversion of type 'BookingStatusData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'BookingStatusData'.
+src/app/provider/reports/bookings/summary/page.tsx(95,52): error TS2352: Conversion of type 'BookingSummaryData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'BookingSummaryData'.
+src/app/provider/reports/business/comparison/page.tsx(70,50): error TS2352: Conversion of type 'BusinessComparisonData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'BusinessComparisonData'.
+src/app/provider/reports/business/dashboard/page.tsx(73,52): error TS2352: Conversion of type 'BusinessDashboardData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'BusinessDashboardData'.
+src/app/provider/reports/business/overview/page.tsx(75,50): error TS2352: Conversion of type 'BusinessOverviewData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'BusinessOverviewData'.
+src/app/provider/reports/clients/lifetime-value/page.tsx(68,50): error TS2352: Conversion of type 'LifetimeValueData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'LifetimeValueData'.
+src/app/provider/reports/clients/new/page.tsx(85,50): error TS2352: Conversion of type 'NewClientsData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'NewClientsData'.
+src/app/provider/reports/clients/retention/page.tsx(60,50): error TS2352: Conversion of type 'ClientRetentionData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'ClientRetentionData'.
+src/app/provider/reports/clients/summary/page.tsx(92,52): error TS2352: Conversion of type 'ClientSummaryData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'ClientSummaryData'.
+src/app/provider/reports/gift-cards/redemptions/page.tsx(75,50): error TS2352: Conversion of type 'GiftCardRedemptionsData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'GiftCardRedemptionsData'.
+src/app/provider/reports/gift-cards/sales/page.tsx(75,50): error TS2352: Conversion of type 'GiftCardSalesData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'GiftCardSalesData'.
+src/app/provider/reports/packages/sales/page.tsx(76,50): error TS2352: Conversion of type 'PackageSalesData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PackageSalesData'.
+src/app/provider/reports/packages/usage/page.tsx(81,50): error TS2352: Conversion of type 'PackageUsageData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PackageUsageData'.
+src/app/provider/reports/payments/methods/page.tsx(80,50): error TS2352: Conversion of type 'PaymentMethodsData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PaymentMethodsData'.
+src/app/provider/reports/payments/payouts/page.tsx(87,50): error TS2352: Conversion of type 'PayoutsData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PayoutsData'.
+src/app/provider/reports/payments/refunds/page.tsx(90,50): error TS2352: Conversion of type 'RefundsData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'RefundsData'.
+src/app/provider/reports/payments/summary/page.tsx(136,60): error TS2352: Conversion of type 'PaymentSummaryData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'PaymentSummaryData'.
+src/app/provider/reports/payments/yoco-reconciliation/page.tsx(64,50): error TS2352: Conversion of type 'YocoReconciliationResponse' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'YocoReconciliationResponse'.
+src/app/provider/reports/products/inventory/page.tsx(76,50): error TS2352: Conversion of type 'InventoryData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'InventoryData'.
+src/app/provider/reports/products/sales/page.tsx(138,60): error TS2352: Conversion of type 'ProductSalesData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'ProductSalesData'.
+src/app/provider/reports/products/top/page.tsx(77,50): error TS2352: Conversion of type 'TopProductsData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'TopProductsData'.
+src/app/provider/reports/sales/services/page.tsx(94,50): error TS2352: Conversion of type 'ServicePerformanceData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'ServicePerformanceData'.
+src/app/provider/reports/sales/summary/page.tsx(84,52): error TS2352: Conversion of type 'SalesSummaryData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'SalesSummaryData'.
+src/app/provider/reports/sales/trends/page.tsx(62,50): error TS2352: Conversion of type 'RevenueTrendsData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'RevenueTrendsData'.
+src/app/provider/reports/staff/commission/page.tsx(78,50): error TS2352: Conversion of type 'CommissionData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'CommissionData'.
+src/app/provider/reports/staff/hours/page.tsx(80,50): error TS2352: Conversion of type 'StaffHoursData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'StaffHoursData'.
+src/app/provider/reports/staff/performance/page.tsx(111,52): error TS2352: Conversion of type 'StaffPerformanceData' to type 'ReportRow' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Index signature for type 'string' is missing in type 'StaffPerformanceData'.
+src/app/provider/reports/utils/export.ts(316,52): error TS2339: Property 'toFixed' does not exist on type 'unknown'.
+src/components/provider-portal/CalendarMobileView.tsx(874,62): error TS2352: Conversion of type 'typeof import("C:/Users/NoloSehlolo/Documents/Beautonomi/node_modules/.pnpm/lucide-react@0.468.0_react@19.1.0/node_modules/lucide-react/dist/lucide-react")' to type 'Record<string, ComponentType<{ className?: string; }>>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Property 'Icon' is incompatible with index signature.
+    Type 'ForwardRefExoticComponent<Omit<IconComponentProps, "ref"> & RefAttributes<SVGSVGElement>>' is not comparable to type 'ComponentType<{ className?: string; }>'.
+      Type 'ForwardRefExoticComponent<Omit<IconComponentProps, "ref"> & RefAttributes<SVGSVGElement>>' is not comparable to type 'FunctionComponent<{ className?: string; }>'.
+        Types of parameters 'props' and 'props' are incompatible.
+          Type '{ className?: string; }' is not comparable to type 'Omit<IconComponentProps, "ref"> & RefAttributes<SVGSVGElement>'.
+            Property 'iconNode' is missing in type '{ className?: string; }' but required in type 'Omit<IconComponentProps, "ref">'.
+src/components/provider-portal/CalendarMobileView.tsx(1119,60): error TS2352: Conversion of type 'typeof import("C:/Users/NoloSehlolo/Documents/Beautonomi/node_modules/.pnpm/lucide-react@0.468.0_react@19.1.0/node_modules/lucide-react/dist/lucide-react")' to type 'Record<string, ComponentType<{ className?: string; }>>' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+  Property 'Icon' is incompatible with index signature.
+    Type 'ForwardRefExoticComponent<Omit<IconComponentProps, "ref"> & RefAttributes<SVGSVGElement>>' is not comparable to type 'ComponentType<{ className?: string; }>'.
+      Type 'ForwardRefExoticComponent<Omit<IconComponentProps, "ref"> & RefAttributes<SVGSVGElement>>' is not comparable to type 'FunctionComponent<{ className?: string; }>'.
+        Types of parameters 'props' and 'props' are incompatible.
+          Type '{ className?: string; }' is not comparable to type 'Omit<IconComponentProps, "ref"> & RefAttributes<SVGSVGElement>'.
+            Property 'iconNode' is missing in type '{ className?: string; }' but required in type 'Omit<IconComponentProps, "ref">'.
+ΓÇëELIFECYCLEΓÇë Command failed with exit code 2.

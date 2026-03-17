@@ -84,14 +84,15 @@ export default function WalletPage() {
     try {
       setIsToppingUp(true);
       const res = await fetcher.post<{ data: { payment_url?: string } }>("/api/me/wallet/topup", { amount });
-      const url = (res as any)?.data?.payment_url;
+      const url = res?.data?.payment_url;
       if (!url) {
         toast.error("Payment link was not returned");
         return;
       }
       window.location.href = url;
-    } catch (e: any) {
-      toast.error(e.message || "Failed to start top up");
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to start top up";
+      toast.error(message);
       console.error("Error starting top up:", e);
     } finally {
       setIsToppingUp(false);

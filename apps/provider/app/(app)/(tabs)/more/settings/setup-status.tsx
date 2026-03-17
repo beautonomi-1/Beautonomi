@@ -1,9 +1,10 @@
 /**
  * Setup status – onboarding completion and steps.
  * GET /api/provider/setup-status
+ * Step links from API are web paths; we open native screens where they exist, else in-app browser.
  */
 import { useState, useCallback } from "react";
-import { View, Text, TouchableOpacity, Linking } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -12,6 +13,19 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { twStyle } from "@/lib/twStyle";
+import { APP_URL } from "@/config/public-env";
+
+/** Map API step link (web path) to native app route when we have a native screen. */
+const WEB_PATH_TO_NATIVE: Record<string, string> = {
+  "/provider/settings/appointment-activity/business-details": "/(app)/(tabs)/more/settings/business",
+  "/provider/settings/locations": "/(app)/(tabs)/more/locations",
+  "/provider/settings/gallery": "/(app)/(tabs)/more/gallery",
+  "/provider/settings/operating-hours": "/(app)/(tabs)/more/settings-operating-hours",
+  "/provider/settings/verification": "/(app)/(tabs)/more/settings/verification",
+  "/provider/settings/sales/yoco-integration": "/(app)/(tabs)/more/settings/yoco-devices",
+  "/provider/settings/payout-accounts": "/(app)/(tabs)/more/settings/payout-accounts",
+  "/provider/catalogue/services": "/(app)/(tabs)/more/catalogue",
+};
 
 interface SetupStep {
   id: string;
@@ -42,11 +56,24 @@ export default function SetupStatusScreen() {
   }, [refresh]);
 
   function openStep(step: SetupStep) {
-    if (step.link.startsWith("http")) {
-      Linking.openURL(step.link);
-    } else {
-      router.push(step.link as any);
+    const nativeRoute = step.link.startsWith("http")
+      ? undefined
+      : WEB_PATH_TO_NATIVE[step.link];
+    if (nativeRoute) {
+      router.push(nativeRoute as never);
+      return;
     }
+    const url =
+      step.link.startsWith("http")
+        ? step.link
+        : `${(APP_URL || "").replace(/\/$/, "")}${step.link.startsWith("/") ? "" : "/"}${step.link}`;
+    router.push({
+      pathname: "/(app)/(tabs)/more/in-app-browser",
+      params: {
+        url: encodeURIComponent(url),
+        title: step.title || "Setup",
+      },
+    } as never);
   }
 
   if (loading && !status) {

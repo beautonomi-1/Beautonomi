@@ -3,7 +3,18 @@
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/providers/AuthProvider";
 
-// Track if we've already warned about SDK not loading (module-level to persist across renders)
+interface OneSignalSDK {
+  init?(opts: { appId: string; notifyButton?: { enable: boolean }; allowLocalhostAsSecureOrigin?: boolean }): void;
+  getUserId?(): Promise<string | null>;
+  on?(event: string, cb: (v: boolean) => void): void;
+}
+
+declare global {
+  interface Window {
+    OneSignal?: OneSignalSDK;
+  }
+}
+
 let hasWarnedAboutSdkNotLoaded = false;
 
 /**
@@ -29,14 +40,13 @@ export function useOneSignal() {
     }
 
     // Check if OneSignal is already loaded
-    if ((window as any).OneSignal) {
+    if (window.OneSignal) {
       queueMicrotask(() => setIsOneSignalReady(true));
       return;
     }
 
-    // Poll for OneSignal to be loaded (in case script loads after this hook runs)
     const checkInterval = setInterval(() => {
-      if ((window as any).OneSignal) {
+      if (window.OneSignal) {
         setIsOneSignalReady(true);
         clearInterval(checkInterval);
       }
@@ -45,7 +55,7 @@ export function useOneSignal() {
     // Cleanup after 10 seconds if OneSignal still isn't loaded
     const timeout = setTimeout(() => {
       clearInterval(checkInterval);
-      if (!(window as any).OneSignal && !hasWarnedAboutSdkNotLoaded && !hasWarnedRef.current && process.env.NODE_ENV === "development") {
+      if (!window.OneSignal && !hasWarnedAboutSdkNotLoaded && !hasWarnedRef.current && process.env.NODE_ENV === "development") {
         console.warn("OneSignal SDK not loaded after 10 seconds. Make sure the script is included in the page.");
         hasWarnedAboutSdkNotLoaded = true;
         hasWarnedRef.current = true;
@@ -61,7 +71,7 @@ export function useOneSignal() {
   useEffect(() => {
     if (!user || !isOneSignalReady) return;
 
-    const OneSignal = (window as any).OneSignal;
+    const OneSignal = window.OneSignal;
     const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
 
     if (!appId) {
@@ -103,7 +113,7 @@ export function useOneSignal() {
           });
         }
       })
-      .catch((error: any) => {
+      .catch((error: unknown) => {
         if (process.env.NODE_ENV === "development") {
           console.error("Error getting OneSignal user ID:", error);
         }

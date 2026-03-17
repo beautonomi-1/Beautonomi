@@ -3,6 +3,7 @@ import { View, Text, ScrollView, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
+import { useResponsive } from "@/hooks/useResponsive";
 import { useProvider } from "@/providers/ProviderContext";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { playRingtone } from "@/lib/on-demand/ringtone";
@@ -24,6 +25,7 @@ interface WaitingRoomEntry {
 
 export default function WaitingRoomScreen() {
   useRouter();
+  const { isTablet } = useResponsive();
   const { selectedLocationId } = useProvider();
   const onDemandConfig = useModuleConfig("on_demand");
   const prevWaitingCountRef = useRef<number | null>(null);
@@ -106,56 +108,62 @@ export default function WaitingRoomScreen() {
           </View>
         </View>
 
-        <View style={twStyle("px-4")}>
-          <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Waiting</Text>
-          {waitingList.length === 0 ? (
-            <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 p-4")}>
-              <Text style={twStyle("text-center text-sm text-gray-500")}>No one waiting</Text>
-            </View>
-          ) : (
-            waitingList.map((entry) => (
-              <View
-                key={entry.id}
-                style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
-              >
-                <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-amber-100")}>
-                  <Ionicons name="person" size={20} color="#b45309" />
-                </View>
-                <View style={twStyle("flex-1")}>
-                  <Text style={twStyle("font-medium text-gray-900")}>{entry.client_name}</Text>
-                  {entry.service_name ? (
-                    <Text style={twStyle("text-xs text-gray-500")}>{entry.service_name}</Text>
-                  ) : null}
-                  <Text style={twStyle("text-xs text-gray-400")}>
-                    Checked in {format(new Date(entry.checked_in_time), "HH:mm")}
-                  </Text>
-                </View>
+        <View style={twStyle(isTablet ? "flex-row px-4" : "px-4")}>
+          <View style={twStyle(isTablet ? "flex-1 pr-2" : "")}>
+            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Waiting</Text>
+            {waitingList.length === 0 ? (
+              <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 p-4")}>
+                <Text style={twStyle("text-center text-sm text-gray-500")}>No one waiting</Text>
               </View>
-            ))
-          )}
-        </View>
-
-        {inServiceList.length > 0 && (
-          <View style={twStyle("mt-6 px-4")}>
-            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>In service</Text>
-            {inServiceList.map((entry) => (
-              <View
-                key={entry.id}
-                style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
-              >
-                <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-blue-100")}>
-                  <Ionicons name="person" size={20} color="#1d4ed8" />
+            ) : (
+              waitingList.map((entry) => (
+                <View
+                  key={entry.id}
+                  style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
+                >
+                  <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-amber-100")}>
+                    <Ionicons name="person" size={20} color="#b45309" />
+                  </View>
+                  <View style={twStyle("flex-1")}>
+                    <Text style={twStyle("font-medium text-gray-900")}>{entry.client_name}</Text>
+                    {entry.service_name ? (
+                      <Text style={twStyle("text-xs text-gray-500")}>{entry.service_name}</Text>
+                    ) : null}
+                    <Text style={twStyle("text-xs text-gray-400")}>
+                      Checked in {format(new Date(entry.checked_in_time), "HH:mm")}
+                    </Text>
+                  </View>
                 </View>
-                <View style={twStyle("flex-1")}>
-                  <Text style={twStyle("font-medium text-gray-900")}>{entry.client_name}</Text>
-                  {entry.service_name ? (
-                    <Text style={twStyle("text-xs text-gray-500")}>{entry.service_name}</Text>
-                  ) : null}
-                </View>
-              </View>
-            ))}
+              ))
+            )}
           </View>
-        )}
+
+          <View style={twStyle(isTablet ? "flex-1 pl-2" : "mt-6")}>
+            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>In service</Text>
+            {inServiceList.length === 0 ? (
+              <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 p-4")}>
+                <Text style={twStyle("text-center text-sm text-gray-500")}>No one in service</Text>
+              </View>
+            ) : (
+              inServiceList.map((entry) => (
+                <View
+                  key={entry.id}
+                  style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
+                >
+                  <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-blue-100")}>
+                    <Ionicons name="person" size={20} color="#1d4ed8" />
+                  </View>
+                  <View style={twStyle("flex-1")}>
+                    <Text style={twStyle("font-medium text-gray-900")}>{entry.client_name}</Text>
+                    {entry.service_name ? (
+                      <Text style={twStyle("text-xs text-gray-500")}>{entry.service_name}</Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        </View>
       </ScrollView>
     </ScreenContainer>
   );

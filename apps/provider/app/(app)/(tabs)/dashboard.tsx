@@ -26,6 +26,7 @@ import {
   formatPercentage,
   formatTimeAgo,
 } from "@/lib/format";
+import { trackDashboardView } from "@/lib/analytics";
 import { Colors } from "@/constants/colors";
 
 interface DashboardMetrics {
@@ -223,6 +224,10 @@ export default function DashboardScreen() {
     timedOut: metricsTimedOut,
     refresh: refreshMetrics,
   } = useApi<DashboardMetrics>(`/api/provider/dashboard${locQFirst}`, { timeoutMs: 15000 });
+
+  useEffect(() => {
+    trackDashboardView();
+  }, []);
 
   const today = format(new Date(), "yyyy-MM-dd");
   const { data: todayBookings, error: todayBookingsError, refresh: refreshBookings } = useApi<Booking[]>(

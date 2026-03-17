@@ -4,6 +4,26 @@ import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
+/** Derive enforcement columns from provider-set fields for cancellation_policies. */
+export function deriveEnforcementFields(data: {
+  name: string;
+  hours_before: number;
+  refund_percentage: number;
+}): { hours_before_cutoff: number; late_cancellation_type: 'no_refund' | 'partial_refund' | 'full_refund'; policy_text: string } {
+  const late_cancellation_type =
+    data.refund_percentage === 0
+      ? ('no_refund' as const)
+      : data.refund_percentage === 100
+        ? ('full_refund' as const)
+        : ('partial_refund' as const);
+  const policy_text = `Cancellations must be made at least ${data.hours_before} hours before your appointment. ${data.refund_percentage}% refund if cancelled later.`;
+  return {
+    hours_before_cutoff: data.hours_before,
+    late_cancellation_type,
+    policy_text,
+  };
+}
+
 const createPolicySchema = z.object({
   name: z.string().min(1),
   hours_before: z.number().int().min(0),
@@ -123,6 +143,11 @@ export async function POST(request: NextRequest) {
         .eq('provider_id', providerId);
     }
 
+    const enforcement = deriveEnforcementFields({
+      name: data.name.trim(),
+      hours_before: data.hours_before,
+      refund_percentage: data.refund_percentage,
+    });
     const insertData: any = {
       provider_id: providerId,
       name: data.name.trim(),
@@ -131,6 +156,12 @@ export async function POST(request: NextRequest) {
       fee_amount: data.fee_amount || 0,
       fee_type: data.fee_type || 'fixed',
       is_default: data.is_default || false,
+      hours_before_cutoff: enforcement.hours_before_cutoff,
+      late_cancellation_type: enforcement.late_cancellation_type,
+      policy_text: enforcement.policy_text,
+      grace_window_minutes: 15,
+      location_type: null,
+      is_active: true,
     };
 
     const { data: policy, error } = await supabase

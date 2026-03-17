@@ -46,6 +46,9 @@ export async function GET(request: NextRequest) {
         published_at,
         like_count,
         comment_count,
+        tags,
+        primary_category_id,
+        offering_id,
         created_at,
         updated_at,
         providers:provider_id(business_name, slug)
@@ -60,6 +63,8 @@ export async function GET(request: NextRequest) {
 
     const postIds = (rows || []).map((r: any) => r.id);
     const viewCounts: Record<string, number> = {};
+    const offeringIds = [...new Set((rows || []).map((r: any) => r.offering_id).filter(Boolean))];
+    const offeringMap = new Map<string, { id: string; name: string; price?: number; duration_minutes?: number }>();
 
     if (postIds.length > 0) {
       const { data: viewCountRows, error: viewErr } = await supabaseAdmin.rpc(
@@ -71,6 +76,15 @@ export async function GET(request: NextRequest) {
           viewCounts[row.post_id] = Number(row.view_count) || 0;
         }
       }
+    }
+    if (offeringIds.length > 0) {
+      const { data: offData } = await supabaseAdmin
+        .from("offerings")
+        .select("id, title, price, duration_minutes")
+        .in("id", offeringIds);
+      (offData || []).forEach((o: any) =>
+        offeringMap.set(o.id, { id: o.id, name: o.title ?? "", price: o.price != null ? Number(o.price) : undefined, duration_minutes: o.duration_minutes ?? undefined })
+      );
     }
 
     const data: ExplorePost[] = (rows || []).map((r: any) => ({
@@ -89,6 +103,10 @@ export async function GET(request: NextRequest) {
       like_count: r.like_count ?? 0,
       comment_count: r.comment_count ?? 0,
       view_count: viewCounts[r.id] ?? 0,
+      primary_category_id: r.primary_category_id ?? null,
+      offering_id: r.offering_id ?? null,
+      offering: (r.offering_id ? offeringMap.get(r.offering_id) : null) ?? null,
+      tags: r.tags ?? [],
       created_at: r.created_at,
       updated_at: r.updated_at,
     }));

@@ -462,7 +462,8 @@ export async function POST(request: NextRequest) {
     // location_type: "base" = mobile-only (distance/travel); "salon" = clients can visit (salon/both)
     const locationType = business_type === "mobile" ? "base" : "salon";
     const locationName = business_type === "mobile" ? "Home base" : "Main Location";
-    const { error: locationError } = await supabaseAdmin
+    const hasCoords = address.latitude != null && address.longitude != null && (address.latitude !== 0 || address.longitude !== 0);
+    const { data: insertedLocation, error: locationError } = await supabaseAdmin
       .from("provider_locations")
       .insert({
         provider_id: providerId,
@@ -473,23 +474,33 @@ export async function POST(request: NextRequest) {
         state: address.state || null,
         postal_code: address.postal_code || null,
         country: address.country,
-        latitude: address.latitude || null,
-        longitude: address.longitude || null,
+        latitude: hasCoords ? address.latitude : null,
+        longitude: hasCoords ? address.longitude : null,
         working_hours: operating_hours, // Store operating_hours as working_hours JSONB
         is_active: true,
         is_primary: true,
         location_type: locationType,
-      });
+      })
+      .select("id")
+      .single();
 
     if (locationError) {
       console.error("Error creating provider location:", locationError);
-      // This is critical, so we should fail if location creation fails
       return errorResponse(
         `Failed to create provider location: ${locationError.message}`,
         "LOCATION_CREATION_ERROR",
         500,
         locationError
       );
+    }
+
+    // If address was entered without Mapbox coords, geocode now so zones and map features work
+    if (insertedLocation?.id && !hasCoords && address.line1 && address.city && address.country) {
+      try {
+        await geocodeProviderLocation(supabaseAdmin, insertedLocation.id);
+      } catch (geocodeErr) {
+        console.warn("Geocode primary location after onboarding:", geocodeErr);
+      }
     }
 
     // Associate provider with selected global categories using admin client

@@ -28,6 +28,7 @@ import {
   DialogTitle as QuickDialogTitle,
   DialogFooter as QuickDialogFooter,
 } from "@/components/ui/dialog";
+import { ChipCombobox } from "@/components/ui/chip-combobox";
 
 interface ProductCreateEditDialogProps {
   open: boolean;
@@ -105,6 +106,8 @@ export function ProductCreateEditDialog({
 
   useEffect(() => {
     if (product) {
+      type ProductWithVariantsRow = { has_variants?: boolean; variant_option_types?: unknown[]; variants?: ProductVariantItem[] };
+      const productHasVariants = product as ProductWithVariantsRow;
       setFormData({
         name: product.name || "",
         barcode: product.barcode || "",
@@ -132,10 +135,10 @@ export function ProductCreateEditDialog({
         receiveLowStockNotifications: product.receive_low_stock_notifications || false,
         imageUrls: product.image_urls || (product.image_url ? [product.image_url] : []),
         mainImageUrl: product.image_url || (product.image_urls?.[0] || ""),
-        hasVariants: Boolean((product as any).has_variants),
-        variantOptionTypes: Array.isArray((product as any).variant_option_types) ? (product as any).variant_option_types : [],
-        variantRows: Array.isArray((product as any).variants)
-          ? (product as any).variants.map((v: ProductVariantItem) => ({
+        hasVariants: Boolean(productHasVariants.has_variants),
+        variantOptionTypes: Array.isArray(productHasVariants.variant_option_types) ? (productHasVariants.variant_option_types as ProductVariantOptionType[]) : [],
+        variantRows: Array.isArray(productHasVariants.variants)
+          ? productHasVariants.variants.map((v: ProductVariantItem) => ({
               option_values: v.option_values || {},
               sku: v.sku ?? "",
               barcode: v.barcode ?? "",
@@ -210,13 +213,15 @@ export function ProductCreateEditDialog({
     }
   };
 
+  /** Load suppliers from GET /api/provider/suppliers. API returns { data: Supplier[] }; we use .name only (compatible with product_suppliers + legacy product.supplier). */
   const loadSuppliers = async (): Promise<{ name: string }[]> => {
     try {
       setIsLoadingSuppliers(true);
-      const response = await fetcher.get<{ data: { name: string }[] }>("/api/provider/suppliers");
-      const data = response.data || [];
-      setSuppliers(data);
-      return data;
+      const response = await fetcher.get<{ data: Array<{ name: string }> }>("/api/provider/suppliers");
+      const data = response.data ?? [];
+      const list = Array.isArray(data) ? data : [];
+      setSuppliers(list);
+      return list;
     } catch (error) {
       console.error("Failed to load suppliers:", error);
       return [];
@@ -271,20 +276,22 @@ export function ProductCreateEditDialog({
       // Set the brand in formData
       setFormData(prev => ({ ...prev, brand: brandName }));
       toast.success("Brand created and selected");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to create brand:", error);
-      const errorMessage = error?.message || error?.details || "Failed to create brand. Please check your permissions.";
+      const err = error as { message?: string; details?: string };
+      const errorMessage = err?.message ?? err?.details ?? "Failed to create brand. Please check your permissions.";
       toast.error(errorMessage);
     }
   };
 
+  /** Add supplier via POST /api/provider/suppliers with body { name }. Compatible with product_suppliers table. */
   const handleCreateSupplier = async () => {
     if (!newSupplierName.trim()) {
       toast.error("Supplier name is required");
       return;
     }
     try {
-      const _response = await fetcher.post("/api/provider/suppliers", { name: newSupplierName.trim() });
+      await fetcher.post("/api/provider/suppliers", { name: newSupplierName.trim() });
       const supplierName = newSupplierName.trim();
       setNewSupplierName("");
       setIsSupplierDialogOpen(false);
@@ -309,9 +316,10 @@ export function ProductCreateEditDialog({
       // Set the supplier in formData
       setFormData(prev => ({ ...prev, supplier: supplierName }));
       toast.success("Supplier created and selected");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to create supplier:", error);
-      const errorMessage = error?.message || error?.details || "Failed to create supplier. Please check your permissions.";
+      const err = error as { message?: string; details?: string };
+      const errorMessage = err?.message ?? err?.details ?? "Failed to create supplier. Please check your permissions.";
       toast.error(errorMessage);
     }
   };
@@ -348,9 +356,10 @@ export function ProductCreateEditDialog({
       // Set the category in formData
       setFormData(prev => ({ ...prev, category: categoryName }));
       toast.success("Product category created and selected");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to create product category:", error);
-      const errorMessage = error?.message || error?.details || "Failed to create product category. Please check your permissions.";
+      const err = error as { message?: string; details?: string };
+      const errorMessage = err?.message ?? err?.details ?? "Failed to create product category. Please check your permissions.";
       toast.error(errorMessage);
     }
   };
@@ -470,7 +479,7 @@ export function ProductCreateEditDialog({
     }
 
     try {
-      const productData: any = {
+      const productData: Record<string, unknown> = {
         name: formData.name,
         barcode: withVariants ? undefined : formData.barcode,
         brand: formData.brand,
@@ -607,26 +616,24 @@ export function ProductCreateEditDialog({
                       Add brand
                     </Button>
                   </div>
-                  <Select 
-                    key={`brands-${brands.length}`}
-                    value={formData.brand} 
-                    onValueChange={(val) => setFormData(prev => ({ ...prev, brand: val }))}
-                    disabled={isLoadingBrands}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select brand" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {brands.map((brand) => (
-                        <SelectItem key={brand.name} value={brand.name}>
-                          {brand.name}
-                        </SelectItem>
-                      ))}
-                      {brands.length === 0 && !isLoadingBrands && (
-                        <SelectItem value="__empty__" disabled>No brands yet - click "Add brand" to create one</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <ChipCombobox
+                    singleSelect
+                    value={formData.brand || null}
+                    onChange={(v) => setFormData((prev) => ({ ...prev, brand: v ?? "" }))}
+                    staticSuggestions={brands.map((b) => ({ value: b.name, label: b.name }))}
+                    fetchSuggestions={async (query) => {
+                      try {
+                        const res = await fetcher.get<{ data: Array<{ value: string; label: string }> }>(
+                          `/api/provider/products/suggestions?field=brand&q=${encodeURIComponent(query)}`
+                        );
+                        return Array.isArray(res?.data) ? res.data : [];
+                      } catch {
+                        return [];
+                      }
+                    }}
+                    placeholder="Select or type brand"
+                    aria-label="Product brand"
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -696,26 +703,24 @@ export function ProductCreateEditDialog({
                       Add product category
                     </Button>
                   </div>
-                  <Select 
-                    key={`categories-${categories.length}`}
-                    value={formData.category} 
-                    onValueChange={(val) => setFormData(prev => ({ ...prev, category: val }))}
-                    disabled={isLoadingCategories}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select product category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.name}>
-                          {cat.name}
-                        </SelectItem>
-                      ))}
-                      {categories.length === 0 && !isLoadingCategories && (
-                        <SelectItem value="__empty__" disabled>No categories yet - click "Add product category" to create one</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <ChipCombobox
+                    singleSelect
+                    value={formData.category || null}
+                    onChange={(v) => setFormData((prev) => ({ ...prev, category: v ?? "" }))}
+                    staticSuggestions={categories.map((c) => ({ value: c.name, label: c.name }))}
+                    fetchSuggestions={async (query) => {
+                      try {
+                        const res = await fetcher.get<{ data: Array<{ value: string; label: string }> }>(
+                          `/api/provider/products/suggestions?field=category&q=${encodeURIComponent(query)}`
+                        );
+                        return Array.isArray(res?.data) ? res.data : [];
+                      } catch {
+                        return [];
+                      }
+                    }}
+                    placeholder="Select or type category"
+                    aria-label="Product category"
+                  />
                 </div>
 
                 <div className="space-y-2">
@@ -759,12 +764,11 @@ export function ProductCreateEditDialog({
                         />
                       </div>
                       <div className="flex-1 min-w-[180px]">
-                        <Label className="text-xs">Values (comma-separated, e.g. 250ml, 500ml)</Label>
-                        <Input
-                          placeholder="250ml, 500ml"
-                          value={(formData.variantOptionTypes[0]?.values ?? []).join(", ")}
-                          onChange={(e) => {
-                            const values = e.target.value.split(",").map((v) => v.trim()).filter(Boolean);
+                        <Label className="text-xs">Values (e.g. 250ml, 500ml or S, M, L)</Label>
+                        <ChipCombobox
+                          singleSelect={false}
+                          value={formData.variantOptionTypes[0]?.values ?? []}
+                          onChange={(values) => {
                             setFormData((prev) => ({
                               ...prev,
                               variantOptionTypes: prev.variantOptionTypes.length
@@ -772,6 +776,15 @@ export function ProductCreateEditDialog({
                                 : [{ name: prev.variantOptionTypes[0]?.name ?? "Option", values }],
                             }));
                           }}
+                          staticSuggestions={[
+                            "250ml", "500ml", "1L", "100ml", "200ml",
+                            "S", "M", "L", "XL", "XXL",
+                            "Small", "Medium", "Large",
+                            "30ml", "50ml", "75ml",
+                          ].map((v) => ({ value: v, label: v }))}
+                          allowFreeForm
+                          placeholder="Add value..."
+                          className="mt-1"
                         />
                       </div>
                       <Button
@@ -1100,27 +1113,26 @@ export function ProductCreateEditDialog({
 
                 <div>
                   <Label htmlFor="supplier">Supplier</Label>
-                  <div className="flex gap-2">
-                    <Select 
-                      key={`suppliers-${suppliers.length}`}
-                      value={formData.supplier} 
-                      onValueChange={(val) => setFormData(prev => ({ ...prev, supplier: val }))}
-                      disabled={isLoadingSuppliers}
-                    >
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Select a supplier" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {suppliers.map((supplier) => (
-                          <SelectItem key={supplier.name} value={supplier.name}>
-                            {supplier.name}
-                          </SelectItem>
-                        ))}
-                        {suppliers.length === 0 && !isLoadingSuppliers && (
-                          <SelectItem value="__empty__" disabled>No suppliers yet</SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
+                  <div className="flex gap-2 items-center">
+                    <ChipCombobox
+                      singleSelect
+                      value={formData.supplier || null}
+                      onChange={(v) => setFormData((prev) => ({ ...prev, supplier: v ?? "" }))}
+                      staticSuggestions={suppliers.map((s) => ({ value: s.name, label: s.name }))}
+                      fetchSuggestions={async (query) => {
+                        try {
+                          const res = await fetcher.get<{ data: Array<{ value: string; label: string }> }>(
+                            `/api/provider/products/suggestions?field=supplier&q=${encodeURIComponent(query)}`
+                          );
+                          return Array.isArray(res?.data) ? res.data : [];
+                        } catch {
+                          return [];
+                        }
+                      }}
+                      placeholder="Select or type supplier"
+                      aria-label="Supplier"
+                      className="flex-1"
+                    />
                     <Button
                       type="button"
                       variant="outline"

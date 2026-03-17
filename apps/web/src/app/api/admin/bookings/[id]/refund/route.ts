@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, notFoundResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 /**
@@ -15,8 +16,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRoleInApi(["superadmin"], request);
-    if (!auth) throw new Error("Authentication required");
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) throw new Error("Authentication required");
     const { id } = await params;
     const supabase = getSupabaseAdmin();
     const body = await request.json();
@@ -61,7 +62,8 @@ export async function POST(
     }
 
     // 1. Credit customer wallet (refunds always go to wallet)
-    const { error: walletError } = await (supabase.rpc as any)("wallet_credit_admin", {
+    const rpc = supabase.rpc.bind(supabase) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
+    const { error: walletError } = await rpc("wallet_credit_admin", {
       p_user_id: b.customer_id,
       p_amount: amount,
       p_currency: b.currency || "ZAR",
@@ -84,7 +86,7 @@ export async function POST(
         reason: reason || "Admin refund",
         refund_method: "store_credit",
         status: "completed",
-        created_by: auth.user.id,
+        created_by: user.id,
       })
       .select()
       .single();
@@ -94,8 +96,8 @@ export async function POST(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as { role?: string }).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: (user as { role?: string }).role || "superadmin",
       action: "admin.refund.create",
       entity_type: "refund",
       entity_id: (refund as { id: string }).id,
@@ -114,12 +116,17 @@ export async function POST(
 
     try {
       const { sendToUser } = await import("@/lib/notifications/onesignal");
-      await sendToUser(b.customer_id, {
-        title: "Refund added to wallet",
-        message: `A refund of ${b.currency || "ZAR"} ${amount.toFixed(2)} for booking ${b.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
-        data: { type: "refund_processed", booking_id: id, refund_id: (refund as { id: string }).id },
-        url: "/account-settings/wallet",
-      });
+      await sendToUser(
+        b.customer_id,
+        {
+          title: "Refund added to wallet",
+          message: `A refund of ${b.currency || "ZAR"} ${amount.toFixed(2)} for booking ${b.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
+          data: { type: "refund_processed", booking_id: id, refund_id: (refund as { id: string }).id },
+          url: "/account-settings/wallet",
+        },
+        ["push"],
+        { appType: "customer" }
+      );
     } catch (notifError) {
       console.error("Error sending notification:", notifError);
     }

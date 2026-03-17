@@ -63,6 +63,7 @@ interface PlatformSettings {
   };
   onesignal: {
     app_id: string;
+    app_id_provider?: string;
     rest_api_key: string;
     safari_web_id?: string;
     enabled: boolean;
@@ -1189,6 +1190,7 @@ function OneSignalSettings({
 }) {
   const safeSettings = {
     app_id: settings?.app_id ?? "",
+    app_id_provider: settings?.app_id_provider ?? "",
     rest_api_key: settings?.rest_api_key ?? "",
     safari_web_id: settings?.safari_web_id ?? "",
     enabled: settings?.enabled ?? false,
@@ -1223,7 +1225,7 @@ function OneSignalSettings({
 
       <div>
         <Label htmlFor="onesignal_app_id" className="text-sm sm:text-base">
-          App ID *
+          Customer App ID *
         </Label>
         <Input
           id="onesignal_app_id"
@@ -1235,7 +1237,24 @@ function OneSignalSettings({
           required
         />
         <p className="text-xs sm:text-sm text-gray-600 mt-1">
-          Your OneSignal App ID
+          OneSignal App ID for the customer app
+        </p>
+      </div>
+
+      <div>
+        <Label htmlFor="onesignal_app_id_provider" className="text-sm sm:text-base">
+          Provider App ID (optional)
+        </Label>
+        <Input
+          id="onesignal_app_id_provider"
+          type="text"
+          value={safeSettings.app_id_provider}
+          onChange={(e) => onChange({ app_id_provider: e.target.value || undefined })}
+          placeholder="Leave empty to use same app as customer"
+          className="mt-1 font-mono text-xs sm:text-sm"
+        />
+        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+          When using two OneSignal apps: App ID for the provider/partner app. Public config returns this when requested with app=provider.
         </p>
       </div>
 
@@ -1620,6 +1639,9 @@ function AppsSettings({
     <div className="bg-white border rounded-lg p-4 sm:p-6 space-y-6">
       <div>
         <h3 className="text-base sm:text-lg font-semibold mb-4">Mobile App Management</h3>
+        <p className="text-xs sm:text-sm text-gray-600 mb-2">
+          These URLs are the single source of truth for the download banner and footer app buttons (customer on most pages, provider on Become a Partner).
+        </p>
         <p className="text-xs sm:text-sm text-gray-600 mb-4">
           Manage customer and provider mobile apps for Android, iOS, and Huawei platforms. Store URLs and the
           enabled flag below are used by the web site’s mobile download banner (sticky bar on mobile). Disable a

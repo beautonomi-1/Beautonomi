@@ -238,11 +238,11 @@ export async function POST(
           : (validated.attachments && validated.attachments.length > 0 ? "Sent an attachment" : "New message");
 
         // Send OneSignal push notification (try template first, fallback to hardcoded)
-        const { sendToUser: _sendToUser, sendTemplateNotification, getNotificationTemplate } = await import("@/lib/notifications/onesignal");
+        const { sendToUser, sendTemplateNotification, getNotificationTemplate } = await import("@/lib/notifications/onesignal");
         
         // Try to use notification template
         const template = await getNotificationTemplate("customer_new_message");
-        
+
         if (template && template.enabled) {
           // Get provider name for template
           const { data: providerData } = await supabase
@@ -260,11 +260,21 @@ export async function POST(
               message_preview: messagePreview,
               conversation_id: id,
             },
-            template.channels || ["push"]
+            template.channels || ["push"],
+            { appType: "customer" }
           );
         } else {
-          // Fallback: Try to use template, but if template doesn't exist, log warning
-          console.warn("Notification template 'new_message' not found, skipping notification");
+          // Fallback: send push with message preview so customer always gets notified (like customer→provider)
+          await sendToUser(
+            customerId,
+            {
+              title: "New Message from Provider",
+              message: messagePreview,
+              data: { type: "new_message", conversation_id: id, message_id: message.id },
+            },
+            ["push"],
+            { appType: "customer" }
+          );
         }
 
         // Create in-app notification record

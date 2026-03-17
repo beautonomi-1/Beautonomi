@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = getSupabaseAdmin();
     
     const { searchParams } = new URL(request.url);
@@ -54,7 +55,8 @@ export async function GET(request: NextRequest) {
     let cancelled = 0;
     let noShow = 0;
 
-    (bookings || []).forEach((booking: any) => {
+    type BookingRow = { scheduled_at?: string; status?: string; provider_id?: string };
+    (bookings || []).forEach((booking: BookingRow) => {
       const date = new Date(booking.scheduled_at).toISOString().split('T')[0];
       
       // By day
@@ -85,7 +87,7 @@ export async function GET(request: NextRequest) {
         .select('id, business_name')
         .in('id', providerIds);
 
-      (providers || []).forEach((p: any) => {
+      (providers || []).forEach((p: { id: string; business_name?: string }) => {
         if (bookingsByProvider[p.id]) {
           bookingsByProvider[p.id].provider_name = p.business_name;
         }

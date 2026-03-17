@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
-import { successResponse, errorResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, errorResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 
@@ -21,8 +22,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -80,8 +81,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -140,8 +141,8 @@ export async function POST(
     const bookingNumber = (booking as { booking_number: string }).booking_number;
     const currency = (booking as { currency?: string }).currency || "ZAR";
 
-    // 1. Credit customer wallet (refunds always go to wallet; they can request payout or use for next booking)
-    const { error: walletError } = await (supabase.rpc as any)("wallet_credit_admin", {
+    const rpc = supabase.rpc.bind(supabase) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
+    const { error: walletError } = await rpc("wallet_credit_admin", {
       p_user_id: customerId,
       p_amount: refund_amount,
       p_currency: currency,
@@ -162,13 +163,12 @@ export async function POST(
     const refundReference = `wallet_refund_${id}_${Date.now()}`;
     const isFullRefund = refund_amount >= txnAmount;
 
-    // 2. Update payment_transactions
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       refund_amount,
       refund_reason,
       refund_reference: refundReference,
       refunded_at: new Date().toISOString(),
-      refunded_by: auth.user.id,
+      refunded_by: user.id,
       status: isFullRefund ? "refunded" : "partially_refunded",
     };
 
@@ -181,19 +181,18 @@ export async function POST(
 
     if (error) throw error;
 
-    // 3. Record in booking_refunds so update_booking_payment_status trigger keeps totals in sync
-    await (supabase.from("booking_refunds") as any).insert({
+    await supabase.from("booking_refunds").insert({
       booking_id: transaction.booking_id,
       amount: refund_amount,
       reason: refund_reason,
       refund_method: "store_credit",
       status: "completed",
-      created_by: auth.user.id,
+      created_by: user.id,
     });
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.refund.process",
       entity_type: "payment_transaction",
       entity_id: id,
@@ -203,12 +202,17 @@ export async function POST(
     // 4. Notify customer
     try {
       const { sendToUser } = await import("@/lib/notifications/onesignal");
-      await sendToUser(customerId, {
-        title: "Refund added to wallet",
-        message: `A refund of ${currency} ${refund_amount.toFixed(2)} for booking ${bookingNumber} has been added to your wallet. Use it for your next booking or request a payout.`,
-        data: { type: "refund_processed", booking_id: transaction.booking_id, refund_reference: refundReference },
-        url: "/account-settings/wallet",
-      });
+      await sendToUser(
+        customerId,
+        {
+          title: "Refund added to wallet",
+          message: `A refund of ${currency} ${refund_amount.toFixed(2)} for booking ${bookingNumber} has been added to your wallet. Use it for your next booking or request a payout.`,
+          data: { type: "refund_processed", booking_id: transaction.booking_id, refund_reference: refundReference },
+          url: "/account-settings/wallet",
+        },
+        ["push"],
+        { appType: "customer" }
+      );
     } catch (notifErr) {
       console.error("Refund notification failed:", notifErr);
     }

@@ -1,6 +1,7 @@
 /**
- * OAuth callback handler - receives redirect from OAuth providers.
- * Extracts tokens/code from URL, sets session, then redirects to app.
+ * OAuth callback – receives redirect from OAuth providers.
+ * Web: reads code/tokens from window.location, sets session, redirects to home.
+ * Native: reads code/error from URL params (deep link), exchanges code, then redirects to (app)/(tabs)/home so user stays in app.
  */
 import { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator, Platform } from "react-native";
@@ -10,7 +11,7 @@ import { Colors } from "@/constants/colors";
 
 export default function AuthCallbackScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ code?: string; error?: string }>();
+  const params = useLocalSearchParams<{ code?: string; error?: string; error_description?: string }>();
   const [status, setStatus] = useState<"loading" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState<string>("");
 
@@ -18,30 +19,35 @@ export default function AuthCallbackScreen() {
     let cancelled = false;
 
     async function handleCallback() {
-      if (Platform.OS !== "web" || typeof window === "undefined") {
-        if (!cancelled) router.replace("/(auth)/login");
-        return;
+      const isWeb = Platform.OS === "web" && typeof window !== "undefined";
+
+      let error: string | null = null;
+      let code: string | null = null;
+      let accessToken: string | null = null;
+      let refreshToken: string | null = null;
+
+      if (isWeb) {
+        const urlObj = new URL(window.location.href);
+        error = urlObj.searchParams.get("error") ?? params.error ?? null;
+        code = urlObj.searchParams.get("code") ?? params.code ?? null;
+        const hash = urlObj.hash.slice(1);
+        if (hash) {
+          const hashParams = new URLSearchParams(hash);
+          accessToken = hashParams.get("access_token");
+          refreshToken = hashParams.get("refresh_token");
+        }
+      } else {
+        error = params.error ?? null;
+        code = params.code ?? null;
       }
 
-      const url = window.location.href;
-      const urlObj = new URL(url);
-
-      const error = urlObj.searchParams.get("error") ?? params.error;
       if (error) {
         if (!cancelled) {
           setStatus("error");
-          setErrorMsg(
-            urlObj.searchParams.get("error_description") || error
-          );
+          setErrorMsg(isWeb ? (new URL(window.location.href).searchParams.get("error_description") || error) : (params.error_description || error));
         }
         return;
       }
-
-      const code = urlObj.searchParams.get("code") ?? params.code;
-      const hash = urlObj.hash.slice(1);
-      const hashParams = new URLSearchParams(hash);
-      const accessToken = hashParams.get("access_token");
-      const refreshToken = hashParams.get("refresh_token");
 
       try {
         if (accessToken && refreshToken) {
@@ -59,8 +65,10 @@ export default function AuthCallbackScreen() {
         }
 
         if (!cancelled) {
-          if (window.opener) {
+          if (isWeb && window.opener) {
             window.close();
+          } else if (isWeb) {
+            router.replace("/(app)/(tabs)/home");
           } else {
             router.replace("/(app)/(tabs)/home");
           }
@@ -77,7 +85,7 @@ export default function AuthCallbackScreen() {
     return () => {
       cancelled = true;
     };
-  }, [router, params.code, params.error]);
+  }, [router, params.code, params.error, params.error_description]);
 
   if (status === "error") {
     return (

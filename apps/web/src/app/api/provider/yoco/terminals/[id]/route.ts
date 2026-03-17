@@ -3,9 +3,12 @@ import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 
+const DEPRECATION_HEADER =
+  "Use /api/provider/yoco/devices and Sales → Yoco Integration. This endpoint proxies devices and may be removed in a future release.";
+
 /**
  * GET /api/provider/yoco/terminals/[id]
- * Get terminal details
+ * Deprecated: proxies provider_yoco_devices so legacy callers get device by id.
  */
 export async function GET(
   request: Request,
@@ -27,14 +30,14 @@ export async function GET(
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
-    const { data: terminal, error } = await (supabase
-      .from("provider_yoco_terminals") as any)
-      .select("*")
+    const { data: device, error } = await supabase
+      .from("provider_yoco_devices")
+      .select("id, name, yoco_device_id, location_name, is_active, created_at, updated_at")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
-    if (error || !terminal) {
+    if (error || !device) {
       return NextResponse.json(
         {
           data: null,
@@ -47,20 +50,28 @@ export async function GET(
       );
     }
 
-    // Don't return sensitive keys in response
-    const { api_key: _api_key, secret_key: _secret_key, ...safeTerminal } = terminal;
+    const data = {
+      id: device.id,
+      device_id: device.yoco_device_id,
+      device_name: device.name,
+      location_name: device.location_name ?? null,
+      active: device.is_active,
+      created_at: device.created_at,
+      updated_at: device.updated_at,
+    };
 
-    return NextResponse.json({
-      data: safeTerminal,
-      error: null,
-    });
-  } catch (error: any) {
-    console.error("Error fetching terminal:", error);
+    return NextResponse.json(
+      { data, error: null },
+      { headers: { "Deprecation": "true", "X-Deprecation-Info": DEPRECATION_HEADER } }
+    );
+  } catch (err: unknown) {
+    const error = err as { message?: string };
+    console.error("Error fetching terminal (devices proxy):", err);
     return NextResponse.json(
       {
         data: null,
         error: {
-          message: error.message || "Failed to fetch terminal",
+          message: error?.message ?? "Failed to fetch terminal",
           code: "INTERNAL_ERROR",
         },
       },
@@ -71,139 +82,42 @@ export async function GET(
 
 /**
  * PUT /api/provider/yoco/terminals/[id]
- * Update terminal
+ * Deprecated: use PUT /api/provider/yoco/devices/[id].
  */
 export async function PUT(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const auth = await requireRole(["provider_owner", "provider_staff"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
-
-    const providerId = await getProviderIdForUser(auth.user.id);
-    if (!providerId) {
-      return NextResponse.json(
-        { data: null, error: { message: "Provider not found", code: "NOT_FOUND" } },
-        { status: 404 }
-      );
-    }
-
-    const { id } = await params;
-    const body = await request.json();
-    const updates: any = {
-      updated_at: new Date().toISOString(),
-    };
-
-    if (body.device_name) updates.device_name = body.device_name;
-    if (body.location_name) updates.location_name = body.location_name;
-    if (body.api_key) updates.api_key = body.api_key;
-    if (body.secret_key) updates.secret_key = body.secret_key;
-    if (typeof body.active === "boolean") updates.active = body.active;
-
-    const supabase = await getSupabaseServer(request);
-    const { data: terminal, error } = await (supabase
-      .from("provider_yoco_terminals") as any)
-      .update(updates)
-      .eq("id", id)
-      .eq("provider_id", providerId)
-      .select()
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    if (!terminal) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Terminal not found",
-            code: "NOT_FOUND",
-          },
-        },
-        { status: 404 }
-      );
-    }
-
-    // Don't return sensitive keys
-    const { api_key: _api_key2, secret_key: _secret_key2, ...safeTerminal } = terminal;
-
-    return NextResponse.json({
-      data: safeTerminal,
-      error: null,
-    });
-  } catch (error: any) {
-    console.error("Error updating terminal:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: error.message || "Failed to update terminal",
-          code: "INTERNAL_ERROR",
-        },
+  await params;
+  return NextResponse.json(
+    {
+      data: null,
+      error: {
+        message: "This endpoint is deprecated. Update devices via Sales → Yoco devices, or PUT /api/provider/yoco/devices/[id].",
+        code: "DEPRECATED",
       },
-      { status: 500 }
-    );
-  }
+    },
+    { status: 410, headers: { "Deprecation": "true", "X-Deprecation-Info": DEPRECATION_HEADER } }
+  );
 }
 
 /**
  * DELETE /api/provider/yoco/terminals/[id]
- * Delete (deactivate) terminal
+ * Deprecated: use DELETE /api/provider/yoco/devices/[id].
  */
 export async function DELETE(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const auth = await requireRole(["provider_owner", "provider_staff"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
-
-    const providerId = await getProviderIdForUser(auth.user.id);
-    if (!providerId) {
-      return NextResponse.json(
-        { data: null, error: { message: "Provider not found", code: "NOT_FOUND" } },
-        { status: 404 }
-      );
-    }
-
-    const { id } = await params;
-    const supabase = await getSupabaseServer(request);
-    const { error } = await (supabase
-      .from("provider_yoco_terminals") as any)
-      .update({
-        active: false,
-        deleted_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .eq("provider_id", providerId);
-
-    if (error) {
-      throw error;
-    }
-
-    return NextResponse.json({
-      data: { success: true },
-      error: null,
-    });
-  } catch (error: any) {
-    console.error("Error deleting terminal:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: error.message || "Failed to delete terminal",
-          code: "INTERNAL_ERROR",
-        },
+  await params;
+  return NextResponse.json(
+    {
+      data: null,
+      error: {
+        message: "This endpoint is deprecated. Remove devices via Sales → Yoco devices, or DELETE /api/provider/yoco/devices/[id].",
+        code: "DEPRECATED",
       },
-      { status: 500 }
-    );
-  }
+    },
+    { status: 410, headers: { "Deprecation": "true", "X-Deprecation-Info": DEPRECATION_HEADER } }
+  );
 }

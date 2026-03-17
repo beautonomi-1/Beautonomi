@@ -12,6 +12,9 @@ export async function GET(request: NextRequest) {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
 
+    // Auth user for email_confirmed_at (Supabase verification state)
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+
     // Get user data
     const { data: userData, error: userError } = await supabase
       .from("users")
@@ -22,6 +25,13 @@ export async function GET(request: NextRequest) {
     if (userError || !userData) {
       throw new Error("User not found");
     }
+
+    const emailVerified = userData.email_verified || !!(authUser as { email_confirmed_at?: string } | undefined)?.email_confirmed_at;
+    const hasPreferredOrFullName = !!(userData.preferred_name || (userData as { full_name?: string }).full_name);
+    // Phone can be in users.phone (from account settings) or in Auth (e.g. phone sign-in)
+    const authPhone = (authUser as { phone?: string; user_metadata?: { phone?: string } })?.phone
+      || (authUser as { user_metadata?: { phone?: string } })?.user_metadata?.phone;
+    const hasPhone = !!(userData.phone || authPhone);
 
     // Get profile data
     const { data: profileData } = await supabase
@@ -52,14 +62,14 @@ export async function GET(request: NextRequest) {
         id: "email",
         label: "Verify email",
         timeEstimate: "1 min",
-        completed: userData.email_verified || false,
+        completed: emailVerified,
         required: true,
       },
       {
         id: "preferred_name",
         label: "Add preferred name",
         timeEstimate: "30 sec",
-        completed: !!userData.preferred_name,
+        completed: hasPreferredOrFullName,
         required: false,
       },
       {
@@ -80,7 +90,7 @@ export async function GET(request: NextRequest) {
         id: "phone",
         label: "Add phone",
         timeEstimate: "1 min",
-        completed: !!userData.phone,
+        completed: hasPhone,
         required: false,
       },
       {

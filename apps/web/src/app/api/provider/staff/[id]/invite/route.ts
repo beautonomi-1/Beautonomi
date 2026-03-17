@@ -73,17 +73,22 @@ export async function POST(
     if (staff.user_id) {
       try {
         const { sendToUser } = await import('@/lib/notifications/onesignal');
-        await sendToUser(staff.user_id, {
-          title: `Invitation to join ${businessName}`,
-          message: validationResult.data.message || `You've been invited to join ${businessName} as a team member.`,
-          data: {
-            type: 'staff_invitation',
-            staff_id: id,
-            provider_id: providerId,
-            invitation_token: invitationToken,
+        await sendToUser(
+          staff.user_id,
+          {
+            title: `Invitation to join ${businessName}`,
+            message: validationResult.data.message || `You've been invited to join ${businessName} as a team member.`,
+            data: {
+              type: 'staff_invitation',
+              staff_id: id,
+              provider_id: providerId,
+              invitation_token: invitationToken,
+            },
+            url: `/provider/onboarding?invite=${invitationToken}`,
           },
-          url: `/provider/onboarding?invite=${invitationToken}`,
-        });
+          ["push"],
+          { appType: "provider" }
+        );
       } catch (notifError) {
         console.error('Staff invite notification failed:', notifError);
       }

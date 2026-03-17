@@ -13,7 +13,7 @@ export async function GET(
   try {
     const auth = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
     const { data: booking, error } = await supabase
@@ -105,8 +105,21 @@ export async function GET(
       );
     }
 
-    // Transform booking data to match confirmation page format
-    const bookingData = booking as any;
+    type BookingDataRow = Record<string, unknown> & {
+      id: string; booking_number?: string; status?: string; current_stage?: string;
+      estimated_arrival?: string; provider_en_route_at?: string; provider_arrived_at?: string;
+      provider_location?: unknown; scheduled_at?: string; location_type?: string;
+      total_amount?: number; currency?: string; total_paid?: number;
+      booking_services?: unknown[]; booking_addons?: unknown[]; booking_products?: unknown[];
+      additional_charges?: unknown[]; arrival_otp_verified?: boolean; arrival_otp_expires_at?: string;
+      arrival_otp?: string;
+      address_line1?: string; address_line2?: string; address_city?: string; address_state?: string;
+      address_country?: string; address_postal_code?: string; address_latitude?: number; address_longitude?: number;
+      location?: { name?: string; address_line1?: string; address_line2?: string; city?: string; country?: string };
+      special_requests?: string; group_booking_id?: string; group_bookings?: { ref_number?: string };
+      provider?: { id: string; business_name?: string; slug?: string; phone?: string; email?: string };
+    };
+    const bookingData = booking as BookingDataRow;
     const transformedBooking = {
       id: bookingData.id,
       booking_number: bookingData.booking_number,
@@ -120,30 +133,26 @@ export async function GET(
       location_type: bookingData.location_type === "at_salon" ? "at_salon" : "at_home",
       total_amount: bookingData.total_amount,
       currency: bookingData.currency,
-      services: (bookingData.booking_services || []).map((bs: any) => ({
-        id: bs.id,
-        offering_id: bs.offering_id,
-        offering_name: bs.offering?.title || "Service",
-        staff_id: bs.staff_id,
-        staff_name: bs.staff?.name || null,
-        duration_minutes: bs.duration_minutes || bs.offering?.duration_minutes || 0,
-        price: bs.price || bs.offering?.price || 0,
-        guest_name: bs.guest_name || undefined,
-      })),
-      addons: (bookingData.booking_addons || []).map((ba: any) => ({
-        id: ba.id,
-        offering_id: ba.addon_id, // Note: addon_id references offerings table
-        offering_name: ba.offering?.title || "Addon",
-        price: ba.price || ba.offering?.price || 0,
-      })),
-      products: (bookingData.booking_products || []).map((bp: any) => ({
-        id: bp.id,
-        product_id: bp.product_id,
-        product_name: bp.products?.name || "Product",
-        quantity: bp.quantity || 1,
-        unit_price: bp.unit_price || bp.products?.retail_price || 0,
-        total_price: bp.total_price || (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1),
-      })),
+      services: (bookingData.booking_services ?? []).map((bs: unknown) => {
+        const b = bs as { id: string; offering_id?: string; staff_id?: string; duration_minutes?: number; price?: number; guest_name?: string; offering?: { title?: string; duration_minutes?: number; price?: number }; staff?: { name?: string } };
+        return ({
+        id: b.id,
+        offering_id: b.offering_id,
+        offering_name: b.offering?.title ?? "Service",
+        staff_id: b.staff_id,
+        staff_name: b.staff?.name ?? null,
+        duration_minutes: b.duration_minutes ?? b.offering?.duration_minutes ?? 0,
+        price: b.price ?? b.offering?.price ?? 0,
+        guest_name: b.guest_name ?? undefined,
+      }); }),
+      addons: (bookingData.booking_addons ?? []).map((ba: unknown) => {
+        const a = ba as { id: string; addon_id?: string; price?: number; offering?: { title?: string; price?: number } };
+        return { id: a.id, offering_id: a.addon_id, offering_name: a.offering?.title ?? "Addon", price: a.price ?? a.offering?.price ?? 0 };
+      }),
+      products: (bookingData.booking_products ?? []).map((bp: unknown) => {
+        const p = bp as { id: string; product_id?: string; quantity?: number; unit_price?: number; total_price?: number; products?: { name?: string; retail_price?: number } };
+        return { id: p.id, product_id: p.product_id, product_name: p.products?.name ?? "Product", quantity: p.quantity ?? 1, unit_price: p.unit_price ?? p.products?.retail_price ?? 0, total_price: p.total_price ?? (p.unit_price ?? p.products?.retail_price ?? 0) * (p.quantity ?? 1) };
+      }),
       address: bookingData.location_type === "at_home" && bookingData.address_line1 ? {
         line1: bookingData.address_line1 || "",
         line2: bookingData.address_line2 || undefined,
@@ -155,12 +164,12 @@ export async function GET(
         longitude: bookingData.address_longitude || undefined,
       } : null,
       location: bookingData.location ? {
-        name: bookingData.location.name,
+        name: (bookingData.location as { name?: string }).name,
         address: [
-          bookingData.location.address_line1,
-          bookingData.location.address_line2,
-          bookingData.location.city,
-          bookingData.location.country,
+          (bookingData.location as { address_line1?: string }).address_line1,
+          (bookingData.location as { address_line2?: string }).address_line2,
+          (bookingData.location as { city?: string }).city,
+          (bookingData.location as { country?: string }).country,
         ].filter(Boolean).join(", "),
       } : undefined,
       client_info: {
@@ -171,7 +180,7 @@ export async function GET(
       },
       special_requests: bookingData.special_requests,
       is_group_booking: !!bookingData.group_booking_id,
-      group_booking_ref: bookingData.group_bookings?.ref_number ?? null,
+      group_booking_ref: (bookingData.group_bookings as { ref_number?: string } | undefined)?.ref_number ?? null,
       provider: bookingData.provider ? {
         id: bookingData.provider.id,
         business_name: bookingData.provider.business_name,
@@ -179,24 +188,36 @@ export async function GET(
         phone: bookingData.provider.phone,
         email: bookingData.provider.email,
       } : undefined,
-      additional_charges: (bookingData.additional_charges || []).map((ac: any) => ({
-        id: ac.id,
-        description: ac.description,
-        amount: Number(ac.amount),
-        currency: ac.currency,
-        status: ac.status,
-        requested_at: ac.requested_at,
-        paid_at: ac.paid_at,
-      })),
-      // Calculate outstanding balance (original booking + unpaid additional charges - total_paid)
+      additional_charges: (bookingData.additional_charges ?? []).map((ac: unknown) => {
+        const a = ac as { id: string; description?: string; amount?: number; currency?: string; status?: string; requested_at?: string; paid_at?: string };
+        return {
+        id: a.id,
+        description: a.description,
+        amount: Number(a.amount),
+        currency: a.currency,
+        status: a.status,
+        requested_at: a.requested_at,
+        paid_at: a.paid_at,
+      }; }),
       outstanding_balance: (() => {
-        const bookingTotal = Number(bookingData.total_amount || 0);
-        const totalPaid = Number(bookingData.total_paid || 0);
-        const unpaidCharges = (bookingData.additional_charges || [])
-          .filter((ac: any) => ac.status !== 'paid' && ac.status !== 'rejected')
-          .reduce((sum: number, ac: any) => sum + Number(ac.amount || 0), 0);
+        const bookingTotal = Number(bookingData.total_amount ?? 0);
+        const totalPaid = Number(bookingData.total_paid ?? 0);
+        type AcRow = { status?: string; amount?: number };
+        const unpaidCharges = (bookingData.additional_charges ?? [])
+          .filter((ac: AcRow) => ac.status !== "paid" && ac.status !== "rejected")
+          .reduce((sum: number, ac: AcRow) => sum + Number(ac.amount ?? 0), 0);
         return Math.max(0, bookingTotal + unpaidCharges - totalPaid);
       })(),
+      // Arrival verification (customer-holds-PIN: customer needs these to show PIN and countdown)
+      arrival_otp_verified: bookingData.arrival_otp_verified ?? false,
+      arrival_otp_expires_at: bookingData.arrival_otp_expires_at ?? undefined,
+      // Expose arrival_otp only when customer must display it (at_home, arrived, not yet verified)
+      ...(bookingData.location_type === "at_home" &&
+        bookingData.current_stage === "provider_arrived" &&
+        !bookingData.arrival_otp_verified &&
+        bookingData.arrival_otp != null && {
+        arrival_otp: bookingData.arrival_otp,
+      }),
     };
 
     return NextResponse.json({

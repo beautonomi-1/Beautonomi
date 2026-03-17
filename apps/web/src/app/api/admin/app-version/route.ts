@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { z } from 'zod';
 
 const versionSettingsSchema = z.object({
@@ -18,6 +19,14 @@ const versionSettingsSchema = z.object({
   }),
 });
 
+type AppVersionSettingRow = {
+  platform?: string;
+  min_version?: string;
+  latest_version?: string;
+  force_update?: boolean;
+  update_url?: string;
+};
+
 /**
  * GET /api/admin/app-version
  * 
@@ -25,12 +34,12 @@ const versionSettingsSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const supabase = await getSupabaseServer(request);
 
-    const { data: versionSettings, error } = await (supabase
-      .from('app_version_settings') as any)
-      .select('*');
+    const { data: versionSettings, error } = await supabase
+      .from("app_version_settings")
+      .select("*");
 
     if (error) {
       // Return default structure if table doesn't exist yet
@@ -50,21 +59,21 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Transform data to match expected structure
-    const iosSettings = (versionSettings as any[])?.find((s: any) => s.platform === 'ios') || {
-      platform: 'ios',
-      min_version: '1.0.0',
-      latest_version: '1.0.0',
+    const settings = (versionSettings ?? []) as AppVersionSettingRow[];
+    const iosSettings = settings.find((s) => s.platform === "ios") ?? {
+      platform: "ios",
+      min_version: "1.0.0",
+      latest_version: "1.0.0",
       force_update: false,
-      update_url: 'https://apps.apple.com/app/beautonomi',
+      update_url: "https://apps.apple.com/app/beautonomi",
     };
 
-    const androidSettings = (versionSettings as any[])?.find((s: any) => s.platform === 'android') || {
-      platform: 'android',
-      min_version: '1.0.0',
-      latest_version: '1.0.0',
+    const androidSettings = settings.find((s) => s.platform === "android") ?? {
+      platform: "android",
+      min_version: "1.0.0",
+      latest_version: "1.0.0",
       force_update: false,
-      update_url: 'https://play.google.com/store/apps/details?id=com.beautonomi',
+      update_url: "https://play.google.com/store/apps/details?id=com.beautonomi",
     };
 
     return successResponse({
@@ -93,15 +102,14 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const { ios, android } = versionSettingsSchema.parse(body);
 
-    // Upsert iOS settings
-    const { error: iosError } = await (supabase
-      .from('app_version_settings') as any)
+    const { error: iosError } = await supabase
+      .from("app_version_settings")
       .upsert(
         {
           platform: 'ios',
@@ -120,9 +128,8 @@ export async function PATCH(request: NextRequest) {
       throw iosError;
     }
 
-    // Upsert Android settings
-    const { error: androidError } = await (supabase
-      .from('app_version_settings') as any)
+    const { error: androidError } = await supabase
+      .from("app_version_settings")
       .upsert(
         {
           platform: 'android',
@@ -141,13 +148,13 @@ export async function PATCH(request: NextRequest) {
       throw androidError;
     }
 
-    // Return updated settings
-    const { data: updatedSettings } = await (supabase
-      .from('app_version_settings') as any)
-      .select('*');
+    const { data: updatedSettings } = await supabase
+      .from("app_version_settings")
+      .select("*");
 
-    const updatedIos = (updatedSettings as any[])?.find((s: any) => s.platform === 'ios') || ios;
-    const updatedAndroid = (updatedSettings as any[])?.find((s: any) => s.platform === 'android') || android;
+    const updatedRows = (updatedSettings ?? []) as AppVersionSettingRow[];
+    const updatedIos = updatedRows.find((s) => s.platform === "ios") ?? ios;
+    const updatedAndroid = updatedRows.find((s) => s.platform === "android") ?? android;
 
     return successResponse({
       ios: {

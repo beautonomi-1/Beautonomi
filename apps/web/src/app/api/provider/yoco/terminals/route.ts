@@ -3,9 +3,12 @@ import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 
+const DEPRECATION_HEADER =
+  "Use /api/provider/yoco/devices and Sales → Yoco Integration. This endpoint proxies devices and may be removed in a future release.";
+
 /**
  * GET /api/provider/yoco/terminals
- * List provider's Yoco terminals
+ * Deprecated: proxies provider_yoco_devices so legacy callers see the same list as the devices API.
  */
 export async function GET(request: Request) {
   try {
@@ -19,32 +22,46 @@ export async function GET(request: Request) {
     if (!providerId) {
       return NextResponse.json(
         { data: [], error: null },
-        { status: 200 }
+        { status: 200, headers: { "Deprecation": "true", "X-Deprecation-Info": DEPRECATION_HEADER } }
       );
     }
 
-    const { data: terminals, error } = await (supabase
-      .from("provider_yoco_terminals") as any)
-      .select("*")
+    const { data: devices, error } = await supabase
+      .from("provider_yoco_devices")
+      .select("id, name, yoco_device_id, location_name, is_active, created_at, updated_at")
       .eq("provider_id", providerId)
-      .eq("active", true)
+      .eq("is_active", true)
       .order("created_at", { ascending: false });
 
     if (error) {
       throw error;
     }
 
-    return NextResponse.json({
-      data: terminals || [],
-      error: null,
-    });
-  } catch (error: any) {
-    console.error("Error fetching Yoco terminals:", error);
+    const data = (devices || []).map((d: { id: string; name: string; yoco_device_id: string; location_name: string | null; is_active: boolean; created_at: string; updated_at: string }) => ({
+      id: d.id,
+      device_id: d.yoco_device_id,
+      device_name: d.name,
+      location_name: d.location_name ?? null,
+      active: d.is_active,
+      created_at: d.created_at,
+      updated_at: d.updated_at,
+    }));
+
+    return NextResponse.json(
+      { data, error: null },
+      {
+        status: 200,
+        headers: { "Deprecation": "true", "X-Deprecation-Info": DEPRECATION_HEADER },
+      }
+    );
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    console.error("Error fetching Yoco terminals (devices proxy):", error);
     return NextResponse.json(
       {
         data: null,
         error: {
-          message: error.message || "Failed to fetch terminals",
+          message: err?.message ?? "Failed to fetch terminals",
           code: "INTERNAL_ERROR",
         },
       },
@@ -55,109 +72,17 @@ export async function GET(request: Request) {
 
 /**
  * POST /api/provider/yoco/terminals
- * Register a new Yoco terminal for provider
+ * Deprecated: use POST /api/provider/yoco/devices and Sales → Yoco Integration to add devices.
  */
-export async function POST(request: Request) {
-  try {
-    const auth = await requireRole(["provider_owner", "provider_staff"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
-
-    const supabase = await getSupabaseServer(request);
-    const providerId = await getProviderIdForUser(auth.user.id);
-    if (!providerId) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Provider not found",
-            code: "PROVIDER_NOT_FOUND",
-          },
-        },
-        { status: 404 }
-      );
-    }
-
-    const body = await request.json();
-    const {
-      device_id,
-      device_name,
-      api_key,
-      secret_key,
-      location_name,
-    } = body;
-
-    // Validate required fields
-    if (!device_id || !device_name || !api_key || !secret_key) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Missing required fields: device_id, device_name, api_key, secret_key",
-            code: "VALIDATION_ERROR",
-          },
-        },
-        { status: 400 }
-      );
-    }
-
-    // Check if device_id already exists
-    const { data: existing } = await (supabase
-      .from("provider_yoco_terminals") as any)
-      .select("id")
-      .eq("device_id", device_id)
-      .single();
-
-    if (existing) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Terminal with this device ID already exists",
-            code: "DUPLICATE_ERROR",
-          },
-        },
-        { status: 400 }
-      );
-    }
-
-    // Create terminal record
-    const { data: terminal, error: insertError } = await (supabase
-      .from("provider_yoco_terminals") as any)
-      .insert({
-        provider_id: providerId,
-        device_id,
-        device_name,
-        api_key, // Encrypted in production
-        secret_key, // Encrypted in production
-        location_name: location_name || "Main Location",
-        active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      throw insertError;
-    }
-
-    return NextResponse.json({
-      data: terminal,
-      error: null,
-    });
-  } catch (error: any) {
-    console.error("Error creating Yoco terminal:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: error.message || "Failed to create terminal",
-          code: "INTERNAL_ERROR",
-        },
+export async function POST() {
+  return NextResponse.json(
+    {
+      data: null,
+      error: {
+        message: "This endpoint is deprecated. Add devices via Sales → Yoco Integration / Yoco devices, or POST /api/provider/yoco/devices.",
+        code: "DEPRECATED",
       },
-      { status: 500 }
-    );
-  }
+    },
+    { status: 410, headers: { "Deprecation": "true", "X-Deprecation-Info": DEPRECATION_HEADER } }
+  );
 }

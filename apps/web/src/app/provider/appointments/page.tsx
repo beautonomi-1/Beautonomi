@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { Appointment, FilterParams, PaginationParams, TeamMember, ServiceItem, Salon } from "@/lib/provider-portal/types";
 import { Input } from "@/components/ui/input";
@@ -18,8 +18,12 @@ import { SyncIndicator } from "@/components/provider/SyncIndicator";
 import type { YocoPayment } from "@/lib/provider-portal/types";
 import { openViewMode } from "@/stores/appointment-sidebar-store";
 import { AppointmentSidebar } from "@/components/appointments";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { useSupabaseRealtime } from "@/hooks/useSupabaseRealtime";
 
 export default function ProviderAppointments() {
+  const { provider } = useProviderPortal();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -90,6 +94,17 @@ export default function ProviderAppointments() {
     }
   };
 
+  const loadAppointmentsRef = React.useRef(loadAppointments);
+  loadAppointmentsRef.current = loadAppointments;
+  const refreshAppointments = useCallback(() => {
+    loadAppointmentsRef.current?.(true);
+  }, []);
+  const supabaseClient = getSupabaseClient();
+  useSupabaseRealtime(supabaseClient, provider?.id, "booking_created", refreshAppointments);
+  useSupabaseRealtime(supabaseClient, provider?.id, "booking_updated", refreshAppointments);
+  useSupabaseRealtime(supabaseClient, provider?.id, "booking_cancelled", refreshAppointments);
+  useSupabaseRealtime(supabaseClient, provider?.id, "booking_services_changed", refreshAppointments);
+
   const handleSearch = () => {
     setPage(1);
     loadAppointments();
@@ -126,14 +141,6 @@ export default function ProviderAppointments() {
     // Show button for pending or unpaid bookings that are not cancelled
     return paymentStatus === "pending" || !paymentStatus;
   };
-
-  // Auto-refresh appointments every 30 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      loadAppointments(true); // Background refresh
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
 
   if (isLoading) {
     return <LoadingTimeout loadingMessage="Loading appointments..." />;

@@ -11,7 +11,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface ProductSalesData {
   totalProductsSold: number;
@@ -135,7 +135,7 @@ export default function ProductSalesReport() {
             variant="outline" 
             onClick={() => {
               if (!data) return;
-              const exportData = formatReportDataForExport(data, "product-sales");
+              const exportData = formatReportDataForExport(data as unknown as ReportRow, "product-sales");
               exportToCSV(exportData, "product-sales-report");
             }} 
             className="gap-2 min-h-[44px] touch-manipulation"

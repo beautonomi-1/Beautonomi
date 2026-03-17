@@ -9,7 +9,7 @@ import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } f
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
     const { data: offerRow, error } = await supabase

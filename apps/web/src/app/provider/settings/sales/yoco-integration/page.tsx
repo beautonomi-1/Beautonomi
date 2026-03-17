@@ -54,20 +54,18 @@ export default function YocoIntegrationPage() {
           public_key: integrationData.public_key && integrationData.public_key !== "***" ? integrationData.public_key : "",
           webhook_secret: integrationData.webhook_secret && integrationData.webhook_secret !== "***" ? integrationData.webhook_secret : "",
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Don't update state or show errors if component unmounted
         if (!isMounted) return;
-        
+        const err = error as { name?: string; message?: string; code?: string; error?: { code?: string }; __cancelled?: boolean };
         // Ignore AbortError (cancelled requests)
-        if (error?.name === 'AbortError' || error?.message?.includes('aborted')) {
+        if (err?.name === 'AbortError' || (typeof err?.message === 'string' && err.message.includes('aborted'))) {
           return;
         }
-        
         console.error("Failed to load Yoco integration:", error);
-        if (error?.code === "SUBSCRIPTION_REQUIRED" || error?.error?.code === "SUBSCRIPTION_REQUIRED") {
+        if (err?.code === "SUBSCRIPTION_REQUIRED" || err?.error?.code === "SUBSCRIPTION_REQUIRED") {
           setSubscriptionRequired(true);
-        } else if (error?.name !== 'FetchTimeoutError' || !(error as any).__cancelled) {
-          // Only show error if not a cancelled request
+        } else if (err?.name !== 'FetchTimeoutError' || !err?.__cancelled) {
           toast.error("Failed to load Yoco integration");
         }
       } finally {
@@ -91,9 +89,10 @@ export default function YocoIntegrationPage() {
       setIntegration(updated);
       invalidateSetupStatusCache();
       toast.success(enabled ? "Yoco integration enabled" : "Yoco integration disabled");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to update integration:", error);
-      if (error?.code === "SUBSCRIPTION_REQUIRED" || error?.error?.code === "SUBSCRIPTION_REQUIRED") {
+      const err = error as { code?: string; error?: { code?: string } };
+      if (err?.code === "SUBSCRIPTION_REQUIRED" || err?.error?.code === "SUBSCRIPTION_REQUIRED") {
         setSubscriptionRequired(true);
         toast.error("Subscription upgrade required to use Yoco integration");
       } else {
@@ -116,9 +115,10 @@ export default function YocoIntegrationPage() {
       invalidateSetupStatusCache();
       toast.success("API keys saved successfully");
       setShowKeys(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to save keys:", error);
-      if (error?.code === "SUBSCRIPTION_REQUIRED" || error?.error?.code === "SUBSCRIPTION_REQUIRED") {
+      const err = error as { code?: string; error?: { code?: string } };
+      if (err?.code === "SUBSCRIPTION_REQUIRED" || err?.error?.code === "SUBSCRIPTION_REQUIRED") {
         setSubscriptionRequired(true);
         toast.error("Subscription upgrade required to configure Yoco integration");
       } else {
@@ -197,12 +197,28 @@ export default function YocoIntegrationPage() {
           </div>
 
           {integration?.is_enabled && (
-            <Alert className="bg-green-50 border-green-200">
-              <CheckCircle2 className="h-4 w-4 text-green-600" />
-              <AlertDescription className="text-green-800">
-                Yoco integration is active. You can now process payments through your connected devices.
-              </AlertDescription>
-            </Alert>
+            <>
+              <Alert className="bg-green-50 border-green-200">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-800">
+                  Yoco integration is active. You can now process payments through your connected devices.
+                </AlertDescription>
+              </Alert>
+              <Alert className="mt-3 bg-amber-50 border-amber-200">
+                <AlertDescription className="text-amber-800">
+                  <strong>Refunds:</strong> Card refunds for Yoco payments are processed in your{" "}
+                  <a
+                    href="https://dashboard.yoco.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline font-medium"
+                  >
+                    Yoco dashboard
+                  </a>
+                  . When you refund a payment there, we will sync the refund to the booking automatically.
+                </AlertDescription>
+              </Alert>
+            </>
           )}
         </SectionCard>
 
@@ -296,9 +312,9 @@ export default function YocoIntegrationPage() {
           ) : (
             <div className="text-sm text-gray-600">
               {integration?.secret_key && integration.secret_key !== "***" ? (
-                <p>API keys are configured. Click "Show Keys" to view or update them.</p>
+                <p>API keys are configured. Click &quot;Show Keys&quot; to view or update them.</p>
               ) : integration?.secret_key === "***" ? (
-                <p>API keys are configured (masked for security). Click "Show Keys" to update them.</p>
+                <p>API keys are configured (masked for security). Click &quot;Show Keys&quot; to update them.</p>
               ) : (
                 <p>No API keys configured. Add your Yoco API credentials to get started.</p>
               )}

@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
   errorResponse,
   notFoundResponse,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const MAX_INCLUDE = 500;
@@ -28,7 +28,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const { id: zone_id } = await params;
@@ -48,12 +48,14 @@ export async function POST(
       .eq("id", zone_id)
       .single();
 
+    type ZoneRow = { version?: number; country_code?: string };
+    const zoneRow = zone as ZoneRow;
     if (!zone) return notFoundResponse("Zone not found");
-    if (parse.data.version != null && (zone as any).version !== parse.data.version) {
+    if (parse.data.version != null && zoneRow.version !== parse.data.version) {
       return errorResponse("Version conflict; refresh and retry", "CONFLICT", 409);
     }
 
-    const country = (zone as any).country_code;
+    const country = zoneRow.country_code;
     if (!country) {
       return errorResponse("Zone has no country_code", "VALIDATION_ERROR", 400);
     }
@@ -81,10 +83,11 @@ export async function POST(
       return successResponse({ included: 0, message: "No matching areas found" });
     }
 
-    const toInsert = (areas || []).map((a: any) => ({
+    type AreaRow = { postal_code?: string; province_name?: string; city_name?: string; town_name?: string; geom?: unknown };
+    const toInsert = (areas || []).map((a: AreaRow) => ({
       zone_id,
       type,
-      ref_code: a.postal_code || a.province_name || a.city_name || a.town_name || ref_code,
+      ref_code: a.postal_code ?? a.province_name ?? a.city_name ?? a.town_name ?? ref_code,
       ref_name: ref_name ?? a.postal_code ?? a.province_name ?? a.city_name ?? a.town_name ?? ref_code,
       source: "postal_dataset",
       geom: a.geom,
@@ -102,10 +105,12 @@ export async function POST(
       .eq("id", zone_id)
       .single();
 
+    type UpdatedRow = { version?: number; geometry?: unknown };
+    const updatedRow = updated as UpdatedRow | null;
     return successResponse({
       included: toInsert.length,
-      version: (updated as any)?.version,
-      has_geometry: !!(updated as any)?.geometry,
+      version: updatedRow?.version,
+      has_geometry: !!updatedRow?.geometry,
     });
   } catch (error) {
     return handleApiError(error, "Failed to add inclusion");

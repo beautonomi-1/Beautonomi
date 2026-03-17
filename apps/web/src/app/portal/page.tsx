@@ -17,7 +17,11 @@ export default async function PortalPage() {
       role: result.role,
       provider_status: result.provider_status,
     });
-    const target = getDefaultRouteForPortal(portal);
+    // Superadmin: send to dedicated admin login (they are already signed in, so it will redirect to dashboard)
+    const target =
+      portal === "admin"
+        ? "/admin/login?next=" + encodeURIComponent("/admin/dashboard")
+        : getDefaultRouteForPortal(portal);
     redirect(target);
   }
 

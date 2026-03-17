@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   FlatList,
   RefreshControl,
-  Linking,
   Alert,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -19,6 +18,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { Colors } from "@/constants/colors";
+import { APP_URL } from "@/config/public-env";
 
 interface PackageItem {
   id: string;
@@ -77,13 +77,17 @@ export default function PackagesListScreen() {
         {
           text: "Open web",
           onPress: () => {
-            const base = process.env.EXPO_PUBLIC_APP_URL || "https://app.beautonomi.com";
-            Linking.openURL(`${base}/provider/packages/new`).catch(() => {});
+            const base = APP_URL?.trim() || "https://app.beautonomi.com";
+            const url = `${base.replace(/\/$/, "")}/provider/packages/new`;
+            router.push({
+              pathname: "/(app)/(tabs)/more/in-app-browser",
+              params: { url: encodeURIComponent(url), title: "New package" },
+            } as never);
           },
         },
       ]
     );
-  }, []);
+  }, [router]);
 
   const renderPackageRow = (pkg: ServicePackage) => {
     const itemLabel = (item: PackageItem) => {

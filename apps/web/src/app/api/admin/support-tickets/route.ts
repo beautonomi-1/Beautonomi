@@ -51,10 +51,11 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ tickets: data || [] });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching support tickets:", error);
+    const message = error instanceof Error ? error.message : "Failed to fetch support tickets";
     return NextResponse.json(
-      { error: error.message || "Failed to fetch support tickets" },
+      { error: message },
       { status: 500 }
     );
   }
@@ -107,10 +108,11 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ ticket: data });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error creating support ticket:", error);
+    const message = error instanceof Error ? error.message : "Failed to create support ticket";
     return NextResponse.json(
-      { error: error.message || "Failed to create support ticket" },
+      { error: message },
       { status: 500 }
     );
   }

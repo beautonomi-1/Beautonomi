@@ -41,7 +41,6 @@ const MOBILE_ROUTE_MAP = {
   account_membership: "(app)/account-settings/membership.tsx",
   account_loyalty: "(app)/account-settings/loyalty.tsx",
   account_referrals: "(app)/account-settings/referrals.tsx",
-  account_business: "(app)/account-settings/business.tsx",
   gift_card: "(app)/gift-card-purchase.tsx",
   login: "(auth)/login.tsx",
   signup: "(auth)/login.tsx",

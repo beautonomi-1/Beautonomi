@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   Bell,
   Calendar,
@@ -103,19 +104,25 @@ const formatTimeAgo = (timestamp: string) => {
   return time.toLocaleDateString();
 };
 
+type FilterTab = "all" | "unread";
+
 export default function ProviderNotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [totalUnread, setTotalUnread] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [filter, setFilter] = useState<FilterTab>("all");
   const router = useRouter();
   const { user } = useAuth();
 
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
+    if (!user?.id) return;
     try {
       setIsLoading(true);
-      const response = await fetcher.get<{ data?: { notifications: Notification[]; total_unread: number } }>(
-        "/api/provider/notifications?limit=100"
-      );
+      const unreadOnly = filter === "unread";
+      const url = unreadOnly
+        ? "/api/provider/notifications?limit=100&unread_only=true"
+        : "/api/provider/notifications?limit=100";
+      const response = await fetcher.get<{ data?: { notifications: Notification[]; total_unread: number } }>(url);
       const data = response.data ?? response;
       setNotifications((data as any).notifications || []);
       setTotalUnread((data as any).total_unread || 0);
@@ -127,7 +134,7 @@ export default function ProviderNotificationsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user?.id, filter]);
 
   useEffect(() => {
     if (user?.id) {
@@ -135,7 +142,29 @@ export default function ProviderNotificationsPage() {
     } else {
       setIsLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, loadNotifications]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const supabase = getSupabaseClient();
+    const channel = supabase
+      .channel(`notifications:provider:${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+        () => {
+          loadNotifications();
+        }
+      )
+      .subscribe();
+    return () => {
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // ignore
+      }
+    };
+  }, [user?.id, loadNotifications]);
 
   const handleNotificationClick = async (notification: Notification) => {
     if (!notification.read) {
@@ -179,6 +208,26 @@ export default function ProviderNotificationsPage() {
       />
 
       <SectionCard>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            type="button"
+            onClick={() => setFilter("all")}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+              filter === "all" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter("unread")}
+            className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+              filter === "unread" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            Unread
+          </button>
+        </div>
         {isLoading ? (
           <div className="py-12">
             <LoadingTimeout loadingMessage="Loading notifications..." />
@@ -186,7 +235,9 @@ export default function ProviderNotificationsPage() {
         ) : notifications.length === 0 ? (
           <div className="py-12 text-center text-gray-500">
             <CheckCircle2 className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-            <p className="text-base font-medium mb-2">No new notifications</p>
+            <p className="text-base font-medium mb-2">
+              {filter === "unread" ? "No unread notifications" : "No new notifications"}
+            </p>
             <Link
               href="/provider/settings/notifications"
               className="text-sm text-[#FF0077] hover:underline"

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 const pageContentSchema = z.object({
   page_slug: z.string().min(1, "Page slug is required"),
@@ -23,8 +25,8 @@ void _updatePageContentSchema;
  */
 export async function GET(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -54,10 +56,10 @@ export async function GET(request: Request) {
       });
     }
 
-    // Transform database fields to frontend format
-    const transformedPages = (pages || []).map((p: any) => ({
+    type PageRow = { display_order?: number; [key: string]: unknown };
+    const transformedPages = (pages || []).map((p: PageRow) => ({
       ...p,
-      order: p.display_order || 0, // Map display_order to order for frontend
+      order: p.display_order ?? 0,
     }));
 
     return NextResponse.json({
@@ -86,8 +88,8 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 

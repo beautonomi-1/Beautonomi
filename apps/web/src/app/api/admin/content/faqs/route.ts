@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 const faqSchema = z.object({
   question: z.string().min(1, "Question is required"),
@@ -22,8 +24,8 @@ void _updateFaqSchema;
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -52,10 +54,10 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Transform database fields to frontend format
-    const transformedFaqs = (faqs || []).map((f: any) => ({
+    type FaqRow = { display_order?: number; [key: string]: unknown };
+    const transformedFaqs = (faqs || []).map((f: FaqRow) => ({
       ...f,
-      order: f.display_order || 0, // Map display_order to order for frontend
+      order: f.display_order ?? 0,
     }));
 
     return NextResponse.json({
@@ -84,8 +86,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -137,11 +139,11 @@ export async function POST(request: NextRequest) {
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.content.faq.create",
       entity_type: "faq",
-      entity_id: (faq as any).id,
+      entity_id: (faq as { id: string }).id,
       metadata: { category, order, is_active },
     });
 

@@ -1,13 +1,15 @@
 /**
  * Identity verification (KYC) – view status and start verification in-app.
- * Status from API; verification flow runs in in-app browser (Sumsub on web).
+ * Fetches a Sumsub token via API (Bearer), then opens the token-only embed in WebView (no web login required).
  */
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, RefreshControl } from "react-native";
-import { useRouter } from "expo-router";
+import { View, Text, ScrollView, RefreshControl, Alert } from "react-native";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { api } from "@/lib/api-client";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -63,9 +65,19 @@ const STATUS_CONFIG: Record<
 
 export default function VerificationScreen() {
   const router = useRouter();
+  const { bundle } = useConfigBundle();
   const [refreshing, setRefreshing] = useState(false);
+  const [launching, setLaunching] = useState(false);
   const { data, loading, error, refresh } = useApi<VerificationStatusResponse>(
     "/api/provider/verification/status"
+  );
+
+  const env = bundle?.meta?.env ?? "production";
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
   );
 
   const onRefresh = useCallback(async () => {
@@ -77,16 +89,35 @@ export default function VerificationScreen() {
   const status = (data as VerificationStatusResponse)?.status ?? "pending";
   const config = STATUS_CONFIG[status];
 
-  const openVerificationInBrowser = () => {
+  const openVerificationInBrowser = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const baseUrl = getWebProviderBaseUrl();
-    const url = `${baseUrl.replace(/\/$/, "")}/provider/settings/verification`;
-    const encoded = encodeURIComponent(url);
-    router.push({
-      pathname: "/(app)/(tabs)/more/in-app-browser",
-      params: { url: encoded, title: "Identity verification" },
-    } as never);
-  };
+    setLaunching(true);
+    try {
+      const res = await api.get<{ access_token: string; refresh_token?: string }>(
+        `/api/provider/verification/sumsub/token?environment=${encodeURIComponent(env)}`
+      );
+      const access_token = res.data?.access_token;
+      const refresh_token = (res.data as { refresh_token?: string })?.refresh_token;
+      if (!access_token) {
+        Alert.alert("Error", res.error?.message ?? "Could not start verification. Try again or contact support.");
+        return;
+      }
+      const baseUrl = getWebProviderBaseUrl().replace(/\/$/, "");
+      const hash = `token=${encodeURIComponent(access_token)}${refresh_token ? `&refresh_token=${encodeURIComponent(refresh_token)}` : ""}`;
+      const url = `${baseUrl}/provider/verification/embed#${hash}`;
+      router.push({
+        pathname: "/(app)/(tabs)/more/in-app-browser",
+        params: {
+          url: encodeURIComponent(url),
+          title: "Verification",
+        },
+      } as never);
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? "Could not start verification. Try again or contact support.");
+    } finally {
+      setLaunching(false);
+    }
+  }, [env, router]);
 
   if (loading && !data) {
     return (
@@ -145,15 +176,23 @@ export default function VerificationScreen() {
           {(status === "pending" || status === "in_progress" || status === "rejected" || status === "reset") && (
             <View style={twStyle("mt-6")}>
               <ActionButton
-                label={status === "pending" || status === "rejected" || status === "reset" ? "Start verification" : "Continue verification"}
+                label={
+                  launching
+                    ? "Starting…"
+                    : status === "pending" || status === "rejected" || status === "reset"
+                      ? "Start verification"
+                      : "Continue verification"
+                }
                 variant="secondary"
                 onPress={openVerificationInBrowser}
                 fullWidth
                 icon="open-outline"
                 iconPosition="right"
+                loading={launching}
+                disabled={launching}
               />
               <Text style={twStyle("mt-3 text-center text-sm text-gray-500")}>
-                Opens the verification flow in-app. You’ll stay inside the app.
+                Opens the verification flow in-app. No web login required.
               </Text>
             </View>
           )}

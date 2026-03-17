@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/activity
@@ -8,7 +9,7 @@ import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabas
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = await getSupabaseServer(request);
 
     if (!supabase) {
@@ -139,14 +140,24 @@ export async function GET(request: NextRequest) {
         .limit(10),
     ]);
 
-    const activities: any[] = [];
+    type ActivityItem = { id: string; type: string; title: string; message: string; timestamp: string; link: string; priority: string };
+    type PayoutRow = { id: string; provider_id?: string; amount: number; currency?: string; created_at?: string };
+    type ProviderRow = { id: string; business_name?: string; status?: string; created_at?: string; updated_at?: string };
+    type VerificationRow = { id: string; user_id?: string; verification_type?: string; submitted_at?: string; created_at?: string };
+    type UserRow = { id: string; full_name?: string; email?: string; role?: string; deactivated_at?: string; created_at?: string };
+    type BookingRow = { id: string; booking_number?: string; created_at?: string };
+    type FailureRow = { id: string; source?: string; event_type?: string; created_at?: string };
+    type TxRow = { id: string; amount: number; currency?: string; status?: string; created_at?: string };
+    type RefundRow = { id: string; amount: number; currency?: string; created_at?: string };
+    type DisputeRow = { id: string; booking_id?: string; opened_by?: string; created_at?: string };
+
+    const activities: ActivityItem[] = [];
 
     // Process pending payouts
     if (pendingPayouts.status === 'fulfilled' && pendingPayouts.value.data) {
       const { data: payouts } = pendingPayouts.value;
       if (payouts && payouts.length > 0) {
-        // Get provider names
-        const providerIds = [...new Set(payouts.map((p: any) => p.provider_id).filter(Boolean))];
+        const providerIds = [...new Set((payouts as PayoutRow[]).map((p) => p.provider_id).filter(Boolean))];
         const { data: providers } = providerIds.length > 0
           ? await supabase
               .from('providers')
@@ -154,9 +165,9 @@ export async function GET(request: NextRequest) {
               .in('id', providerIds)
           : { data: [] };
         
-        const providerMap = new Map((providers || []).map((p: any) => [p.id, p]));
+        const providerMap = new Map((providers || []).map((p: ProviderRow) => [p.id, p]));
         
-        payouts.forEach((payout: any) => {
+        (payouts as PayoutRow[]).forEach((payout) => {
           const provider = providerMap.get(payout.provider_id);
           activities.push({
             id: `payout-${payout.id}`,
@@ -178,7 +189,7 @@ export async function GET(request: NextRequest) {
       const { data: verifications } = pendingVerifications.value;
       if (verifications && verifications.length > 0) {
         // Get user names
-        const userIds = [...new Set(verifications.map((v: any) => v.user_id).filter(Boolean))];
+        const userIds = [...new Set((verifications as VerificationRow[]).map((v) => v.user_id).filter(Boolean))];
         const { data: users } = userIds.length > 0
           ? await supabase
               .from('users')
@@ -186,9 +197,9 @@ export async function GET(request: NextRequest) {
               .in('id', userIds)
           : { data: [] };
         
-        const userMap = new Map((users || []).map((u: any) => [u.id, u]));
+        const userMap = new Map((users || []).map((u: UserRow) => [u.id, u]));
         
-        verifications.forEach((verification: any) => {
+        (verifications as VerificationRow[]).forEach((verification) => {
           const user = userMap.get(verification.user_id);
           activities.push({
             id: `verification-${verification.id}`,
@@ -209,7 +220,7 @@ export async function GET(request: NextRequest) {
     if (pendingProviderApprovals.status === 'fulfilled' && pendingProviderApprovals.value.data) {
       const { data: providers } = pendingProviderApprovals.value;
       if (providers && providers.length > 0) {
-        providers.forEach((provider: any) => {
+        (providers as ProviderRow[]).forEach((provider) => {
           activities.push({
             id: `provider-approval-${provider.id}`,
             type: 'provider_approval',
@@ -227,8 +238,7 @@ export async function GET(request: NextRequest) {
     if (newProviders.status === 'fulfilled' && newProviders.value.data) {
       const { data: providers } = newProviders.value;
       if (providers && providers.length > 0) {
-        providers.forEach((provider: any) => {
-          // Only add if not already added as pending approval
+        (providers as ProviderRow[]).forEach((provider) => {
           if (provider.status !== 'pending_approval') {
             activities.push({
               id: `new-provider-${provider.id}`,
@@ -248,12 +258,12 @@ export async function GET(request: NextRequest) {
     if (recentBookings.status === 'fulfilled' && recentBookings.value.data) {
       const { data: bookings } = recentBookings.value;
       if (bookings && bookings.length > 0) {
-        bookings.forEach((booking: any) => {
+        (bookings as BookingRow[]).forEach((booking) => {
           activities.push({
             id: `booking-${booking.id}`,
             type: 'booking',
             title: 'New Booking',
-            message: `Booking #${booking.booking_number || booking.id.slice(0, 8)} created`,
+            message: `Booking #${booking.booking_number ?? booking.id.slice(0, 8)} created`,
             timestamp: booking.created_at,
             link: `/admin/bookings`,
             priority: 'medium',
@@ -271,7 +281,7 @@ export async function GET(request: NextRequest) {
     if (webhookFailures.status === 'fulfilled' && webhookFailures.value.data) {
       const { data: failures } = webhookFailures.value;
       if (failures && failures.length > 0) {
-        failures.forEach((failure: any) => {
+        (failures as FailureRow[]).forEach((failure) => {
           activities.push({
             id: `webhook-${failure.id}`,
             type: 'webhook_failure',
@@ -289,7 +299,7 @@ export async function GET(request: NextRequest) {
     if (failedPayments.status === 'fulfilled' && failedPayments.value.data) {
       const { data: transactions } = failedPayments.value;
       if (transactions && transactions.length > 0) {
-        transactions.forEach((tx: any) => {
+        (transactions as TxRow[]).forEach((tx) => {
           activities.push({
             id: `payment-failure-${tx.id}`,
             type: 'payment_failure',
@@ -307,7 +317,7 @@ export async function GET(request: NextRequest) {
     if (refundRequests.status === 'fulfilled' && refundRequests.value.data) {
       const { data: refunds } = refundRequests.value;
       if (refunds && refunds.length > 0) {
-        refunds.forEach((refund: any) => {
+        (refunds as RefundRow[]).forEach((refund) => {
           activities.push({
             id: `refund-${refund.id}`,
             type: 'refund_request',
@@ -325,7 +335,7 @@ export async function GET(request: NextRequest) {
     if (highValueTransactions.status === 'fulfilled' && highValueTransactions.value.data) {
       const { data: transactions } = highValueTransactions.value;
       if (transactions && transactions.length > 0) {
-        transactions.forEach((tx: any) => {
+        (transactions as TxRow[]).forEach((tx) => {
           activities.push({
             id: `high-value-${tx.id}`,
             type: 'high_value_transaction',
@@ -343,7 +353,7 @@ export async function GET(request: NextRequest) {
     if (providerViolations.status === 'fulfilled' && providerViolations.value.data) {
       const { data: providers } = providerViolations.value;
       if (providers && providers.length > 0) {
-        providers.forEach((provider: any) => {
+        (providers as ProviderRow[]).forEach((provider) => {
           activities.push({
             id: `provider-violation-${provider.id}`,
             type: 'provider_violation',
@@ -361,7 +371,7 @@ export async function GET(request: NextRequest) {
     if (accountIssues.status === 'fulfilled' && accountIssues.value.data) {
       const { data: users } = accountIssues.value;
       if (users && users.length > 0) {
-        users.forEach((user: any) => {
+        (users as UserRow[]).forEach((user) => {
           activities.push({
             id: `account-issue-${user.id}`,
             type: 'account_issue',
@@ -380,7 +390,7 @@ export async function GET(request: NextRequest) {
       const { data: bookingDisputes } = disputes.value;
       if (bookingDisputes && bookingDisputes.length > 0) {
         // Get booking numbers
-        const bookingIds = [...new Set(bookingDisputes.map((d: any) => d.booking_id).filter(Boolean))];
+        const bookingIds = [...new Set((bookingDisputes as DisputeRow[]).map((d) => d.booking_id).filter(Boolean))];
         const { data: bookings } = bookingIds.length > 0
           ? await supabase
               .from('bookings')
@@ -388,16 +398,16 @@ export async function GET(request: NextRequest) {
               .in('id', bookingIds)
           : { data: [] };
         
-        const bookingMap = new Map((bookings || []).map((b: any) => [b.id, b]));
+        const bookingMap = new Map((bookings || []).map((b: BookingRow) => [b.id, b]));
         
-        bookingDisputes.forEach((dispute: any) => {
+        (bookingDisputes as DisputeRow[]).forEach((dispute) => {
           const booking = bookingMap.get(dispute.booking_id);
           activities.push({
             id: `dispute-${dispute.id}`,
             type: 'dispute',
             title: 'Booking Dispute',
-            message: `Dispute opened by ${dispute.opened_by} for booking #${booking?.booking_number || dispute.booking_id.slice(0, 8)}`,
-            timestamp: dispute.created_at,
+            message: `Dispute opened by ${dispute.opened_by ?? "unknown"} for booking #${booking?.booking_number ?? dispute.booking_id?.slice(0, 8) ?? dispute.id.slice(0, 8)}`,
+            timestamp: dispute.created_at ?? "",
             link: `/admin/bookings`,
             priority: 'high',
           });

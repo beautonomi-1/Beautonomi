@@ -38,10 +38,11 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
     return NextResponse.json({ data: { recorded: true }, error: null });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.warn("Ads event record failed:", error);
+    const message = error instanceof Error ? error.message : "Failed to record event";
     return NextResponse.json(
-      { data: null, error: { message: error?.message ?? "Failed to record event", code: "INTERNAL" } },
+      { data: null, error: { message, code: "INTERNAL" } },
       { status: 500 }
     );
   }

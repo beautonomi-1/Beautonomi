@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -33,6 +33,7 @@ export default function SearchScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
+  const searchRef = useRef<((isRefresh?: boolean, queryOverride?: string, categoryOverride?: string) => Promise<void>) | null>(null);
 
   // Sync from nav params when they change (e.g. coming from InlineSearch)
   useEffect(() => {
@@ -53,19 +54,21 @@ export default function SearchScreen() {
   }, []);
 
   const search = useCallback(
-    async (isRefresh = false) => {
+    async (isRefresh = false, queryOverride?: string, categoryOverride?: string) => {
+      const q = queryOverride !== undefined ? queryOverride : query;
+      const cat = categoryOverride !== undefined ? categoryOverride : category;
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       setError(null);
       setSearched(true);
       try {
-        const params = new URLSearchParams();
-        if (query.trim()) params.set("query", query.trim());
-        if (category) params.set("category", category);
-        params.set("limit", "20");
-        params.set("page", "1");
+        const searchParams = new URLSearchParams();
+        if (q.trim()) searchParams.set("query", q.trim());
+        if (cat) searchParams.set("category", cat);
+        searchParams.set("limit", "20");
+        searchParams.set("page", "1");
 
-        const res = await api.get<SearchResult>(`/api/public/search?${params.toString()}`);
+        const res = await api.get<SearchResult>(`/api/public/search?${searchParams.toString()}`);
 
         if (res.error) {
           setError(getApiErrorMessage(res.error, "Search failed"));
@@ -84,10 +87,18 @@ export default function SearchScreen() {
     },
     [query, category]
   );
+  searchRef.current = search;
 
   useEffect(() => {
     loadCategories();
   }, [loadCategories]);
+
+  // When landing with params from InlineSearch (or deep link), run search so results show without tapping Search
+  useEffect(() => {
+    const hasParams = (params.q != null && String(params.q).trim() !== "") || (params.category != null && String(params.category).trim() !== "");
+    if (!hasParams) return;
+    searchRef.current?.(false, params.q ? String(params.q).trim() : undefined, params.category ? String(params.category) : undefined);
+  }, [params.q, params.category]);
 
   const onRefresh = () => search(true);
 

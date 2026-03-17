@@ -25,7 +25,10 @@ const consumeBodySchema = z.object({
   guest_fingerprint_hash: z.string().optional(),
   payment_method: z.enum(["card", "cash", "giftcard"]).optional(),
   payment_option: z.enum(["deposit", "full"]).optional(),
+  payment_method_id: z.string().uuid().optional().nullable(),
   use_wallet: z.boolean().optional(),
+  save_card: z.boolean().optional(),
+  set_as_default: z.boolean().optional(),
   gift_card_code: z.string().optional(),
   custom_field_values: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
   provider_form_responses: z.record(
@@ -50,6 +53,7 @@ const consumeBodySchema = z.object({
     .optional()
     .nullable(),
   resource_ids: z.array(z.string().uuid()).optional(),
+  reschedule_booking_id: z.string().uuid().optional(),
 });
 
 export async function POST(
@@ -85,6 +89,7 @@ export async function POST(
     const clientInfo = parsed.success ? parsed.data.client_info : undefined;
     const guestFingerprint = parsed.success ? parsed.data.guest_fingerprint_hash : undefined;
     const paymentMethod = parsed.success ? parsed.data.payment_method : undefined;
+    const paymentMethodId = parsed.success ? parsed.data.payment_method_id : undefined;
     const paymentOption = parsed.success ? parsed.data.payment_option : undefined;
     const useWallet = parsed.success ? parsed.data.use_wallet : undefined;
     const giftCardCode = parsed.success ? parsed.data.gift_card_code : undefined;
@@ -97,6 +102,9 @@ export async function POST(
     const isGroupBooking = parsed.success ? parsed.data.is_group_booking : undefined;
     const groupParticipants = parsed.success ? parsed.data.group_participants : undefined;
     const resourceIdsFromBody = parsed.success ? parsed.data.resource_ids : undefined;
+    const saveCard = parsed.success ? parsed.data.save_card : undefined;
+    const setAsDefault = parsed.success ? parsed.data.set_as_default : undefined;
+    const rescheduleBookingId = parsed.success ? parsed.data.reschedule_booking_id : undefined;
 
     if (giftCardCode?.trim()) {
       const giftCardsEnabled = await isFeatureEnabledServer("gift_cards");
@@ -232,7 +240,10 @@ export async function POST(
       },
       payment_method: paymentMethod ?? "card",
       payment_option: paymentOption ?? "deposit",
+      payment_method_id: paymentMethodId ?? undefined,
       use_wallet: useWallet ?? false,
+      save_card: saveCard ?? undefined,
+      set_as_default: setAsDefault ?? undefined,
       gift_card_code: giftCardCode ?? null,
       booking_source: "online" as const,
       hold_id: holdId,
@@ -240,6 +251,7 @@ export async function POST(
       special_requests: specialRequests ?? undefined,
       tip_amount: tipAmount ?? undefined,
       promotion_code: promotionCode ?? undefined,
+      reschedule_booking_id: rescheduleBookingId ?? undefined,
     };
     if (isGroupBooking === true && Array.isArray(groupParticipants) && groupParticipants.length > 0) {
       draft.is_group_booking = true;

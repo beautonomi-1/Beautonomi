@@ -15,6 +15,9 @@ export interface PromoValidationInput {
   amount: number;
   /** When provided the lookup is scoped to this provider */
   providerId?: string;
+  /** For location-scoped promos: at_salon + location_id must match */
+  locationType?: string;
+  locationId?: string | null;
 }
 
 export interface PromoValidationResult {
@@ -57,23 +60,60 @@ export async function validatePromoCode(
   const { code, amount, providerId } = input;
   const normalizedCode = code.trim().toUpperCase();
 
-  // Build query
-  let query = supabase
-    .from("promotions")
-    .select("*")
-    .eq("code", normalizedCode)
-    .eq("is_active", true);
-
+  // Prefer provider-scoped promo, then platform (provider_id null) — same as validate-booking
+  let promo: any = null;
   if (providerId) {
-    query = query.eq("provider_id", providerId);
+    const { data: providerPromo } = await supabase
+      .from("promotions")
+      .select("*")
+      .eq("code", normalizedCode)
+      .eq("is_active", true)
+      .eq("provider_id", providerId)
+      .maybeSingle();
+    promo = providerPromo;
+  }
+  if (!promo) {
+    const { data: platformPromo } = await supabase
+      .from("promotions")
+      .select("*")
+      .eq("code", normalizedCode)
+      .eq("is_active", true)
+      .is("provider_id", null)
+      .maybeSingle();
+    promo = platformPromo;
   }
 
-  const { data: promo, error } = await query.maybeSingle();
-
-  if (error || !promo) {
+  if (!promo) {
     return {
       valid: false,
       message: "Invalid or expired promo code",
+      discount: { amount: 0, original_amount: amount, final_amount: amount, percentage: null },
+    };
+  }
+
+  // Platform promos with applicable_providers: only valid for those providers
+  const applicableProviders = (promo.applicable_providers as string[] | null) || [];
+  const providerOk =
+    promo.provider_id != null ||
+    applicableProviders.length === 0 ||
+    (providerId != null && applicableProviders.includes(providerId));
+
+  if (!providerOk) {
+    return {
+      valid: false,
+      message: "This promo code is not valid for this provider",
+      discount: { amount: 0, original_amount: amount, final_amount: amount, percentage: null },
+    };
+  }
+
+  // Location-scoped promos (at_salon only)
+  const locationOk =
+    promo.location_id == null ||
+    (input.locationType === "at_salon" && input.locationId != null && input.locationId === promo.location_id);
+  if (!locationOk) {
+    return {
+      valid: false,
+      message: "This promo code is not valid for this location",
       discount: { amount: 0, original_amount: amount, final_amount: amount, percentage: null },
     };
   }

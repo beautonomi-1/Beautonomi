@@ -1,9 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  successResponse,
-  handleApiError,
-} from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse,
+  handleApiError, } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 
 /**
@@ -13,7 +12,7 @@ import { requireRoleInApi } from "@/lib/supabase/api-helpers";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const supabase = await getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
@@ -37,20 +36,22 @@ export async function GET(request: NextRequest) {
 
     if (error) return handleApiError(error, "Failed to fetch reports");
 
+    type ReportRow = { reporter_id?: string; reported_user_id?: string; id: string; report_type?: string; description?: string; booking_id?: string; status?: string; resolution_notes?: string; resolved_by?: string; resolved_at?: string; created_at?: string; updated_at?: string };
+    type UserMapRow = { id: string; full_name: string | null; email: string };
     const userIds = [
       ...new Set(
-        (rows || []).flatMap((r: any) => [r.reporter_id, r.reported_user_id])
+        (rows || []).flatMap((r: ReportRow) => [r.reporter_id, r.reported_user_id].filter(Boolean) as string[])
       ),
     ].filter(Boolean);
 
-    let userMap: Record<string, { id: string; full_name: string | null; email: string }> = {};
+    let userMap: Record<string, UserMapRow> = {};
     if (userIds.length > 0) {
       const { data: users } = await supabase
         .from("users")
         .select("id, full_name, email")
         .in("id", userIds);
-      userMap = (users || []).reduce(
-        (acc: Record<string, any>, u: any) => {
+      userMap = (users || []).reduce<Record<string, UserMapRow>>(
+        (acc, u: UserMapRow) => {
           acc[u.id] = { id: u.id, full_name: u.full_name, email: u.email };
           return acc;
         },
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const reports = (rows || []).map((r: any) => ({
+    const reports = (rows || []).map((r: ReportRow) => ({
       id: r.id,
       reporter_id: r.reporter_id,
       reported_user_id: r.reported_user_id,

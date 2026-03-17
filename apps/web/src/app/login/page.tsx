@@ -42,13 +42,15 @@ export default function LoginPage() {
       router.replace(next);
       return;
     }
-    // Redirect by role immediately so provider/admin land in the right place (avoids /portal server session delay)
-    if (finalRole === "provider_owner" || finalRole === "provider_staff") {
-      router.replace("/provider/dashboard");
+    // Superadmin must use dedicated admin login; send them there (they are already signed in, so /admin/login will redirect to dashboard)
+    if (finalRole === "superadmin") {
+      const adminNext = next?.startsWith("/admin") ? next : "/admin/dashboard";
+      router.replace(`/admin/login${adminNext ? `?next=${encodeURIComponent(adminNext)}` : ""}`);
       return;
     }
-    if (finalRole === "superadmin") {
-      router.replace("/admin/dashboard");
+    // Redirect by role so provider/customer land in the right place
+    if (finalRole === "provider_owner" || finalRole === "provider_staff") {
+      router.replace("/provider/dashboard");
       return;
     }
     if (finalRole === "customer") {
@@ -87,10 +89,11 @@ export default function LoginPage() {
         toast.success("Logged in successfully!");
         redirectByRole(userRole);
       } else {
-        setFormError("Login successful, but unable to load profile. Please refresh.");
+        toast.success("Logged in successfully!");
         setLoading(false);
+        router.replace("/portal");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Login failed. Please try again.";
       setFormError(msg);
       toast.error(msg);
@@ -105,7 +108,7 @@ export default function LoginPage() {
     try {
       await signInWithOAuth(provider, getRedirectUrl());
       toast.info(`Redirecting to ${provider}…`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : `Sign in with ${provider} failed.`;
       setFormError(msg);
       toast.error(msg);
@@ -149,7 +152,7 @@ export default function LoginPage() {
               <Input
                 id="login-email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder="Enter your email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="flex-1 border-0 bg-transparent h-12 px-2.5 focus-visible:ring-0"

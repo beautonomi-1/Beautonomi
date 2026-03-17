@@ -1,14 +1,29 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 
 const resolveDisputeSchema = z.object({
   resolution: z.enum(["refund_full", "refund_partial", "deny"]),
   refund_amount: z.number().min(0).optional(),
   notes: z.string().optional().nullable(),
 });
+
+type BookingRow = {
+  customer_id: string;
+  provider_id: string;
+  total_amount: number;
+  booking_number: string;
+  currency?: string;
+  status: string;
+};
+
+type DisputeRow = { id: string };
+
+type PaymentTxRow = { id: string; amount?: number | string };
 
 /**
  * POST /api/admin/bookings/[id]/dispute/resolve
@@ -20,8 +35,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -90,7 +105,7 @@ export async function POST(
     }
 
     const { resolution, refund_amount, notes } = validationResult.data;
-    const bookingData = booking as any;
+    const bookingData = booking as BookingRow;
 
     // Handle refunds: always credit customer wallet (no Paystack call)
     if (resolution === "refund_full" || resolution === "refund_partial") {
@@ -112,13 +127,13 @@ export async function POST(
         );
       }
 
-      // Credit customer wallet
-      const { error: walletError } = await (supabase.rpc as any)("wallet_credit_admin", {
+      const rpc = supabase.rpc as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
+      const { error: walletError } = await rpc("wallet_credit_admin", {
         p_user_id: bookingData.customer_id,
         p_amount: refundAmt,
         p_currency: bookingData.currency || "ZAR",
         p_description: `Dispute resolution refund for booking ${bookingData.booking_number}`,
-        p_reference_id: (dispute as any).id,
+        p_reference_id: (dispute as DisputeRow).id,
         p_reference_type: "booking_dispute",
       });
 
@@ -136,12 +151,12 @@ export async function POST(
         );
       }
 
-      const refundReference = `dispute_refund_${(dispute as any).id}_${Date.now()}`;
+      const refundReference = `dispute_refund_${(dispute as DisputeRow).id}_${Date.now()}`;
       const newBookingPaymentStatus = refundAmt >= bookingData.total_amount ? "refunded" : "partially_refunded";
 
       // Optional: mark any success payment_transaction for this booking as refunded (ledger consistency)
-      const { data: tx } = await (supabase
-        .from("payment_transactions") as any)
+      const { data: tx } = await supabase
+        .from("payment_transactions")
         .select("id, amount")
         .eq("booking_id", id)
         .eq("status", "success")
@@ -151,49 +166,49 @@ export async function POST(
         .maybeSingle();
 
       if (tx) {
-        const txData = tx as any;
-        const isFullRefund = refundAmt >= Number(txData.amount || 0);
-        await (supabase
-          .from("payment_transactions") as any)
+        const txData = tx as PaymentTxRow;
+        const isFullRefund = refundAmt >= Number(txData.amount ?? 0);
+        await supabase
+          .from("payment_transactions")
           .update({
             status: isFullRefund ? "refunded" : "partially_refunded",
             refund_amount: refundAmt,
             refund_reference: refundReference,
             refund_reason: "booking_dispute",
             refunded_at: new Date().toISOString(),
-            refunded_by: auth.user.id,
+            refunded_by: user.id,
           })
           .eq("id", txData.id);
       }
 
       // booking_refunds so update_booking_payment_status trigger keeps totals in sync
-      await (supabase.from("booking_refunds") as any).insert({
+      await supabase.from("booking_refunds").insert({
         booking_id: id,
         amount: refundAmt,
         reason: "Dispute resolution",
         refund_method: "store_credit",
         status: "completed",
-        created_by: auth.user.id,
+        created_by: user.id,
       });
 
-      await (supabase
-        .from("bookings") as any)
+      await supabase
+        .from("bookings")
         .update({ payment_status: newBookingPaymentStatus })
         .eq("id", id);
     }
 
     // Update dispute
-    const { data: updatedDispute, error: disputeError } = await (supabase
-      .from("booking_disputes") as any)
+    const { data: updatedDispute, error: disputeError } = await supabase
+      .from("booking_disputes")
       .update({
         status: "resolved",
         resolution,
-        refund_amount: resolution.includes("refund") ? (refund_amount || bookingData.total_amount) : null,
+        refund_amount: resolution.includes("refund") ? (refund_amount ?? bookingData.total_amount) : null,
         resolved_at: new Date().toISOString(),
-        resolved_by: auth.user.id,
-        notes: notes || null,
+        resolved_by: user.id,
+        notes: notes ?? null,
       })
-      .eq("id", (dispute as any).id)
+      .eq("id", (dispute as DisputeRow).id)
       .select()
       .single();
 
@@ -214,19 +229,19 @@ export async function POST(
     // Update booking status
     const newBookingStatus =
       resolution === "refund_full" ? "cancelled" : bookingData.status;
-    await (supabase
-      .from("bookings") as any)
+    await supabase
+      .from("bookings")
       .update({ status: newBookingStatus })
       .eq("id", id);
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.dispute.resolve",
       entity_type: "booking",
       entity_id: id,
       metadata: {
-        dispute_id: (dispute as any).id,
+        dispute_id: (dispute as DisputeRow).id,
         resolution,
         refund_amount: resolution.includes("refund") ? (refund_amount || bookingData.total_amount) : null,
         notes: notes || null,
@@ -245,16 +260,21 @@ export async function POST(
           : "Your dispute has been reviewed and the decision is in favor of the provider.";
 
       // Notify customer
-      await sendToUser(bookingData.customer_id, {
-        title: "Dispute Resolved",
-        message: resolutionMessage,
-        data: {
-          type: "dispute_resolved",
-          booking_id: id,
-          resolution,
+      await sendToUser(
+        bookingData.customer_id,
+        {
+          title: "Dispute Resolved",
+          message: resolutionMessage,
+          data: {
+            type: "dispute_resolved",
+            booking_id: id,
+            resolution,
+          },
+          url: `/account-settings/bookings/${id}`,
         },
-        url: `/account-settings/bookings/${id}`,
-      });
+        ["push"],
+        { appType: "customer" }
+      );
 
       // Notify provider
       const { data: providerRow } = await supabase
@@ -263,18 +283,23 @@ export async function POST(
         .eq("id", bookingData.provider_id)
         .single();
 
-      const providerUserId = (providerRow as any)?.user_id;
+      const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
       if (providerUserId) {
-        await sendToUser(providerUserId, {
-          title: "Dispute Resolved",
-          message: `A dispute for booking ${bookingData.booking_number} has been resolved.`,
-          data: {
-            type: "dispute_resolved",
-            booking_id: id,
-            resolution,
+        await sendToUser(
+          providerUserId,
+          {
+            title: "Dispute Resolved",
+            message: `A dispute for booking ${bookingData.booking_number} has been resolved.`,
+            data: {
+              type: "dispute_resolved",
+              booking_id: id,
+              resolution,
+            },
+            url: `/provider/bookings/${id}`,
           },
-          url: `/provider/bookings/${id}`,
-        });
+          ["push"],
+          { appType: "provider" }
+        );
       }
     } catch (notifError) {
       console.error("Error sending notifications:", notifError);

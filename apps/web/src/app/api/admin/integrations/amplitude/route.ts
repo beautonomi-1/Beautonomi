@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, errorResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { revalidateTag } from "next/cache";
 import { trackServer } from "@/lib/analytics/amplitude/server";
@@ -8,7 +9,7 @@ import { EVENT_API_KEY_CREATED, EVENT_API_KEY_UPDATED } from "@/lib/analytics/am
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
 
     const { searchParams } = new URL(request.url);
@@ -27,14 +28,14 @@ export async function GET(request: NextRequest) {
     }
 
     return successResponse(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     return handleApiError(error, "Failed to fetch Amplitude configuration");
   }
 }
 
 export async function PUT(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
@@ -75,7 +76,7 @@ export async function PUT(request: NextRequest) {
     let result;
     if (existing) {
       // Update existing config
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         api_key_public,
         ingestion_endpoint: ingestion_endpoint || "https://api2.amplitude.com/2/httpapi",
         environment,
@@ -164,7 +165,7 @@ export async function PUT(request: NextRequest) {
     revalidateTag("amplitude-config", "default");
 
     return successResponse(result);
-  } catch (error: any) {
+  } catch (error: unknown) {
     return handleApiError(error, "Failed to update Amplitude configuration");
   }
 }

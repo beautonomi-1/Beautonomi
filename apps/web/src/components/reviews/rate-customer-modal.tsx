@@ -44,7 +44,7 @@ export default function RateCustomerModal({
     try {
       setIsSubmitting(true);
       // First, check if a review exists for this booking
-      const reviewResponse = await fetcher.get<{ data: any }>(
+      const reviewResponse = await fetcher.get<{ data?: { id: string } }>(
         `/api/me/reviews?booking_id=${bookingId}`
       );
 
@@ -58,7 +58,7 @@ export default function RateCustomerModal({
       }
 
       // Update the review with customer rating
-      const response = await fetcher.patch<{ data?: any; error?: { message?: string } }>(`/api/reviews/${reviewId}`, {
+      const response = await fetcher.patch<{ data?: unknown; error?: { message?: string } }>(`/api/reviews/${reviewId}`, {
         customer_rating: rating,
         customer_comment: comment || null,
       });
@@ -73,11 +73,10 @@ export default function RateCustomerModal({
       // Reset form
       setRating(0);
       setComment("");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error submitting rating:", error);
-      toast.error(
-        error.message || "Failed to submit rating. Please try again."
-      );
+      const message = error instanceof Error ? error.message : "Failed to submit rating. Please try again.";
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }

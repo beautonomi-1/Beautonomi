@@ -106,6 +106,9 @@ export function ProviderTopbar() {
               <Link href="/help">Help Centre</Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
+              <Link href="/help/my-tickets">My tickets</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
               <Link href="/learn">Learning Center</Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>

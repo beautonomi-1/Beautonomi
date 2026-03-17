@@ -1,17 +1,19 @@
-import { NextResponse } from "next/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { verifyOneSignalConfig } from "@/lib/notifications/onesignal";
 import { getOneSignalRestApiKey } from "@/lib/platform/secrets";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/notifications/config
  * 
  * Get OneSignal configuration status
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 

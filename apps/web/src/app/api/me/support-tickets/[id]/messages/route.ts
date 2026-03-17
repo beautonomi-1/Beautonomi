@@ -24,7 +24,7 @@ export async function POST(
       request
     );
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const message = typeof body?.message === "string" ? body.message.trim() : "";
 

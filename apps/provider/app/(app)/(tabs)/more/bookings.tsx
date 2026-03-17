@@ -86,7 +86,29 @@ export default function BookingsScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="Bookings & calendar" subtitle="Appointments & schedule" onBack={() => router.back()} />
+      <ScreenHeader
+        title="Bookings & calendar"
+        subtitle="Appointments & schedule"
+        onBack={() => router.back()}
+        rightAction={
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => router.replace("/(app)/(tabs)/calendar" as never)}
+              style={{ flexDirection: "row", alignItems: "center", borderRadius: 10, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
+            >
+              <Ionicons name="calendar-outline" size={18} color={Colors.gray[700]} />
+              <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "600", color: Colors.gray[800] }}>Calendar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/more/bookings/new" as never)}
+              style={{ flexDirection: "row", alignItems: "center", borderRadius: 10, backgroundColor: "#4f46e5", paddingHorizontal: 12, paddingVertical: 8 }}
+            >
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "600", color: "#fff" }}>New</Text>
+            </TouchableOpacity>
+          </View>
+        }
+      />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 100 }}

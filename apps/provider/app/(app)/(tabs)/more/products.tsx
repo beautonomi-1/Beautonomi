@@ -12,11 +12,13 @@ import {
   Platform,
   Switch,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
@@ -82,6 +84,7 @@ const defaultForm = {
 
 /** Content-only for use in Products hub (Products tab). */
 export function ProductsContent() {
+  const router = useRouter();
   const [formOpen, setFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [form, setForm] = useState(defaultForm);
@@ -91,6 +94,37 @@ export function ProductsContent() {
   const { execute: postProduct, loading: creating } = useApiMutation("post");
   const { execute: patchProduct, loading: updating } = useApiMutation("patch");
   const { execute: deleteProduct } = useApiMutation("delete");
+
+  const fetchCategorySuggestions = useCallback(
+    async (query: string) => {
+      const res = await api.get<{ value: string; label: string }[]>(
+        `/api/provider/products/suggestions?field=category&q=${encodeURIComponent(query)}`
+      );
+      if (res.error || !res.data) return [];
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    []
+  );
+  const fetchBrandSuggestions = useCallback(
+    async (query: string) => {
+      const res = await api.get<{ value: string; label: string }[]>(
+        `/api/provider/products/suggestions?field=brand&q=${encodeURIComponent(query)}`
+      );
+      if (res.error || !res.data) return [];
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    []
+  );
+  const fetchSupplierSuggestions = useCallback(
+    async (query: string) => {
+      const res = await api.get<{ value: string; label: string }[]>(
+        `/api/provider/products/suggestions?field=supplier&q=${encodeURIComponent(query)}`
+      );
+      if (res.error || !res.data) return [];
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    []
+  );
 
   const isSaving = creating || updating;
 
@@ -426,13 +460,28 @@ export function ProductsContent() {
           style={{ flex: 1, backgroundColor: Colors.white }}
           keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
         >
-          <View style={{ borderBottomWidth: 1, borderBottomColor: Colors.gray[100], paddingHorizontal: 16, paddingVertical: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>
-              {editingProduct ? "Edit product" : "New product"}
-            </Text>
-            <TouchableOpacity onPress={() => setFormOpen(false)} style={{ padding: 8 }}>
-              <Ionicons name="close" size={24} color="#374151" />
-            </TouchableOpacity>
+          <View style={{ borderBottomWidth: 1, borderBottomColor: Colors.gray[100], paddingHorizontal: 16, paddingVertical: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>
+                {editingProduct ? "Edit product" : "New product"}
+              </Text>
+              <TouchableOpacity onPress={() => setFormOpen(false)} style={{ padding: 8 }}>
+                <Ionicons name="close" size={24} color="#374151" />
+              </TouchableOpacity>
+            </View>
+            {editingProduct && (
+              <TouchableOpacity
+                onPress={() => {
+                  setFormOpen(false);
+                  setEditingProduct(null);
+                  router.push({ pathname: "/(app)/(tabs)/more/product-form", params: { id: editingProduct.id } } as never);
+                }}
+                style={{ flexDirection: "row", alignItems: "center", marginTop: 4, paddingVertical: 4 }}
+              >
+                <Ionicons name="open-outline" size={16} color="#6d28d9" />
+                <Text style={{ marginLeft: 6, fontSize: 14, color: "#6d28d9", fontWeight: "500" }}>Edit in full form</Text>
+              </TouchableOpacity>
+            )}
           </View>
           <ScrollView
             style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 16 }}
@@ -515,20 +564,29 @@ export function ProductsContent() {
                   placeholderTextColor="#9ca3af"
                   style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 />
-                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Option values (comma-separated)</Text>
-                <TextInput
-                  value={form.variantOptionValues}
-                  onChangeText={(v) => setForm((f) => ({ ...f, variantOptionValues: v }))}
-                  placeholder="250ml, 500ml"
-                  placeholderTextColor="#9ca3af"
-                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-                />
+                <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Option values</Text>
+                <View style={{ marginBottom: 12 }}>
+                  <ChipCombobox
+                    value={form.variantOptionValues.split(",").map((v) => v.trim()).filter(Boolean)}
+                    onChange={(arr) => setForm((f) => ({ ...f, variantOptionValues: arr.join(", ") }))}
+                    staticSuggestions={[
+                      { value: "250ml", label: "250ml" },
+                      { value: "500ml", label: "500ml" },
+                      { value: "1L", label: "1L" },
+                      { value: "S", label: "S" },
+                      { value: "M", label: "M" },
+                      { value: "L", label: "L" },
+                    ]}
+                    placeholder="e.g. 250ml, 500ml or tap suggestions"
+                    accessibilityLabel="Option values"
+                  />
+                </View>
                 <TouchableOpacity
                   onPress={() => {
                     const name = (form.variantOptionName.trim() || "Option").trim();
                     const values = form.variantOptionValues.split(",").map((v) => v.trim()).filter(Boolean);
                     if (!values.length) {
-                      Alert.alert("Add values", "Enter at least one option value (e.g. 250ml, 500ml).");
+                      Alert.alert("Add values", "Add at least one option value (tap a suggestion or type and press Add).");
                       return;
                     }
                     const rows: VariantRow[] = values.map((val) => ({
@@ -618,13 +676,17 @@ export function ProductsContent() {
             )}
 
             <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Category</Text>
-            <TextInput
-              value={form.category}
-              onChangeText={(v) => setForm((f) => ({ ...f, category: v }))}
-              placeholder="e.g. Hair care"
-              placeholderTextColor="#9ca3af"
-              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-            />
+            <View style={{ marginBottom: 16 }}>
+              <ChipCombobox
+                singleSelect
+                value={form.category || null}
+                onChange={(v) => setForm((f) => ({ ...f, category: v ?? "" }))}
+                fetchSuggestions={fetchCategorySuggestions}
+                staticSuggestions={[]}
+                placeholder="e.g. Hair care"
+                accessibilityLabel="Category"
+              />
+            </View>
             <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Short description</Text>
             <TextInput
               value={form.short_description}
@@ -644,21 +706,29 @@ export function ProductsContent() {
               style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
             />
             <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Brand</Text>
-            <TextInput
-              value={form.brand}
-              onChangeText={(v) => setForm((f) => ({ ...f, brand: v }))}
-              placeholder="Optional"
-              placeholderTextColor="#9ca3af"
-              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-            />
+            <View style={{ marginBottom: 16 }}>
+              <ChipCombobox
+                singleSelect
+                value={form.brand || null}
+                onChange={(v) => setForm((f) => ({ ...f, brand: v ?? "" }))}
+                fetchSuggestions={fetchBrandSuggestions}
+                staticSuggestions={[]}
+                placeholder="Optional"
+                accessibilityLabel="Brand"
+              />
+            </View>
             <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Supplier</Text>
-            <TextInput
-              value={form.supplier}
-              onChangeText={(v) => setForm((f) => ({ ...f, supplier: v }))}
-              placeholder="Optional"
-              placeholderTextColor="#9ca3af"
-              style={{ marginBottom: 24, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-            />
+            <View style={{ marginBottom: 24 }}>
+              <ChipCombobox
+                singleSelect
+                value={form.supplier || null}
+                onChange={(v) => setForm((f) => ({ ...f, supplier: v ?? "" }))}
+                fetchSuggestions={fetchSupplierSuggestions}
+                staticSuggestions={[]}
+                placeholder="Optional"
+                accessibilityLabel="Supplier"
+              />
+            </View>
             <TouchableOpacity
               onPress={handleSave}
               disabled={isSaving}

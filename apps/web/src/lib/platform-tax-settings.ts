@@ -55,7 +55,7 @@ export async function getEffectiveTaxRate(
       .maybeSingle();
     
     if (platformSettings?.settings) {
-      const defaultTaxRate = (platformSettings.settings as any)?.taxes?.default_tax_rate;
+      const defaultTaxRate = (platformSettings.settings as { taxes?: { default_tax_rate?: number } })?.taxes?.default_tax_rate;
       // Return platform default if explicitly set (including 0%)
       if (defaultTaxRate !== undefined && defaultTaxRate !== null) {
         return Number(defaultTaxRate);
@@ -87,7 +87,7 @@ export async function getPlatformDefaultTaxRate(): Promise<number> {
       .maybeSingle();
     
     if (platformSettings?.settings) {
-      const defaultTaxRate = (platformSettings.settings as any)?.taxes?.default_tax_rate;
+      const defaultTaxRate = (platformSettings.settings as { taxes?: { default_tax_rate?: number } })?.taxes?.default_tax_rate;
       // Return platform default if explicitly set (including 0%)
       if (defaultTaxRate !== undefined && defaultTaxRate !== null) {
         return Number(defaultTaxRate);

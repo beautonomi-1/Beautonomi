@@ -61,10 +61,10 @@ export default function SubmitTicketPage() {
           ? `Support ticket submitted. Your ticket number is ${ticketNumber}. We'll email you a confirmation.`
           : "Support ticket submitted successfully! We'll email you a confirmation."
       );
-      router.push("/help");
-    } catch (error: any) {
+      router.push("/help/my-tickets");
+    } catch (error: unknown) {
       console.error("Failed to submit ticket:", error);
-      toast.error(error.message || "Failed to submit support ticket");
+      toast.error(error instanceof Error ? error.message : "Failed to submit support ticket");
     } finally {
       setIsSubmitting(false);
     }

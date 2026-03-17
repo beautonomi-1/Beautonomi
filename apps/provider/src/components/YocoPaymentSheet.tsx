@@ -3,12 +3,13 @@
  * Provider selects a device, amount is shown, and payment is processed via API.
  */
 import { useState, useEffect, useCallback } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
+import { View, Text, TouchableOpacity, ActivityIndicator, Alert, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import {
+  useYocoIntegration,
   useYocoDevices,
   useYocoPayment,
   type YocoDevice,
@@ -38,11 +39,14 @@ export function YocoPaymentSheet({
   description,
   onPaymentSuccess,
 }: YocoPaymentSheetProps) {
+  const { integration: yocoIntegration, loading: integrationLoading } = useYocoIntegration();
   const { devices, loading: devicesLoading } = useYocoDevices();
   const { processPayment, processing } = useYocoPayment();
   const [selectedDevice, setSelectedDevice] = useState<YocoDevice | null>(null);
 
+  const isConnected = yocoIntegration?.is_enabled === true;
   const activeDevices = devices.filter((d) => d.is_active);
+  const loading = integrationLoading || devicesLoading;
 
   useEffect(() => {
     if (activeDevices.length === 1 && !selectedDevice) {
@@ -70,9 +74,25 @@ export function YocoPaymentSheet({
     if (result) {
       if (result.status === "successful") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        onPaymentSuccess(result);
-        onClose();
+        if (result.receipt_url) {
+          Alert.alert(
+            "Payment successful",
+            "Would you like to view the receipt?",
+            [
+              { text: "Done", onPress: () => { onPaymentSuccess(result); onClose(); } },
+              { text: "View receipt", onPress: () => {
+                Linking.openURL(result.receipt_url!);
+                onPaymentSuccess(result);
+                onClose();
+              } },
+            ]
+          );
+        } else {
+          onPaymentSuccess(result);
+          onClose();
+        }
       } else if (result.status === "pending") {
+        // Hook normally polls until success/fail; this is edge case (e.g. no payment id)
         Alert.alert(
           "Payment Pending",
           "The payment is being processed. Please check the device.",
@@ -102,17 +122,25 @@ export function YocoPaymentSheet({
 
       {/* Device selection */}
       <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Select Device</Text>
-      {devicesLoading ? (
+      {loading ? (
         <View style={twStyle("items-center py-8")}>
           <ActivityIndicator size="small" color="#6366f1" />
-          <Text style={twStyle("mt-2 text-xs text-gray-500")}>Loading devices…</Text>
+          <Text style={twStyle("mt-2 text-xs text-gray-500")}>Loading…</Text>
+        </View>
+      ) : !isConnected ? (
+        <View style={twStyle("items-center rounded-2xl border border-amber-200 bg-amber-50 py-8 px-4")}>
+          <Ionicons name="link-outline" size={32} color="#d97706" />
+          <Text style={twStyle("mt-2 text-sm font-medium text-amber-800")}>Yoco not connected</Text>
+          <Text style={twStyle("mt-1 text-xs text-center text-amber-700")}>
+            Connect Yoco in More → Settings → Payment Settings → Yoco devices
+          </Text>
         </View>
       ) : activeDevices.length === 0 ? (
         <View style={twStyle("items-center rounded-2xl border border-dashed border-gray-200 py-8")}>
           <Ionicons name="card-outline" size={32} color="#9ca3af" />
           <Text style={twStyle("mt-2 text-sm text-gray-500")}>No Yoco devices configured</Text>
           <Text style={twStyle("mt-1 text-xs text-gray-400")}>
-            Add a device in Settings → Payment Settings
+            Add a device in Settings → Payment Settings → Yoco devices
           </Text>
         </View>
       ) : (
@@ -166,7 +194,7 @@ export function YocoPaymentSheet({
         label={processing ? "Processing…" : `Charge ${displayAmount}`}
         onPress={handleProcess}
         loading={processing}
-        disabled={!selectedDevice || processing || activeDevices.length === 0}
+        disabled={!selectedDevice || processing || activeDevices.length === 0 || !isConnected}
         fullWidth
       />
     </BottomSheet>

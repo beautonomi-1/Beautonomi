@@ -31,6 +31,7 @@ const mangomintUpdateSchema = z.object({
   deposit_required: z.boolean().optional(),
   deposit_amount: z.number().min(0).optional().nullable(),
   deposit_percent: z.number().min(0).max(100).optional().nullable(),
+  on_demand_accept_enabled: z.boolean().optional(),
 });
 
 export type MangomintSettings = {
@@ -42,6 +43,7 @@ export type MangomintSettings = {
   deposit_required: boolean;
   deposit_amount: number | null;
   deposit_percent: number | null;
+  on_demand_accept_enabled: boolean;
 };
 
 const defaults: MangomintSettings = {
@@ -53,6 +55,7 @@ const defaults: MangomintSettings = {
   deposit_required: false,
   deposit_amount: null,
   deposit_percent: null,
+  on_demand_accept_enabled: false,
 };
 
 export async function GET(request: NextRequest) {
@@ -95,6 +98,7 @@ export async function GET(request: NextRequest) {
           deposit_required: settings.deposit_required ?? defaults.deposit_required,
           deposit_amount: settings.deposit_amount != null ? Number(settings.deposit_amount) : null,
           deposit_percent: settings.deposit_percent != null ? Number(settings.deposit_percent) : null,
+          on_demand_accept_enabled: settings.on_demand_accept_enabled ?? defaults.on_demand_accept_enabled,
         }
       : { ...defaults };
 
@@ -141,6 +145,7 @@ export async function PATCH(request: NextRequest) {
     if (data.deposit_required !== undefined) updates.deposit_required = data.deposit_required;
     if (data.deposit_amount !== undefined) updates.deposit_amount = data.deposit_amount;
     if (data.deposit_percent !== undefined) updates.deposit_percent = data.deposit_percent;
+    if (data.on_demand_accept_enabled !== undefined) updates.on_demand_accept_enabled = data.on_demand_accept_enabled;
 
     const { error: upsertError } = await supabase
       .from("provider_online_booking_settings")
@@ -182,6 +187,7 @@ export async function PATCH(request: NextRequest) {
         updated.deposit_amount != null ? Number(updated.deposit_amount) : null,
       deposit_percent:
         updated.deposit_percent != null ? Number(updated.deposit_percent) : null,
+      on_demand_accept_enabled: updated.on_demand_accept_enabled ?? defaults.on_demand_accept_enabled,
     };
 
     return successResponse(result);

@@ -29,7 +29,7 @@ export async function POST(
     const validated = rescheduleSchema.parse(body);
     const newDatetime = new Date(validated.new_datetime);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const adminSupabase = getSupabaseAdmin();
 
     // Load group booking
@@ -85,9 +85,11 @@ export async function POST(
             .from('booking_services')
             .select('duration_minutes, offerings(buffer_minutes)')
             .eq('booking_id', booking.id);
-          services?.forEach((s: any) => {
+          type ServiceRow = { duration_minutes?: number; offerings?: { buffer_minutes?: number } | { buffer_minutes?: number }[] };
+          (services ?? []).forEach((s: ServiceRow) => {
             const dur = s.duration_minutes ?? 60;
-            const buf = s.offerings?.buffer_minutes ?? 15;
+            const off = Array.isArray(s.offerings) ? s.offerings[0] : s.offerings;
+            const buf = off?.buffer_minutes ?? 15;
             totalDuration += dur + buf;
           });
         }

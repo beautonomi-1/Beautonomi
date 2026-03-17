@@ -8,7 +8,7 @@ This document tracks alignment between the provider **mobile app** More menu, th
 
 **The provider app does not route users to the web.** All features use native screens and APIs. There is no in-app link to open the web dashboard; providers stay in the mobile app. Do not add "Open on web" or portal links. The in-app portal screen (`more/portal`) exists for direct/deep links only and is not linked from any menu.
 
-**Quick reference:** Finance & billing → `finance-billing-hub` (Earnings, Payroll, Invoices, Payouts, Billing history, Gift cards). Invoice/document links → `in-app-browser` (WebView). No `Linking.openURL` or Settings "Open in browser" in the app.
+**Quick reference:** Finance & billing → `finance-billing-hub` (Earnings, Payroll, Invoices, Payouts, Billing history, Gift cards). Invoice/document and other web URLs (subscription payment, onboarding, setup, verification, express-booking, packages) open in the **in-app browser** (`more/in-app-browser`) so the user stays in the app and authenticated. Native screens preferred where possible (e.g. setup-status routes to native when the API returns app routes).
 
 ---
 
@@ -114,7 +114,8 @@ This document tracks alignment between the provider **mobile app** More menu, th
 - **Finance & billing hub:** Native links to Earnings, Payroll, Invoices, Payouts, Billing history, Gift cards. Providers never leave the app.
 
 ### Billing history & in-app browser
-- **Billing history** (`more/billing-history.tsx`): `GET /api/provider/billing-history`; list of billing items. Invoice links open in **in-app browser** (`more/in-app-browser?url=...&title=Invoice`) — a WebView screen — so providers never leave the app for PDFs or Paystack/payment pages.
+- **Billing history** (`more/billing-history.tsx`): `GET /api/provider/billing-history`; list of billing items. Invoice links open in the **in-app browser** (`more/in-app-browser`) so providers stay in the app and authenticated for PDFs/payment pages.
+- **Setup status** (`more/settings/setup-status.tsx`): Steps from API use **native routes** where we have a screen (business, locations, gallery, operating hours, verification, Yoco, payouts, catalogue); other steps open in in-app browser. **Onboarding** screen offers "Complete setup in app" → navigates to Setup status so users can complete steps natively first.
 
 ### Activity (`more/activity.tsx`)
 - **APIs:** `GET /api/provider/dashboard`.
@@ -174,7 +175,7 @@ No "Open on web" links for these flows; no in-app link to the web dashboard.
 
 ## 6. Native-first update (in-app experience)
 
-All features are fully in-app; the app does not route to the web for any core flow. Settings & account: every item opens a native screen. Products & e-commerce, Catalogue, Finance (hub → earnings, payroll, invoices, payouts, billing history, gift cards), Resources & forms: native only. Billing invoice links open in the in-app browser (WebView) via `more/in-app-browser`. There is no in-app link to the web; providers stay in the app for all flows.
+All features use native screens; the app uses in-app WebView for web-only flows (payment, onboarding, invoices, etc.) so the user stays authenticated. Settings & account: every item opens a native screen. Products & e-commerce, Catalogue, Finance (hub → earnings, payroll, invoices, payouts, billing history, gift cards; VAT reports, Team totals, My earnings are native). Resources & forms: native only (Forms create and Automations create open native screens). Billing invoice links, subscription payment, onboarding, setup-status links, verification, express-booking (“Manage links on web”), and packages (“Open web”) open in the **in-app browser** (`more/in-app-browser`). Subscription success uses postMessage to auto-return to native. Native flows preferred where possible.
 
 ---
 
@@ -193,4 +194,4 @@ All features are fully in-app; the app does not route to the web for any core fl
 
 - **Activity:** Dashboard uses GET /api/provider/dashboard natively. All flows are now native.
 - **Products:** Mobile has core fields (name, price, category, sku, quantity, variants, supply_price, etc.); web has more (measure, tax_rate, image_urls). Mobile subset is valid; optionally add more fields later if needed.
-- **No web entry:** No "Open dashboard in browser" in Settings; all flows are native so providers never leave the app. Billing/invoice links use in-app browser (Paystack/payment pages).
+- **No web entry:** No "Open dashboard in browser" in Settings; all flows are native so providers never leave the app. Billing/invoice links open in the in-app browser (WebView); user stays authenticated.

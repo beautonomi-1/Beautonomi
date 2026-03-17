@@ -401,14 +401,37 @@ export async function validateBooking(
     Math.max(0, servicesSubtotal - packageDiscountAmount) + addonsSubtotal + productsSubtotal + travelFee;
 
   if (promoCode) {
-    const { data: promo } = await (supabase.from("promotions") as any)
-      .select(
-        "id, code, type, value, min_purchase_amount, max_discount_amount, valid_from, valid_until, usage_limit, usage_count, is_active, location_id"
-      )
-      .eq("code", promoCode)
-      .single();
+    const providerId = draft.provider_id as string | undefined;
+    const selectCols =
+      "id, code, type, value, min_purchase_amount, max_discount_amount, valid_from, valid_until, usage_limit, usage_count, is_active, location_id, provider_id, applicable_providers";
+
+    // Prefer provider-scoped promo, then platform (provider_id null)
+    let promo: any = null;
+    if (providerId) {
+      const { data: providerPromo } = await (supabase.from("promotions") as any)
+        .select(selectCols)
+        .eq("code", promoCode)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      promo = providerPromo;
+    }
+    if (!promo) {
+      const { data: platformPromo } = await (supabase.from("promotions") as any)
+        .select(selectCols)
+        .eq("code", promoCode)
+        .is("provider_id", null)
+        .maybeSingle();
+      promo = platformPromo;
+    }
 
     if (promo) {
+      // Platform promos with applicable_providers: only valid for those providers
+      const applicableProviders = (promo.applicable_providers as string[] | null) || [];
+      const providerOk =
+        promo.provider_id != null ||
+        applicableProviders.length === 0 ||
+        (providerId != null && applicableProviders.includes(providerId));
+
       const now = new Date();
       const validFrom = promo.valid_from ? new Date(promo.valid_from) : null;
       const validUntil = promo.valid_until ? new Date(promo.valid_until) : null;
@@ -416,12 +439,11 @@ export async function validateBooking(
       const withinWindow = (!validFrom || now >= validFrom) && (!validUntil || now <= validUntil);
       const underLimit = promo.usage_limit == null || (promo.usage_count || 0) < promo.usage_limit;
       const meetsMin = !promo.min_purchase_amount || prePromoSubtotal >= Number(promo.min_purchase_amount);
-      // Branch: if promotion is restricted to a location, only valid for at_salon bookings at that location
       const locationOk =
         promo.location_id == null ||
         (draft.location_type === "at_salon" && draft.location_id === promo.location_id);
 
-      if (promo.is_active && withinWindow && underLimit && meetsMin && locationOk) {
+      if (promo.is_active && providerOk && withinWindow && underLimit && meetsMin && locationOk) {
         if (promo.type === "percentage")
           promoDiscountAmount = (prePromoSubtotal * Number(promo.value || 0)) / 100;
         else promoDiscountAmount = Number(promo.value || 0);

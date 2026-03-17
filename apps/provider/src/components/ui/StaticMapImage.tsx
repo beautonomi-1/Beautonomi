@@ -1,12 +1,12 @@
 /**
  * Static Mapbox map image — displays a pin at the given coordinates.
- * Uses Mapbox Static Images API with token from backend.
+ * Uses Mapbox Static Images API. Token and optional style from superadmin (same as customer app).
  */
 import { useEffect, useState } from "react";
 import { View, ActivityIndicator, Text } from "react-native";
 import { Image } from "expo-image";
 import { Colors } from "@/constants/colors";
-import { getMapboxToken } from "@/lib/third-party-config";
+import { getMapboxConfig } from "@/lib/third-party-config";
 import { twStyle } from "@/lib/twStyle";
 
 interface StaticMapImageProps {
@@ -36,15 +36,18 @@ export function StaticMapImage({
 
     (async () => {
       try {
-        const token = await getMapboxToken();
+        const config = await getMapboxConfig();
         if (cancelled) return;
-        if (!token) {
+        if (!config?.token) {
           setLoading(false);
           return;
         }
+        const stylePath = config.style_url
+          ? (config.style_url.match(/mapbox:\/\/styles\/(.+)/)?.[1] ?? "mapbox/streets-v12")
+          : "mapbox/streets-v12";
         const pin = `pin-l+FF0077(${longitude},${latitude})`;
         const center = `${longitude},${latitude},${zoom}`;
-        const url = `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${pin}/${center}/${width}x${height}@2x?access_token=${token}`;
+        const url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pin}/${center}/${width}x${height}@2x?access_token=${config.token}`;
         setUri(url);
       } catch {
         if (!cancelled) setUri(null);

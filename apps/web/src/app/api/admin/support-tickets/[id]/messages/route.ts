@@ -99,10 +99,11 @@ export async function POST(
     }
 
     return NextResponse.json({ message: data });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error creating ticket message:", error);
+    const message = error instanceof Error ? error.message : "Failed to create message";
     return NextResponse.json(
-      { error: error.message || "Failed to create message" },
+      { error: message },
       { status: 500 }
     );
   }

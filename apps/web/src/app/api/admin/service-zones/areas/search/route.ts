@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
   errorResponse,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 
 const MAX_RESULTS = 50;
 
@@ -16,7 +16,7 @@ const MAX_RESULTS = 50;
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const country = searchParams.get("country")?.trim();
@@ -73,10 +73,11 @@ export async function GET(request: NextRequest) {
       });
     };
 
-    const provinces = uniq((provincesRes.data || []).map((r: any) => r.province_name).filter(Boolean));
-    const cities = uniq((citiesRes.data || []).map((r: any) => r.city_name).filter(Boolean));
-    const towns = uniq((townsRes.data || []).map((r: any) => r.town_name).filter(Boolean));
-    const postal_codes = uniq((postalRes.data || []).map((r: any) => r.postal_code).filter(Boolean));
+    type AreaRow = { province_name?: string; city_name?: string; town_name?: string; postal_code?: string };
+    const provinces = uniq((provincesRes.data || []).map((r: AreaRow) => r.province_name).filter(Boolean) as string[]);
+    const cities = uniq((citiesRes.data || []).map((r: AreaRow) => r.city_name).filter(Boolean) as string[]);
+    const towns = uniq((townsRes.data || []).map((r: AreaRow) => r.town_name).filter(Boolean) as string[]);
+    const postal_codes = uniq((postalRes.data || []).map((r: AreaRow) => r.postal_code).filter(Boolean) as string[]);
 
     return successResponse({
       provinces,

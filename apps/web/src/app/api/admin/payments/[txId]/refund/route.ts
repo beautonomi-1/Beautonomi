@@ -1,13 +1,31 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 
 const refundSchema = z.object({
   amount: z.number().min(0.01).optional(), // If not provided, full refund
   reason: z.string().min(1, "Refund reason is required"),
 });
+
+type PaymentTransactionRow = {
+  id: string;
+  status: string;
+  amount: number | string;
+  booking_id: string;
+  reference?: string;
+  provider?: string;
+};
+
+type BookingRow = {
+  customer_id: string;
+  currency?: string;
+  booking_number: string;
+  provider_id: string;
+};
 
 /**
  * POST /api/admin/payments/[txId]/refund
@@ -21,8 +39,8 @@ export async function POST(
   { params }: { params: Promise<{ txId: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -65,7 +83,7 @@ export async function POST(
       );
     }
 
-    const txData = transaction as any;
+    const txData = transaction as PaymentTransactionRow;
 
     if (txData.status === "refunded" || txData.status === "partially_refunded") {
       return NextResponse.json(
@@ -99,7 +117,7 @@ export async function POST(
       );
     }
 
-    const bookingData = booking as any;
+    const bookingData = booking as BookingRow;
     const refundAmount = validationResult.data.amount ?? Number(txData.amount);
     const { reason } = validationResult.data;
 
@@ -117,7 +135,8 @@ export async function POST(
     }
 
     // Credit customer wallet (refunds always go to wallet)
-    const { error: walletError } = await (supabase.rpc as any)("wallet_credit_admin", {
+    const rpc = supabase.rpc as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
+    const { error: walletError } = await rpc("wallet_credit_admin", {
       p_user_id: bookingData.customer_id,
       p_amount: refundAmount,
       p_currency: bookingData.currency || "ZAR",
@@ -146,39 +165,39 @@ export async function POST(
     const newBookingPaymentStatus = isFullRefund ? "refunded" : "partially_refunded";
 
     // Update transaction status
-    await (supabase
-      .from("payment_transactions") as any)
+    await supabase
+      .from("payment_transactions")
       .update({
         status: newTransactionStatus,
         refund_amount: refundAmount,
         refund_reference: refundReference,
         refund_reason: reason,
         refunded_at: new Date().toISOString(),
-        refunded_by: auth.user.id,
+        refunded_by: user.id,
       })
       .eq("id", txId);
 
     // Update booking payment status
-    await (supabase
-      .from("bookings") as any)
+    await supabase
+      .from("bookings")
       .update({
         payment_status: newBookingPaymentStatus,
       })
       .eq("id", txData.booking_id);
 
     // Record in booking_refunds so update_booking_payment_status keeps totals in sync
-    await (supabase.from("booking_refunds") as any).insert({
+    await supabase.from("booking_refunds").insert({
       booking_id: txData.booking_id,
       amount: refundAmount,
       reason,
       refund_method: "store_credit",
       status: "completed",
-      created_by: auth.user.id,
+      created_by: user.id,
     });
 
     // Create refund transaction record (ledger)
-    await (supabase
-      .from("payment_transactions") as any)
+    await supabase
+      .from("payment_transactions")
       .insert({
         booking_id: txData.booking_id,
         reference: refundReference,
@@ -197,8 +216,8 @@ export async function POST(
       });
 
     // Create finance ledger entry for refund
-    await (supabase
-      .from("finance_transactions") as any)
+    await supabase
+      .from("finance_transactions")
       .insert({
         booking_id: txData.booking_id,
         transaction_type: "refund",
@@ -212,8 +231,8 @@ export async function POST(
 
     // Audit log
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.refund",
       entity_type: "payment_transaction",
       entity_id: txData.id,
@@ -229,16 +248,21 @@ export async function POST(
     // Notifications (customer + provider owner)
     try {
       const { sendToUser } = await import("@/lib/notifications/onesignal");
-      await sendToUser(bookingData.customer_id, {
-        title: "Refund added to wallet",
-        message: `A refund of ${bookingData.currency || "ZAR"} ${refundAmount} for booking ${bookingData.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
-        data: {
-          type: "refund_processed",
-          booking_id: txData.booking_id,
-          refund_reference: refundReference,
+      await sendToUser(
+        bookingData.customer_id,
+        {
+          title: "Refund added to wallet",
+          message: `A refund of ${bookingData.currency || "ZAR"} ${refundAmount} for booking ${bookingData.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
+          data: {
+            type: "refund_processed",
+            booking_id: txData.booking_id,
+            refund_reference: refundReference,
+          },
+          url: "/account-settings/wallet",
         },
-        url: "/account-settings/wallet",
-      });
+        ["push"],
+        { appType: "customer" }
+      );
 
       const { data: providerRow } = await supabase
         .from("providers")
@@ -246,18 +270,23 @@ export async function POST(
         .eq("id", bookingData.provider_id)
         .single();
 
-      const providerUserId = (providerRow as any)?.user_id;
+      const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
       if (providerUserId) {
-        await sendToUser(providerUserId, {
-          title: "Refund Processed",
-          message: `A refund has been processed for booking ${bookingData.booking_number}.`,
-          data: {
-            type: "refund_processed_provider",
-            booking_id: txData.booking_id,
-            refund_reference: refundReference,
+        await sendToUser(
+          providerUserId,
+          {
+            title: "Refund Processed",
+            message: `A refund has been processed for booking ${bookingData.booking_number}.`,
+            data: {
+              type: "refund_processed_provider",
+              booking_id: txData.booking_id,
+              refund_reference: refundReference,
+            },
+            url: `/provider/bookings/${txData.booking_id}`,
           },
-          url: `/provider/bookings/${txData.booking_id}`,
-        });
+          ["push"],
+          { appType: "provider" }
+        );
       }
     } catch (notifError) {
       console.error("Error sending refund notifications:", notifError);

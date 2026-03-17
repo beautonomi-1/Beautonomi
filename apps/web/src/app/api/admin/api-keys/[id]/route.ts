@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/supabase/auth-server";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 export async function GET(
@@ -9,7 +10,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    await requireRole(["superadmin"]);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
 
     const { data, error } = await supabase
@@ -48,10 +49,11 @@ export async function GET(
         last_24_hours: recentUsage || 0,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching API key:", error);
+    const message = error instanceof Error ? error.message : "Failed to fetch API key";
     return NextResponse.json(
-      { error: error.message || "Failed to fetch API key" },
+      { error: message },
       { status: 500 }
     );
   }
@@ -63,7 +65,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { user } = await requireRole(["superadmin"]);
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
@@ -77,7 +79,7 @@ export async function PATCH(
       expires_at,
     } = body;
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
     if (permissions !== undefined) updateData.permissions = permissions;
     if (rate_limit_per_minute !== undefined)
@@ -113,10 +115,11 @@ export async function PATCH(
         key_hash: undefined,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error updating API key:", error);
+    const message = error instanceof Error ? error.message : "Failed to update API key";
     return NextResponse.json(
-      { error: error.message || "Failed to update API key" },
+      { error: message },
       { status: 500 }
     );
   }
@@ -128,7 +131,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const { user } = await requireRole(["superadmin"]);
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
 
     const { error } = await supabase
@@ -148,10 +151,11 @@ export async function DELETE(
     });
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error deleting API key:", error);
+    const message = error instanceof Error ? error.message : "Failed to delete API key";
     return NextResponse.json(
-      { error: error.message || "Failed to delete API key" },
+      { error: message },
       { status: 500 }
     );
   }

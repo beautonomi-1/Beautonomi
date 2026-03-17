@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
   errorResponse,
   notFoundResponse,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const patchSchema = z.object({
@@ -24,7 +24,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
@@ -46,7 +46,7 @@ export async function GET(
       .select("id, type, ref_code, ref_name, created_at")
       .eq("zone_id", id);
 
-    const out: any = {
+    const out: Record<string, unknown> = {
       id: zone.id,
       name: zone.name,
       country_code: zone.country_code,
@@ -102,7 +102,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
@@ -123,7 +123,8 @@ export async function PATCH(
 
     if (!existing) return notFoundResponse("Zone not found");
 
-    if (parse.data.version != null && (existing as any).version !== parse.data.version) {
+    const existingRow = existing as { version?: number };
+    if (parse.data.version != null && existingRow.version !== parse.data.version) {
       return errorResponse("Version conflict; refresh and retry", "CONFLICT", 409);
     }
 

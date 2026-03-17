@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
@@ -9,7 +10,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabaseAdmin = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get("start_date");
@@ -59,9 +60,11 @@ export async function GET(request: NextRequest) {
     let monthlyCount = 0;
     let yearlyCount = 0;
     const revenueByPlan: Record<string, { count: number; revenue: number; name: string }> = {};
+    type SubWithPlan = { subscription_plans?: { id: string; name?: string; price_monthly?: number; price_yearly?: number } | null; billing_period?: string; provider_id?: string; providers?: { business_name?: string } };
+    type SubRow = { status?: string; started_at?: string; expires_at?: string };
 
     if (activeSubscriptions) {
-      activeSubscriptions.forEach((sub: any) => {
+      (activeSubscriptions as unknown as SubWithPlan[]).forEach((sub) => {
         const plan = sub.subscription_plans;
         if (!plan) return;
 
@@ -84,7 +87,7 @@ export async function GET(request: NextRequest) {
             revenueByPlan[planId] = {
               count: 0,
               revenue: 0,
-              name: plan.name,
+              name: plan.name ?? "",
             };
           }
           revenueByPlan[planId].count++;
@@ -114,7 +117,7 @@ export async function GET(request: NextRequest) {
 
     if (allSubscriptions) {
       totalSubscriptions = allSubscriptions.length;
-      allSubscriptions.forEach((sub: any) => {
+      (allSubscriptions as SubRow[]).forEach((sub) => {
         if (sub.status === "active") activeCount++;
         else if (sub.status === "trialing") trialingCount++;
         else if (sub.status === "cancelled") cancelledCount++;
@@ -179,7 +182,7 @@ export async function GET(request: NextRequest) {
 
       let monthRevenue = 0;
       if (monthSubs) {
-        monthSubs.forEach((sub: any) => {
+        (monthSubs as unknown as SubWithPlan[]).forEach((sub) => {
           const plan = sub.subscription_plans;
           if (!plan) return;
           
@@ -204,7 +207,7 @@ export async function GET(request: NextRequest) {
     const providerRevenue: Record<string, { business_name: string; revenue: number }> = {};
 
     if (activeSubscriptions) {
-      activeSubscriptions.forEach((sub: any) => {
+      (activeSubscriptions as unknown as SubWithPlan[]).forEach((sub) => {
         const plan = sub.subscription_plans;
         const provider = sub.providers;
         if (!plan || !provider) return;

@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = getSupabaseAdmin();
     
     const { searchParams } = new URL(request.url);
@@ -52,9 +53,10 @@ export async function GET(request: NextRequest) {
 
     let totalRevenue = 0;
 
-    (bookings || []).forEach((booking: any) => {
-      const date = new Date(booking.scheduled_at).toISOString().split('T')[0];
-      const amount = booking.total_amount || 0;
+    type BookingRow = { scheduled_at?: string; total_amount?: number; provider_id?: string; status?: string };
+    (bookings || []).forEach((booking: BookingRow) => {
+      const date = new Date(booking.scheduled_at ?? "").toISOString().split('T')[0];
+      const amount = booking.total_amount ?? 0;
 
       // By day
       if (!revenueByDay[date]) {
@@ -90,9 +92,9 @@ export async function GET(request: NextRequest) {
         .select('id, business_name')
         .in('id', providerIds);
 
-      (providers || []).forEach((p: any) => {
+      (providers || []).forEach((p: { id: string; business_name?: string }) => {
         if (revenueByProvider[p.id]) {
-          revenueByProvider[p.id].provider_name = p.business_name;
+          revenueByProvider[p.id].provider_name = p.business_name ?? "Unknown";
         }
       });
     }

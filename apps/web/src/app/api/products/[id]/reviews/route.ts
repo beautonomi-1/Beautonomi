@@ -82,7 +82,7 @@ export async function GET(
     const total = (allRatings ?? []).length;
     const avgRating =
       total > 0
-        ? (allRatings ?? []).reduce((s: number, r: any) => s + r.rating, 0) / total
+        ? (allRatings ?? []).reduce((s: number, r: { rating?: number }) => s + (r.rating ?? 0), 0) / total
         : 0;
 
     return successResponse({
@@ -124,7 +124,7 @@ export async function POST(
 
     // Check if already reviewed this product for this order
     if (parsed.order_id) {
-      const { data: existing } = await (supabase.from("product_reviews") as any)
+      const { data: existing } = await supabase.from("product_reviews")
         .select("id")
         .eq("product_id", productId)
         .eq("customer_id", user.id)
@@ -139,7 +139,7 @@ export async function POST(
     // Check verified purchase
     let isVerified = false;
     if (parsed.order_id) {
-      const { data: order } = await (supabase.from("product_orders") as any)
+      const { data: order } = await supabase.from("product_orders")
         .select("id, status")
         .eq("id", parsed.order_id)
         .eq("customer_id", user.id)
@@ -148,19 +148,19 @@ export async function POST(
       isVerified = !!order;
     } else {
       // Check if they've ever ordered this product
-      const { data: anyOrder } = await (supabase.from("product_order_items") as any)
+      const { data: anyOrder } = await supabase.from("product_order_items")
         .select("id, order:product_orders!inner(customer_id, status)")
         .eq("product_id", productId)
         .limit(1);
 
-      isVerified = (anyOrder ?? []).some(
-        (oi: any) =>
-          oi.order?.customer_id === user.id &&
-          ["delivered", "ready_for_collection"].includes(oi.order?.status),
-      );
+      type OrderItemRow = { order?: { customer_id?: string; status?: string } | Array<{ customer_id?: string; status?: string }> };
+      isVerified = (anyOrder ?? []).some((oi: OrderItemRow) => {
+        const ord = oi.order != null ? (Array.isArray(oi.order) ? oi.order[0] : oi.order) : undefined;
+        return ord?.customer_id === user.id && ord?.status != null && ["delivered", "ready_for_collection"].includes(ord.status);
+      });
     }
 
-    const { data: review, error } = await (supabase.from("product_reviews") as any)
+    const { data: review, error } = await supabase.from("product_reviews")
       .insert({
         product_id: productId,
         order_id: parsed.order_id ?? null,

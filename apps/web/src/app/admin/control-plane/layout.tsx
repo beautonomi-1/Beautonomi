@@ -17,10 +17,12 @@ import {
   TrendingUp,
   MapPin,
   ShieldAlert,
+  Wrench,
 } from "lucide-react";
 
 const controlPlaneNav = [
   { title: "Overview", href: "/admin/control-plane/overview", icon: LayoutDashboard },
+  { title: "Maintenance & Coming Soon", href: "/admin/control-plane/maintenance", icon: Wrench },
   { title: "Feature Flags", href: "/admin/control-plane/feature-flags", icon: ToggleLeft },
   { title: "Integrations", href: "/admin/control-plane/integrations", icon: Plug },
   { title: "On-Demand Module", href: "/admin/control-plane/modules/on-demand", icon: Music },
@@ -49,7 +51,7 @@ export default function ControlPlaneLayout({ children }: { children: ReactNode }
             href={item.href}
             className={cn(
               "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-              pathname === item.href
+              pathname === item.href || pathname.startsWith(item.href + "/")
                 ? "bg-primary text-primary-foreground"
                 : "hover:bg-muted"
             )}

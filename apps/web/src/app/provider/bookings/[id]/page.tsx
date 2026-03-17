@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
@@ -16,24 +16,55 @@ import {
   CheckCircle2,
   XCircle,
   Navigation,
+  Star,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { Booking, AdditionalCharge } from "@/types/beautonomi";
+
+/** Booking as returned from provider API (includes expanded customer, totals, etc.) */
+type ProviderBookingDetail = Booking & {
+  total_paid?: number;
+  total_refunded?: number;
+  customer_name?: string;
+  customers?: { full_name?: string; rating_average?: number; review_count?: number };
+  customer_phone?: string;
+  customer_email?: string;
+  travel_fee?: number;
+  service_fee_amount?: number;
+  tax_amount?: number;
+  tax_rate?: number;
+  location_name?: string;
+  staff_name?: string;
+  provider_points_earned?: number;
+};
 import { toast } from "sonner";
 import Link from "next/link";
 import { BookingAuditLog } from "@/components/provider/BookingAuditLog";
 import { BookingConflictAlert } from "@/components/provider/BookingConflictAlert";
 import { SafetyPanicButton } from "@/components/safety/SafetyPanicButton";
 import ProviderLocationTracker from "@/components/provider/ProviderLocationTracker";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Trophy } from "lucide-react";
+import CustomerRatingButton from "@/components/reviews/customer-rating-button";
+import RateCustomerModal from "@/components/reviews/rate-customer-modal";
+
+const PROVIDER_COMPLETION_MODAL_STORAGE_KEY = "provider_booking_completion_modal_seen_";
 
 export default function ProviderBookingDetail() {
   const params = useParams();
   const router = useRouter();
   const bookingId = params.id as string;
 
-  const [booking, setBooking] = useState<Booking | null>(null);
+  const [booking, setBooking] = useState<ProviderBookingDetail | null>(null);
   const [additionalCharges, setAdditionalCharges] = useState<AdditionalCharge[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,35 +96,25 @@ export default function ProviderBookingDetail() {
   const [isSavingNotes, setIsSavingNotes] = useState(false);
 
   // Provider forms (for labelling form responses)
-  const [providerForms, setProviderForms] = useState<Array<{ id: string; title: string; fields: Array<{ id: string; name: string }> }>>([]);
+  const [providerForms, setProviderForms] = useState<Array<{ id: string; title: string; form_type?: string; fields: Array<{ id: string; name: string }> }>>([]);
+  const [uploadingConsentFormId, setUploadingConsentFormId] = useState<string | null>(null);
 
   // At-home journey / arrival
   const [isStartingJourney, setIsStartingJourney] = useState(false);
   const [isMarkingArrived, setIsMarkingArrived] = useState(false);
+  const [arrivalPinInput, setArrivalPinInput] = useState("");
+  const [isVerifyingArrival, setIsVerifyingArrival] = useState(false);
+  const [isResendingArrivalOtp, setIsResendingArrivalOtp] = useState(false);
 
-  useEffect(() => {
-    loadBooking();
-    loadAdditionalCharges();
-  }, [bookingId]);
+  // Post-completion modal: once per booking when opening a completed booking
+  const [showProviderCompletionModal, setShowProviderCompletionModal] = useState(false);
+  const [showRateCustomerFromModal, setShowRateCustomerFromModal] = useState(false);
 
-  useEffect(() => {
-    if (!booking?.provider_form_responses || Object.keys(booking.provider_form_responses).length === 0) return;
-    fetcher.get<{ data: Array<{ id: string; title: string; fields?: Array<{ id: string; name: string }> }> }>("/api/provider/forms")
-      .then((res) => {
-        const list = (res as { data?: Array<{ id: string; title: string; fields?: Array<{ id: string; name: string }> }> })?.data ?? [];
-        setProviderForms(list.map((f) => ({ id: f.id, title: f.title, fields: f.fields ?? [] })));
-      })
-      .catch((err) => {
-        if (process.env.NODE_ENV === "development") console.warn("[Provider booking] Failed to load forms list", err);
-      });
-  }, [booking?.provider_form_responses]);
-
-  const loadBooking = async () => {
+  const loadBooking = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
-
-      const response = await fetcher.get<{ data: Booking }>(
+      const response = await fetcher.get<{ data: ProviderBookingDetail }>(
         `/api/provider/bookings/${bookingId}`
       );
       setBooking(response.data);
@@ -109,9 +130,9 @@ export default function ProviderBookingDetail() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [bookingId]);
 
-  const loadAdditionalCharges = async () => {
+  const loadAdditionalCharges = useCallback(async () => {
     try {
       const response = await fetcher.get<{ data: { charges: AdditionalCharge[] } }>(
         `/api/provider/bookings/${bookingId}/additional-charges`
@@ -120,7 +141,48 @@ export default function ProviderBookingDetail() {
     } catch (err) {
       console.error("Error loading additional charges:", err);
     }
+  }, [bookingId]);
+
+  useEffect(() => {
+    loadBooking();
+    loadAdditionalCharges();
+  }, [loadBooking, loadAdditionalCharges]);
+
+  // Show provider post-completion modal once per booking
+  useEffect(() => {
+    if (!bookingId || typeof bookingId !== "string" || !booking?.id || booking.status !== "completed") return;
+    if (typeof window === "undefined") return;
+    try {
+      const key = PROVIDER_COMPLETION_MODAL_STORAGE_KEY + bookingId;
+      const seen = window.localStorage.getItem(key);
+      if (!seen) setShowProviderCompletionModal(true);
+    } catch {
+      // ignore storage errors
+    }
+  }, [bookingId, booking?.id, booking?.status]);
+
+  const dismissProviderCompletionModal = (markSeen: boolean) => {
+    setShowProviderCompletionModal(false);
+    if (markSeen && bookingId && typeof bookingId === "string" && typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(PROVIDER_COMPLETION_MODAL_STORAGE_KEY + bookingId, "1");
+      } catch {
+        // ignore
+      }
+    }
   };
+
+  useEffect(() => {
+    if (!booking?.provider_form_responses || Object.keys(booking.provider_form_responses).length === 0) return;
+    fetcher.get<{ data: Array<{ id: string; title: string; form_type?: string; fields?: Array<{ id: string; name: string }> }> }>("/api/provider/forms")
+      .then((res) => {
+        const list = (res as { data?: Array<{ id: string; title: string; form_type?: string; fields?: Array<{ id: string; name: string }> }> })?.data ?? [];
+        setProviderForms(list.map((f) => ({ id: f.id, title: f.title, form_type: f.form_type, fields: f.fields ?? [] })));
+      })
+      .catch((err) => {
+        if (process.env.NODE_ENV === "development") console.warn("[Provider booking] Failed to load forms list", err);
+      });
+  }, [booking?.provider_form_responses]);
 
   const handleStatusChange = async (newStatus: string) => {
     if (!booking) return;
@@ -128,11 +190,11 @@ export default function ProviderBookingDetail() {
     try {
       setIsUpdating(true);
       setConflictError(null);
-      const response = await fetcher.patch<{ booking: Booking; conflict?: boolean }>(
+      const response = await fetcher.patch<{ booking: ProviderBookingDetail; conflict?: boolean }>(
         `/api/provider/bookings/${bookingId}`,
         {
           status: newStatus,
-          version: (booking as any).version, // Include version for conflict detection
+          version: booking.version,
         }
       );
       
@@ -142,7 +204,7 @@ export default function ProviderBookingDetail() {
         return;
       }
       
-      setBooking({ ...booking, status: newStatus as any, ...response.booking });
+      setBooking({ ...booking, status: newStatus as Booking["status"], ...response.booking });
       toast.success("Booking status updated");
       loadBooking(); // Reload to get latest version
     } catch (error) {
@@ -194,7 +256,7 @@ export default function ProviderBookingDetail() {
       setIsRescheduling(true);
       await fetcher.patch(`/api/provider/bookings/${bookingId}`, {
         scheduled_at: `${rescheduleDate}T${rescheduleTime}:00`,
-        version: (booking as any)?.version,
+        version: booking.version,
       });
       toast.success("Booking rescheduled");
       setShowReschedule(false);
@@ -253,7 +315,7 @@ export default function ProviderBookingDetail() {
       setIsSavingNotes(true);
       await fetcher.patch(`/api/provider/bookings/${bookingId}`, {
         special_requests: notesText,
-        version: (booking as any)?.version,
+        version: booking.version,
       });
       toast.success("Notes saved");
       setEditingNotes(false);
@@ -312,6 +374,38 @@ export default function ProviderBookingDetail() {
     }
   };
 
+  const handleVerifyArrival = async () => {
+    const code = arrivalPinInput.replace(/\D/g, "");
+    if (code.length < 4) {
+      toast.error("Enter the 4 or 6 digit code from the customer.");
+      return;
+    }
+    setIsVerifyingArrival(true);
+    try {
+      await fetcher.post(`/api/provider/bookings/${bookingId}/verify-arrival`, { otp: code });
+      toast.success("Verified. You can start the service.");
+      setArrivalPinInput("");
+      loadBooking();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to verify");
+    } finally {
+      setIsVerifyingArrival(false);
+    }
+  };
+
+  const handleResendArrivalOtp = async () => {
+    setIsResendingArrivalOtp(true);
+    try {
+      await fetcher.post(`/api/provider/bookings/${bookingId}/resend-arrival-otp`, {});
+      toast.success("New code sent to customer.");
+      loadBooking();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to resend");
+    } finally {
+      setIsResendingArrivalOtp(false);
+    }
+  };
+
   const isActive = ["pending", "booked", "confirmed"].includes(booking?.status ?? "");
   const isStarted = ["started", "in_progress"].includes(booking?.status ?? "");
   const isAtHome = booking?.location_type === "at_home";
@@ -321,9 +415,11 @@ export default function ProviderBookingDetail() {
     (booking?.current_stage == null || booking?.current_stage === "confirmed");
   const canMarkArrived = isAtHome && booking?.current_stage === "provider_on_way";
   const isEnRoute = isAtHome && booking?.current_stage === "provider_on_way";
-  const totalPaid = (booking as any)?.total_paid ?? 0;
-  const totalRefunded = (booking as any)?.total_refunded ?? 0;
-  const totalAmount = (booking as any)?.total_amount ?? 0;
+  const isArrived = isAtHome && booking?.current_stage === "provider_arrived";
+  const arrivalVerified = booking.arrival_otp_verified === true;
+  const totalPaid = booking.total_paid ?? 0;
+  const totalRefunded = booking.total_refunded ?? 0;
+  const totalAmount = booking.total_amount ?? 0;
   const outstanding = totalAmount - totalPaid + totalRefunded;
   const canMarkPaid = outstanding > 0 && (booking?.status === "completed" || isStarted);
   const canRefund = totalPaid > 0 && totalRefunded < totalPaid;
@@ -407,28 +503,50 @@ export default function ProviderBookingDetail() {
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-gray-600">Name</p>
-                <p className="font-medium">{(booking as any).customer_name || "Guest"}</p>
+                <p className="font-medium">{booking.customer_name || booking.customers?.full_name || "Guest"}</p>
               </div>
-              {(booking as any).customer_phone && (
+              {booking.customers?.rating_average != null && Number(booking.customers?.rating_average) > 0 && (
+                <div className="flex items-center gap-2">
+                  <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                  <span className="text-sm font-semibold text-gray-800">
+                    {Number(booking.customers?.rating_average).toFixed(1)}
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    ({Number(booking.customers?.review_count ?? 0)} {booking.customers?.review_count === 1 ? "review" : "reviews"})
+                  </span>
+                </div>
+              )}
+              {booking.customer_phone && (
                 <div className="flex items-center gap-2">
                   <Phone className="w-4 h-4 text-gray-400" />
                   <a
-                    href={`tel:${(booking as any).customer_phone}`}
+                    href={`tel:${booking.customer_phone}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {(booking as any).customer_phone}
+                    {booking.customer_phone}
                   </a>
                 </div>
               )}
-              {(booking as any).customer_email && (
+              {booking.customer_email && (
                 <div className="flex items-center gap-2">
                   <Mail className="w-4 h-4 text-gray-400" />
                   <a
-                    href={`mailto:${(booking as any).customer_email}`}
+                    href={`mailto:${booking.customer_email}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {(booking as any).customer_email}
+                    {booking.customer_email}
                   </a>
+                </div>
+              )}
+              {booking.status === "completed" && bookingId && (
+                <div className="pt-2 border-t">
+                  <CustomerRatingButton
+                    bookingId={String(bookingId)}
+                    customerId={booking.customer_id ?? ""}
+                    customerName={typeof booking.customer_name === "string" ? booking.customer_name : typeof booking.customers?.full_name === "string" ? booking.customers.full_name : "Guest"}
+                    bookingStatus={booking.status}
+                    onRatingSubmitted={() => loadBooking()}
+                  />
                 </div>
               )}
             </div>
@@ -470,7 +588,7 @@ export default function ProviderBookingDetail() {
                   <p className="text-sm text-gray-600">Location</p>
                   {booking.location_type === "at_salon" ? (
                     <p className="font-medium">
-                      {(booking as any).location_name || "At Salon"}
+                      {booking.location_name || "At Salon"}
                     </p>
                   ) : booking.address ? (
                     <div className="space-y-1">
@@ -539,12 +657,12 @@ export default function ProviderBookingDetail() {
                   )}
                 </div>
               </div>
-              {(booking as any).staff_name && (
+              {booking.staff_name && (
                 <div className="flex items-start gap-3">
                   <User className="w-5 h-5 text-gray-400 mt-0.5" />
                   <div>
                     <p className="text-sm text-gray-600">Assigned Staff</p>
-                    <p className="font-medium">{(booking as any).staff_name}</p>
+                    <p className="font-medium">{booking.staff_name}</p>
                   </div>
                 </div>
               )}
@@ -596,6 +714,46 @@ export default function ProviderBookingDetail() {
                   </Button>
                 </div>
               )}
+              {isArrived && (
+                <div className="space-y-3">
+                  {arrivalVerified ? (
+                    <p className="text-sm font-medium text-green-800 rounded-lg bg-green-50 border border-green-200 py-2 px-3">
+                      Customer verified – you can start the service.
+                    </p>
+                  ) : (
+                    <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 space-y-3">
+                      <p className="text-sm font-medium text-blue-900">Enter the verification code from the customer</p>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={arrivalPinInput}
+                        onChange={(e) => setArrivalPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        placeholder="1234"
+                        className="w-full max-w-[140px] border border-gray-300 rounded-lg px-3 py-2 text-lg tracking-widest"
+                        aria-label="Verification code from customer"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          onClick={handleVerifyArrival}
+                          disabled={isVerifyingArrival || arrivalPinInput.replace(/\D/g, "").length < 4}
+                          className="min-h-[44px]"
+                        >
+                          {isVerifyingArrival ? "Verifying…" : "Verify"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={handleResendArrivalOtp}
+                          disabled={isResendingArrivalOtp}
+                          className="min-h-[44px]"
+                        >
+                          {isResendingArrivalOtp ? "Sending…" : "Resend code"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               {isEnRoute && (
                 <ProviderLocationTracker
                   bookingId={bookingId}
@@ -624,14 +782,14 @@ export default function ProviderBookingDetail() {
                 className="flex justify-between items-center py-3 border-b last:border-0"
               >
                 <div>
-                  <p className="font-medium">{(service as any).offering_name || "Service"}</p>
-                  {(service as any).duration && (
-                    <p className="text-sm text-gray-600">{(service as any).duration} mins</p>
+                  <p className="font-medium">{service.offering_name || "Service"}</p>
+                  {service.duration_minutes != null && (
+                    <p className="text-sm text-gray-600">{service.duration_minutes} mins</p>
                   )}
                 </div>
-                {(service as any).price && (
+                {service.price != null && (
                   <p className="font-medium">
-                    {booking.currency} {((service as any).price).toFixed(2)}
+                    {booking.currency} {Number(service.price).toFixed(2)}
                   </p>
                 )}
               </div>
@@ -647,7 +805,7 @@ export default function ProviderBookingDetail() {
           <div className="bg-white border rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Products</h2>
             <div className="space-y-3">
-              {booking.products.map((product: any, index: number) => (
+              {booking.products.map((product, index: number) => (
                 <div
                   key={product.id || index}
                   className="flex justify-between items-center py-3 border-b last:border-0"
@@ -666,7 +824,7 @@ export default function ProviderBookingDetail() {
         )}
 
         {/* Special Requests & House Call Instructions */}
-        {(booking.special_requests || (booking as any).house_call_instructions) && (
+        {(booking.special_requests || booking.house_call_instructions) && (
           <div className="bg-white border rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Special Instructions</h2>
             <div className="space-y-4">
@@ -676,10 +834,10 @@ export default function ProviderBookingDetail() {
                   <p className="text-sm text-gray-600 whitespace-pre-wrap">{booking.special_requests}</p>
                 </div>
               )}
-              {(booking as any).house_call_instructions && (
+              {booking.house_call_instructions && (
                 <div className="pt-3 border-t border-gray-200">
                   <p className="text-sm font-medium text-gray-700 mb-1">House Call Instructions</p>
-                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{(booking as any).house_call_instructions}</p>
+                  <p className="text-sm text-gray-600 whitespace-pre-wrap">{booking.house_call_instructions}</p>
                 </div>
               )}
             </div>
@@ -687,19 +845,25 @@ export default function ProviderBookingDetail() {
         )}
 
         {/* Provider form responses (intake/consent/waiver filled at checkout) */}
-        {(booking as any).provider_form_responses && Object.keys((booking as any).provider_form_responses).length > 0 && (
-          <div className="bg-white border rounded-lg p-6 mb-6">
+        {booking.provider_form_responses && Object.keys(booking.provider_form_responses).length > 0 && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Form responses</h2>
             <div className="space-y-4">
-              {Object.entries((booking as any).provider_form_responses).map(([formId, fields]) => {
+              {Object.entries(booking.provider_form_responses).map(([formId, fields]) => {
                 const formMeta = providerForms.find((f) => f.id === formId);
                 const formTitle = formMeta?.title ?? `Form ${formId.slice(0, 8)}`;
+                const formType = formMeta?.form_type ?? "";
+                const isConsentOrWaiver = formType === "consent" || formType === "waiver";
+                const consentUrl = typeof fields === "object" && fields !== null && (fields as Record<string, unknown>)._consent_document_url as string | undefined;
                 const getFieldName = (fieldId: string) => formMeta?.fields?.find((f) => f.id === fieldId)?.name ?? fieldId.slice(0, 8);
+                const visibleEntries = typeof fields === "object" && fields !== null
+                  ? Object.entries(fields).filter(([k]) => k !== "_consent_document_url")
+                  : [];
                 return (
-                  <div key={formId} className="rounded-lg border border-gray-200 bg-gray-50/50 p-4">
+                  <div key={formId} className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
                     <p className="text-sm font-semibold text-gray-800 mb-2">{formTitle}</p>
                     <dl className="space-y-2">
-                      {typeof fields === "object" && fields !== null && Object.entries(fields).map(([fieldKey, value]) => (
+                      {visibleEntries.map(([fieldKey, value]) => (
                         <div key={fieldKey} className="flex justify-between gap-2 text-sm">
                           <dt className="text-gray-600">{getFieldName(fieldKey)}</dt>
                           <dd className="text-gray-900 font-medium text-right break-all">
@@ -708,6 +872,48 @@ export default function ProviderBookingDetail() {
                         </div>
                       ))}
                     </dl>
+                    {isConsentOrWaiver && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {consentUrl && (
+                          <a
+                            href={consentUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm font-medium text-primary hover:underline"
+                          >
+                            View consent document
+                          </a>
+                        )}
+                        <label className="inline-flex items-center gap-1 text-sm font-medium text-gray-600 cursor-pointer hover:text-gray-900">
+                          <input
+                            type="file"
+                            accept=".pdf,image/jpeg,image/png,image/webp,image/gif"
+                            className="sr-only"
+                            disabled={!!uploadingConsentFormId}
+                            onChange={async (e) => {
+                              const f = e.target.files?.[0];
+                              if (!f || !bookingId) return;
+                              setUploadingConsentFormId(formId);
+                              try {
+                                const body = new FormData();
+                                body.set("form_id", formId);
+                                body.set("file", f);
+                                await fetcher.post(`/api/provider/bookings/${bookingId}/consent-document`, body);
+                                toast.success("Document uploaded");
+                                await loadBooking();
+                              } catch (err) {
+                                toast.error(err instanceof Error ? err.message : "Upload failed");
+                              } finally {
+                                setUploadingConsentFormId(null);
+                                e.target.value = "";
+                              }
+                            }}
+                          />
+                          {consentUrl ? "Replace document" : "Upload consent document"}
+                        </label>
+                        {uploadingConsentFormId === formId && <span className="text-xs text-gray-500">Uploading…</span>}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -716,11 +922,11 @@ export default function ProviderBookingDetail() {
         )}
 
         {/* Additional details (platform booking custom fields) */}
-        {(booking as any).custom_field_values && Object.keys((booking as any).custom_field_values).length > 0 && (
-          <div className="bg-white border rounded-lg p-6 mb-6">
+        {booking.custom_field_values && Object.keys(booking.custom_field_values).length > 0 && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Additional details</h2>
             <dl className="space-y-2">
-              {Object.entries((booking as any).custom_field_values).map(([name, value]) => (
+              {Object.entries(booking.custom_field_values).map(([name, value]) => (
                 <div key={name} className="flex justify-between gap-2 text-sm">
                   <dt className="text-gray-600">{name}</dt>
                   <dd className="text-gray-900 font-medium text-right break-all">
@@ -733,48 +939,48 @@ export default function ProviderBookingDetail() {
         )}
 
         {/* Payment Summary */}
-        <div className="bg-white border rounded-lg p-6 mb-6">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">Payment Summary</h2>
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-gray-600">Subtotal</span>
               <span className="font-medium">
-                {booking.currency} {((booking as any).subtotal?.toFixed(2)) || "0.00"}
+                {booking.currency} {(booking.subtotal?.toFixed(2)) ?? "0.00"}
               </span>
             </div>
-            {(booking as any).travel_fee && (booking as any).travel_fee > 0 && (
+            {booking.travel_fee != null && booking.travel_fee > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Travel Fee</span>
                 <span className="font-medium">
-                  {booking.currency} {((booking as any).travel_fee).toFixed(2)}
+                  {booking.currency} {booking.travel_fee.toFixed(2)}
                 </span>
               </div>
             )}
-            {(booking as any).service_fee_amount && (booking as any).service_fee_amount > 0 && (
+            {booking.service_fee_amount != null && booking.service_fee_amount > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Service Fee</span>
                 <span className="font-medium">
-                  {booking.currency} {((booking as any).service_fee_amount).toFixed(2)}
+                  {booking.currency} {booking.service_fee_amount.toFixed(2)}
                 </span>
               </div>
             )}
-            {(booking as any).tax_amount && (booking as any).tax_amount > 0 && (
+            {booking.tax_amount != null && booking.tax_amount > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-600">
-                  {(booking as any).tax_rate && (booking as any).tax_rate > 0
-                    ? `VAT (${((booking as any).tax_rate * 100).toFixed(1)}%)`
+                  {booking.tax_rate != null && booking.tax_rate > 0
+                    ? `VAT (${(booking.tax_rate * 100).toFixed(1)}%)`
                     : "Tax"}
                 </span>
                 <span className="font-medium text-blue-600">
-                  {booking.currency} {((booking as any).tax_amount).toFixed(2)}
+                  {booking.currency} {booking.tax_amount.toFixed(2)}
                 </span>
               </div>
             )}
-            {(booking as any).tip_amount && (booking as any).tip_amount > 0 && (
+            {booking.tip_amount != null && booking.tip_amount > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Tip</span>
                 <span className="font-medium">
-                  {booking.currency} {((booking as any).tip_amount).toFixed(2)}
+                  {booking.currency} {booking.tip_amount.toFixed(2)}
                 </span>
               </div>
             )}
@@ -782,18 +988,18 @@ export default function ProviderBookingDetail() {
               <div className="flex justify-between">
                 <span className="font-semibold">Total</span>
                 <span className="font-semibold text-lg">
-                  {booking.currency} {((booking as any).total_amount?.toFixed(2)) || "0.00"}
+                  {booking.currency} {(booking.total_amount?.toFixed(2)) ?? "0.00"}
                 </span>
               </div>
             </div>
-            {(booking as any).tax_amount && (booking as any).tax_amount > 0 && (
+            {booking.tax_amount != null && booking.tax_amount > 0 && (
               <div className="mt-2 pt-2 border-t">
                 <p className="text-xs text-gray-500">
-                  {(booking as any).tax_rate && (booking as any).tax_rate > 0
-                    ? `VAT (${((booking as any).tax_rate * 100).toFixed(1)}%) amount: `
+                  {booking.tax_rate != null && booking.tax_rate > 0
+                    ? `VAT (${(booking.tax_rate * 100).toFixed(1)}%) amount: `
                     : "Tax amount: "}
-                  {booking.currency} {((booking as any).tax_amount).toFixed(2)}.
-                  {(booking as any).tax_rate && (booking as any).tax_rate >= 0.15
+                  {booking.currency} {booking.tax_amount.toFixed(2)}.
+                  {booking.tax_rate != null && booking.tax_rate >= 0.15
                     ? " This amount must be remitted to SARS by the provider."
                     : ""}
                 </p>
@@ -925,7 +1131,7 @@ export default function ProviderBookingDetail() {
             </div>
           )}
 
-          {["in_progress", "completed"].includes(booking.status as any) && (
+          {["in_progress", "completed"].includes(booking.status) && (
             <div className="mt-6 border-t pt-4">
               <h3 className="font-semibold mb-2">Request additional payment</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1092,7 +1298,7 @@ export default function ProviderBookingDetail() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  setNotesText((booking as any)?.special_requests || "");
+                  setNotesText(booking.special_requests ?? "");
                   setEditingNotes(true);
                 }}
               >
@@ -1118,7 +1324,7 @@ export default function ProviderBookingDetail() {
             </div>
           ) : (
             <p className="text-sm text-gray-600">
-              {(booking as any)?.special_requests || "No notes"}
+              {booking.special_requests ?? "No notes"}
             </p>
           )}
         </div>
@@ -1210,6 +1416,70 @@ export default function ProviderBookingDetail() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Post-completion modal: points, rate client, reviews tip (only when booking loaded) */}
+        {booking && (
+        <Dialog open={showProviderCompletionModal} onOpenChange={(open) => !open && dismissProviderCompletionModal(true)}>
+          <DialogContent className="sm:max-w-md" hideClose={false}>
+            <DialogHeader>
+              <div className="flex justify-center mb-3">
+                <div className="rounded-full bg-primary/10 p-4">
+                  <Trophy className="h-10 w-10 text-primary" aria-hidden />
+                </div>
+              </div>
+              <DialogTitle className="text-center text-xl">Booking complete</DialogTitle>
+              <DialogDescription className="text-center space-y-2">
+                <span className="block">Great work. This booking is complete.</span>
+                {(() => {
+                  const raw = booking.provider_points_earned;
+                  const pointsNum = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : 0;
+                  return pointsNum > 0 ? (
+                  <span className="block font-medium text-primary">
+                    You earned {pointsNum} points. They’ve been added to your balance.
+                  </span>
+                ) : (
+                  <span className="block text-muted-foreground text-sm">
+                    You earn points for each completed booking—keep going to unlock badges.
+                  </span>
+                );
+                })()}
+                <span className="block text-sm text-muted-foreground">
+                  Your client can leave a review. Reviews help you get more bookings and earn extra points.
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex-col-reverse gap-2 sm:flex-col">
+              <Button
+                onClick={() => {
+                  dismissProviderCompletionModal(true);
+                  setShowRateCustomerFromModal(true);
+                }}
+                className="w-full"
+              >
+                Rate this client
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => dismissProviderCompletionModal(true)}
+                className="w-full"
+              >
+                Maybe later
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        )}
+
+        {/* Rate customer modal (opened from completion modal or from button below) */}
+        {booking?.status === "completed" && bookingId && (
+          <RateCustomerModal
+            open={showRateCustomerFromModal}
+            onOpenChange={setShowRateCustomerFromModal}
+            bookingId={String(bookingId)}
+            customerName={typeof booking.customers?.full_name === "string" ? booking.customers.full_name : "Client"}
+            onSuccess={() => setShowRateCustomerFromModal(false)}
+          />
         )}
       </div>
     </RoleGuard>

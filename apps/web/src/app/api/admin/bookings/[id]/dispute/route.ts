@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
-import { sendToUsers } from "@/lib/notifications/onesignal";
+import { sendToUser } from "@/lib/notifications/onesignal";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 
 const disputeSchema = z.object({
   reason: z.string().min(1, "Reason is required"),
@@ -21,8 +23,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -92,9 +94,11 @@ export async function POST(
 
     const { reason, description, opened_by } = validationResult.data;
 
+    type BookingRow = { provider_id: string; customer_id?: string };
+    type DisputeRow = { id: string };
     // Create dispute
-    const { data: dispute, error } = await (supabase
-      .from("booking_disputes") as any)
+    const { data: dispute, error } = await supabase
+      .from("booking_disputes")
       .insert({
         booking_id: id,
         reason,
@@ -124,38 +128,38 @@ export async function POST(
     // does not include a "disputed" state in this codebase. Disputes are tracked in booking_disputes.
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.booking.dispute.open",
       entity_type: "booking_dispute",
-      entity_id: (dispute as any).id,
+      entity_id: (dispute as DisputeRow).id,
       metadata: { booking_id: id, reason, opened_by },
     });
 
     // Notify customer + provider owner (best-effort)
     try {
-      const bookingData = booking as any;
+      const bookingData = booking as BookingRow;
       const { data: provider } = await supabase
         .from("providers")
         .select("user_id")
         .eq("id", bookingData.provider_id)
         .single();
 
-      const recipients = [
-        bookingData.customer_id,
-        (provider as any)?.user_id,
-      ].filter(Boolean);
-
-      if (recipients.length > 0) {
-        await sendToUsers(recipients, {
-          title: "Dispute opened",
-          message: "A dispute has been opened for a booking. Our team will review and follow up.",
-          data: {
-            type: "booking_dispute_opened",
-            bookingId: id,
-            disputeId: (dispute as any).id,
-          },
-        });
+      const payload = {
+        title: "Dispute opened",
+        message: "A dispute has been opened for a booking. Our team will review and follow up.",
+        data: {
+          type: "booking_dispute_opened",
+          bookingId: id,
+          disputeId: (dispute as DisputeRow).id,
+        },
+      };
+      if (bookingData.customer_id) {
+        await sendToUser(bookingData.customer_id, payload, ["push"], { appType: "customer" });
+      }
+      const providerUserId = (provider as { user_id?: string } | null)?.user_id;
+      if (providerUserId) {
+        await sendToUser(providerUserId, payload, ["push"], { appType: "provider" });
       }
     } catch (e) {
       console.warn("Failed to send dispute opened notifications:", e);

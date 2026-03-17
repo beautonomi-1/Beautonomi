@@ -8,7 +8,7 @@
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { z } from "zod";
-import { getOneSignalRestApiKey } from "@/lib/platform/secrets";
+import { getOneSignalRestApiKey, getOneSignalConfig, type OneSignalAppType } from "@/lib/platform/secrets";
 
 const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID;
 
@@ -108,15 +108,17 @@ async function logNotification(entry: NotificationLogEntry) {
 }
 
 /**
- * Register a device for push notifications
+ * Register a device for push notifications.
+ * @param appType - 'customer' | 'provider' for multi-app OneSignal; defaults to 'customer'.
  */
 export async function registerDevice(
   userId: string,
   playerId: string,
-  platform: "web" | "ios" | "android"
+  platform: "web" | "ios" | "android",
+  appType: OneSignalAppType = "customer"
 ): Promise<{ success: boolean; error?: string }> {
   const supabase = await getSupabaseServer();
-  
+
   const { error } = await supabase
     .from("user_devices")
     .upsert(
@@ -124,6 +126,7 @@ export async function registerDevice(
         user_id: userId,
         onesignal_player_id: playerId,
         platform,
+        app_type: appType,
         last_seen: new Date().toISOString(),
       },
       { onConflict: "onesignal_player_id" }
@@ -133,14 +136,22 @@ export async function registerDevice(
     console.error("Error registering device:", error);
     return { success: false, error: error.message };
   }
-  
+
   return { success: true };
 }
+
+/** Options for which OneSignal app to use (multi-app support). */
+export type OneSignalSendOptions = {
+  appType?: OneSignalAppType;
+  /** When sending to users who are not the current requester (e.g. provider when customer creates request), pass admin client so device lookup is not blocked by RLS. */
+  supabaseClient?: any;
+};
 
 /**
  * Send notification via OneSignal REST API
  * Supports: Push, Email, SMS, Live Activities
- * 
+ * When options.appType is set, uses that app's config (customer/provider); otherwise legacy single-app.
+ *
  * According to: https://documentation.onesignal.com/reference/create-notification
  */
 async function sendOneSignalNotification(
@@ -163,10 +174,25 @@ async function sendOneSignalNotification(
     template_id?: string;
     content_available?: boolean;
     mutable_content?: boolean;
-  }
+    priority?: number;
+    ios_sound?: string;
+    android_channel_id?: string;
+    ios_interruption_level?: "passive" | "active" | "time_sensitive" | "critical";
+  },
+  options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
-  const restKey = await getOneSignalRestApiKey();
-  if (!ONESIGNAL_APP_ID || !restKey) {
+  const appType = options?.appType;
+  let appId: string | null;
+  let restKey: string | null;
+  if (appType) {
+    const c = getOneSignalConfig(appType);
+    appId = c.appId;
+    restKey = c.restApiKey;
+  } else {
+    appId = ONESIGNAL_APP_ID ?? null;
+    restKey = await getOneSignalRestApiKey();
+  }
+  if (!appId || !restKey) {
     console.warn("OneSignal API keys not configured. Skipping notification send.");
     await logNotification({
       event_type: payload.data?.type || "notification",
@@ -183,7 +209,7 @@ async function sendOneSignalNotification(
   // Build OneSignal notification payload
   // According to: https://documentation.onesignal.com/reference/create-notification
   const notification: any = {
-    app_id: ONESIGNAL_APP_ID,
+    app_id: appId,
   };
 
   // Targeting
@@ -226,6 +252,18 @@ async function sendOneSignalNotification(
   }
   if (payload.mutable_content !== undefined) {
     notification.mutable_content = payload.mutable_content;
+  }
+  if (payload.priority !== undefined) {
+    notification.priority = payload.priority;
+  }
+  if (payload.ios_sound) {
+    notification.ios_sound = payload.ios_sound;
+  }
+  if (payload.android_channel_id) {
+    notification.android_channel_id = payload.android_channel_id;
+  }
+  if (payload.ios_interruption_level) {
+    notification.ios_interruption_level = payload.ios_interruption_level;
   }
 
   // Email content
@@ -316,77 +354,91 @@ async function sendOneSignalNotification(
 }
 
 /**
- * Send notification to a single user
+ * Send notification to a single user.
+ * @param options.appType - When set, only devices for that app (customer/provider) are used and that app's OneSignal config is used.
  */
 export async function sendToUser(
   userId: string,
   payload: NotificationPayload,
-  channels: NotificationChannel[] = ["push"]
+  channels: NotificationChannel[] = ["push"],
+  options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
-  const supabase = await getSupabaseServer();
+  // When sending to provider, device lookup often runs in customer/webhook context; use admin so RLS does not block.
+  const supabase =
+    options?.supabaseClient ??
+    (await (options?.appType === "provider"
+      ? Promise.resolve(getSupabaseAdmin())
+      : getSupabaseServer()));
 
-  // Get user's devices
-  const { data: devices } = await supabase
+  let query = supabase
     .from("user_devices")
     .select("onesignal_player_id")
     .eq("user_id", userId);
 
+  if (options?.appType === "provider") {
+    query = query.eq("app_type", "provider");
+  } else if (options?.appType === "customer") {
+    query = query.or("app_type.eq.customer,app_type.is.null");
+  }
+
+  const { data: devices } = await query;
   const playerIds = devices?.map((d: any) => d.onesignal_player_id) || [];
 
-  // Build notification payload
   const notificationPayload: any = {
-    include_external_user_ids: [userId], // Use external user ID for cross-channel targeting
+    include_external_user_ids: [userId],
     channels,
     headings: { en: payload.title },
     contents: { en: payload.message },
     data: payload.data || {},
   };
 
-  // Add channel-specific content
   if (channels.includes("email")) {
     notificationPayload.email_subject = payload.title;
     notificationPayload.email_body = payload.message;
   }
-
   if (channels.includes("sms")) {
     notificationPayload.sms_body = payload.message;
   }
-
-  if (payload.url) {
-    notificationPayload.url = payload.url;
-  }
-
-  if (payload.image) {
-    notificationPayload.big_picture = payload.image;
-  }
-
-  // If we have player IDs, also include them for push
+  if (payload.url) notificationPayload.url = payload.url;
+  if (payload.image) notificationPayload.big_picture = payload.image;
   if (playerIds.length > 0 && channels.includes("push")) {
     notificationPayload.include_player_ids = playerIds;
   }
+  const passthrough = payload as Record<string, unknown>;
+  if (passthrough.priority !== undefined) notificationPayload.priority = passthrough.priority;
+  if (passthrough.ios_sound) notificationPayload.ios_sound = passthrough.ios_sound;
+  if (passthrough.android_channel_id) notificationPayload.android_channel_id = passthrough.android_channel_id;
+  if (passthrough.ios_interruption_level) notificationPayload.ios_interruption_level = passthrough.ios_interruption_level;
 
-  return await sendOneSignalNotification(notificationPayload);
+  return await sendOneSignalNotification(notificationPayload, options);
 }
 
 /**
- * Send notification to multiple users
+ * Send notification to multiple users.
+ * @param options.appType - When set, only devices for that app are used and that app's OneSignal config is used.
  */
 export async function sendToUsers(
   userIds: string[],
   payload: NotificationPayload,
-  channels: NotificationChannel[] = ["push"]
+  channels: NotificationChannel[] = ["push"],
+  options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
-  const supabase = await getSupabaseServer();
+  const supabase = options?.supabaseClient ?? (await getSupabaseServer());
 
-  // Get all devices for these users
-  const { data: devices } = await supabase
+  let query = supabase
     .from("user_devices")
     .select("onesignal_player_id, user_id")
     .in("user_id", userIds);
 
+  if (options?.appType === "provider") {
+    query = query.eq("app_type", "provider");
+  } else if (options?.appType === "customer") {
+    query = query.or("app_type.eq.customer,app_type.is.null");
+  }
+
+  const { data: devices } = await query;
   const playerIds = devices?.map((d: any) => d.onesignal_player_id) || [];
 
-  // Build notification payload
   const notificationPayload: any = {
     include_external_user_ids: userIds,
     channels,
@@ -395,48 +447,43 @@ export async function sendToUsers(
     data: payload.data || {},
   };
 
-  // Add channel-specific content
   if (channels.includes("email")) {
     notificationPayload.email_subject = payload.title;
     notificationPayload.email_body = payload.message;
   }
-
   if (channels.includes("sms")) {
     notificationPayload.sms_body = payload.message;
   }
-
-  if (payload.url) {
-    notificationPayload.url = payload.url;
-  }
-
-  if (payload.image) {
-    notificationPayload.big_picture = payload.image;
-  }
-
-  // If we have player IDs, also include them for push
+  if (payload.url) notificationPayload.url = payload.url;
+  if (payload.image) notificationPayload.big_picture = payload.image;
   if (playerIds.length > 0 && channels.includes("push")) {
     notificationPayload.include_player_ids = playerIds;
   }
+  const passthrough = payload as Record<string, unknown>;
+  if (passthrough.priority !== undefined) notificationPayload.priority = passthrough.priority;
+  if (passthrough.ios_sound) notificationPayload.ios_sound = passthrough.ios_sound;
+  if (passthrough.android_channel_id) notificationPayload.android_channel_id = passthrough.android_channel_id;
+  if (passthrough.ios_interruption_level) notificationPayload.ios_interruption_level = passthrough.ios_interruption_level;
 
-  return await sendOneSignalNotification(notificationPayload);
+  return await sendOneSignalNotification(notificationPayload, options);
 }
 
 /**
- * Send notification to a segment (using OneSignal filters)
+ * Send notification to a segment (using OneSignal filters).
+ * @param options.appType - Which OneSignal app to use when using two apps.
  */
 export async function sendToSegment(
   segmentQuery: Record<string, any>,
   payload: NotificationPayload,
-  channels: NotificationChannel[] = ["push"]
+  channels: NotificationChannel[] = ["push"],
+  options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
-  // Convert segment query to OneSignal filters
   const filters = Object.entries(segmentQuery).map(([key, value]) => ({
     field: key,
     relation: "=",
     value,
   }));
 
-  // Build notification payload
   const notificationPayload: any = {
     filters,
     channels,
@@ -445,25 +492,17 @@ export async function sendToSegment(
     data: payload.data || {},
   };
 
-  // Add channel-specific content
   if (channels.includes("email")) {
     notificationPayload.email_subject = payload.title;
     notificationPayload.email_body = payload.message;
   }
-
   if (channels.includes("sms")) {
     notificationPayload.sms_body = payload.message;
   }
+  if (payload.url) notificationPayload.url = payload.url;
+  if (payload.image) notificationPayload.big_picture = payload.image;
 
-  if (payload.url) {
-    notificationPayload.url = payload.url;
-  }
-
-  if (payload.image) {
-    notificationPayload.big_picture = payload.image;
-  }
-
-  return await sendOneSignalNotification(notificationPayload);
+  return await sendOneSignalNotification(notificationPayload, options);
 }
 
 /**
@@ -483,13 +522,15 @@ export async function getNotificationTemplate(key: string): Promise<any> {
 }
 
 /**
- * Send notification using a template
+ * Send notification using a template.
+ * @param options.appType - When set, only devices for that app are used and that app's OneSignal config is used.
  */
 export async function sendTemplateNotification(
   templateKey: string,
   userIds: string[],
   variables: Record<string, string> = {},
-  channels: NotificationChannel[] = ["push"]
+  channels: NotificationChannel[] = ["push"],
+  options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
   const template = await getNotificationTemplate(templateKey);
 
@@ -500,7 +541,6 @@ export async function sendTemplateNotification(
     };
   }
 
-  // Replace variables in title and body
   let title = template.title || "";
   let body = template.body || "";
   let emailSubject = template.email_subject || template.title || "";
@@ -516,45 +556,57 @@ export async function sendTemplateNotification(
     smsBody = smsBody.replace(regex, value);
   });
 
-  // Use template channels if specified, otherwise use provided channels
-  const activeChannels = template.channels && template.channels.length > 0
-    ? template.channels.filter((ch: string) => channels.includes(ch as NotificationChannel))
-    : channels;
+  const activeChannels =
+    template.channels && template.channels.length > 0
+      ? template.channels.filter((ch: string) =>
+          channels.includes(ch as NotificationChannel)
+        )
+      : channels;
 
-  // Build notification payload
   const notificationPayload: any = {
     include_external_user_ids: userIds,
     channels: activeChannels,
     headings: { en: title },
     contents: { en: body },
-    data: {
-      template_key: templateKey,
-      ...variables,
-    },
+    data: { template_key: templateKey, ...variables },
   };
 
-  // Add channel-specific content from template
   if (activeChannels.includes("email")) {
     notificationPayload.email_subject = emailSubject;
     notificationPayload.email_body = emailBody;
   }
-
   if (activeChannels.includes("sms")) {
     notificationPayload.sms_body = smsBody;
   }
-
-  if (template.url) {
-    notificationPayload.url = template.url;
-  }
-
-  if (template.image) {
-    notificationPayload.big_picture = template.image;
-  }
-
-  // Use OneSignal template if configured
+  if (template.url) notificationPayload.url = template.url;
+  if (template.image) notificationPayload.big_picture = template.image;
   if (template.onesignal_template_id) {
     notificationPayload.template_id = template.onesignal_template_id;
   }
 
-  return await sendOneSignalNotification(notificationPayload);
+  // When appType is set, target only devices for that app (player_ids + correct app config).
+  // When sending to provider, use admin client so device lookup works from customer/webhook context.
+  if (options?.appType && userIds.length > 0) {
+    const supabase =
+      options?.supabaseClient ??
+      (await (options.appType === "provider"
+        ? Promise.resolve(getSupabaseAdmin())
+        : getSupabaseServer()));
+    let query = supabase
+      .from("user_devices")
+      .select("onesignal_player_id")
+      .in("user_id", userIds);
+    if (options.appType === "provider") {
+      query = query.eq("app_type", "provider");
+    } else {
+      query = query.or("app_type.eq.customer,app_type.is.null");
+    }
+    const { data: devices } = await query;
+    const playerIds = devices?.map((d: any) => d.onesignal_player_id) || [];
+    if (playerIds.length > 0 && activeChannels.includes("push")) {
+      notificationPayload.include_player_ids = playerIds;
+    }
+  }
+
+  return await sendOneSignalNotification(notificationPayload, options);
 }

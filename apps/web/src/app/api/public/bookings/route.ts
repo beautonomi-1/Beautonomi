@@ -10,6 +10,7 @@ import { createBookingRecord } from "./_helpers/create-booking-record";
 import { processPayment } from "./_helpers/process-payment";
 import { postBookingEffects } from "./_helpers/post-booking";
 import { ensureUserProfileForAuthUser } from "./_helpers/ensure-user-profile";
+import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
 
 const bookingDraftSchema = z.object({
   provider_id: z.string().uuid("Invalid provider ID"),
@@ -79,6 +80,7 @@ const bookingDraftSchema = z.object({
   ).optional().nullable(),
   hold_id: z.string().uuid().optional().nullable(),
   loyalty_points_used: z.number().int().min(0).optional(),
+  reschedule_booking_id: z.string().uuid().optional().nullable(),
 });
 
 /**
@@ -119,6 +121,90 @@ export async function POST(request: NextRequest) {
 
     // 2.5. Ensure user has a public profile (handles new sign-ins where trigger hasn't run yet)
     await ensureUserProfileForAuthUser(supabaseAdmin, user);
+
+    // 2.6. If rescheduling (new booking replacing an existing one), cancel the old booking first
+    const rescheduleBookingId = (validatedDraft as Record<string, unknown>).reschedule_booking_id as string | undefined;
+    if (rescheduleBookingId) {
+      const { data: oldBooking, error: oldBookingError } = await supabaseAdmin
+        .from("bookings")
+        .select("id, provider_id, location_type, scheduled_at, created_at, status, customer_id")
+        .eq("id", rescheduleBookingId)
+        .single();
+
+      if (oldBookingError || !oldBooking) {
+        return handleApiError(
+          new Error("Original booking not found"),
+          "The booking you are rescheduling could not be found.",
+          "NOT_FOUND",
+          404
+        );
+      }
+
+      if (oldBooking.customer_id !== user.id) {
+        return handleApiError(
+          new Error("Unauthorized"),
+          "You can only reschedule your own bookings.",
+          "UNAUTHORIZED",
+          403
+        );
+      }
+
+      if (oldBooking.status === "cancelled") {
+        return handleApiError(
+          new Error("Booking already cancelled"),
+          "This booking has already been cancelled.",
+          "ALREADY_CANCELLED",
+          400
+        );
+      }
+
+      const policy = await getCancellationPolicy(
+        supabase,
+        oldBooking.provider_id,
+        (oldBooking.location_type as "at_salon" | "at_home") || "at_salon"
+      );
+
+      if (policy) {
+        const checkResult = canCancelBooking(
+          {
+            id: oldBooking.id,
+            created_at: oldBooking.created_at,
+            scheduled_at: oldBooking.scheduled_at,
+            location_type: (oldBooking.location_type as "at_salon" | "at_home") || "at_salon",
+          },
+          policy
+        );
+
+        if (!checkResult.allowed) {
+          return handleApiError(
+            new Error(checkResult.reason ?? "Rescheduling not allowed"),
+            checkResult.reason ?? "Rescheduling not allowed. Please contact the provider.",
+            "RESCHEDULE_BLOCKED",
+            403
+          );
+        }
+      }
+
+      const { error: cancelError } = await supabaseAdmin
+        .from("bookings")
+        .update({
+          status: "cancelled",
+          cancelled_at: new Date().toISOString(),
+          cancelled_by: user.id,
+          cancellation_reason: "Rescheduled to new time",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", rescheduleBookingId);
+
+      if (cancelError) {
+        return handleApiError(
+          new Error("Failed to cancel original booking"),
+          "Could not complete reschedule. Please try again.",
+          "CANCEL_FAILED",
+          500
+        );
+      }
+    }
 
     // 3. Validate booking (provider, services, pricing, conflicts, resources)
     const validationResult = await validateBooking(

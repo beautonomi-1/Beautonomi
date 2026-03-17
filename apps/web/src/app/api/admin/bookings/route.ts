@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/bookings
@@ -9,7 +10,7 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
 
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
@@ -58,12 +59,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch related data separately
-    const customerIds = [...new Set(bookings.map((b: any) => b.customer_id).filter(Boolean))];
-    const providerIds = [...new Set(bookings.map((b: any) => b.provider_id).filter(Boolean))];
-    const locationIds = [...new Set(bookings.map((b: any) => b.location_id).filter(Boolean))];
+    type BookingRow = { customer_id?: string; provider_id?: string; location_id?: string };
+    const customerIds = [...new Set((bookings as BookingRow[]).map((b) => b.customer_id).filter(Boolean))];
+    const providerIds = [...new Set((bookings as BookingRow[]).map((b) => b.provider_id).filter(Boolean))];
+    const locationIds = [...new Set((bookings as BookingRow[]).map((b) => b.location_id).filter(Boolean))];
 
-    // Fetch customers
-    let customersData: any[] = [];
+    type UserRow = { id: string; full_name?: string; email?: string; phone?: string };
+    type ProviderRow = { id: string; business_name?: string };
+    let customersData: UserRow[] = [];
     if (customerIds.length > 0) {
       try {
         const { data, error: customersError } = await supabase
@@ -77,11 +80,10 @@ export async function GET(request: NextRequest) {
         console.error("Error fetching customers:", err);
       }
     }
-    const _customersMap = new Map(customersData.map((u: any) => [u.id, u]));
+    const _customersMap = new Map(customersData.map((u) => [u.id, u]));
     void _customersMap;
 
-    // Fetch providers
-    let providersData: any[] = [];
+    let providersData: ProviderRow[] = [];
     if (providerIds.length > 0) {
       try {
         const { data, error: providersError } = await supabase
@@ -95,11 +97,11 @@ export async function GET(request: NextRequest) {
         console.error("Error fetching providers:", err);
       }
     }
-    const _providersMap = new Map(providersData.map((p: any) => [p.id, p]));
+    const _providersMap = new Map(providersData.map((p) => [p.id, p]));
     void _providersMap;
 
-    // Fetch locations
-    let locationsData: any[] = [];
+    type LocationRow = { id: string; name?: string; address_line1?: string; city?: string; country?: string };
+    let locationsData: LocationRow[] = [];
     if (locationIds.length > 0) {
       try {
         const { data, error: locationsError } = await supabase
@@ -107,17 +109,17 @@ export async function GET(request: NextRequest) {
           .select("id, name, address_line1, city")
           .in("id", locationIds);
         if (!locationsError) {
-          locationsData = data || [];
+          locationsData = (data || []) as LocationRow[];
         }
       } catch (err) {
         console.error("Error fetching locations:", err);
       }
     }
-    const _locationsMap = new Map(locationsData.map((l: any) => [l.id, l]));
+    const _locationsMap = new Map(locationsData.map((l) => [l.id, l]));
     void _locationsMap;
 
-    // Transform to match Booking type
-    const transformedBookings = bookings.map((booking: any) => ({
+    type BookingFull = BookingRow & { id: string; booking_number?: string; status?: string; location_type?: string; location_id?: string; address?: string; scheduled_at?: string; completed_at?: string | null; cancelled_at?: string | null; cancellation_reason?: string | null; services?: unknown[]; addons?: unknown[]; package_id?: string | null; subtotal?: number; tip_amount?: number; total_amount?: number; currency?: string; payment_status?: string; payment_method?: string | null; special_requests?: string | null; loyalty_points_earned?: number; created_at?: string; updated_at?: string };
+    const transformedBookings = (bookings as BookingFull[]).map((booking) => ({
       id: booking.id,
       booking_number: booking.booking_number,
       customer_id: booking.customer_id,

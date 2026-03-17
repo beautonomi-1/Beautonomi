@@ -46,7 +46,10 @@ export function BillingHistoryContent() {
     if (!url) return;
     router.push({
       pathname: "/(app)/(tabs)/more/in-app-browser",
-      params: { url: encodeURIComponent(url), title: "Invoice" },
+      params: {
+        url: encodeURIComponent(url),
+        title: "Invoice",
+      },
     } as never);
   };
 

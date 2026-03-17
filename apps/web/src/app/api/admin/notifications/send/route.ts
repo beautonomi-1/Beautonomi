@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requireAdminSection  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { 
   sendToUser, 
   sendToUsers, 
@@ -18,6 +19,8 @@ const sendNotificationSchema = z.object({
   template_key: z.string().optional(),
   template_variables: z.record(z.string(), z.string()).optional(),
   channels: z.array(z.enum(["push", "email", "sms", "live_activities"])).optional().default(["push"]),
+  /** When using two OneSignal apps: "customer" | "provider". Omit for legacy single-app. */
+  app_type: z.enum(["customer", "provider"]).optional(),
   // Notification content
   title: z.string().min(1).optional(),
   message: z.string().min(1).optional(),
@@ -39,7 +42,7 @@ const sendNotificationSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const body = await request.json();
     const validationResult = sendNotificationSchema.safeParse(body);
@@ -66,6 +69,7 @@ export async function POST(request: NextRequest) {
       template_key,
       template_variables,
       channels,
+      app_type: appType,
       title,
       message,
       email_subject: _email_subject,
@@ -102,7 +106,8 @@ export async function POST(request: NextRequest) {
             url,
             image,
           },
-          channels as NotificationChannel[]
+          channels as NotificationChannel[],
+          appType ? { appType } : undefined
         );
         break;
 
@@ -128,7 +133,8 @@ export async function POST(request: NextRequest) {
             url,
             image,
           },
-          channels as NotificationChannel[]
+          channels as NotificationChannel[],
+          appType ? { appType } : undefined
         );
         break;
 
@@ -154,7 +160,8 @@ export async function POST(request: NextRequest) {
             url,
             image,
           },
-          channels as NotificationChannel[]
+          channels as NotificationChannel[],
+          appType ? { appType } : undefined
         );
         break;
 
@@ -175,7 +182,8 @@ export async function POST(request: NextRequest) {
           template_key,
           user_ids,
           template_variables || {},
-          channels as NotificationChannel[]
+          channels as NotificationChannel[],
+          appType ? { appType } : undefined
         );
         break;
 
@@ -208,7 +216,7 @@ export async function POST(request: NextRequest) {
     try {
       await writeAuditLog({
         actor_user_id: user.id,
-        actor_role: (user as any).role || "superadmin",
+        actor_role: user.role ?? "superadmin",
         action: "admin.notifications.send",
         entity_type: "notification",
         entity_id: null,

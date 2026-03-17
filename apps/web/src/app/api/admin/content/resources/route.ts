@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 const resourceSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -22,8 +24,8 @@ void _updateResourceSchema;
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -51,12 +53,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Transform database fields to frontend format
-    const transformedResources = (resources || []).map((r: any) => ({
+    type ResourceRow = { category?: string; thumbnail_url?: string | null; is_published?: boolean; [key: string]: unknown };
+    const transformedResources = (resources || []).map((r: ResourceRow) => ({
       ...r,
-      type: r.category || 'article', // Map category to type
-      url: r.thumbnail_url || null, // Use thumbnail_url as url
-      is_active: r.is_published, // Map is_published to is_active
+      type: r.category ?? "article",
+      url: r.thumbnail_url ?? null,
+      is_active: r.is_published,
     }));
 
     return NextResponse.json({
@@ -85,8 +87,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -125,7 +127,7 @@ export async function POST(request: NextRequest) {
         description: content.substring(0, 200), // Use first 200 chars as description
         category: type, // Map type to category
         is_published: is_active,
-        author_id: auth.user.id,
+        author_id: user.id,
       })
       .select()
       .single();
@@ -145,11 +147,11 @@ export async function POST(request: NextRequest) {
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.content.resource.create",
       entity_type: "content_resource",
-      entity_id: (resource as any).id,
+      entity_id: (resource as { id: string }).id,
       metadata: { title, type, is_active },
     });
 

@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       return errorResponse("event_type must be view or like", "VALIDATION_ERROR", 400);
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const supabaseAdmin = await getSupabaseAdmin();
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -99,7 +99,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const supabaseAdmin = await getSupabaseAdmin();
     const { data: { user } } = await supabase.auth.getUser();
 

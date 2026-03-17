@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Edit, Trash2, Copy, ExternalLink, Eye } from "lucide-react";
+import { Plus, Edit, Trash2, Copy, ExternalLink, Eye, MapPin, Home } from "lucide-react";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -119,11 +119,14 @@ export default function ExpressBookingLinksPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Short Code</TableHead>
-                  <TableHead>Service</TableHead>
+                  <TableHead>Services</TableHead>
                   <TableHead>Team Member</TableHead>
+                  <TableHead>Venue</TableHead>
                   <TableHead>Usage</TableHead>
+                  <TableHead>Max</TableHead>
                   <TableHead>Expires</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Embed</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -137,8 +140,10 @@ export default function ExpressBookingLinksPage() {
                       </code>
                     </TableCell>
                     <TableCell>
-                      {link.service_id ? (
-                        <Badge variant="outline">Pre-selected</Badge>
+                      {(link.service_ids?.length ?? (link.service_id ? 1 : 0)) > 0 ? (
+                        <Badge variant="outline">
+                          {(link.service_ids?.length ?? (link.service_id ? 1 : 0))} selected
+                        </Badge>
                       ) : (
                         <span className="text-gray-400">Any</span>
                       )}
@@ -151,10 +156,30 @@ export default function ExpressBookingLinksPage() {
                       )}
                     </TableCell>
                     <TableCell>
+                      {link.location_type === "at_home" ? (
+                        <span className="text-sm flex items-center gap-1">
+                          <Home className="w-3.5 h-3.5" /> At home
+                        </span>
+                      ) : link.location_type === "at_salon" || link.location_id ? (
+                        <span className="text-sm flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5" /> At salon
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">Any</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-1">
                         <Eye className="w-3 h-3 text-gray-400" />
                         <span>{link.usage_count} clicks</span>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {link.max_uses != null ? (
+                        <span className="text-sm">{link.max_uses}</span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {link.expires_at ? (
@@ -182,6 +207,23 @@ export default function ExpressBookingLinksPage() {
                       ) : (
                         <Badge className="bg-green-100 text-green-800">Active</Badge>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2"
+                          onClick={() => {
+                            const embedUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/book/l/${encodeURIComponent(link.short_code)}?embed=1`;
+                            navigator.clipboard.writeText(embedUrl);
+                            toast.success("Embed URL copied");
+                          }}
+                          title="Copy embed URL"
+                        >
+                          <Copy className="w-3 h-3" />
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -253,38 +295,48 @@ function ExpressBookingLinkDialog({
   const [formData, setFormData] = useState({
     name: "",
     short_code: "",
-    service_id: "",
+    service_ids: [] as string[],
     team_member_id: "",
+    location_type: "" as "" | "at_salon" | "at_home",
+    location_id: "",
     expires_at: "",
+    max_uses: "",
     is_active: true,
   });
   const [isLoading, setIsLoading] = useState(false);
   const [services, setServices] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
     if (open) {
       loadData();
       if (link) {
+        const ids = link.service_ids?.length ? link.service_ids : (link.service_id ? [link.service_id] : []);
         setFormData({
           name: link.name,
           short_code: link.short_code,
-          service_id: link.service_id || "",
+          service_ids: ids,
           team_member_id: link.team_member_id || "",
+          location_type: (link.location_type === "at_salon" || link.location_type === "at_home" ? link.location_type : "") as "" | "at_salon" | "at_home",
+          location_id: link.location_id || "",
           expires_at: link.expires_at
             ? new Date(link.expires_at).toISOString().split("T")[0]
             : "",
+          max_uses: link.max_uses != null ? String(link.max_uses) : "",
           is_active: link.is_active,
         });
       } else {
-        // Generate random short code for new links
         const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
         setFormData({
           name: "",
           short_code: randomCode,
-          service_id: "",
+          service_ids: [],
           team_member_id: "",
+          location_type: "",
+          location_id: "",
           expires_at: "",
+          max_uses: "",
           is_active: true,
         });
       }
@@ -293,12 +345,15 @@ function ExpressBookingLinkDialog({
 
   const loadData = async () => {
     try {
-      const [categories, members] = await Promise.all([
+      const [categories, members, locs] = await Promise.all([
         providerApi.listServiceCategories(),
         providerApi.listTeamMembers(),
+        providerApi.listLocations().catch(() => []),
       ]);
       setServices(categories.flatMap((cat) => cat.services));
       setTeamMembers(members);
+      const salonLocs = Array.isArray(locs) ? locs.filter((l: { location_type?: string }) => (l.location_type || "salon") === "salon") : [];
+      setLocations(salonLocs.map((l: { id: string; name: string }) => ({ id: l.id, name: l.name })));
     } catch (error) {
       console.error("Failed to load data:", error);
     }
@@ -321,9 +376,20 @@ function ExpressBookingLinkDialog({
         expires_at: formData.expires_at
           ? new Date(formData.expires_at).toISOString()
           : undefined,
+        max_uses: formData.max_uses.trim() ? parseInt(formData.max_uses, 10) : undefined,
       };
-      if (formData.service_id) linkData.service_id = formData.service_id;
+      if (formData.service_ids.length) linkData.service_ids = formData.service_ids;
       if (formData.team_member_id) linkData.team_member_id = formData.team_member_id;
+      if (formData.location_type === "at_home") {
+        linkData.location_type = "at_home";
+        linkData.location_id = null;
+      } else if (formData.location_type === "at_salon") {
+        linkData.location_type = "at_salon";
+        linkData.location_id = formData.location_id || null;
+      } else {
+        linkData.location_type = null;
+        linkData.location_id = null;
+      }
 
       if (link) {
         await providerApi.updateExpressBookingLink(link.id, linkData);
@@ -340,6 +406,15 @@ function ExpressBookingLinkDialog({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const toggleService = (id: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      service_ids: prev.service_ids.includes(id)
+        ? prev.service_ids.filter((s) => s !== id)
+        : [...prev.service_ids, id],
+    }));
   };
 
   const generateRandomCode = () => {
@@ -393,28 +468,30 @@ function ExpressBookingLinkDialog({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="service_id">Pre-select Service (Optional)</Label>
-              <Select
-                value={formData.service_id}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, service_id: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Any service" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Any service</SelectItem>
-                  {services.map((service) => (
-                    <SelectItem key={service.id} value={service.id}>
-                      {service.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div>
+            <Label className="mb-2 block">Pre-select Services (Optional)</Label>
+            <p className="text-xs text-gray-500 mb-2">Select one or more; clients will see these pre-filled.</p>
+            <div className="max-h-40 overflow-y-auto border rounded-lg p-3 space-y-2">
+              {services.length === 0 ? (
+                <p className="text-sm text-gray-500">Loading services…</p>
+              ) : (
+                services.map((service) => (
+                  <div key={service.id} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`svc-${service.id}`}
+                      checked={formData.service_ids.includes(service.id)}
+                      onCheckedChange={() => toggleService(service.id)}
+                    />
+                    <Label htmlFor={`svc-${service.id}`} className="cursor-pointer text-sm font-normal flex-1">
+                      {service.name ?? service.title}
+                    </Label>
+                  </div>
+                ))
+              )}
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="team_member_id">Pre-select Team Member (Optional)</Label>
               <Select
@@ -439,16 +516,86 @@ function ExpressBookingLinkDialog({
           </div>
 
           <div>
-            <Label htmlFor="expires_at">Expiration Date (Optional)</Label>
-            <Input
-              id="expires_at"
-              type="date"
-              value={formData.expires_at}
-              onChange={(e) => setFormData({ ...formData, expires_at: e.target.value })}
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Leave empty for no expiration
-            </p>
+            <Label className="mb-2 block">Pre-select venue (Optional)</Label>
+            <p className="text-xs text-gray-500 mb-2">Choose where the appointment takes place. Any = customer chooses.</p>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="venue_any"
+                  checked={!formData.location_type}
+                  onCheckedChange={(checked) =>
+                    checked && setFormData({ ...formData, location_type: "", location_id: "" })
+                  }
+                />
+                <Label htmlFor="venue_any" className="cursor-pointer font-normal">Any (customer chooses)</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="venue_at_home"
+                  checked={formData.location_type === "at_home"}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, location_type: checked ? "at_home" : "", location_id: "" })
+                  }
+                />
+                <Label htmlFor="venue_at_home" className="cursor-pointer font-normal">At home (house call)</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="venue_at_salon"
+                  checked={formData.location_type === "at_salon"}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, location_type: checked ? "at_salon" : "", location_id: checked ? formData.location_id : "" })
+                  }
+                />
+                <Label htmlFor="venue_at_salon" className="cursor-pointer font-normal">At salon</Label>
+                {formData.location_type === "at_salon" && (
+                  <Select
+                    value={formData.location_id}
+                    onValueChange={(value) => setFormData({ ...formData, location_id: value })}
+                  >
+                    <SelectTrigger className="w-[200px] ml-2">
+                      <SelectValue placeholder="Choose branch" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {locations.length === 0 ? (
+                        <SelectItem value="" disabled>No locations</SelectItem>
+                      ) : (
+                        locations.map((loc) => (
+                          <SelectItem key={loc.id} value={loc.id}>
+                            {loc.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="expires_at">Expiration Date (Optional)</Label>
+              <Input
+                id="expires_at"
+                type="date"
+                value={formData.expires_at}
+                onChange={(e) => setFormData({ ...formData, expires_at: e.target.value })}
+              />
+              <p className="text-xs text-gray-500 mt-1">Leave empty for no expiration</p>
+            </div>
+            <div>
+              <Label htmlFor="max_uses">Max Uses (Optional)</Label>
+              <Input
+                id="max_uses"
+                type="number"
+                min={1}
+                placeholder="Unlimited"
+                value={formData.max_uses}
+                onChange={(e) => setFormData({ ...formData, max_uses: e.target.value.replace(/\D/g, "") })}
+              />
+              <p className="text-xs text-gray-500 mt-1">Leave empty for unlimited clicks</p>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">

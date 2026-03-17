@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/supabase/auth-server";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import crypto from "crypto";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(["superadmin"]);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
 
     const { searchParams } = new URL(request.url);
@@ -26,16 +27,17 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     // Don't return full key hash, just prefix
-    const safeData = (data || []).map((key: any) => ({
+    const safeData = (data || []).map((key: Record<string, unknown>) => ({
       ...key,
-      key_hash: undefined, // Remove hash from response
+      key_hash: undefined,
     }));
 
     return NextResponse.json({ keys: safeData });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching API keys:", error);
+    const message = error instanceof Error ? error.message : "Failed to fetch API keys";
     return NextResponse.json(
-      { error: error.message || "Failed to fetch API keys" },
+      { error: message },
       { status: 500 }
     );
   }
@@ -43,7 +45,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRole(["superadmin"]);
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
@@ -103,10 +105,11 @@ export async function POST(request: NextRequest) {
         api_key: apiKey, // Only returned on creation
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error creating API key:", error);
+    const message = error instanceof Error ? error.message : "Failed to create API key";
     return NextResponse.json(
-      { error: error.message || "Failed to create API key" },
+      { error: message },
       { status: 500 }
     );
   }

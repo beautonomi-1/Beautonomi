@@ -75,18 +75,18 @@ export async function GET(request: NextRequest) {
         hasIntegration: true,
         accountStatus: accountData.status,
       });
-    } catch (twilioError: any) {
-      // If Twilio API fails, return error but don't fail the request
+    } catch (twilioError: unknown) {
       console.error("Error fetching Twilio balance:", twilioError);
+      const errMsg = twilioError instanceof Error ? twilioError.message : "Failed to fetch balance from Twilio";
       return successResponse({
         balance: null,
         currency: null,
         hasIntegration: true,
-        error: twilioError.message || "Failed to fetch balance from Twilio",
+        error: errMsg,
         message: "Unable to fetch balance. Please check your Twilio credentials.",
       });
     }
-  } catch (error) {
+  } catch (error: unknown) {
     return handleApiError(error, "Failed to fetch Twilio balance");
   }
 }

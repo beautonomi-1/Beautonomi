@@ -1,13 +1,13 @@
-import { Redirect } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { View, Text, StyleSheet } from "react-native";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { useResponsive } from "@/hooks/useResponsive";
 import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { SavedTabContent } from "@/components/SavedTabContent";
 
 /**
- * Saved / Wishlists – parity with web /explore/saved and /account-settings/wishlists.
- * Redirects to account-settings/wishlists when authenticated.
+ * Saved tab: saved posts + saved providers (unified with wishlists).
+ * When authenticated, shows tabbed content; when not, shows sign-in message.
  */
 export default function SavedScreen() {
   const { user, loading } = useAuth();
@@ -36,7 +36,12 @@ export default function SavedScreen() {
     );
   }
 
-  return <Redirect href="/(app)/account-settings/wishlists" />;
+  return (
+    <SavedTabContent
+      showRecentlyViewed={false}
+      screenName="Saved"
+    />
+  );
 }
 
 const styles = StyleSheet.create({

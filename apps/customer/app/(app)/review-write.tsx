@@ -12,6 +12,7 @@ import {
   Platform,
 } from "react-native";
 import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { api } from "@/lib/api-client";
 import { useImagePicker } from "@/hooks/useImagePicker";
@@ -99,10 +100,20 @@ export default function ReviewWriteScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
       <ScrollView style={{ flex: 1, backgroundColor: Colors.white }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
         <Text style={{ fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Rating</Text>
-        <View style={{ flexDirection: "row", marginBottom: 16 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16, gap: 8 }}>
           {[1, 2, 3, 4, 5].map((r) => (
-            <TouchableOpacity key={r} onPress={() => setRating(r)} style={{ width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", borderWidth: 1, backgroundColor: rating >= r ? "#FFD700" : "transparent", borderColor: "#FFD700", marginRight: r < 5 ? 8 : 0 }}>
-              <Text style={{ fontSize: 20 }}>★</Text>
+            <TouchableOpacity
+              key={r}
+              onPress={() => setRating(r)}
+              style={{ padding: 4 }}
+              accessibilityLabel={`${r} star${r > 1 ? "s" : ""}`}
+              accessibilityRole="button"
+            >
+              <Ionicons
+                name={rating >= r ? "star" : "star-outline"}
+                size={40}
+                color={rating >= r ? "#EAB308" : "#D1D5DB"}
+              />
             </TouchableOpacity>
           ))}
         </View>

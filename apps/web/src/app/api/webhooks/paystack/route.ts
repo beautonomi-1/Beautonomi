@@ -152,19 +152,24 @@ export async function POST(request: NextRequest) {
         // Send confirmation notification via OneSignal
         try {
           const { sendToUser } = await import('@/lib/notifications/onesignal');
-          await sendToUser(booking.customer_id, {
-            title: 'Payment Confirmed',
-            message: `Your payment of R${(amount / 100).toFixed(2)} has been received and confirmed.`,
-            type: 'payment_received',
-            bookingId: bookingId,
-            url: `/account-settings/bookings/${bookingId}`,
-            data: {
+          await sendToUser(
+            booking.customer_id,
+            {
+              title: 'Payment Confirmed',
+              message: `Your payment of R${(amount / 100).toFixed(2)} has been received and confirmed.`,
               type: 'payment_received',
-              booking_id: bookingId,
-              payment_id: payment.id,
-              amount: amount / 100,
+              bookingId: bookingId,
+              url: `/account-settings/bookings/${bookingId}`,
+              data: {
+                type: 'payment_received',
+                booking_id: bookingId,
+                payment_id: payment.id,
+                amount: amount / 100,
+              },
             },
-          }, ['push']);
+            ['push'],
+            { appType: 'customer' }
+          );
           
           console.log('OneSignal notification sent to customer:', booking.customer_id);
         } catch (notifError) {
@@ -233,19 +238,24 @@ export async function POST(request: NextRequest) {
               const customerId = (originalPayment.booking as any)?.customer_id;
               
               if (customerId) {
-                await sendToUser(customerId, {
-                  title: 'Refund Processed',
-                  message: `A refund of R${(amount / 100).toFixed(2)} has been processed to your original payment method.`,
-                  type: 'refund_processed',
-                  bookingId: originalPayment.booking_id,
-                  url: `/account-settings/bookings/${originalPayment.booking_id}`,
-                  data: {
+                await sendToUser(
+                  customerId,
+                  {
+                    title: 'Refund Processed',
+                    message: `A refund of R${(amount / 100).toFixed(2)} has been processed to your original payment method.`,
                     type: 'refund_processed',
-                    booking_id: originalPayment.booking_id,
-                    refund_id: refund.id,
-                    amount: amount / 100,
+                    bookingId: originalPayment.booking_id,
+                    url: `/account-settings/bookings/${originalPayment.booking_id}`,
+                    data: {
+                      type: 'refund_processed',
+                      booking_id: originalPayment.booking_id,
+                      refund_id: refund.id,
+                      amount: amount / 100,
+                    },
                   },
-                }, ['push']);
+                  ['push'],
+                  { appType: 'customer' }
+                );
               }
             } catch (notifError) {
               console.warn('Failed to send refund notification:', notifError);

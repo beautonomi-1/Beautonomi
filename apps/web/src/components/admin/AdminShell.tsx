@@ -68,22 +68,42 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import NotificationsDropdown from "./NotificationsDropdown";
 import { fetcher } from "@/lib/http/fetcher";
+import {
+  canAccessSection,
+  ALL_ADMIN_ROLES,
+  ADMIN_SECTION_OVERVIEW,
+  ADMIN_SECTION_PROVIDERS_OPERATIONS,
+  ADMIN_SECTION_FINANCE,
+  ADMIN_SECTION_USERS_TRUST,
+  ADMIN_SECTION_CONTENT_CATALOG,
+  ADMIN_SECTION_ECOMMERCE,
+  ADMIN_SECTION_MARKETING_COMMS,
+  ADMIN_SECTION_INTEGRATIONS_DEV,
+  ADMIN_SECTION_OPERATIONS,
+  ADMIN_SECTION_PLATFORM_CONFIG,
+} from "@/lib/admin-sections";
+import type { AdminSection } from "@/lib/admin-sections";
+import type { UserRole } from "@/types/beautonomi";
 
 interface NavItem {
   title: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   badge?: number;
+  /** When true, link is only shown for superadmin. */
+  superadminOnly?: boolean;
 }
 
 interface NavGroup {
   label: string;
+  section: AdminSection;
   items: NavItem[];
 }
 
 const navGroups: NavGroup[] = [
   {
     label: "Overview",
+    section: ADMIN_SECTION_OVERVIEW,
     items: [
       { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
       { title: "Gods Eye", href: "/admin/gods-eye", icon: Eye },
@@ -93,6 +113,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Providers & operations",
+    section: ADMIN_SECTION_PROVIDERS_OPERATIONS,
     items: [
       { title: "Providers", href: "/admin/providers", icon: Building2 },
       { title: "Staff", href: "/admin/staff", icon: UserCheck },
@@ -106,6 +127,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Finance",
+    section: ADMIN_SECTION_FINANCE,
     items: [
       { title: "Finance", href: "/admin/finance", icon: DollarSign },
       { title: "Payouts", href: "/admin/payouts", icon: Wallet },
@@ -120,6 +142,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Users & trust",
+    section: ADMIN_SECTION_USERS_TRUST,
     items: [
       { title: "Users", href: "/admin/users", icon: Users },
       { title: "Verifications", href: "/admin/verifications", icon: ShieldCheck },
@@ -128,6 +151,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Content & catalog",
+    section: ADMIN_SECTION_CONTENT_CATALOG,
     items: [
       { title: "Content", href: "/admin/content", icon: FileText },
       { title: "Learning Center", href: "/admin/content/learning", icon: GraduationCap },
@@ -137,6 +161,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "E‑commerce",
+    section: ADMIN_SECTION_ECOMMERCE,
     items: [
       { title: "Product Orders", href: "/admin/ecommerce/orders", icon: ShoppingBag },
       { title: "Product Returns", href: "/admin/ecommerce/returns", icon: Undo2 },
@@ -145,6 +170,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Marketing & comms",
+    section: ADMIN_SECTION_MARKETING_COMMS,
     items: [
       { title: "Promotions", href: "/admin/promotions", icon: Gift },
       { title: "Loyalty", href: "/admin/loyalty", icon: Award },
@@ -159,6 +185,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Integrations & dev",
+    section: ADMIN_SECTION_INTEGRATIONS_DEV,
     items: [
       { title: "Webhooks", href: "/admin/webhooks", icon: Globe },
       { title: "API Keys", href: "/admin/api-keys", icon: Shield },
@@ -170,6 +197,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Operations",
+    section: ADMIN_SECTION_OPERATIONS,
     items: [
       { title: "System Health", href: "/admin/system-health", icon: Activity },
       { title: "Monitoring", href: "/admin/monitoring", icon: Activity },
@@ -178,6 +206,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Platform config",
+    section: ADMIN_SECTION_PLATFORM_CONFIG,
     items: [
       { title: "Settings", href: "/admin/settings", icon: Settings },
       { title: "Control Plane", href: "/admin/control-plane/overview", icon: Layers },
@@ -185,6 +214,7 @@ const navGroups: NavGroup[] = [
       { title: "Custom Fields", href: "/admin/custom-fields", icon: FileText },
       { title: "App Version", href: "/admin/settings/app-version", icon: Smartphone },
       { title: "Referral Settings", href: "/admin/settings/referrals", icon: Link2 },
+      { title: "Team permissions", href: "/admin/settings/team-permissions", icon: Shield, superadminOnly: true },
     ],
   },
 ];
@@ -206,6 +236,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const [navCounts, setNavCounts] = useState<Record<string, number>>({});
+  const [effectiveSectionRoles, setEffectiveSectionRoles] = useState<Record<string, string[]> | null>(null);
 
   // Debounce search
   useEffect(() => {
@@ -260,6 +291,28 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     };
   }, [pathname]); // refetch when navigating so counts stay fresh after actions
 
+  // Fetch effective section roles so sidebar only shows sections the user can access (per DB matrix).
+  // Refetch on pathname change so sidebar updates after superadmin saves on team-permissions.
+  const adminRole = user?.role as UserRole | undefined;
+  useEffect(() => {
+    if (!adminRole || !ALL_ADMIN_ROLES.includes(adminRole)) {
+      setEffectiveSectionRoles(null);
+      return;
+    }
+    let cancelled = false;
+    fetcher
+      .get<{ data: { sectionRoles: Record<string, string[]> } }>("/api/admin/settings/section-permissions")
+      .then((res) => {
+        if (!cancelled && res?.data?.sectionRoles) setEffectiveSectionRoles(res.data.sectionRoles);
+      })
+      .catch(() => {
+        if (!cancelled) setEffectiveSectionRoles(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [adminRole, pathname]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim().length >= 2) {
@@ -305,6 +358,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                     pathname={pathname}
                     onNavigate={() => setSidebarOpen(false)}
                     navCounts={navCounts}
+                    role={user?.role as UserRole | undefined}
+                    effectiveSectionRoles={effectiveSectionRoles}
                   />
                 </SheetContent>
               </Sheet>
@@ -451,7 +506,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       <div className="flex w-full overflow-x-hidden">
         {/* Desktop Sidebar */}
         <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 lg:z-50 bg-white border-r overflow-x-hidden">
-          <SidebarContent pathname={pathname} navCounts={navCounts} />
+          <SidebarContent pathname={pathname} navCounts={navCounts} role={user?.role as UserRole | undefined} effectiveSectionRoles={effectiveSectionRoles} />
         </aside>
 
         {/* Main Content */}
@@ -627,11 +682,19 @@ function SidebarContent({
   pathname,
   onNavigate,
   navCounts = {},
+  role,
+  effectiveSectionRoles = null,
 }: {
   pathname: string;
   onNavigate?: () => void;
   navCounts?: Record<string, number>;
+  role?: UserRole;
+  /** When set, sidebar uses DB matrix; otherwise uses code defaults. */
+  effectiveSectionRoles?: Record<string, string[]> | null;
 }) {
+  const visibleGroups = role
+    ? navGroups.filter((group) => canAccessSection(role, group.section, effectiveSectionRoles ?? undefined))
+    : navGroups;
   return (
     <>
       <div className="flex items-center gap-3 px-6 py-4 border-b">
@@ -644,13 +707,15 @@ function SidebarContent({
         </Link>
       </div>
       <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
-        {navGroups.map((group) => (
+        {visibleGroups.map((group) => (
           <div key={group.label}>
             <div className="px-3 mb-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
               {group.label}
             </div>
             <div className="space-y-0.5">
-              {group.items.map((item) => {
+              {group.items
+                .filter((item) => !item.superadminOnly || role === "superadmin")
+                .map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
                 const count = navCounts[item.href] ?? item.badge ?? 0;

@@ -57,7 +57,8 @@ export async function POST(request: NextRequest) {
           message: `Your verification code is: ${verificationCode}. This code expires in 5 minutes.`,
           type: "sms",
         },
-        ["sms"]
+        ["sms"],
+        { appType: "provider" }
       );
 
       if (!result.success) {

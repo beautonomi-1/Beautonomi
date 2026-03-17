@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StatusBar,
   StyleSheet,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
@@ -14,14 +15,19 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { haptic } from "@/lib/haptics";
 import { useAuth } from "@/providers/AuthProvider";
+import { useNotifications } from "@/providers/NotificationsContext";
 import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
 import { useLocation } from "@/hooks/useLocation";
+import { useAddresses } from "@/hooks/useAddresses";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useHomeData } from "@/features/home/useHomeData";
 import { useGlobalCategories, getCategoryIcon } from "@/features/home/useGlobalCategories";
 import { ProviderCard } from "@/components/ProviderCard";
 import { AddressPicker } from "@/components/AddressPicker";
+import { SaveAddressModal, type SaveAddressPayload } from "@/components/SaveAddressModal";
+import type { AddressPickerSelection } from "@/components/AddressPicker";
+import { api } from "@/lib/api-client";
 import { InlineSearch } from "@/components/InlineSearch";
 import { FadeIn } from "@/components/FadeIn";
 import type { PublicProviderCard } from "@/types/api";
@@ -365,11 +371,15 @@ function CategoryPill({
 
 export default function HomeScreen() {
   useScreenTracking("Home");
-  useAuth();
+  const { user } = useAuth();
+  const { unreadCount } = useNotifications();
   const { coords, loading: locationLoading } = useLocation();
   const { selectedAddress, setSelectedAddress } = useSelectedAddress();
+  const { addresses, reload: reloadAddresses } = useAddresses(!!user);
   const { cardWidth, contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const [activeCategory, setActiveCategory] = useState("All");
+  const [saveAddressModalVisible, setSaveAddressModalVisible] = useState(false);
+  const [pendingAddressSelection, setPendingAddressSelection] = useState<AddressPickerSelection | null>(null);
   const contentWrapperDynamic = isTablet
     ? [styles.contentWrapper, { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }]
     : styles.contentWrapper;
@@ -397,6 +407,67 @@ export default function HomeScreen() {
   const handleUseCurrentLocation = useCallback(() => {
     setSelectedAddress(null);
   }, [setSelectedAddress]);
+
+  const handleAddressPickerSelect = useCallback(
+    (selection: AddressPickerSelection) => {
+      if (selection.addressId) {
+        setSelectedAddress({
+          label: selection.label,
+          latitude: selection.latitude,
+          longitude: selection.longitude,
+          displayName: selection.displayName,
+        });
+        setAddressPickerVisible(false);
+      } else {
+        setPendingAddressSelection(selection);
+        setAddressPickerVisible(false);
+        setSaveAddressModalVisible(true);
+      }
+    },
+    [setSelectedAddress],
+  );
+
+  const handleSaveAndUse = useCallback(
+    async (payload: SaveAddressPayload) => {
+      const res = await api.post<{ id: string; address_line1: string; city: string; latitude?: number; longitude?: number }>("/api/me/addresses", payload);
+      if (res.error) {
+        throw new Error(res.error.message ?? "Failed to save address");
+      }
+      const created = res.data;
+      setSelectedAddress({
+        label: payload.label,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        displayName: [created?.address_line1, created?.city].filter(Boolean).join(", ") || `${payload.address_line1}, ${payload.city}`,
+      });
+      await reloadAddresses();
+    },
+    [setSelectedAddress, reloadAddresses],
+  );
+
+  const handleSaveAndUseWithError = useCallback(
+    async (payload: SaveAddressPayload) => {
+      try {
+        await handleSaveAndUse(payload);
+      } catch (e) {
+        Alert.alert("Couldn't save address", e instanceof Error ? e.message : "Please try again.");
+        throw e;
+      }
+    },
+    [handleSaveAndUse],
+  );
+
+  const handleJustUse = useCallback(() => {
+    if (pendingAddressSelection) {
+      setSelectedAddress({
+        label: pendingAddressSelection.label,
+        latitude: pendingAddressSelection.latitude,
+        longitude: pendingAddressSelection.longitude,
+        displayName: pendingAddressSelection.displayName,
+      });
+    }
+    setPendingAddressSelection(null);
+  }, [pendingAddressSelection, setSelectedAddress]);
 
   const addressLabel =
     selectedAddress?.displayName ??
@@ -443,7 +514,7 @@ export default function HomeScreen() {
               accessibilityLabel="Beautonomi logo"
               style={{ padding: 4 }}
             >
-              <Image source={require("../../../assets/icon.png")} style={styles.navLogo} />
+              <Image source={require("../../../assets/favicon.png")} style={styles.navLogo} />
             </TouchableOpacity>
           </View>
           <View style={styles.navCenterGroup}>
@@ -472,17 +543,6 @@ export default function HomeScreen() {
                 <Text style={styles.navNewBadgeText}>NEW</Text>
               </View>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.navTab}
-              onPress={() => router.push("/shop" as any)}
-              accessibilityRole="button"
-              accessibilityLabel="Shop tab"
-              accessibilityHint="Browse products"
-              accessibilityState={{ selected: false }}
-            >
-              <Ionicons name="bag-outline" size={18} color={Colors.gray[500]} />
-              <Text style={[styles.navTabLabel, { color: Colors.gray[500], fontWeight: "500" }]}>Shop</Text>
-            </TouchableOpacity>
           </View>
           <View style={styles.navRightGroup}>
             <View style={styles.navSearchMargin}>
@@ -505,8 +565,29 @@ export default function HomeScreen() {
               accessibilityRole="button"
               accessibilityLabel="Notifications"
               accessibilityHint="Open notifications"
+              style={{ position: "relative" }}
             >
               <Ionicons name="notifications-outline" size={24} color="#333" />
+              {unreadCount > 0 ? (
+                <View
+                  style={{
+                    position: "absolute",
+                    top: -4,
+                    right: -4,
+                    minWidth: 18,
+                    height: 18,
+                    borderRadius: 9,
+                    backgroundColor: Colors.primary,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    paddingHorizontal: 4,
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </Text>
+                </View>
+              ) : null}
             </TouchableOpacity>
           </View>
         </View>
@@ -616,8 +697,20 @@ export default function HomeScreen() {
       <AddressPicker
         visible={addressPickerVisible}
         onClose={() => setAddressPickerVisible(false)}
-        onSelect={setSelectedAddress}
+        onSelect={handleAddressPickerSelect}
         onUseCurrentLocation={handleUseCurrentLocation}
+      />
+
+      <SaveAddressModal
+        visible={saveAddressModalVisible}
+        onClose={() => {
+          setSaveAddressModalVisible(false);
+          setPendingAddressSelection(null);
+        }}
+        selection={pendingAddressSelection}
+        addressCount={addresses.length}
+        onSaveAndUse={handleSaveAndUseWithError}
+        onJustUse={handleJustUse}
       />
     </View>
   );

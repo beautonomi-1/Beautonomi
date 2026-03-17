@@ -131,11 +131,18 @@ export async function GET(request: NextRequest) {
     normalizedPath !== null &&
     allowedPaths.some((p) => normalizedPath === p || normalizedPath!.startsWith(p + "/"));
 
+  // Admin paths: send to dedicated admin login (user is already signed in, so /admin/login will redirect to next)
+  if (isAllowedNext && normalizedPath && normalizedPath.startsWith("/admin")) {
+    return NextResponse.redirect(
+      new URL(`/admin/login?next=${encodeURIComponent(normalizedPath)}`, requestUrl.origin)
+    );
+  }
   if (isAllowedNext && normalizedPath && normalizedPath !== "/") {
     return NextResponse.redirect(new URL(normalizedPath, requestUrl.origin));
   }
 
-  // When next is "/" or missing, redirect by role so provider/admin land in the right place
+  // When next is "/" or missing, redirect by role so provider/customer land in the right place.
+  // Superadmin is sent to /admin/login (dedicated admin entry), not directly to /admin/dashboard.
   if (!normalizedPath || normalizedPath === "/") {
     const roleResult = await getUserRoleServer(supabase);
     if (roleResult) {
@@ -143,7 +150,10 @@ export async function GET(request: NextRequest) {
         role: roleResult.role,
         provider_status: roleResult.provider_status,
       });
-      const target = getDefaultRouteForPortal(portal);
+      let target = getDefaultRouteForPortal(portal);
+      if (portal === "admin") {
+        target = `/admin/login?next=${encodeURIComponent("/admin/dashboard")}`;
+      }
       return NextResponse.redirect(new URL(target, requestUrl.origin));
     }
   }

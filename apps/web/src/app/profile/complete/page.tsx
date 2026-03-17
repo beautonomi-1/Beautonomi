@@ -71,6 +71,7 @@ export default function CompleteProfilePage() {
       setIsLoading(true);
       const response = await fetcher.get<{ data: CompletionData }>("/api/me/profile-completion", {
         timeoutMs: 5000,
+        cache: "no-store",
       });
       setCompletionData(response.data);
     } catch (error) {

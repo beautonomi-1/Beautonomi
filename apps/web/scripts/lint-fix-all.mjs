@@ -7,7 +7,7 @@
  * Usage: node scripts/lint-fix-all.mjs
  * Or: pnpm run lint:fix-all (from apps/web)
  */
-import { execSync, spawnSync } from "child_process";
+import { spawnSync } from "child_process";
 import path from "path";
 import { fileURLToPath } from "url";
 

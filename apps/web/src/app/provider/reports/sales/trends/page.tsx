@@ -11,7 +11,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { RevenueChart } from "../../components/RevenueChart";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface RevenueTrendsData {
   period: string;
@@ -59,7 +59,7 @@ export default function RevenueTrendsReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data, "revenue-trends");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "revenue-trends");
     exportToCSV(exportData, "revenue-trends-report");
   };
 

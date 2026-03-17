@@ -21,7 +21,7 @@ export async function GET(
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request,
     );
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: order, error } = await (supabase.from("product_orders") as any)
       .select(

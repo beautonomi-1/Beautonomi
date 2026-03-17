@@ -13,7 +13,7 @@ import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
 import { RevenueChart } from "../../components/RevenueChart";
-import { exportToCSV, exportToPDF, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface BookingSummaryData {
   totalBookings: number;
@@ -92,7 +92,7 @@ export default function BookingSummaryReport() {
   const handleExport = (format: "csv" | "pdf" = "csv") => {
     if (!data) return;
     if (format === "csv") {
-      const exportData = formatReportDataForExport(data, "booking-summary");
+      const exportData = formatReportDataForExport(data as unknown as ReportRow, "booking-summary");
       exportToCSV(exportData, "booking-summary-report");
     } else {
       exportToPDF("booking-summary-report", "booking-summary-report", "Booking Summary Report");

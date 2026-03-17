@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { handleApiError, successResponse, badRequestResponse } from "@/lib/supabase/api-helpers";
+import { handleApiError, successResponse, badRequestResponse, requireRoleInApi } from "@/lib/supabase/api-helpers";
 
 /**
  * POST /api/me/loyalty-points/calculate-redemption
@@ -8,13 +8,8 @@ import { handleApiError, successResponse, badRequestResponse } from "@/lib/supab
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServer();
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
     const { points_to_redeem, booking_subtotal } = body;

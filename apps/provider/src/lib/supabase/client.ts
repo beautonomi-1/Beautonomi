@@ -1,3 +1,8 @@
+/**
+ * Supabase client for provider app.
+ * Auth does not use cookies: session is stored in platform storage (SecureStore on native,
+ * localStorage on web) via authStorage. API calls use Bearer token only.
+ */
 import "react-native-url-polyfill/auto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/config/public-env";
@@ -38,6 +43,7 @@ export const supabase: SupabaseClient = hasEnv
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,
+        storageKey: "beautonomi-provider-auth",
       },
     })
   : createStubClient();

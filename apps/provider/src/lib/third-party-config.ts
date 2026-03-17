@@ -13,12 +13,14 @@ let cachedConfig: ThirdPartyConfig | null = null;
 
 export async function getThirdPartyConfig(
   service?: "onesignal" | "mapbox",
+  options?: { app?: "customer" | "provider" },
 ): Promise<ThirdPartyConfig> {
   if (cachedConfig && !service) return cachedConfig;
 
-  const url = service
-    ? `${APP_URL}/api/public/third-party-config?service=${service}`
-    : `${APP_URL}/api/public/third-party-config`;
+  const params = new URLSearchParams();
+  if (service) params.set("service", service);
+  if (options?.app) params.set("app", options.app);
+  const url = `${APP_URL}/api/public/third-party-config${params.toString() ? `?${params.toString()}` : ""}`;
 
   try {
     const res = await fetch(url);
@@ -34,8 +36,9 @@ export async function getThirdPartyConfig(
   }
 }
 
+/** OneSignal app_id for the provider app (uses provider app when using two OneSignal apps). */
 export async function getOneSignalAppId(): Promise<string | null> {
-  const data = await getThirdPartyConfig("onesignal");
+  const data = await getThirdPartyConfig("onesignal", { app: "provider" });
   const onesignal = (data as Record<string, unknown>)?.onesignal ?? data;
   const cfg = onesignal as { enabled?: boolean; app_id?: string };
   return cfg?.enabled && cfg?.app_id ? cfg.app_id : null;

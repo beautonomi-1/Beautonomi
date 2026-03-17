@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requireAdminSection  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 
@@ -18,7 +19,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
 
@@ -72,7 +73,8 @@ export async function POST(
       );
     }
 
-    const payoutData = payout as any;
+    type PayoutRow = { status: string; provider_id: string; amount: number };
+    const payoutData = payout as PayoutRow;
 
     if (payoutData.status === "completed") {
       return NextResponse.json(
@@ -88,8 +90,8 @@ export async function POST(
     }
 
     // Update payout status
-    const { data: updatedPayout, error } = await (supabase
-      .from("payouts") as any)
+    const { data: updatedPayout, error } = await supabase
+      .from("payouts")
       .update({
         status: "failed",
         failure_reason: validationResult.data.failure_reason,
@@ -117,35 +119,50 @@ export async function POST(
 
     await writeAuditLog({
       actor_user_id: user.id,
-      actor_role: (user as any).role || "superadmin",
+      actor_role: user.role ?? "superadmin",
       action: "admin.payout.failed",
       entity_type: "payout",
       entity_id: id,
-      metadata: { provider_id: (payoutData as any).provider_id, amount: (payoutData as any).amount, failure_reason: validationResult.data.failure_reason },
+      metadata: { provider_id: payoutData.provider_id, amount: payoutData.amount, failure_reason: validationResult.data.failure_reason },
     });
 
-    // Send OneSignal notification to provider
     try {
       const { sendToUser } = await import("@/lib/notifications/onesignal");
-      
-      // Get provider owner
       const { data: provider } = await supabase
         .from("providers")
         .select("user_id, business_name")
-        .eq("id", (payoutData as any).provider_id)
+        .eq("id", payoutData.provider_id)
         .single();
 
       if (provider) {
-        const providerUserId = (provider as any).user_id;
-        await sendToUser(providerUserId, {
-          title: "Payout Failed",
-          message: `Your payout of ZAR ${(payoutData as any).amount.toLocaleString()} could not be processed. Reason: ${validationResult.data.failure_reason}`,
-          data: {
-            type: "payout_failed",
-            payout_id: id,
-          },
-          url: "/provider/finance",
-        });
+        const providerRow = provider as { user_id?: string };
+        const providerUserId = providerRow.user_id;
+        const amountStr = payoutData.amount.toLocaleString();
+        const reason = validationResult.data.failure_reason;
+        if (providerUserId) {
+          await sendToUser(
+            providerUserId,
+            {
+              title: "Payout Failed",
+              message: `Your payout of ZAR ${amountStr} could not be processed. Reason: ${reason}`,
+              data: {
+                type: "payout_failed",
+                payout_id: id,
+              },
+              url: "/provider/finance",
+            },
+            ["push"],
+            { appType: "provider" }
+          );
+          await supabase.from("notifications").insert({
+            user_id: providerUserId,
+            type: "system",
+            title: "Payout Failed",
+            message: `Your payout of ZAR ${amountStr} could not be processed. Reason: ${reason}`,
+            data: { payout_id: id, amount: payoutData.amount, failure_reason: reason },
+            action_url: "/provider/payouts",
+          });
+        }
       }
     } catch (notifError) {
       console.error("Error sending notification:", notifError);

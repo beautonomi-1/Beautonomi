@@ -16,6 +16,7 @@ import {
   Phone,
   History,
 } from "lucide-react";
+import { BarcodeLookup } from "@/components/provider-portal/BarcodeLookup";
 
 interface Product {
   id: string;
@@ -142,10 +143,10 @@ export default function WalkInSalePage() {
         setCustomerPhone("");
         fetchProducts();
       } else {
-        setError((res as any)?.error || "Failed to process sale");
+        setError(res?.error ?? "Failed to process sale");
       }
-    } catch (err: any) {
-      setError(err?.message || "Something went wrong");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     }
     setProcessing(false);
   };
@@ -231,6 +232,25 @@ export default function WalkInSalePage() {
           <div className="grid gap-6 lg:grid-cols-5">
             {/* Product catalog - left */}
             <div className="lg:col-span-3">
+              <div className="mb-4">
+                <BarcodeLookup
+                  label="Scan or enter barcode"
+                  placeholder="Barcode / SKU"
+                  onSelect={(product, variant) => {
+                    const full = products.find((p) => p.id === product.id);
+                    const toAdd: Product = full ?? {
+                      id: product.id,
+                      name: product.name ?? "Product",
+                      brand: null,
+                      retail_price: variant?.retail_price ?? product.retail_price ?? 0,
+                      quantity: variant?.quantity ?? product.quantity ?? 0,
+                      image_urls: product.image_urls ?? [],
+                      is_active: true,
+                    };
+                    if (toAdd.quantity > 0) addToCart(toAdd);
+                  }}
+                />
+              </div>
               <div className="relative mb-4">
                 <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                 <input

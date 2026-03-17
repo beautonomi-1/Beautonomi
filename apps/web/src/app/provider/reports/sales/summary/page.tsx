@@ -13,7 +13,7 @@ import { RevenueChart } from "../../components/RevenueChart";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
-import { exportToCSV, exportToPDF, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface SalesSummaryData {
   totalRevenue: number;
@@ -81,7 +81,7 @@ export default function SalesSummaryReport() {
   const handleExport = (format: "csv" | "pdf" = "csv") => {
     if (!data) return;
     if (format === "csv") {
-      const exportData = formatReportDataForExport(data, "sales-summary");
+      const exportData = formatReportDataForExport(data as unknown as ReportRow, "sales-summary");
       exportToCSV(exportData, "sales-summary-report");
     } else {
       exportToPDF("sales-summary-report", "sales-summary-report", "Sales Summary Report");

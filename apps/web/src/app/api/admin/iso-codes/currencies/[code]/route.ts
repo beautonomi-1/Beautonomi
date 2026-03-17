@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 
 const updateCurrencySchema = z.object({
   name: z.string().min(1).optional(),
@@ -22,8 +24,8 @@ export async function GET(
   { params }: { params: Promise<{ code: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -78,8 +80,8 @@ export async function PUT(
   { params }: { params: Promise<{ code: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -107,14 +109,14 @@ export async function PUT(
 
     // If setting as default, unset other defaults
     if (validationResult.data.is_default) {
-      await (supabase as any)
+      await supabase
         .from("iso_currencies")
         .update({ is_default: false })
         .neq("code", code.toUpperCase());
     }
 
-    const { data: currency, error } = await (supabase
-      .from("iso_currencies") as any)
+    const { data: currency, error } = await supabase
+      .from("iso_currencies")
       .update({
         ...validationResult.data,
         updated_at: new Date().toISOString(),
@@ -138,8 +140,8 @@ export async function PUT(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.iso_currencies.update",
       entity_type: "iso_currency",
       entity_id: code.toUpperCase(),
@@ -175,8 +177,8 @@ export async function DELETE(
   { params }: { params: Promise<{ code: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -190,7 +192,7 @@ export async function DELETE(
       .eq("code", code.toUpperCase())
       .single();
 
-    if ((currency as any)?.is_default) {
+    if ((currency as { is_default?: boolean } | null)?.is_default) {
       return NextResponse.json(
         {
           data: null,
@@ -203,8 +205,8 @@ export async function DELETE(
       );
     }
 
-    const { error } = await (supabase
-      .from("iso_currencies") as any)
+    const { error } = await supabase
+      .from("iso_currencies")
       .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq("code", code.toUpperCase());
 
@@ -223,8 +225,8 @@ export async function DELETE(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.iso_currencies.delete",
       entity_type: "iso_currency",
       entity_id: code.toUpperCase(),

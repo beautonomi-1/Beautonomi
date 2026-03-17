@@ -186,7 +186,7 @@ export default function ProviderAutomations() {
           return;
         }
         
-        const raw = automation._raw;
+        const raw = automation._raw as { name?: string; trigger_type?: string; trigger_config?: Record<string, unknown>; action_type?: string; action_config?: Record<string, unknown>; delay_minutes?: number; description?: string };
         await fetcher.post("/api/provider/automations", {
           name: raw.name,
           trigger_type: raw.trigger_type,

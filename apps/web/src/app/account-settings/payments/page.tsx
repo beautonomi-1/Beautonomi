@@ -94,8 +94,8 @@ const PaymentPage = () => {
       setCouponCode("");
       setShowCouponInput(false);
       loadCouponCount();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to redeem coupon. Please check the code and try again.");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to redeem coupon. Please check the code and try again.");
     } finally {
       setIsRedeemingCoupon(false);
     }
@@ -136,7 +136,7 @@ const PaymentPage = () => {
 
   const handleSetDefault = async (id: string) => {
     try {
-      const res = await fetcher.patch<{ data?: any; error?: { message?: string } }>(`/api/me/payment-methods/${id}`, { is_default: true });
+      const res = await fetcher.patch<{ data?: unknown; error?: { message?: string } }>(`/api/me/payment-methods/${id}`, { is_default: true });
       if (res?.error) {
         toast.error(res.error.message || "Failed to set default");
         return;
@@ -157,13 +157,13 @@ const PaymentPage = () => {
       );
       const url = res?.data?.authorization_url;
       if (!url) {
-        toast.error((res as any)?.error?.message || "Could not start card verification");
+        toast.error(res?.error?.message || "Could not start card verification");
         return;
       }
       window.open(url, "_blank", "noopener,noreferrer");
       toast.info("Complete verification in the new tab, then refresh this page.");
-    } catch (err: any) {
-      toast.error(err?.message || "Could not add card");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Could not add card");
     } finally {
       setAddingCard(false);
     }

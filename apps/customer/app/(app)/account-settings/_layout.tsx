@@ -31,6 +31,7 @@ export default function AccountSettingsLayout() {
     >
       <Stack.Screen name="index" options={{ title: "Account" }} />
       <Stack.Screen name="personal-info" options={{ title: "Personal Info" }} />
+      <Stack.Screen name="profile-details" options={{ title: "Profile Details" }} />
       <Stack.Screen name="login-and-security" options={{ title: "Login & Security" }} />
       <Stack.Screen name="identity-verification" options={{ title: "Identity Verification" }} />
       <Stack.Screen name="payments" options={{ title: "Payments" }} />
@@ -50,7 +51,6 @@ export default function AccountSettingsLayout() {
       <Stack.Screen name="recurring-bookings" options={{ title: "Recurring Bookings" }} />
       <Stack.Screen name="custom-requests" options={{ title: "Custom Requests" }} />
       <Stack.Screen name="membership" options={{ title: "Membership" }} />
-      <Stack.Screen name="business" options={{ title: "Business Account" }} />
       <Stack.Screen name="language" options={{ title: "Language" }} />
     </Stack>
   );

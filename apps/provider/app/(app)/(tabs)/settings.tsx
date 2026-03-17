@@ -1,45 +1,102 @@
-import { useEffect } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
+import { useApi } from "@/hooks/useApi";
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
+
+interface ProviderProfile {
+  id: string;
+  business_name: string | null;
+  description: string | null;
+  business_type: string | null;
+  phone: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  thumbnail_url: string | null;
+  locations: { id: string; name: string; address_line1: string; city: string; location_type: string }[];
+}
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const { data: profile, loading, error, refresh } = useApi<ProviderProfile>("/api/provider/profile");
 
-  // #region agent log
-  useEffect(() => {
-    console.log("[DEBUG-A] SettingsScreen (tabs-level) mounted - WRONG SCREEN");
-    fetch("http://127.0.0.1:7243/ingest/89f3cdbd-444d-401b-9bce-c59a37625210", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        location: "app/(app)/(tabs)/settings.tsx:SettingsScreen",
-        message: "SettingsScreen (tabs-level) mounted",
-        data: {},
-        timestamp: Date.now(),
-        hypothesisId: "A",
-      }),
-    }).catch(() => {});
-  }, []);
-  // #endregion
+  const handleSignOut = async () => {
+    await signOut();
+    router.replace("/(auth)/login" as never);
+  };
+
+  if (loading && !profile) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Settings" />
+        <View style={twStyle("flex-1 items-center justify-center py-12")}>
+          <LoadingState />
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  if (error && !profile) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Settings" />
+        <View style={twStyle("flex-1 justify-center px-4")}>
+          <ErrorState message={error} onRetry={refresh} />
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  const businessName = profile?.business_name?.trim() || null;
+  const phone = profile?.phone?.trim() || user?.phone || null;
+  const email = profile?.email?.trim() || user?.email || null;
 
   return (
-    <View style={twStyle("flex-1 bg-white p-6")}>
-      <Text style={twStyle("text-2xl font-semibold text-gray-900")}>Settings</Text>
-      {user?.phone && (
-        <Text style={twStyle("mt-2 text-gray-500")}>{user.phone}</Text>
-      )}
-      <TouchableOpacity
-        style={twStyle("mt-8 rounded-lg border border-gray-300 py-3")}
-        onPress={async () => {
-        await signOut();
-        router.replace("/(auth)/login" as never);
-      }}
+    <ScreenContainer scrollable={false}>
+      <ScreenHeader
+        title="Settings"
+        rightAction={
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/settings-hub" as never)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Text style={twStyle("text-sm font-medium text-indigo-600")}>More settings</Text>
+          </TouchableOpacity>
+        }
+      />
+      <ScrollView
+        style={twStyle("flex-1")}
+        contentContainerStyle={twStyle("p-4 pb-24")}
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={twStyle("text-center font-medium text-gray-900")}>Sign out</Text>
-      </TouchableOpacity>
-    </View>
+        <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4")}>
+          {businessName && (
+            <Text style={twStyle("text-lg font-semibold text-gray-900")}>{businessName}</Text>
+          )}
+          {phone && (
+            <Text style={twStyle("mt-1 text-gray-600")}>{phone}</Text>
+          )}
+          {email && (
+            <Text style={twStyle("mt-0.5 text-gray-600")}>{email}</Text>
+          )}
+          {!businessName && !phone && !email && (
+            <Text style={twStyle("text-gray-500")}>Provider account</Text>
+          )}
+        </View>
+
+        <TouchableOpacity
+          style={twStyle("mt-6 rounded-xl border border-gray-300 bg-white py-4 px-4")}
+          onPress={handleSignOut}
+          activeOpacity={0.7}
+        >
+          <Text style={twStyle("text-center font-semibold text-gray-900")}>Sign out</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </ScreenContainer>
   );
 }

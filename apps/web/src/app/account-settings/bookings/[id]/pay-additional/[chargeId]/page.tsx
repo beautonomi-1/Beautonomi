@@ -22,6 +22,12 @@ interface AdditionalCharge {
   paid_at?: string;
 }
 
+interface BookingWithCharges {
+  booking_number?: string;
+  provider?: { business_name?: string };
+  additional_charges?: AdditionalCharge[];
+}
+
 export default function PayAdditionalChargePage() {
   const params = useParams();
   const router = useRouter();
@@ -29,7 +35,7 @@ export default function PayAdditionalChargePage() {
   const chargeId = params.chargeId as string;
 
   const [charge, setCharge] = useState<AdditionalCharge | null>(null);
-  const [booking, setBooking] = useState<any>(null);
+  const [booking, setBooking] = useState<BookingWithCharges | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +51,7 @@ export default function PayAdditionalChargePage() {
 
       // Load booking to get charge info
       const bookingResponse = await fetcher.get<{
-        data: any;
+        data: BookingWithCharges;
         error: null;
       }>(`/api/me/bookings/${bookingId}`, { cache: "no-store" });
 
@@ -54,7 +60,7 @@ export default function PayAdditionalChargePage() {
 
       // Find the specific charge
       const foundCharge = bookingData.additional_charges?.find(
-        (c: any) => c.id === chargeId
+        (c: AdditionalCharge) => c.id === chargeId
       );
 
       if (!foundCharge) {

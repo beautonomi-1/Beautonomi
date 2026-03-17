@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_ECOMMERCE } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 
@@ -21,6 +22,8 @@ const updateAddonSchema = z.object({
   service_ids: z.array(z.string().uuid()).optional(),
 });
 
+type AddonRow = { provider_id?: string | null; type?: string; name?: string; title?: string; applicable_service_ids?: string[] };
+
 /**
  * GET /api/admin/addons/[id]
  */
@@ -29,7 +32,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user: authUser } = await requireRoleInApi(["superadmin", "provider_owner"], request);
+    const { user: authUser } = await requireAdminSection(ADMIN_SECTION_ECOMMERCE, request);
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
@@ -59,12 +62,12 @@ export async function GET(
       );
     }
 
-    // Check access - providers can only access their own addons; superadmin can access any
-    if (authUser.role === "provider_owner" && (addon as any).provider_id) {
+    const addonRow = addon as AddonRow;
+    if (authUser.role === "provider_owner" && addonRow.provider_id) {
       const { data: provider } = await supabase
         .from("providers")
         .select("id")
-        .eq("id", (addon as any).provider_id)
+        .eq("id", addonRow.provider_id)
         .eq("user_id", authUser.id)
         .single();
 
@@ -82,8 +85,7 @@ export async function GET(
       }
     }
 
-    // service_addons view is from offerings; use applicable_service_ids (no service_addon_associations table)
-    const addonData = addon as Record<string, any> & { applicable_service_ids?: string[]; title?: string };
+    const addonData = addon as AddonRow & Record<string, unknown>;
     return NextResponse.json({
       data: {
         ...addonData,
@@ -115,7 +117,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user: authUser } = await requireRoleInApi(["superadmin", "provider_owner"], request);
+    const { user: authUser } = await requireAdminSection(ADMIN_SECTION_ECOMMERCE, request);
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
@@ -165,12 +167,12 @@ export async function PUT(
       );
     }
 
-    // Check access for provider_owner
-    if (authUser.role === "provider_owner" && (existing as any).provider_id) {
+    const existingRow = existing as AddonRow;
+    if (authUser.role === "provider_owner" && existingRow.provider_id) {
       const { data: provider } = await supabase
         .from("providers")
         .select("id")
-        .eq("id", (existing as any).provider_id)
+        .eq("id", existingRow.provider_id)
         .eq("user_id", authUser.id)
         .single();
 
@@ -190,8 +192,8 @@ export async function PUT(
 
     const { service_ids, ...updateData } = validationResult.data;
 
-    const { data: addon, error } = await (supabase
-      .from("service_addons") as any)
+    const { data: addon, error } = await supabase
+      .from("service_addons")
       .update({
         ...updateData,
         updated_at: new Date().toISOString(),
@@ -217,9 +219,8 @@ export async function PUT(
     // Update service associations if provided
     if (service_ids !== undefined) {
       // Delete existing associations
-      await (supabase as any).from("service_addon_associations").delete().eq("addon_id", id);
+      await supabase.from("service_addon_associations").delete().eq("addon_id", id);
 
-      // Create new associations
       if (service_ids.length > 0) {
         const associations = service_ids.map((serviceId: string) => ({
           addon_id: id,
@@ -227,29 +228,30 @@ export async function PUT(
           created_at: new Date().toISOString(),
         }));
 
-        await (supabase as any).from("service_addon_associations").insert(associations);
+        await supabase.from("service_addon_associations").insert(associations);
       }
     }
 
-    // Load updated service associations
-    const { data: associations } = await (supabase as any)
+    const { data: associations } = await supabase
       .from("service_addon_associations")
       .select("service_id")
       .eq("addon_id", id);
 
+    const addonOut = addon as AddonRow;
     await writeAuditLog({
       actor_user_id: authUser.id,
-      actor_role: (authUser as any).role || "superadmin",
+      actor_role: authUser.role ?? "superadmin",
       action: "admin.addon.update",
       entity_type: "service_addon",
       entity_id: id,
-      metadata: { provider_id: (addon as any).provider_id || null, type: (addon as any).type },
+      metadata: { provider_id: addonOut.provider_id ?? null, type: addonOut.type },
     });
 
+    type AssocRow = { service_id: string };
     return NextResponse.json({
       data: {
-        ...(addon as Record<string, any>),
-        service_ids: associations?.map((a: any) => a.service_id) || [],
+        ...(addon as Record<string, unknown>),
+        service_ids: (associations as AssocRow[] | null)?.map((a) => a.service_id) ?? [],
       },
       error: null,
     });
@@ -276,7 +278,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user: authUser } = await requireRoleInApi(["superadmin", "provider_owner"], request);
+    const { user: authUser } = await requireAdminSection(ADMIN_SECTION_ECOMMERCE, request);
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
@@ -307,12 +309,12 @@ export async function DELETE(
       );
     }
 
-    // Check access - providers can only delete their own addons; superadmin can delete any
-    if (authUser.role === "provider_owner" && (existing as any).provider_id) {
+    const existingDel = existing as AddonRow;
+    if (authUser.role === "provider_owner" && existingDel.provider_id) {
       const { data: provider } = await supabase
         .from("providers")
         .select("id")
-        .eq("id", (existing as any).provider_id)
+        .eq("id", existingDel.provider_id)
         .eq("user_id", authUser.id)
         .single();
 
@@ -330,9 +332,8 @@ export async function DELETE(
       }
     }
 
-    // Soft delete
-    const { error } = await (supabase
-      .from("service_addons") as any)
+    const { error } = await supabase
+      .from("service_addons")
       .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq("id", id);
 
@@ -352,11 +353,11 @@ export async function DELETE(
 
     await writeAuditLog({
       actor_user_id: authUser.id,
-      actor_role: (authUser as any).role || "superadmin",
+      actor_role: authUser.role ?? "superadmin",
       action: "admin.addon.delete",
       entity_type: "service_addon",
       entity_id: id,
-      metadata: { provider_id: (existing as any).provider_id || null },
+      metadata: { provider_id: existingDel.provider_id ?? null },
     });
 
     return NextResponse.json({

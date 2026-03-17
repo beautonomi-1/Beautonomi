@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request
     );
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: active, error: findError } = await supabase
       .from("customer_memberships")

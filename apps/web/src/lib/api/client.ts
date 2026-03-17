@@ -125,14 +125,14 @@ export const apiClient = new ApiClient();
 /**
  * Helper function to handle API errors and return user-friendly messages
  */
-export function handleApiError(error: any): string {
+export function handleApiError(error: unknown): string {
   if (error instanceof ApiError) {
     return error.message;
   }
-  
+
   if (error instanceof Error) {
     return error.message;
   }
-  
-  return 'An unexpected error occurred';
+
+  return "An unexpected error occurred";
 }

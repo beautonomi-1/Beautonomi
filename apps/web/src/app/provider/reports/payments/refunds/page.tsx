@@ -11,7 +11,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays, format } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface RefundsData {
   totalRefunds: number;
@@ -87,7 +87,7 @@ export default function RefundsReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data, "refunds");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "refunds");
     exportToCSV(exportData, "refunds-report");
   };
 

@@ -41,6 +41,10 @@ export interface ProfileUser {
   privacy_settings?: {
     services_booked_visible?: boolean;
   };
+  /** Average rating from providers (Uber-style customer rating) */
+  rating_average?: number | null;
+  /** Number of ratings received from providers */
+  review_count?: number | null;
 }
 
 export interface ProfileData {

@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
   errorResponse,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 
 const MAX_POSTAL_CODES = 1000;
 
@@ -16,7 +16,7 @@ const MAX_POSTAL_CODES = 1000;
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const country = searchParams.get("country")?.trim();
@@ -43,7 +43,8 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     const uniq = new Map<string, { postal_code: string; province_name?: string; city_name?: string; town_name?: string }>();
-    (data || []).forEach((r: any) => {
+    type Row = { postal_code?: string; province_name?: string; city_name?: string; town_name?: string };
+    (data || []).forEach((r: Row) => {
       if (r.postal_code && !uniq.has(r.postal_code)) {
         uniq.set(r.postal_code, {
           postal_code: r.postal_code,

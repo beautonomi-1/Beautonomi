@@ -90,10 +90,19 @@ export async function hasRole(
     return requiredRole.includes(userRole);
   }
 
-  // Role hierarchy: superadmin > support_agent > provider_owner > provider_staff > customer
+  // Role hierarchy: superadmin (5) > admin_* / support_agent (4) > provider_owner (3) > provider_staff (2) > customer (1)
   const roleHierarchy: Record<UserRole, number> = {
     superadmin: 5,
     support_agent: 4,
+    admin_support: 4,
+    admin_finance: 4,
+    admin_trust: 4,
+    admin_content: 4,
+    admin_ecommerce: 4,
+    admin_marketing: 4,
+    admin_integrations: 4,
+    admin_operations: 4,
+    admin_platform_config: 4,
     provider_owner: 3,
     provider_staff: 2,
     customer: 1,

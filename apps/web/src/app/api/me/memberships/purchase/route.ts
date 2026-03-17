@@ -15,7 +15,7 @@ const schema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const {
       data: { user },
       error: userError,

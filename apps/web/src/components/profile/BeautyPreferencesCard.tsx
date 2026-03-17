@@ -6,14 +6,13 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
-  X,
-  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import type { BeautyPreferences } from "@/types/profile";
+import { ChipCombobox } from "@/components/ui/chip-combobox";
 
 interface BeautyPreferencesCardProps {
   preferences: BeautyPreferences;
@@ -70,7 +69,6 @@ export default function BeautyPreferencesCard({
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<BeautyPreferences>(preferences);
-  const [allergyInput, setAllergyInput] = useState("");
   const [otherAppointmentStyle, setOtherAppointmentStyle] = useState("");
 
   const hasChanges = JSON.stringify(formData) !== JSON.stringify(preferences);
@@ -81,29 +79,11 @@ export default function BeautyPreferencesCard({
       await fetcher.patch("/api/me/beauty-preferences", formData);
       toast.success("Beauty preferences saved");
       onUpdate?.();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to save preferences");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to save preferences");
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleAddAllergy = () => {
-    if (!allergyInput.trim()) return;
-    const newAllergies = [...(formData.allergies || []), allergyInput.trim()];
-    setFormData({ ...formData, allergies: newAllergies });
-    setAllergyInput("");
-  };
-
-  const handleRemoveAllergy = (allergy: string) => {
-    const newAllergies = (formData.allergies || []).filter((a) => a !== allergy);
-    setFormData({ ...formData, allergies: newAllergies });
-  };
-
-  const handleAddSuggestedAllergy = (allergy: string) => {
-    if ((formData.allergies || []).includes(allergy)) return;
-    const newAllergies = [...(formData.allergies || []), allergy];
-    setFormData({ ...formData, allergies: newAllergies });
   };
 
   const togglePreferredTime = (time: string) => {
@@ -232,77 +212,15 @@ export default function BeautyPreferencesCard({
                 <label className="text-sm font-medium text-zinc-900 mb-3 block">
                   Allergies & Sensitivities
                 </label>
-                <div className="space-y-3">
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={allergyInput}
-                      onChange={(e) => setAllergyInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleAddAllergy();
-                        }
-                      }}
-                      placeholder="Add allergy or sensitivity"
-                      className="flex-1 px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0077] text-sm"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleAddAllergy}
-                      className="border-zinc-300"
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add
-                    </Button>
-                  </div>
-                  {ALLERGY_SUGGESTIONS.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {ALLERGY_SUGGESTIONS.map((allergy) => (
-                        <motion.button
-                          key={allergy}
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => handleAddSuggestedAllergy(allergy)}
-                          disabled={(formData.allergies || []).includes(allergy)}
-                          className={`
-                            px-3 py-1.5 rounded-full text-xs font-medium border transition-all
-                            ${
-                              (formData.allergies || []).includes(allergy)
-                                ? "bg-zinc-200 text-zinc-500 border-zinc-300 cursor-not-allowed"
-                                : "bg-white/60 text-zinc-700 border-zinc-300 hover:bg-zinc-50"
-                            }
-                          `}
-                        >
-                          + {allergy}
-                        </motion.button>
-                      ))}
-                    </div>
-                  )}
-                  {formData.allergies && formData.allergies.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {formData.allergies.map((allergy) => (
-                        <motion.span
-                          key={allergy}
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          className="px-3 py-1.5 rounded-full text-xs font-medium bg-[#FF0077] text-white flex items-center gap-2 group"
-                        >
-                          {allergy}
-                          <button
-                            onClick={() => handleRemoveAllergy(allergy)}
-                            className="hover:bg-white/20 rounded-full p-0.5 transition-colors"
-                            aria-label={`Remove ${allergy}`}
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </motion.span>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <ChipCombobox
+                  singleSelect={false}
+                  value={formData.allergies || []}
+                  onChange={(allergies) => setFormData({ ...formData, allergies })}
+                  staticSuggestions={ALLERGY_SUGGESTIONS.map((a) => ({ value: a, label: a }))}
+                  allowFreeForm
+                  placeholder="Add allergy or sensitivity..."
+                  aria-label="Allergies and sensitivities"
+                />
               </div>
 
               {/* Things to Avoid */}

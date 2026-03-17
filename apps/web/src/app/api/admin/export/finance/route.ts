@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
@@ -10,8 +11,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRoleInApi(['superadmin'], request);
-    const { allowed, retryAfter } = checkRateLimit(auth.user.id, "export:finance");
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    const { allowed, retryAfter } = checkRateLimit(user.id, "export:finance");
     if (!allowed) {
       return errorResponse(
         `Rate limit exceeded. Try again in ${retryAfter} seconds.`,
@@ -70,7 +71,8 @@ export async function GET(request: NextRequest) {
       "Metadata",
     ];
 
-    const rows = (transactions || []).map((transaction: any) => [
+    type TxRow = { id: string; transaction_type?: string; amount?: number; net?: number; fees?: number; currency?: string; status?: string; booking_id?: string; booking?: { booking_number?: string; provider_id?: string; customer_id?: string }; created_at?: string; metadata?: unknown };
+    const rows = (transactions || []).map((transaction: TxRow) => [
       transaction.id,
       transaction.transaction_type,
       transaction.amount,

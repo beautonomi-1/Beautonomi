@@ -23,6 +23,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { Avatar } from "@/components/ui/Avatar";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { formatDuration } from "@/lib/format";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
@@ -957,30 +958,19 @@ export default function NewBookingScreen() {
               {referralSources.length > 0 && (
                 <>
                   <SectionLabel label="Where did this client come from?" />
-                  <View style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 p-2")}>
-                    <TouchableOpacity
-                      style={twStyle(`rounded-lg px-3 py-2.5 ${!referralSourceId ? "bg-gray-900" : ""}`)}
-                      onPress={() => setReferralSourceId("")}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: !referralSourceId }}
-                    >
-                      <Text style={twStyle(`text-sm font-medium ${!referralSourceId ? "text-white" : "text-gray-700"}`)}>
-                        — None / Not specified —
-                      </Text>
-                    </TouchableOpacity>
-                    {referralSources.map((s) => (
-                      <TouchableOpacity
-                        key={s.id}
-                        style={twStyle(`mt-1 rounded-lg px-3 py-2.5 ${referralSourceId === s.id ? "bg-gray-900" : ""}`)}
-                        onPress={() => setReferralSourceId(s.id)}
-                        accessibilityRole="radio"
-                        accessibilityState={{ checked: referralSourceId === s.id }}
-                      >
-                        <Text style={twStyle(`text-sm font-medium ${referralSourceId === s.id ? "text-white" : "text-gray-700"}`)}>
-                          {s.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                  <View style={twStyle("mb-4")}>
+                    <ChipCombobox
+                      singleSelect
+                      value={referralSourceId || null}
+                      onChange={(v) => setReferralSourceId(v ?? "")}
+                      staticSuggestions={[
+                        { value: "", label: "— None / Not specified —" },
+                        ...referralSources.map((s) => ({ value: s.id, label: s.name })),
+                      ]}
+                      allowFreeForm={false}
+                      placeholder="Select referral source"
+                      accessibilityLabel="Referral source"
+                    />
                   </View>
                 </>
               )}

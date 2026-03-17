@@ -8,8 +8,8 @@ const createSchema = z.object({
   is_public: z.boolean().optional(),
 });
 
-async function ensureDefaultWishlist(userId: string) {
-  const supabase = await getSupabaseServer();
+async function ensureDefaultWishlist(userId: string, request: NextRequest) {
+  const supabase = await getSupabaseServer(request);
 
   const { data: existing, error: listError } = await (supabase.from("wishlists") as any)
     .select("id")
@@ -42,11 +42,11 @@ async function ensureDefaultWishlist(userId: string) {
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Ensure default wishlist exists
     try {
-      await ensureDefaultWishlist(user.id);
+      await ensureDefaultWishlist(user.id, request);
     } catch (ensureError) {
       console.error("Error ensuring default wishlist:", ensureError);
       // Continue even if default wishlist creation fails
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const body = createSchema.parse(await request.json());
 

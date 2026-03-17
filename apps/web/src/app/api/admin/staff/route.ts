@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
-import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/staff
@@ -16,8 +17,8 @@ import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -65,34 +66,36 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    // Normalize: users comes as { role } or null from FK; attach user_role (account role from users table)
-    let staff = (staffRows || []).map((s: any) => {
-      const { users: _u, ...rest } = s;
-      return { ...rest, user_role: _u?.role ?? null };
+    type StaffRow = { users?: { role?: string } | { role?: string }[] | null; [key: string]: unknown };
+    type StaffWithRole = StaffRow & { user_role: string | null };
+    let staff = (staffRows || []).map((s: unknown) => {
+      const row = s as StaffRow;
+      const _u = Array.isArray(row.users) ? row.users[0] : row.users;
+      const { users: _unused, ...rest } = row;
+      return { ...rest, user_role: _u?.role ?? null } as StaffWithRole;
     });
     if (userRole) {
-      staff = staff.filter((s: any) => s.user_role === userRole);
+      staff = staff.filter((s) => s.user_role === userRole);
     }
 
-    // Get statistics (include user_role from users for account-level counts)
     const { data: allStaffWithUser } = await supabase
       .from("provider_staff")
       .select("id, role, is_active, users(role)");
 
-    const allStaff = allStaffWithUser || [];
+    const allStaff = (allStaffWithUser || []) as StaffRow[];
     const stats = {
       total: allStaff.length,
-      active: allStaff.filter((s: any) => s.is_active).length,
-      inactive: allStaff.filter((s: any) => !s.is_active).length,
+      active: allStaff.filter((s) => s.is_active).length,
+      inactive: allStaff.filter((s) => !s.is_active).length,
       by_staff_role: {
-        owner: allStaff.filter((s: any) => s.role === "owner").length,
-        manager: allStaff.filter((s: any) => s.role === "manager").length,
-        employee: allStaff.filter((s: any) => s.role === "employee").length,
+        owner: allStaff.filter((s) => s.role === "owner").length,
+        manager: allStaff.filter((s) => s.role === "manager").length,
+        employee: allStaff.filter((s) => s.role === "employee").length,
       },
       by_user_role: {
-        provider_owner: allStaff.filter((s: any) => s.users?.role === "provider_owner").length,
-        provider_staff: allStaff.filter((s: any) => s.users?.role === "provider_staff").length,
-        no_account: allStaff.filter((s: any) => !s.users?.role).length,
+        provider_owner: allStaff.filter((s) => (Array.isArray(s.users) ? s.users[0] : s.users)?.role === "provider_owner").length,
+        provider_staff: allStaff.filter((s) => (Array.isArray(s.users) ? s.users[0] : s.users)?.role === "provider_staff").length,
+        no_account: allStaff.filter((s) => !(Array.isArray(s.users) ? s.users[0] : s.users)?.role).length,
       },
     };
 

@@ -95,6 +95,33 @@ Legend: **✅ Correct** | **⚠️ Needs follow-up** | **❌ Fixed in this pass*
 
 ---
 
+## Route inventory (detailed)
+
+The following admin page routes were inventoried from the Superadmin portal (reference). All require superadmin; APIs use `requireRole` or `requireRoleInApi(["superadmin"])`.
+
+| Route path | Key APIs | Purpose |
+|------------|----------|---------|
+| `/admin`, `/admin/dashboard` | portal, dashboard | Redirect, dashboard |
+| `/admin/gods-eye`, `/admin/analytics` | gods-eye, analytics | Gods eye, analytics |
+| `/admin/reports`, `/admin/reports/revenue`, `bookings`, `providers`, `customers`, `gift-cards` | reports/*, export/* | Reports |
+| `/admin/providers`, `/admin/providers/[id]`, `distance-settings` | providers/* | Providers |
+| `/admin/staff`, `/admin/bookings`, `/admin/bookings/[id]` | staff, bookings, cancel, refund, dispute | Staff, bookings |
+| `/admin/reviews`, `/admin/disputes`, `/admin/user-reports`, `/admin/refunds` | reviews, disputes, refunds | Reviews, disputes, refunds |
+| `/admin/support-tickets`, `/admin/support-tickets/[id]` | support-tickets, messages | Support tickets |
+| `/admin/finance`, `/admin/payouts`, `/admin/fees`, `/admin/billing` | finance, payouts, fees, invoices | Finance |
+| `/admin/users`, `/admin/users/[id]` | users, impersonate, password, export | Users |
+| `/admin/verifications`, `/admin/content`, `/admin/iso-codes`, `/admin/mapbox` | verifications, content/*, iso-codes, mapbox | Verifications, content, mapbox |
+| `/admin/settings/*`, `/admin/subscription-plans`, `/admin/addons`, `/admin/security` | settings, feature-flags, travel-fees, addons, security | Settings, plans, addons, security |
+| `/admin/notifications`, `/admin/broadcast`, `/admin/notification-templates`, `email-templates`, `sms-templates` | notifications, broadcast, templates | Notifications, broadcast |
+| `/admin/system-health`, `/admin/monitoring`, `/admin/api-keys`, `/admin/webhooks`, `/admin/audit-logs` | system-health, monitoring, api-keys, webhooks, audit-logs | System, audit |
+| `/admin/control-plane/*`, `/admin/control-plane/overview`, `feature-flags`, `audit-log`, `safety-logs`, `integrations/*`, `modules/*` | feature-flags, config-change-log, safety, integrations, modules (ai, ads, distance, ranking, on-demand) | Control plane |
+| `/admin/ecommerce/*`, `/admin/gamification/*`, `/admin/loyalty`, `/admin/promotions`, `/admin/catalog`, `/admin/explore` | product-orders, products, returns, badges, point-rules, loyalty, promotions, catalog, explore | E-commerce, gamification, content |
+| `/admin/automations`, `/admin/custom-fields`, `/admin/integrations/amplitude` | automations, custom-fields, amplitude | Automations, custom fields, Amplitude |
+
+Full page-by-page inventory (page file, components, data dependencies) was documented in the 2025-03-03 Superadmin audit; the above summarizes route → API mapping. QA checklist: `docs/SUPERADMIN_QA_CHECKLIST.md`.
+
+---
+
 ## References
 
 - Role model: `docs/ADMIN_PORTAL_ROLE_MODEL.md`

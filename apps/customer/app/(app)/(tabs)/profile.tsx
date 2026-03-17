@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Share,
-  Linking,
   RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -14,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import Constants from "expo-constants";
 import { useAuth } from "@/providers/AuthProvider";
+import { useNotifications } from "@/providers/NotificationsContext";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors, shadow } from "@/constants/colors";
@@ -26,6 +26,7 @@ type IconName = keyof typeof Ionicons.glyphMap;
 export default function ProfileScreen() {
   useScreenTracking("Profile");
   const { user, signOut } = useAuth();
+  const { unreadCount } = useNotifications();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const contentContainerStyle = isTablet
     ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
@@ -37,16 +38,19 @@ export default function ProfileScreen() {
     checklistItems: ChecklistItem[];
     loyaltyPoints: number;
     verified: boolean;
+    ratingAverage: number;
+    reviewCount: number;
   } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchProfileData = useCallback(async () => {
     if (!user) return;
     try {
-      const [compRes, loyaltyRes, verifyRes] = await Promise.allSettled([
+      const [compRes, loyaltyRes, verifyRes, ratingRes] = await Promise.allSettled([
         api.get<any>("/api/me/profile-completion"),
         api.get<any>("/api/me/loyalty"),
         api.get<any>("/api/me/verification"),
+        api.get<any>("/api/me/rating"),
       ]);
 
       const comp =
@@ -55,6 +59,8 @@ export default function ProfileScreen() {
         loyaltyRes.status === "fulfilled" ? loyaltyRes.value.data : null;
       const verify =
         verifyRes.status === "fulfilled" ? verifyRes.value.data : null;
+      const rating =
+        ratingRes.status === "fulfilled" ? ratingRes.value.data : null;
 
       const rawLoyalty = loyalty && typeof loyalty === "object" ? loyalty : null;
       const points =
@@ -69,6 +75,8 @@ export default function ProfileScreen() {
         checklistItems: comp?.checklistItems ?? [],
         loyaltyPoints: Number(points) || 0,
         verified: verify?.verified ?? false,
+        ratingAverage: Number(rating?.rating_average) || 0,
+        reviewCount: Number(rating?.review_count) || 0,
       });
     } catch {}
   }, [user]);
@@ -120,6 +128,8 @@ export default function ProfileScreen() {
     switch (id) {
       case "photo":
       case "preferred_name":
+      case "bio":
+      case "emergency_contact":
         return "/(app)/account-settings/personal-info";
       case "email":
       case "phone":
@@ -128,12 +138,10 @@ export default function ProfileScreen() {
         return "/(app)/account-settings/addresses";
       case "identity":
         return "/(app)/account-settings/identity-verification";
-      case "bio":
-      case "emergency_contact":
       case "profile_questions":
       case "interests":
       case "beauty_preferences":
-        return "/(app)/account-settings";
+        return "/(app)/account-settings/profile-details";
       default:
         return null;
     }
@@ -215,6 +223,17 @@ export default function ProfileScreen() {
                   Member since {memberSince}
                 </Text>
               ) : null}
+              {profileData && profileData.ratingAverage > 0 && (
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
+                  <Ionicons name="star" size={14} color="#EAB308" />
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[800], marginLeft: 4 }}>
+                    {profileData.ratingAverage.toFixed(1)}
+                  </Text>
+                  <Text style={{ fontSize: 13, color: Colors.gray[500], marginLeft: 4 }}>
+                    ({profileData.reviewCount} {profileData.reviewCount === 1 ? "review" : "reviews"})
+                  </Text>
+                </View>
+              )}
               <Text style={{ fontSize: 14, fontWeight: "500", marginTop: 4, color: Colors.primary }}>
                 Show profile
               </Text>
@@ -462,6 +481,7 @@ export default function ProfileScreen() {
             icon="notifications-outline"
             label="Notifications"
             onPress={() => router.push("/(app)/notifications")}
+            badge={unreadCount > 0 ? unreadCount : undefined}
           />
           <MenuItem
             icon="globe-outline"
@@ -534,7 +554,7 @@ export default function ProfileScreen() {
             icon="chatbubble-ellipses-outline"
             label="Give us feedback"
             onPress={() =>
-              Linking.openURL(`${APP_URL}/contact`)
+              router.push({ pathname: "/(app)/in-app-browser", params: { url: encodeURIComponent(`${APP_URL}/contact`), title: "Contact" } })
             }
           />
           <MenuItem
@@ -550,7 +570,7 @@ export default function ProfileScreen() {
       <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
         <TouchableOpacity
           onPress={() =>
-            Linking.openURL(`${APP_URL}/provider/onboarding`)
+            router.push({ pathname: "/(app)/in-app-browser", params: { url: encodeURIComponent(`${APP_URL}/provider/onboarding`), title: "Become a provider" } })
           }
           activeOpacity={0.8}
           style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], padding: 16, flexDirection: "row", alignItems: "center" }}
@@ -745,11 +765,13 @@ function MenuItem({
   label,
   onPress,
   last,
+  badge,
 }: {
   icon: IconName;
   label: string;
   onPress: () => void;
   last?: boolean;
+  badge?: number;
 }) {
   return (
     <TouchableOpacity
@@ -768,6 +790,24 @@ function MenuItem({
         style={{ marginRight: 14 }}
       />
       <Text style={{ flex: 1, fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{label}</Text>
+      {badge != null && badge > 0 ? (
+        <View
+          style={{
+            minWidth: 20,
+            height: 20,
+            borderRadius: 10,
+            backgroundColor: Colors.primary,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 6,
+            marginRight: 8,
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>
+            {badge > 99 ? "99+" : badge}
+          </Text>
+        </View>
+      ) : null}
       <Ionicons name="chevron-forward" size={16} color={Colors.gray[300]} />
     </TouchableOpacity>
   );

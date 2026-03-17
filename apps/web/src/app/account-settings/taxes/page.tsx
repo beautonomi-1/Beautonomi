@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import TaxInfoModal from "./components/tax-info-modal";
+import type { TaxInfoFormData } from "./components/tax-info-modal";
 import VatIdModal from "./components/vat-id-modal";
 
 interface TaxInfo {
@@ -78,14 +79,15 @@ const TaxesPage = () => {
     }
   };
 
-  const handleTaxInfoSave = async (data: any) => {
+  const handleTaxInfoSave = async (data: TaxInfoFormData) => {
     try {
       await fetcher.post("/api/me/tax-info", data);
       toast.success("Tax information saved successfully");
       await loadTaxData();
       setTaxInfoModalOpen(false);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to save tax information");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to save tax information";
+      toast.error(message);
       throw err;
     }
   };
@@ -96,8 +98,9 @@ const TaxesPage = () => {
       toast.success("VAT ID saved successfully");
       await loadTaxData();
       setVatModalOpen(false);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to save VAT ID");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to save VAT ID";
+      toast.error(message);
       throw err;
     }
   };
@@ -427,7 +430,7 @@ const TaxesPage = () => {
           isOpen={isTaxInfoModalOpen}
           onClose={() => setTaxInfoModalOpen(false)}
           onSave={handleTaxInfoSave}
-          initialData={taxInfo}
+          initialData={taxInfo as Partial<TaxInfoFormData>}
         />
         <VatIdModal
           isOpen={isVatModalOpen}

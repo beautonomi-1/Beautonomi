@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import RateCustomerModal from "./rate-customer-modal";
 import { fetcher } from "@/lib/http/fetcher";
@@ -30,16 +30,7 @@ export default function CustomerRatingButton({
   const [existingRating, setExistingRating] = useState<Review | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    // Only load rating if booking is completed
-    if (bookingStatus === "completed") {
-      loadExistingRating();
-    } else {
-      setIsLoading(false);
-    }
-  }, [bookingId, bookingStatus]);
-
-  const loadExistingRating = async () => {
+  const loadExistingRating = useCallback(async () => {
     try {
       const response = await fetcher.get<{ data: Review }>(
         `/api/me/reviews?booking_id=${bookingId}`
@@ -53,7 +44,16 @@ export default function CustomerRatingButton({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [bookingId]);
+
+  useEffect(() => {
+    // Only load rating if booking is completed
+    if (bookingStatus === "completed") {
+      loadExistingRating();
+    } else {
+      setIsLoading(false);
+    }
+  }, [bookingStatus, loadExistingRating]);
 
   const handleRatingSuccess = () => {
     loadExistingRating();

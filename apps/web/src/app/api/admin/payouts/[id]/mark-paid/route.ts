@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requireAdminSection  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { recordPayoutLedger } from "@/lib/provider/record-payout-ledger";
 
@@ -14,7 +15,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
 
@@ -51,7 +52,8 @@ export async function POST(
       );
     }
 
-    const payoutData = payout as any;
+    type PayoutRow = { status: string; provider_id: string; amount: number; id: string; net_amount?: number; payout_number?: string };
+    const payoutData = payout as PayoutRow;
 
     if (payoutData.status === "completed") {
       return NextResponse.json(
@@ -67,8 +69,8 @@ export async function POST(
     }
 
     // Update payout status
-    const { data: updatedPayout, error } = await (supabase
-      .from("payouts") as any)
+    const { data: updatedPayout, error } = await supabase
+      .from("payouts")
       .update({
         status: "completed",
         processed_at: new Date().toISOString(),
@@ -95,20 +97,21 @@ export async function POST(
 
     await writeAuditLog({
       actor_user_id: user.id,
-      actor_role: (user as any).role || "superadmin",
+      actor_role: user.role ?? "superadmin",
       action: "admin.payout.paid",
       entity_type: "payout",
       entity_id: id,
-      metadata: { provider_id: (payoutData as any).provider_id, amount: (payoutData as any).amount },
+      metadata: { provider_id: payoutData.provider_id, amount: payoutData.amount },
     });
 
+    const updatedRow = updatedPayout as PayoutRow;
     try {
       await recordPayoutLedger(supabase, {
-        id: (updatedPayout as any).id,
-        provider_id: (updatedPayout as any).provider_id,
-        net_amount: (updatedPayout as any).net_amount,
-        amount: (updatedPayout as any).amount,
-        payout_number: (updatedPayout as any).payout_number,
+        id: updatedRow.id,
+        provider_id: updatedRow.provider_id,
+        net_amount: updatedRow.net_amount,
+        amount: updatedRow.amount,
+        payout_number: updatedRow.payout_number,
       });
     } catch (ledgerErr) {
       console.error("Failed to record payout ledger entry:", ledgerErr);
@@ -122,20 +125,37 @@ export async function POST(
       const { data: provider } = await supabase
         .from("providers")
         .select("user_id, business_name")
-        .eq("id", (payoutData as any).provider_id)
+        .eq("id", payoutData.provider_id)
         .single();
 
       if (provider) {
-        const providerUserId = (provider as any).user_id;
-        await sendToUser(providerUserId, {
-          title: "Payout Processed",
-          message: `Your payout of ZAR ${(payoutData as any).amount.toLocaleString()} has been processed and paid.`,
-          data: {
-            type: "payout_paid",
-            payout_id: id,
-          },
-          url: "/provider/finance",
-        });
+        const providerRow = provider as { user_id?: string };
+        const providerUserId = providerRow.user_id;
+        const amountStr = payoutData.amount.toLocaleString();
+        if (providerUserId) {
+          await sendToUser(
+            providerUserId,
+            {
+              title: "Payout Processed",
+              message: `Your payout of ZAR ${amountStr} has been processed and paid.`,
+              data: {
+                type: "payout_paid",
+                payout_id: id,
+              },
+              url: "/provider/finance",
+            },
+            ["push"],
+            { appType: "provider" }
+          );
+          await supabase.from("notifications").insert({
+            user_id: providerUserId,
+            type: "system",
+            title: "Payout Processed",
+            message: `Your payout of ZAR ${amountStr} has been processed and paid.`,
+            data: { payout_id: id, amount: payoutData.amount },
+            action_url: "/provider/payouts",
+          });
+        }
       }
     } catch (notifError) {
       console.error("Error sending notification:", notifError);

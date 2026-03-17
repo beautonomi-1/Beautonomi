@@ -38,7 +38,7 @@ export async function GET(
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const { data, error } = await (supabase.from("product_return_requests") as any)
+    const { data, error } = await supabase.from("product_return_requests")
       .select(
         `*,
         order:product_orders(order_number, total_amount, fulfillment_type, items:product_order_items(*)),
@@ -71,24 +71,26 @@ export async function PATCH(
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const { data: req } = await (supabase.from("product_return_requests") as any)
+    const { data: req } = await supabase.from("product_return_requests")
       .select("id, status, refund_amount, order_id, quantity, order_item_id, customer_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
-    if (!req) return notFoundResponse("Return request not found");
+    type ReturnRequestRow = { id: string; status: string; refund_amount?: number; order_id?: string; quantity?: number; order_item_id?: string; customer_id?: string };
+    const reqRow = req as ReturnRequestRow | null;
+    if (!reqRow) return notFoundResponse("Return request not found");
 
-    const transitions = STATUS_TRANSITIONS[req.status];
+    const transitions = STATUS_TRANSITIONS[reqRow.status];
     if (!transitions || !transitions[parsed.action]) {
       return errorResponse(
-        `Cannot perform "${parsed.action}" on a return with status "${req.status}"`,
+        `Cannot perform "${parsed.action}" on a return with status "${reqRow.status}"`,
         "INVALID_TRANSITION",
         400,
       );
     }
 
-    const update: Record<string, any> = {
+    const update: Record<string, unknown> = {
       status: transitions[parsed.action],
     };
 
@@ -112,43 +114,45 @@ export async function PATCH(
     if (parsed.action === "process_refund") {
       update.refunded_at = new Date().toISOString();
       update.refund_processed_amount =
-        parsed.refund_processed_amount ?? Number(req.refund_amount);
+        parsed.refund_processed_amount ?? Number(reqRow.refund_amount);
       update.refund_method = "original_payment";
       update.resolved_by = user.id;
 
       // Restore stock (variant or product-level)
-      if (req.order_item_id) {
-        const { data: orderItem } = await (supabase.from("product_order_items") as any)
+      if (reqRow.order_item_id) {
+        const { data: orderItem } = await supabase.from("product_order_items")
           .select("product_id, product_variant_id, quantity")
-          .eq("id", req.order_item_id)
+          .eq("id", reqRow.order_item_id)
           .single();
         if (orderItem) {
-          const qty = req.quantity ?? orderItem.quantity ?? 1;
+          const qty = reqRow.quantity ?? (orderItem as { quantity?: number }).quantity ?? 1;
           if (orderItem.product_variant_id) {
             try {
-              await (supabase.rpc as any)("increment_product_variant_stock", {
+              await supabase.rpc("increment_product_variant_stock", {
                 p_variant_id: orderItem.product_variant_id,
                 p_quantity: qty,
               });
             } catch {
-              const { data: v } = await (supabase.from("product_variants") as any)
+              const { data: v } = await supabase.from("product_variants")
                 .select("quantity")
                 .eq("id", orderItem.product_variant_id)
                 .single();
-              if (v) {
-                await (supabase.from("product_variants") as any)
-                  .update({ quantity: (v.quantity ?? 0) + qty })
+              const variantRow = v as { quantity?: number } | null;
+              if (variantRow) {
+                await supabase.from("product_variants")
+                  .update({ quantity: (variantRow.quantity ?? 0) + qty })
                   .eq("id", orderItem.product_variant_id);
               }
             }
           } else {
-            const { data: prod } = await (supabase.from("products") as any)
+            const { data: prod } = await supabase.from("products")
               .select("quantity")
               .eq("id", orderItem.product_id)
               .single();
-            if (prod) {
-              await (supabase.from("products") as any)
-                .update({ quantity: (prod.quantity ?? 0) + qty })
+            const prodRow = prod as { quantity?: number } | null;
+            if (prodRow) {
+              await supabase.from("products")
+                .update({ quantity: (prodRow.quantity ?? 0) + qty })
                 .eq("id", orderItem.product_id);
             }
           }
@@ -156,7 +160,7 @@ export async function PATCH(
       }
     }
 
-    const { data, error } = await (supabase.from("product_return_requests") as any)
+    const { data, error } = await supabase.from("product_return_requests")
       .update(update)
       .eq("id", id)
       .select("*, order:product_orders(order_number)")
@@ -164,29 +168,30 @@ export async function PATCH(
 
     if (error) throw error;
 
+    const orderNumber = (data as { order?: { order_number?: string } })?.order?.order_number;
     // Notify customer of return status change
     const notifMap: Record<string, { type: string; title: string; message: string }> = {
       approve: {
         type: "product_return_approved",
         title: "Return Approved",
-        message: `Your return request for order ${data?.order?.order_number} has been approved.`,
+        message: `Your return request for order ${orderNumber} has been approved.`,
       },
       reject: {
         type: "product_return_rejected",
         title: "Return Update",
-        message: `Your return request for order ${data?.order?.order_number} was not approved.${parsed.provider_notes ? ` Reason: ${parsed.provider_notes}` : ""} You can escalate if needed.`,
+        message: `Your return request for order ${orderNumber} was not approved.${parsed.provider_notes ? ` Reason: ${parsed.provider_notes}` : ""} You can escalate if needed.`,
       },
       process_refund: {
         type: "product_return_refunded",
         title: "Refund Processed",
-        message: `Your refund of R${Number(update.refund_processed_amount ?? req.refund_amount).toFixed(2)} for order ${data?.order?.order_number} has been processed.`,
+        message: `Your refund of R${Number(update.refund_processed_amount ?? reqRow.refund_amount).toFixed(2)} for order ${orderNumber} has been processed.`,
       },
     };
 
     const notif = notifMap[parsed.action];
-    if (notif && req.customer_id) {
+    if (notif && reqRow.customer_id) {
       await supabase.from("notifications").insert({
-        user_id: (req as any).customer_id ?? data.customer_id,
+        user_id: reqRow.customer_id,
         type: notif.type,
         title: notif.title,
         message: notif.message,

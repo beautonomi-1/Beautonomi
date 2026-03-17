@@ -41,6 +41,12 @@ export function ExplorePostForm({
   onCancel,
 }: ExplorePostFormProps) {
   const [caption, setCaption] = useState(post?.caption ?? "");
+  const [primaryCategorySlug, setPrimaryCategorySlug] = useState<string | null>(
+    post?.primary_category_slug ?? null
+  );
+  const [offeringId, setOfferingId] = useState<string | null>(post?.offering_id ?? null);
+  const [categories, setCategories] = useState<{ id: string; slug: string; name: string }[]>([]);
+  const [offerings, setOfferings] = useState<{ id: string; title: string }[]>([]);
   const [tags, setTags] = useState<string[]>(post?.tags ?? []);
   const [tagInput, setTagInput] = useState("");
   const [mediaPaths, setMediaPaths] = useState<string[]>(() => {
@@ -70,6 +76,40 @@ export function ExplorePostForm({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const categorySyncedFromPost = useRef(false);
+  useEffect(() => {
+    fetcher
+      .get<{ id: string; slug: string; name: string }[] | { data: { id: string; slug: string; name: string }[] }>("/api/public/categories/global")
+      .then((res) => {
+        const raw = (res as any)?.data ?? res;
+        const list = Array.isArray(raw) ? raw : raw?.data ?? [];
+        setCategories(list);
+        if (
+          post?.primary_category_id &&
+          list.length > 0 &&
+          !categorySyncedFromPost.current
+        ) {
+          const cat = list.find((c: { id: string }) => c.id === post.primary_category_id);
+          if (cat) {
+            setPrimaryCategorySlug(cat.slug);
+            categorySyncedFromPost.current = true;
+          }
+        }
+      })
+      .catch(() => {});
+  }, [post?.primary_category_id]);
+
+  useEffect(() => {
+    fetcher
+      .get<{ id: string; title: string }[] | { data: { id: string; title: string }[] }>("/api/provider/services")
+      .then((res) => {
+        const raw = (res as any)?.data ?? res;
+        const list = Array.isArray(raw) ? raw : raw?.data ?? [];
+        setOfferings(list.map((o: { id: string; title?: string }) => ({ id: o.id, title: o.title ?? "" })));
+      })
+      .catch(() => setOfferings([]));
+  }, []);
 
   const triggerFileSelect = () => fileInputRef.current?.click();
 
@@ -266,6 +306,8 @@ export function ExplorePostForm({
           caption: caption || null,
           media_urls: mediaPaths,
           tags,
+          primary_category_slug: primaryCategorySlug || undefined,
+          offering_id: offeringId || null,
           status: post.status,
         });
         toast.success("Post updated.");
@@ -274,6 +316,8 @@ export function ExplorePostForm({
           caption: caption || null,
           media_urls: mediaPaths,
           tags,
+          primary_category_slug: primaryCategorySlug || undefined,
+          offering_id: offeringId || undefined,
           status: "published",
         });
         setIsPosted(true);
@@ -599,6 +643,48 @@ export function ExplorePostForm({
           rows={3}
         />
       </div>
+
+      {/* Category */}
+      {categories.length > 0 && (
+        <div className="mt-4">
+          <label className="text-sm font-medium text-gray-700 mb-2 block">
+            Category <span className="text-gray-400 font-normal">(helps customers find your post)</span>
+          </label>
+          <select
+            value={primaryCategorySlug ?? ""}
+            onChange={(e) => setPrimaryCategorySlug(e.target.value || null)}
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          >
+            <option value="">None</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.slug}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Link to service (Book this look) */}
+      {offerings.length > 0 && (
+        <div className="mt-4">
+          <label className="text-sm font-medium text-gray-700 mb-2 block">
+            Link to service <span className="text-gray-400 font-normal">(Book this look)</span>
+          </label>
+          <select
+            value={offeringId ?? ""}
+            onChange={(e) => setOfferingId(e.target.value || null)}
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          >
+            <option value="">None</option>
+            {offerings.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.title}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Tags */}
       <div className="mt-4">

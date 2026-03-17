@@ -43,6 +43,8 @@ export async function apiFetch<T>(
   const fetchInit: RequestInit = {
     ...init,
     headers,
+    // When using Bearer (e.g. mobile), never send cookies
+    ...(getAccessToken ? { credentials: "omit" as RequestCredentials } : {}),
   };
 
   if (body !== undefined && body !== null) {

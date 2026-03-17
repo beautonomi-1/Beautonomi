@@ -71,48 +71,56 @@ export async function signUp(data: SignUpData) {
 }
 
 /**
- * Sign in a user (client-side)
+ * Sign in a user (client-side).
+ * Uses the /api/auth/sign-in proxy to avoid CORS and 502 when calling Supabase from the browser.
  */
 export async function signIn(data: SignInData) {
   const supabase = getSupabaseClient();
+  const trimmedEmail = data.email.trim();
+  const password = data.password;
 
-  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-    email: data.email,
-    password: data.password,
+  const res = await fetch('/api/auth/sign-in', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: trimmedEmail, password }),
+    credentials: 'same-origin',
   });
 
-  if (authError) {
-    // Only log error details in development to avoid console noise
+  const json = await res.json().catch(() => ({}));
+  const message = typeof json?.error === 'string' ? json.error : 'Sign-in failed. Please try again.';
+
+  if (!res.ok) {
     if (process.env.NODE_ENV === 'development') {
       console.error('Sign in error details:', {
-        message: authError.message,
-        status: authError.status,
-        name: authError.name,
-        email: data.email,
-        errorCode: (authError as any).code,
+        status: res.status,
+        message: json?.error,
+        email: trimmedEmail,
       });
     }
-    
-    // Check for specific error codes that might indicate email verification issues
-    const errorCode = (authError as any).code;
-    if (errorCode === 'email_not_confirmed' || authError.message.toLowerCase().includes('email not confirmed')) {
-      throw new Error('Please verify your email address before logging in. Check your inbox for the verification email.');
-    }
-    
-    // Provide more helpful error messages based on error type
-    if (authError.message.toLowerCase().includes('invalid login credentials') || 
-        authError.message.toLowerCase().includes('invalid credentials')) {
-      // Generic error message - don't assume email verification is required
-      // since it might be disabled in Supabase settings
-      // This could mean: wrong password, user doesn't exist, or email not verified (if enabled)
-      throw new Error('Invalid login credentials. Please check your email and password.');
-    }
-    
-    throw new Error(authError.message);
+    throw new Error(message);
   }
 
-  // Success - return auth data
-  return authData;
+  const session = json?.data?.session;
+  const user = json?.data?.user;
+
+  if (session?.access_token && session?.refresh_token && supabase) {
+    await supabase.auth.setSession({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+    });
+  }
+
+  return {
+    user: user ?? null,
+    session: session
+      ? {
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+          expires_in: session.expires_in,
+          expires_at: session.expires_at,
+        }
+      : null,
+  };
 }
 
 /**

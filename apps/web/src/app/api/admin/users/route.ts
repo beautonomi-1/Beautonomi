@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, handleApiError, getPaginationParams } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, getPaginationParams  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { z } from "zod";
 
 /**
@@ -11,7 +12,7 @@ import { z } from "zod";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
 
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
@@ -79,7 +80,7 @@ const createUserSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
 
     const body = await request.json();
     const validationResult = createUserSchema.safeParse(body);

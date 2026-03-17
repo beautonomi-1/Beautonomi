@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 
 /**
  * POST /api/admin/webhooks/failures/[id]/retry
@@ -13,8 +15,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -42,14 +44,14 @@ export async function POST(
       );
     }
 
-    const eventData = webhookEvent as any;
+    type WebhookEventRow = { retry_count?: number };
+    const eventData = webhookEvent as WebhookEventRow;
 
-    // Reset status to processing and increment retry count
-    const { data: updated, error: updateError } = await (supabase
-      .from("webhook_events") as any)
+    const { data: updated, error: updateError } = await supabase
+      .from("webhook_events")
       .update({
         status: "processing",
-        retry_count: (eventData.retry_count || 0) + 1,
+        retry_count: (eventData.retry_count ?? 0) + 1,
         error_message: null,
         error_stack: null,
       })
@@ -91,12 +93,13 @@ export async function POST(
       );
     }
 
-    const eventPayload = webhookEventData as any;
+    type EventPayloadRow = { endpoint_id?: string; retry_count?: number; payload?: unknown };
+    const eventPayload = webhookEventData as EventPayloadRow;
 
     const { data: endpoint } = await supabase
       .from("webhook_endpoints")
       .select("url, secret, headers")
-      .eq("id", eventPayload.endpoint_id)
+      .eq("id", eventPayload.endpoint_id ?? "")
       .single();
 
     if (!endpoint) {
@@ -112,31 +115,32 @@ export async function POST(
       );
     }
 
-    const endpointData = endpoint as any;
+    type EndpointRow = { url: string; secret?: string; headers?: Record<string, string> };
+    const endpointData = endpoint as EndpointRow;
 
     const response = await fetch(endpointData.url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Webhook-Secret": endpointData.secret || "",
-        ...(endpointData.headers || {}),
+        "X-Webhook-Secret": endpointData.secret ?? "",
+        ...(endpointData.headers ?? {}),
       },
       body: JSON.stringify(eventPayload.payload),
     });
 
-    await (supabase
-      .from("webhook_events") as any)
+    await supabase
+      .from("webhook_events")
       .update({
         status: response.ok ? "delivered" : "failed",
         response_code: response.status,
         last_attempt_at: new Date().toISOString(),
-        retry_count: (eventPayload.retry_count || 0) + 1,
+        retry_count: (eventPayload.retry_count ?? 0) + 1,
       })
       .eq("id", id);
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.webhook.retry",
       entity_type: "webhook_event",
       entity_id: id,

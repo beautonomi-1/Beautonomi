@@ -37,9 +37,24 @@ const Page = () => {
     }
   }, [searchParams]);
 
+  const isDeactivated = searchParams.get("deactivated") === "true";
+
   return (
     <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
       <BeautonomiHeader />
+      {isDeactivated && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 text-center text-sm text-amber-900">
+          You deactivated your account.{" "}
+          <a href="/reactivate" className="font-medium underline hover:no-underline">
+            Reactivate your account
+          </a>
+          {" "}or{" "}
+          <a href="/login?redirect=/" className="font-medium underline hover:no-underline">
+            log in again
+          </a>
+          .
+        </div>
+      )}
       <div className="pt-4 md:pt-6 w-full max-w-full overflow-x-hidden">
         <TopRatedSection />
         <SponsoredSection />

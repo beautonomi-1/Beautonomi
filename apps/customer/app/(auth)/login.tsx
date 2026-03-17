@@ -25,7 +25,6 @@ import { Colors } from "@/constants/colors";
 import { APP_URL } from "@/config/public-env";
 
 const PRIMARY = Colors.primary;
-const PRIMARY_LIGHT = Colors.primaryLight;
 
 const COUNTRY_CODES = [
   { code: "+27", flag: "🇿🇦", label: "South Africa (+27)", phoneLen: 9 },
@@ -239,7 +238,7 @@ export default function LoginScreen() {
         {/* Logo accent */}
         <View style={{ alignItems: "center", marginBottom: 8 }}>
           <Image
-            source={require("../../assets/icon.png")}
+            source={require("../../assets/favicon.png")}
             style={{
               width: 56,
               height: 56,
@@ -593,26 +592,28 @@ export default function LoginScreen() {
               <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => handleOAuth("apple")}
-              disabled={loading}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: 1.5,
-                borderColor: "#E5E7EB",
-                borderRadius: 12,
-                paddingVertical: 14,
-                marginBottom: 12,
-                backgroundColor: "#fff",
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Continue with Apple"
-            >
-              <Ionicons name="logo-apple" size={20} color="#000" />
-              <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
-            </TouchableOpacity>
+            {Platform.OS === "ios" && (
+              <TouchableOpacity
+                onPress={() => handleOAuth("apple")}
+                disabled={loading}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1.5,
+                  borderColor: "#E5E7EB",
+                  borderRadius: 12,
+                  paddingVertical: 14,
+                  marginBottom: 12,
+                  backgroundColor: "#fff",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Continue with Apple"
+              >
+                <Ionicons name="logo-apple" size={20} color="#000" />
+                <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               onPress={() => setShowEmailForm(true)}

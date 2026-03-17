@@ -78,7 +78,7 @@ export async function GET() {
       data: response,
       error: null,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Unexpected error in /api/public/platform-settings:", error);
     return NextResponse.json(
       {

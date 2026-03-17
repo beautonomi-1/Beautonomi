@@ -21,7 +21,7 @@ interface PreferenceOption {
   code: string | null;
   name: string;
   display_order: number;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 interface Preferences {
@@ -166,9 +166,9 @@ const GlobalPreferences: React.FC = () => {
       setEditingField(null);
       setTempValue("");
       router.refresh();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to save preference:", error);
-      toast.error(error.message || "Failed to save preference");
+      toast.error(error instanceof Error ? error.message : "Failed to save preference");
     } finally {
       setIsSaving(false);
     }

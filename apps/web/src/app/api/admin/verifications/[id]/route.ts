@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, notFoundResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 
@@ -19,7 +20,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
 
@@ -65,7 +66,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['superadmin'], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const { id } = await params;
     const body = await request.json();
     const supabase = await getSupabaseServer(request);
@@ -109,11 +110,11 @@ export async function PATCH(
 
     await writeAuditLog({
       actor_user_id: user.id,
-      actor_role: (user as any).role || "superadmin",
+      actor_role: user.role ?? "superadmin",
       action: "admin.verification.review",
       entity_type: "user_verification",
       entity_id: id,
-      metadata: { status, user_id: (verification as any)?.user_id, rejection_reason: status === "rejected" ? rejection_reason : null },
+      metadata: { status, user_id: (verification as { user_id?: string } | null)?.user_id, rejection_reason: status === "rejected" ? rejection_reason : null },
     });
 
     return successResponse(verification);

@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
-import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 /**
@@ -11,8 +12,8 @@ import { writeAuditLog } from "@/lib/audit/audit";
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -38,8 +39,8 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    // Map DB shape (key, title, body) to UI shape (name, type, title_template, message_template)
-    const templates = (rows || []).map((row: any) => ({
+    type TemplateRow = { id: string; key?: string; title?: string; body?: string; channels?: unknown[]; enabled?: boolean; variables?: unknown[]; created_at?: string; updated_at?: string; email_subject?: string; email_body?: string; sms_body?: string; url?: string; description?: string };
+    const templates = (rows || []).map((row: TemplateRow) => ({
       id: row.id,
       name: row.key,
       type: row.key,
@@ -77,8 +78,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -114,8 +115,8 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.notification_templates.create",
       entity_type: "notification_template",
       entity_id: template.id,

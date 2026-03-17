@@ -4,8 +4,10 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
+import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { twStyle } from "@/lib/twStyle";
+import { APP_URL } from "@/config/public-env";
 
 type SetupStatus = {
   isComplete?: boolean;
@@ -27,6 +29,25 @@ export default function OnboardingScreen() {
     router.replace("/(app)/(tabs)" as never);
   };
 
+  const goToSetupStatus = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push("/(app)/(tabs)/more/settings/setup-status" as never);
+  };
+
+  const openWebOnboarding = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const base = (APP_URL || "").replace(/\/$/, "");
+    if (!base) {
+      router.replace("/(app)/(tabs)" as never);
+      return;
+    }
+    const url = `${base}/provider/onboarding`;
+    router.push({
+      pathname: "/(app)/(tabs)/more/in-app-browser",
+      params: { url: encodeURIComponent(url), title: "Complete setup" },
+    } as never);
+  };
+
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
@@ -39,7 +60,8 @@ export default function OnboardingScreen() {
 
   return (
     <ScreenContainer>
-      <View style={twStyle("flex-1 px-4 pt-12")}>
+      <ScreenHeader title="Setup" showBack={false} />
+      <View style={twStyle("flex-1 px-4 pt-4")}>
         <View style={twStyle("items-center mb-8")}>
           <View style={twStyle("h-16 w-16 items-center justify-center rounded-full bg-indigo-100 mb-4")}>
             <Ionicons name="business-outline" size={32} color="#4f46e5" />
@@ -63,9 +85,43 @@ export default function OnboardingScreen() {
               </Text>
             ))}
             <Text style={twStyle("mt-3 text-xs text-gray-500")}>
-              Complete these in the provider dashboard on the web.
+              Complete each step in the app or open the full setup on the web.
             </Text>
           </View>
+        )}
+
+        {!isComplete && (
+          <TouchableOpacity
+            onPress={goToSetupStatus}
+            style={twStyle("mb-4 rounded-xl border-2 border-indigo-500 bg-indigo-50 py-4 items-center")}
+            activeOpacity={0.8}
+            accessibilityLabel="Complete setup in app"
+            accessibilityRole="button"
+          >
+            <Text style={twStyle("text-base font-semibold text-indigo-700")}>
+              Complete setup in app
+            </Text>
+            <Text style={twStyle("text-xs text-indigo-600 mt-1")}>
+              Native steps — business, locations, hours, gallery, services
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {!isComplete && APP_URL && (
+          <TouchableOpacity
+            onPress={openWebOnboarding}
+            style={twStyle("mb-4 rounded-xl border border-gray-300 bg-white py-4 items-center")}
+            activeOpacity={0.8}
+            accessibilityLabel="Open full setup on web"
+            accessibilityRole="button"
+          >
+            <Text style={twStyle("text-base font-medium text-gray-700")}>
+              Open full setup on web
+            </Text>
+            <Text style={twStyle("text-xs text-gray-500 mt-1")}>
+              Opens in app browser
+            </Text>
+          </TouchableOpacity>
         )}
 
         <TouchableOpacity

@@ -5,9 +5,11 @@
  */
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 const updateSchema = z.object({
   category_id: z.string().uuid().optional(),
@@ -31,8 +33,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) return unauthorizedResponse("Authentication required");
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, _request);
+    if (!user) return unauthorizedResponse("Authentication required");
 
     const { id } = await params;
     const supabase = await getSupabaseServer();
@@ -65,8 +67,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) return unauthorizedResponse("Authentication required");
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) return unauthorizedResponse("Authentication required");
 
     const { id } = await params;
     const supabase = await getSupabaseServer();
@@ -103,8 +105,8 @@ export async function PUT(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as { role?: string }).role ?? "superadmin",
+      actor_user_id: user.id,
+      actor_role: (user as { role?: string }).role ?? "superadmin",
       action: "admin.content.learning.article.update",
       entity_type: "learning_article",
       entity_id: id,
@@ -126,8 +128,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) return unauthorizedResponse("Authentication required");
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, _request);
+    if (!user) return unauthorizedResponse("Authentication required");
 
     const { id } = await params;
     const supabase = await getSupabaseServer();
@@ -143,8 +145,8 @@ export async function DELETE(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as { role?: string }).role ?? "superadmin",
+      actor_user_id: user.id,
+      actor_role: (user as { role?: string }).role ?? "superadmin",
       action: "admin.content.learning.article.delete",
       entity_type: "learning_article",
       entity_id: id,

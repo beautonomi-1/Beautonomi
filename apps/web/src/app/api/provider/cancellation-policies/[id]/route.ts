@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { successResponse, handleApiError, getProviderIdForUser, notFoundResponse, errorResponse } from '@/lib/supabase/api-helpers';
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { deriveEnforcementFields } from '../route';
 import { z } from "zod";
 
 const updatePolicySchema = z.object({
@@ -63,10 +64,10 @@ export async function PATCH(
       }
     }
 
-    // Verify policy exists
+    // Verify policy exists and load current values for derivation (hours_before_cutoff fallback for legacy rows)
     let verifyQuery = supabase
       .from('cancellation_policies')
-      .select('provider_id')
+      .select('provider_id, name, hours_before, hours_before_cutoff, refund_percentage')
       .eq('id', id);
 
     if (providerId) {
@@ -88,6 +89,13 @@ export async function PATCH(
         .neq('id', id);
     }
 
+    const d = validationResult.data;
+    const merged = {
+      name: d.name !== undefined ? d.name.trim() : (existingPolicy.name ?? 'Unnamed Policy'),
+      hours_before: d.hours_before ?? existingPolicy.hours_before ?? existingPolicy.hours_before_cutoff ?? 24,
+      refund_percentage: d.refund_percentage ?? existingPolicy.refund_percentage ?? 0,
+    };
+
     // Prepare update data
     const updateData: any = {};
     if (validationResult.data.name !== undefined) {
@@ -108,6 +116,10 @@ export async function PATCH(
     if (validationResult.data.is_default !== undefined) {
       updateData.is_default = validationResult.data.is_default;
     }
+    const enforcement = deriveEnforcementFields(merged);
+    updateData.hours_before_cutoff = enforcement.hours_before_cutoff;
+    updateData.late_cancellation_type = enforcement.late_cancellation_type;
+    updateData.policy_text = enforcement.policy_text;
     updateData.updated_at = new Date().toISOString();
 
     const { data: policy, error } = await supabase

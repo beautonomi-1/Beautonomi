@@ -57,6 +57,14 @@ export async function postBookingEffects(input: PostBookingInput): Promise<void>
     }
   });
 
+  // ── Notify provider of new booking (push / template) ──────────────────────
+  try {
+    const { notifyProviderNewBooking } = await import("@/lib/notifications/notification-service");
+    await notifyProviderNewBooking(booking.id, ["push"]);
+  } catch (notifError) {
+    console.error("Error notifying provider of new booking:", notifError);
+  }
+
   // ── Amplitude analytics ──────────────────────────────────────────────────
   try {
     const userId = v.customerId || null;

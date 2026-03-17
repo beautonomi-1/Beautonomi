@@ -90,16 +90,11 @@ export async function GET(request: NextRequest) {
       console.warn("ipapi.co failed, trying ip-api.com:", ipapiError);
       return await getLocationFromIpApi(ip);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in IP geolocation:", error);
+    const message = error instanceof Error ? error.message : "Failed to get location from IP";
     return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: error.message || "Failed to get location from IP",
-          code: "GEOLOCATION_ERROR",
-        },
-      },
+      { data: null, error: { message, code: "GEOLOCATION_ERROR" } },
       { status: 500 }
     );
   }
@@ -142,13 +137,14 @@ async function getLocationFromIpApi(ip: string) {
       data: locationData,
       error: null,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in ip-api.com fallback:", error);
+    const message = error instanceof Error ? error.message : "Failed to get location from IP";
     return NextResponse.json(
       {
         data: null,
         error: {
-          message: error.message || "Failed to get location from IP",
+          message,
           code: "GEOLOCATION_ERROR",
         },
       },

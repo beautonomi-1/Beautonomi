@@ -24,7 +24,7 @@ export default function PartnerNavbar() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalMode, setLoginModalMode] = useState<"login" | "signup">("login");
   const router = useRouter();
-  const { user, role, isLoading } = useAuth();
+  useAuth();
   const { getSectionContent } = usePageContent("become-a-partner");
   const topBannerEnabledRaw = getSectionContent("top_banner_enabled")?.trim().toLowerCase();
   const topBannerEnabled = topBannerEnabledRaw ? TOP_BANNER_ENABLED_VALUES.has(topBannerEnabledRaw) : false;
@@ -34,36 +34,6 @@ export default function PartnerNavbar() {
   const defaultBannerLink = "/resources";
   const bannerText = topBannerContent || defaultBannerText;
   const bannerLink = topBannerLink || defaultBannerLink;
-
-  const handleTryItNow = () => {
-    if (isLoading) return;
-    
-    if (!user) {
-      setLoginModalMode("login");
-      setIsLoginModalOpen(true);
-    } else if (role === "provider_owner" || role === "provider_staff") {
-      router.push("/provider/dashboard");
-    } else {
-      router.push("/provider/onboarding");
-    }
-    setIsMenuOpen(false);
-  };
-
-  const handleBookDemo = () => {
-    if (isLoading) return;
-    
-    if (!user) {
-      setLoginModalMode("login");
-      setIsLoginModalOpen(true);
-    } else if (role === "provider_owner" || role === "provider_staff") {
-      // Already a provider - could redirect to a demo booking page or contact form
-      router.push("/provider/dashboard");
-    } else {
-      // Logged in but not a provider - go to onboarding
-      router.push("/provider/onboarding");
-    }
-    setIsMenuOpen(false);
-  };
 
   const handleLoginClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -141,26 +111,20 @@ export default function PartnerNavbar() {
               </Link>
             </div>
 
-            {/* Right Actions */}
+            {/* Right Actions: Login as Partner + Sign up (no "Book a demo" / "Try it now") */}
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-              <button
-                onClick={handleLoginClick}
-                className="text-sm font-medium text-gray-700 hover:text-primary transition-colors hidden xl:block whitespace-nowrap"
-              >
-                Log in
-              </button>
               <Button
                 variant="outline"
-                onClick={handleBookDemo}
+                onClick={handleLoginClick}
                 className="border-2 border-primary text-primary hover:bg-primary hover:text-white px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-full transition-all hidden md:flex whitespace-nowrap"
               >
-                Book a demo
+                Login as Partner
               </Button>
               <Button
-                onClick={handleTryItNow}
+                onClick={handleSignUpClick}
                 className="bg-primary hover:bg-primary-hover text-white px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-full transition-all whitespace-nowrap"
               >
-                Try it now
+                Sign up
               </Button>
             </div>
           </div>
@@ -200,30 +164,21 @@ export default function PartnerNavbar() {
                 </Link>
               </div>
               <div className="pt-4 border-t space-y-2">
-                <button
-                  onClick={handleSignUpClick}
-                  className="block text-base font-normal text-gray-700 hover:text-primary py-2 w-full text-left"
-                >
-                  Sign up
-                </button>
-                <button
-                  onClick={handleLoginClick}
-                  className="block text-base font-normal text-gray-700 hover:text-primary py-2 w-full text-left"
-                >
-                  Log in
-                </button>
+                <p className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-2">
+                  Try it now
+                </p>
                 <Button
                   variant="outline"
-                  className="w-full border-2 border-primary text-primary hover:bg-primary hover:text-white mt-2"
-                  onClick={handleBookDemo}
+                  className="w-full border-2 border-primary text-primary hover:bg-primary hover:text-white"
+                  onClick={handleLoginClick}
                 >
-                  Book a demo
+                  Login as Partner
                 </Button>
                 <Button
-                  className="w-full bg-primary hover:bg-primary-hover text-white mt-2"
-                  onClick={handleTryItNow}
+                  className="w-full bg-primary hover:bg-primary-hover text-white"
+                  onClick={handleSignUpClick}
                 >
-                  Try it now
+                  Sign up
                 </Button>
               </div>
             </div>

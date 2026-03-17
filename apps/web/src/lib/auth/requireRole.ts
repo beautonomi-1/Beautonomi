@@ -13,6 +13,14 @@ export interface RequireRoleOptions {
   redirectTo?: string;
 }
 
+function getErrorCause(err: unknown): { code?: string } | undefined {
+  if (err && typeof err === "object" && "cause" in err) {
+    const cause = (err as { cause?: unknown }).cause;
+    return cause && typeof cause === "object" && "code" in cause ? (cause as { code?: string }) : undefined;
+  }
+  return undefined;
+}
+
 /**
  * Requires user to have one of the allowed roles
  * 
@@ -22,7 +30,7 @@ export interface RequireRoleOptions {
  */
 export async function requireRole(
   allowedRoles: UserRole[]
-): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: any; full_name?: string | null } } | null> {
+): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: Record<string, unknown>; full_name?: string | null } } | null> {
   const supabase = await getSupabaseServer();
 
   try {
@@ -36,7 +44,7 @@ export async function requireRole(
       // Check if it's a network/timeout error
       if (userError) {
         const errorMessage = userError.message?.toLowerCase() || '';
-        const errorCause = (userError as any).cause;
+        const errorCause = getErrorCause(userError);
         if (
           errorMessage.includes('timeout') ||
           errorMessage.includes('connect') ||
@@ -64,7 +72,7 @@ export async function requireRole(
       // Check if it's a network/timeout error
       if (userDataError) {
         const errorMessage = userDataError.message?.toLowerCase() || '';
-        const errorCause = (userDataError as any).cause;
+        const errorCause = getErrorCause(userDataError);
         const errorCode = userDataError.code || '';
         
         // Log the error for debugging
@@ -108,15 +116,15 @@ export async function requireRole(
       return null;
     }
 
-    const userRole = (userData as any).role as UserRole;
-    
-    // Check if role is null or undefined
+    type UserRow = { id: string; role: string | null; full_name: string | null };
+    const u = userData as UserRow;
+    const userRole = u.role as UserRole;
+
     if (!userRole) {
       console.error(`User ${authUser.id} has no role assigned in users table`);
       throw new Error('User role not assigned. Please contact support.');
     }
 
-    // Check if user has required role
     if (!allowedRoles.includes(userRole)) {
       console.error(`User ${authUser.id} has role '${userRole}' but required one of: ${allowedRoles.join(', ')}`);
       return null;
@@ -124,18 +132,17 @@ export async function requireRole(
 
     return {
       user: {
-        id: (userData as any).id,
+        id: u.id,
         role: userRole,
         email: authUser.email,
-        user_metadata: authUser.user_metadata,
-        full_name: (userData as any).full_name,
+        user_metadata: authUser.user_metadata as Record<string, unknown> | undefined,
+        full_name: u.full_name,
       },
     };
   } catch (error) {
-    // Handle network errors and timeouts
     if (error instanceof Error) {
       const errorMessage = error.message.toLowerCase();
-      const errorCause = (error as any).cause;
+      const errorCause = getErrorCause(error);
       
       // Check for network/timeout errors
       if (

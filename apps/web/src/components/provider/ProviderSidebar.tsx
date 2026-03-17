@@ -34,6 +34,8 @@ import {
   CalendarOff,
   Package,
   FileEdit,
+  HelpCircle,
+  Ticket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProviderSidebar } from "@/contexts/ProviderSidebarContext";
@@ -122,6 +124,8 @@ const navigationSections = [
 ];
 
 const bottomItems = [
+  { icon: HelpCircle, label: "Help & Support", href: "/help" },
+  { icon: Ticket, label: "My tickets", href: "/help/my-tickets" },
   { icon: Settings, label: "Settings", href: "/provider/settings" },
 ];
 
@@ -180,6 +184,12 @@ const isActiveRoute = (pathname: string, href: string) => {
   }
   if (href === "/provider/gamification") {
     return pathname.startsWith("/provider/gamification");
+  }
+  if (href === "/help") {
+    return pathname === "/help" || (pathname.startsWith("/help/") && !pathname.startsWith("/help/my-tickets"));
+  }
+  if (href === "/help/my-tickets") {
+    return pathname.startsWith("/help/my-tickets");
   }
   return pathname === href || pathname.startsWith(href + "/");
 };

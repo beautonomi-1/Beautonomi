@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -12,14 +12,16 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { trackScreenView } from "@/lib/analytics";
 import { twStyle } from "@/lib/twStyle";
 
+/** Matches GET /api/provider/analytics response */
 interface AnalyticsData {
   revenue: { total: number; thisMonth: number; lastMonth: number; growth: string };
   bookings: { total: number; thisMonth: number; lastMonth: number; upcoming: number; growth: string };
   customers: { total: number; repeat: number; new: number };
-  services: { id: string; title: string; count: number; revenue: number }[];
-  trends: { period: string; revenue: number; bookings: number }[];
+  services: { name: string; count: number; revenue: number }[];
+  trends: { month: string; revenue: number; bookings: number }[];
 }
 
 function formatCurrency(amount: number): string {
@@ -31,7 +33,11 @@ function formatCurrency(amount: number): string {
 export default function AnalyticsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const { screenPadding } = useResponsive();
-  const { data, loading, error, refresh } = useApi<AnalyticsData>("/api/provider/analytics?period=month");
+  const { data, loading, error, refresh } = useApi<AnalyticsData>("/api/provider/analytics");
+
+  useEffect(() => {
+    trackScreenView("provider_analytics");
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

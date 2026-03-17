@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requireAdminSection  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const section = searchParams.get("section");
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -77,9 +78,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ data, error: null }, { status: 201 });
-  } catch (error: any) {
-    if (error.status) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "status" in error && typeof (error as { status: number }).status === "number") {
+      const err = error as { status: number; message?: string };
+      return NextResponse.json({ error: err.message ?? "Error" }, { status: err.status });
     }
     console.error("Error in POST /api/admin/content/footer-links:", error);
     return NextResponse.json(

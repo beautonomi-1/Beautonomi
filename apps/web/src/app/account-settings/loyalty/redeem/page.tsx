@@ -93,9 +93,9 @@ export default function LoyaltyRedeemPage() {
       setPointsToRedeem("");
       loadLoyaltyData();
       router.push("/account-settings/loyalty");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to redeem points:", error);
-      toast.error(error.message || "Failed to redeem points");
+      toast.error(error instanceof Error ? error.message : "Failed to redeem points");
     } finally {
       setIsRedeeming(false);
     }

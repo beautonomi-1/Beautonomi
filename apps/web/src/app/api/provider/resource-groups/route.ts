@@ -37,7 +37,34 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    return successResponse(groups || []);
+    const groupIds = (groups || []).map((g: { id: string }) => g.id);
+    let resourceCountByGroup: Record<string, number> = {};
+    let resourceIdsByGroup: Record<string, string[]> = {};
+
+    if (groupIds.length > 0) {
+      const { data: resourcesInGroups } = await supabase
+        .from("resources")
+        .select("id, group_id")
+        .eq("provider_id", providerId)
+        .in("group_id", groupIds);
+      (resourcesInGroups || []).forEach((r: { id: string; group_id: string | null }) => {
+        if (r.group_id) {
+          resourceIdsByGroup[r.group_id] = resourceIdsByGroup[r.group_id] || [];
+          resourceIdsByGroup[r.group_id].push(r.id);
+        }
+      });
+      groupIds.forEach((id: string) => {
+        resourceCountByGroup[id] = (resourceIdsByGroup[id] || []).length;
+      });
+    }
+
+    const enriched = (groups || []).map((g: { id: string; [k: string]: unknown }) => ({
+      ...g,
+      resource_count: resourceCountByGroup[g.id] ?? 0,
+      resource_ids: resourceIdsByGroup[g.id] ?? [],
+    }));
+
+    return successResponse(enriched);
   } catch (error) {
     return handleApiError(error, "Failed to fetch resource groups");
   }

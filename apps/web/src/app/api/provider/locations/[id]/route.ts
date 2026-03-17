@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 
@@ -331,13 +331,29 @@ export async function DELETE(
       return notFoundResponse("Location not found");
     }
 
-    // Delete location
+    // Try hard delete first; if location is referenced (bookings, sales, staff, etc.), soft-delete instead
     const { error: deleteError } = await supabase
       .from("provider_locations")
       .delete()
       .eq("id", id);
 
     if (deleteError) {
+      const code = (deleteError as { code?: string }).code;
+      // PostgreSQL FK violation = location is in use
+      if (code === "23503") {
+        const { error: updateError } = await (supabase
+          .from("provider_locations") as any)
+          .update({ is_active: false })
+          .eq("id", id);
+        if (updateError) {
+          return errorResponse(
+            "This location is in use (bookings, staff, or sales) and could not be deactivated. Please remove or reassign dependencies first.",
+            "LOCATION_IN_USE",
+            400
+          );
+        }
+        return successResponse({ success: true, deactivated: true });
+      }
       throw deleteError;
     }
 

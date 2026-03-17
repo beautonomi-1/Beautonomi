@@ -286,7 +286,8 @@ export async function POST(request: NextRequest) {
             request_id: (createdRequest as any).id,
             offer_id: (offer as any).id,
           },
-          template.channels || ["push"]
+          template.channels || ["push"],
+          { appType: "customer" }
         );
       } else {
         // Fallback: Log warning if template doesn't exist

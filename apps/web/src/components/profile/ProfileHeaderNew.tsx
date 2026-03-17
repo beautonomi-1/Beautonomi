@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { Camera, Mail, Phone, Shield, Check, Sparkles } from "lucide-react";
+import { Camera, Mail, Phone, Shield, Check, Sparkles, Star } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
@@ -201,6 +201,18 @@ export default function ProfileHeaderNew({ user, onUpdate }: ProfileHeaderProps)
             <span className="text-sm font-medium text-zinc-600 capitalize">{user.role}</span>
             <span className="text-xs text-zinc-400">•</span>
             <span className="text-xs text-zinc-500">{formatMemberSince(memberSince)}</span>
+            {typeof user.rating_average === "number" && user.rating_average > 0 && (
+              <>
+                <span className="text-xs text-zinc-400">•</span>
+                <div className="flex items-center gap-1">
+                  <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
+                  <span className="text-sm font-semibold text-zinc-800">{user.rating_average.toFixed(1)}</span>
+                  <span className="text-xs text-zinc-500">
+                    ({user.review_count ?? 0} {(user.review_count ?? 0) === 1 ? "review" : "reviews"})
+                  </span>
+                </div>
+              </>
+            )}
             {loyaltyPoints !== null && (
               <>
                 <span className="text-xs text-zinc-400">•</span>

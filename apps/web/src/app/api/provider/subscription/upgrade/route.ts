@@ -11,6 +11,21 @@ const upgradeSubscriptionSchema = z.object({
   billing_period: z.enum(["monthly", "yearly"]).default("monthly"),
 });
 
+type PlanRow = {
+  id: string;
+  name?: string;
+  currency?: string;
+  price_monthly?: number;
+  price_yearly?: number;
+  is_active?: boolean;
+  is_free?: boolean;
+  paystack_plan_code_monthly?: string | null;
+  paystack_plan_code_yearly?: string | null;
+};
+type SubRow = { id: string };
+type SubWithPlan = { subscription_plans?: { name?: string; price_monthly?: number; price_yearly?: number } | null };
+type ExistingSubRow = { paystack_authorization_code?: string | null; subscription_plans?: { name?: string; price_monthly?: number; price_yearly?: number } | null };
+
 /**
  * POST /api/provider/subscription/upgrade
  * 
@@ -33,18 +48,17 @@ export async function POST(request: NextRequest) {
       .eq("id", plan_id)
       .single();
     
-    if (planError || !plan || (plan as any).is_active === false) {
+    const planRow = plan as PlanRow | null;
+    if (planError || !planRow || planRow.is_active === false) {
       throw planError || new Error("Subscription plan not found");
     }
 
-    // Handle free tier
-    if ((plan as any).is_free) {
-      // For free tier, just create subscription record without Paystack
+    if (planRow.is_free) {
       const now = new Date();
       const expiresAt = new Date(now);
-      expiresAt.setFullYear(expiresAt.getFullYear() + 1); // Free tier valid for 1 year
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
 
-      const { data: subscription, error: subError } = await (supabase.from("provider_subscriptions") as any)
+      const { data: subscription, error: subError } = await supabase.from("provider_subscriptions")
         .upsert({
           provider_id: providerId,
           plan_id,
@@ -83,15 +97,15 @@ export async function POST(request: NextRequest) {
         .from("provider_subscriptions")
         .select("plan_id, subscription_plans:plan_id(name, price_monthly, price_yearly)")
         .eq("provider_id", providerId)
-        .neq("id", (subscription as any).id)
+        .neq("id", (subscription as SubRow).id)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
       if (providerData?.user_id && oldSubscription) {
-        const oldPlan = (oldSubscription as any).subscription_plans;
-        const oldPlanName = oldPlan?.name || "Previous Plan";
-        const newPlanName = (plan as any).name;
+        const oldPlan = (oldSubscription as SubWithPlan).subscription_plans;
+        const oldPlanName = oldPlan?.name ?? "Previous Plan";
+        const newPlanName = planRow.name;
 
         try {
           await sendTemplateNotification(
@@ -107,20 +121,20 @@ export async function POST(request: NextRequest) {
               app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
               year: new Date().getFullYear().toString(),
             },
-            ["push", "email", "sms"]
+            ["push", "email", "sms"],
+            { appType: "provider" }
           );
         } catch (notifError) {
           console.error("Error sending free tier notification:", notifError);
         }
       }
 
-      return successResponse({ subscription_id: (subscription as any).id, is_free: true });
+      return successResponse({ subscription_id: (subscription as SubRow).id, is_free: true });
     }
 
-    // For paid plans, use Paystack subscriptions
-    const paystackPlanCode = billing_period === "yearly" 
-      ? (plan as any).paystack_plan_code_yearly 
-      : (plan as any).paystack_plan_code_monthly;
+    const paystackPlanCode = billing_period === "yearly"
+      ? planRow.paystack_plan_code_yearly
+      : planRow.paystack_plan_code_monthly;
 
     if (!paystackPlanCode) {
       throw new Error(`Paystack plan code not found for ${billing_period} billing period`);
@@ -151,8 +165,9 @@ export async function POST(request: NextRequest) {
           phone: userEmailRow?.phone || undefined,
         });
         customerCode = customerResponse.data?.customer_code || email;
-      } catch (err: any) {
-        throw new Error(`Failed to create Paystack customer: ${err.message}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        throw new Error(`Failed to create Paystack customer: ${msg}`);
       }
     }
 
@@ -175,8 +190,9 @@ export async function POST(request: NextRequest) {
       .eq("status", "active")
       .single();
 
-    const authorizationCode = (existingSub as any)?.paystack_authorization_code;
-    const oldPlan = (existingSub as any)?.subscription_plans;
+    const existingRow = existingSub as ExistingSubRow | null;
+    const authorizationCode = existingRow?.paystack_authorization_code;
+    const oldPlan = existingRow?.subscription_plans;
 
     if (!authorizationCode) {
       // No authorization code - need to initialize payment first
@@ -201,7 +217,7 @@ export async function POST(request: NextRequest) {
 
       // Update or create subscription record
       const now = new Date();
-      const { data: subscription, error: subError } = await (supabase.from("provider_subscriptions") as any)
+      const { data: subscription, error: subError } = await supabase.from("provider_subscriptions")
         .upsert({
           provider_id: providerId,
           plan_id,
@@ -238,11 +254,9 @@ export async function POST(request: NextRequest) {
         .eq("id", providerId)
         .single();
 
-      const oldPlanName = oldPlan?.name || "Previous Plan";
-      const newPlanName = (plan as any).name;
-      const newAmount = billing_period === "yearly" 
-        ? (plan as any).price_yearly 
-        : (plan as any).price_monthly;
+      const oldPlanName = oldPlan?.name ?? "Previous Plan";
+      const newPlanName = planRow.name;
+      const newAmount = billing_period === "yearly" ? planRow.price_yearly : planRow.price_monthly;
       const nextPaymentDate = paystackSubscription?.next_payment_date 
         ? new Date(paystackSubscription.next_payment_date).toLocaleDateString()
         : "N/A";
@@ -265,14 +279,15 @@ export async function POST(request: NextRequest) {
               business_name: providerData.business_name || "Provider",
               plan_name: newPlanName,
               old_plan_name: oldPlanName,
-              new_amount: newAmount ? `${(plan as any).currency || "ZAR"} ${newAmount.toLocaleString()}` : "N/A",
+              new_amount: newAmount ? `${planRow.currency ?? "ZAR"} ${newAmount.toLocaleString()}` : "N/A",
               billing_period: billing_period,
               next_payment_date: nextPaymentDate,
               effective_date: new Date().toLocaleDateString(),
               app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
               year: new Date().getFullYear().toString(),
             },
-            ["push", "email", "sms"]
+            ["push", "email", "sms"],
+            { appType: "provider" }
           );
         } catch (notifError) {
           console.error("Error sending subscription notification:", notifError);
@@ -280,13 +295,14 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return successResponse({ 
-        subscription_id: (subscription as any).id,
+      return successResponse({
+        subscription_id: (subscription as SubRow).id,
         paystack_subscription_code: paystackSubscription?.subscription_code,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Paystack subscription creation error:", err);
-      throw new Error(`Failed to create Paystack subscription: ${err.message}`);
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      throw new Error(`Failed to create Paystack subscription: ${msg}`);
     }
   } catch (error) {
     if (error instanceof z.ZodError) {

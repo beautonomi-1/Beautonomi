@@ -79,16 +79,15 @@ export async function POST(request: NextRequest) {
     );
 
     // Update test status
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       last_tested_at: new Date().toISOString(),
     };
-
     if (channel === "sms") {
       updateData.sms_test_status = result.success ? "success" : "failed";
-      updateData.sms_test_error = result.error || null;
+      updateData.sms_test_error = result.error ?? null;
     } else {
       updateData.whatsapp_test_status = result.success ? "success" : "failed";
-      updateData.whatsapp_test_error = result.error || null;
+      updateData.whatsapp_test_error = result.error ?? null;
     }
 
     await supabase
@@ -101,7 +100,7 @@ export async function POST(request: NextRequest) {
     } else {
       return errorResponse(result.error || `Failed to send test ${channel}`, "TEST_FAILED", 400);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return errorResponse(
         "Validation failed",

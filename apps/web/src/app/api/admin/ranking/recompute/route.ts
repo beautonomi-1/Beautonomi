@@ -7,7 +7,8 @@
  */
 
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { computeQualityScoreForProvider } from "@/lib/ranking/quality-score";
 
@@ -21,7 +22,7 @@ function parseEnv(s: string | null | undefined): string {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const body = await request.json().catch(() => ({}));
     const providerId = body.provider_id as string | undefined;
     const full = Boolean(body.full);
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
         .from("providers")
         .select("id")
         .eq("status", "active");
-      const providerIds = (ids ?? []).map((p: any) => p.id) as string[];
+      const providerIds = (ids ?? []).map((p: { id: string }) => p.id);
       let recomputed = 0;
       for (let i = 0; i < providerIds.length; i += BATCH_SIZE) {
         const batch = providerIds.slice(i, i + BATCH_SIZE);

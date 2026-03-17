@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: methods, error } = await supabase
       .from("payment_methods")
@@ -36,16 +36,20 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    // Backwards-compatible shape for existing UI (card_type/last4/cardholder_name)
-    const shaped = (methods || []).map((m: any) => ({
+    type PaymentMethodRow = {
+      id: string; type?: string; provider?: string; card_brand?: string; last_four?: string;
+      expiry_month?: number; expiry_year?: number; metadata?: { cardholder_name?: string };
+      is_default?: boolean; is_active?: boolean; created_at?: string;
+    };
+    const shaped = (methods ?? []).map((m: PaymentMethodRow) => ({
       id: m.id,
       type: m.type,
-      provider: m.provider || undefined, // Include provider to identify Paystack cards
-      card_type: m.card_brand || undefined,
-      last4: m.last_four || undefined,
-      expiry_month: m.expiry_month || undefined,
-      expiry_year: m.expiry_year || undefined,
-      cardholder_name: m.metadata?.cardholder_name || undefined,
+      provider: m.provider ?? undefined,
+      card_type: m.card_brand ?? undefined,
+      last4: m.last_four ?? undefined,
+      expiry_month: m.expiry_month,
+      expiry_year: m.expiry_year,
+      cardholder_name: m.metadata?.cardholder_name ?? undefined,
       is_default: m.is_default,
       is_active: m.is_active,
       created_at: m.created_at,
@@ -88,7 +92,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return handleApiError(new Error(error.issues.map((e: any) => e.message).join(", ")), "Validation failed", "VALIDATION_ERROR", 400);
+      return handleApiError(new Error(error.issues.map((e: { message: string }) => e.message).join(", ")), "Validation failed", "VALIDATION_ERROR", 400);
     }
     return handleApiError(error, "Failed to add payment method");
   }
@@ -105,7 +109,7 @@ export async function DELETE(
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const { id } = body;
 
@@ -118,8 +122,8 @@ export async function DELETE(
       );
     }
 
-    const { error } = await (supabase
-      .from("payment_methods") as any)
+    const { error } = await supabase
+      .from("payment_methods")
       .update({ is_active: false })
       .eq("id", id)
       .eq("user_id", user.id);

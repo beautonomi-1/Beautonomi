@@ -1,14 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Link from "next/link";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
-import ExploreMore from "./components/explore-more";
 import SearchBox from "./components/searchbox";
-import TopArticles from "./components/top-articles";
-import TabComponent from "@/components/tabs";
+import CTA from "./components/cta";
 import { fetcher } from "@/lib/http/fetcher";
 
 interface PageContent {
@@ -41,16 +38,9 @@ const Page = () => {
       <BeautonomiHeader />
       <div className="text-center pt-4 pb-0">
         <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Help centre</p>
-        <p className="mt-1 text-sm text-gray-600">
-          <Link href="/learn" className="text-primary hover:underline">Browse guides and articles</Link>
-        </p>
       </div>
       <SearchBox />
-      <div id="help-tabs">
-        <TabComponent />
-      </div>
-      <TopArticles />
-      <ExploreMore />
+      <CTA />
       <Footer />
       <BottomNav />
     </div>

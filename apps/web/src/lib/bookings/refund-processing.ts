@@ -1,10 +1,10 @@
 /**
  * Refund Processing Logic
- * Handles refunds for cancelled bookings based on cancellation policy
+ * Handles refunds for cancelled bookings based on cancellation policy.
+ * Refunds always credit the customer's wallet (platform policy).
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { createRefund, convertToSmallestUnit } from "@/lib/payments/paystack-complete";
 import type { CancellationPolicy } from "./cancellation-policy";
 
 export interface RefundResult {
@@ -15,137 +15,91 @@ export interface RefundResult {
 }
 
 /**
- * Process refund for a cancelled booking
+ * Process refund for a cancelled booking.
+ * Credits the customer's wallet and creates a booking_refund record (store_credit).
  */
 export async function processBookingRefund(
   bookingId: string,
   bookingTotal: number,
   currency: string,
   policy: CancellationPolicy,
-  paymentReference?: string
+  _paymentReference?: string
 ): Promise<RefundResult> {
   const supabaseAdmin = getSupabaseAdmin();
 
   try {
-    // Determine refund amount based on policy
     let refundAmount = 0;
-    let _refundType: 'full' | 'partial' | 'none' = 'none';
 
-    if (policy.late_cancellation_type === 'full_refund') {
+    if (policy.late_cancellation_type === "no_refund") {
+      return { success: true, amount: 0 };
+    }
+
+    if (policy.refund_percentage != null && policy.refund_percentage !== undefined) {
+      refundAmount = bookingTotal * (policy.refund_percentage / 100);
+    } else if (policy.late_cancellation_type === "full_refund") {
       refundAmount = bookingTotal;
-      _refundType = 'full';
-    } else if (policy.late_cancellation_type === 'partial_refund') {
-      // Calculate partial refund (e.g., 50% or based on policy)
-      // For now, default to 50% - can be made configurable
+    } else if (policy.late_cancellation_type === "partial_refund") {
       refundAmount = bookingTotal * 0.5;
-      _refundType = 'partial';
-    } else {
-      // No refund
-      return {
-        success: true,
-        amount: 0,
-      };
     }
 
     if (refundAmount <= 0) {
-      return {
-        success: true,
-        amount: 0,
-      };
+      return { success: true, amount: 0 };
     }
 
-    // If no payment reference, check for payment records
-    if (!paymentReference) {
-      const { data: payments } = await supabaseAdmin
-        .from("booking_payments")
-        .select("reference, amount, payment_provider")
-        .eq("booking_id", bookingId)
-        .eq("status", "completed")
-        .order("created_at", { ascending: false })
-        .limit(1);
+    const { data: booking, error: bookingError } = await supabaseAdmin
+      .from("bookings")
+      .select("customer_id, booking_number")
+      .eq("id", bookingId)
+      .single();
 
-      if (payments && payments.length > 0) {
-        const payment = payments[0];
-        if (payment.payment_provider === 'paystack' && payment.reference) {
-          paymentReference = payment.reference;
-        }
-      }
+    if (bookingError || !booking?.customer_id) {
+      console.error("Booking not found for refund:", bookingId, bookingError);
+      return { success: false, error: "Booking or customer not found" };
     }
 
-    // If we have a Paystack payment reference, process refund via Paystack
-    if (paymentReference) {
-      try {
-        const amountInSmallestUnit = convertToSmallestUnit(refundAmount);
-        const refundResponse = await createRefund({
-          transaction: paymentReference,
-          amount: amountInSmallestUnit,
-          currency: currency,
-          customer_note: `Refund for cancelled booking ${bookingId}`,
-          merchant_note: `Cancellation refund - Policy: ${policy.late_cancellation_type}`,
-        });
+    const bookingRef = (booking as { booking_number?: string }).booking_number || bookingId.slice(0, 8);
+    const description = `Refund for booking ${bookingRef}: Cancellation - ${policy.late_cancellation_type}`;
 
-        if (refundResponse.status && refundResponse.data) {
-          // Create refund record
-          const { data: refundRecord, error: refundError } = await supabaseAdmin
-            .from("booking_refunds")
-            .insert({
-              booking_id: bookingId,
-              amount: refundAmount,
-              reason: `Cancellation refund - ${policy.late_cancellation_type}`,
-              refund_method: 'original',
-              refund_provider_id: refundResponse.data.id?.toString(),
-              status: refundResponse.data.status === 'success' ? 'completed' : 'pending',
-              notes: `Processed via Paystack. Refund ID: ${refundResponse.data.id}`,
-            })
-            .select()
-            .single();
+    const { error: walletError } = await (supabaseAdmin.rpc as any)("wallet_credit_admin", {
+      p_user_id: (booking as { customer_id: string }).customer_id,
+      p_amount: refundAmount,
+      p_currency: currency || "ZAR",
+      p_description: description,
+      p_reference_id: bookingId,
+      p_reference_type: "booking_refund",
+    });
 
-          if (refundError) {
-            console.error("Error creating refund record:", refundError);
-            // Continue even if record creation fails
-          }
-
-          return {
-            success: refundResponse.status,
-            refundId: refundRecord?.id || refundResponse.data.id?.toString(),
-            amount: refundAmount,
-          };
-        }
-      } catch (paystackError: any) {
-        console.error("Paystack refund error:", paystackError);
-        // Fall through to manual refund record
-      }
+    if (walletError) {
+      console.error("Wallet credit failed for cancellation refund:", walletError);
+      return { success: false, error: "Failed to credit customer wallet" };
     }
 
-    // If Paystack refund failed or no payment reference, create manual refund record
-    // (for cash payments or when Paystack refund is not possible)
     const { data: refundRecord, error: refundError } = await supabaseAdmin
       .from("booking_refunds")
       .insert({
         booking_id: bookingId,
         amount: refundAmount,
         reason: `Cancellation refund - ${policy.late_cancellation_type}`,
-        refund_method: 'original',
-        status: 'pending', // Manual processing required
-        notes: `Manual refund processing required. Policy: ${policy.late_cancellation_type}`,
+        refund_method: "store_credit",
+        status: "completed",
+        notes: "Cancellation policy refund – credited to customer wallet",
       })
-      .select()
+      .select("id")
       .single();
 
     if (refundError) {
-      throw refundError;
+      console.error("Error creating refund record:", refundError);
+      return { success: false, error: "Failed to create refund record" };
     }
 
     return {
       success: true,
-      refundId: refundRecord.id,
+      refundId: (refundRecord as { id: string })?.id,
       amount: refundAmount,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to process refund";
     console.error("Error processing refund:", error);
-    return {
-      success: false,
-      error: error.message || "Failed to process refund",
-    };
+    return { success: false, error: message };
   }
 }

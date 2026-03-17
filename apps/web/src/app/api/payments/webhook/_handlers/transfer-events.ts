@@ -86,6 +86,40 @@ export async function handleTransferEvent(
       console.error("Transfer success: failed to record payout ledger:", ledgerErr);
     }
 
+    try {
+      const { data: provider } = await supabase
+        .from("providers")
+        .select("user_id")
+        .eq("id", payoutData.provider_id)
+        .single();
+      const providerUserId = (provider as any)?.user_id;
+      if (providerUserId) {
+        const { sendToUser } = await import("@/lib/notifications/onesignal");
+        const amountStr = (payoutData.amount ?? payoutData.net_amount ?? 0).toLocaleString();
+        await sendToUser(
+          providerUserId,
+          {
+            title: "Payout Processed",
+            message: `Your payout of ZAR ${amountStr} has been processed and paid.`,
+            data: { type: "payout_paid", payout_id: payoutData.id },
+            url: "/provider/finance",
+          },
+          ["push"],
+          { appType: "provider" }
+        );
+        await supabase.from("notifications").insert({
+          user_id: providerUserId,
+          type: "system",
+          title: "Payout Processed",
+          message: `Your payout of ZAR ${amountStr} has been processed and paid.`,
+          data: { payout_id: payoutData.id, amount: payoutData.amount ?? payoutData.net_amount },
+          action_url: "/provider/payouts",
+        });
+      }
+    } catch (notifErr) {
+      console.error("Transfer success: failed to notify provider:", notifErr);
+    }
+
     return NextResponse.json({ received: true });
   }
 
@@ -105,6 +139,41 @@ export async function handleTransferEvent(
         transfer_id: data?.id || payoutData.transfer_id,
       })
       .eq("id", payoutData.id);
+
+    try {
+      const { data: provider } = await supabase
+        .from("providers")
+        .select("user_id")
+        .eq("id", payoutData.provider_id)
+        .single();
+      const providerUserId = (provider as any)?.user_id;
+      if (providerUserId) {
+        const { sendToUser } = await import("@/lib/notifications/onesignal");
+        const amountStr = (payoutData.amount ?? payoutData.net_amount ?? 0).toLocaleString();
+        const reason = String(failureReason).slice(0, 200);
+        await sendToUser(
+          providerUserId,
+          {
+            title: "Payout Failed",
+            message: `Your payout of ZAR ${amountStr} could not be processed. Reason: ${reason}`,
+            data: { type: "payout_failed", payout_id: payoutData.id },
+            url: "/provider/finance",
+          },
+          ["push"],
+          { appType: "provider" }
+        );
+        await supabase.from("notifications").insert({
+          user_id: providerUserId,
+          type: "system",
+          title: "Payout Failed",
+          message: `Your payout of ZAR ${amountStr} could not be processed. Reason: ${reason}`,
+          data: { payout_id: payoutData.id, amount: payoutData.amount ?? payoutData.net_amount, failure_reason: reason },
+          action_url: "/provider/payouts",
+        });
+      }
+    } catch (notifErr) {
+      console.error("Transfer failed: failed to notify provider:", notifErr);
+    }
 
     return NextResponse.json({ received: true });
   }

@@ -27,7 +27,7 @@ const createSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data, error } = await supabase
       .from("custom_requests")
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const body = createSchema.parse(await request.json());
 
@@ -208,16 +208,21 @@ export async function POST(request: NextRequest) {
                 request_id: (created as any).id,
                 provider_id: body.provider_id,
               },
-              template.channels || ["push"]
+              template.channels || ["push"],
+              { appType: "provider" }
             );
           } else {
-            // Fallback to direct notification
-            await sendToUser(providerUserId, {
-              title: "New Custom Request",
-              message: `A customer sent you a custom service request: ${body.description.slice(0, 50)}...`,
-              data: { type: "custom_request", request_id: (created as any).id, provider_id: body.provider_id },
-              url: `/provider/custom-requests?request_id=${(created as any).id}`,
-            });
+            await sendToUser(
+              providerUserId,
+              {
+                title: "New Custom Request",
+                message: `A customer sent you a custom service request: ${body.description.slice(0, 50)}...`,
+                data: { type: "custom_request", request_id: (created as any).id, provider_id: body.provider_id },
+                url: `/provider/custom-requests?request_id=${(created as any).id}`,
+              },
+              ["push"],
+              { appType: "provider" }
+            );
           }
         } catch (notifError) {
           console.error("Failed to send push notification:", notifError);

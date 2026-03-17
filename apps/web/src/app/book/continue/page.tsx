@@ -7,7 +7,9 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
-import { CreditCard, Banknote, Loader2, Tag, Heart, FileText } from "lucide-react";
+import { CreditCard, Banknote, Loader2, Tag, Heart, FileText, Zap } from "lucide-react";
+import { useAuth } from "@/providers/AuthProvider";
+import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import {
   BOOKING_ACCENT,
   BOOKING_BG,
@@ -68,6 +70,7 @@ interface HoldData {
   metadata?: Record<string, any>;
   travel_fee?: number;
   travel_distance_km?: number;
+  provider_on_demand_accept_enabled?: boolean;
 }
 
 interface AddonInfo {
@@ -81,6 +84,7 @@ function BookContinueContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const holdId = searchParams?.get("hold_id");
+  const rescheduleBookingId = searchParams?.get("reschedule_booking_id") ?? undefined;
   const [status, setStatus] = useState<"loading" | "review" | "consuming" | "redirecting" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hold, setHold] = useState<HoldData | null>(null);
@@ -102,6 +106,10 @@ function BookContinueContent() {
   const [bookingCustomDefinitions, setBookingCustomDefinitions] = useState<CustomFieldDefinition[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [addonDetails, setAddonDetails] = useState<AddonInfo[]>([]);
+  const [requestingNow, setRequestingNow] = useState(false);
+  const { user } = useAuth();
+  const onDemandConfig = useModuleConfig("on_demand");
+  const onDemandAcceptEnabled = useFeatureFlag("on_demand_accept_customer_enabled");
   /** Client details when not loaded from session (e.g. direct link); used for form and submit */
   const [clientForm, setClientForm] = useState<{ firstName: string; lastName: string; email: string; phone: string }>({
     firstName: "",
@@ -140,6 +148,7 @@ function BookContinueContent() {
           metadata: data.metadata,
           travel_fee: data.travel_fee != null ? Number(data.travel_fee) : undefined,
           travel_distance_km: data.travel_distance_km != null ? Number(data.travel_distance_km) : undefined,
+          provider_on_demand_accept_enabled: Boolean((data as { provider_on_demand_accept_enabled?: boolean }).provider_on_demand_accept_enabled),
         };
         setHold(holdData);
 
@@ -226,25 +235,39 @@ function BookContinueContent() {
       .catch(() => setProviderForms([]));
   }, [hold?.provider_id, status]);
 
+  // Fetch addon details from all services in the hold so we resolve addons from any selected service
   useEffect(() => {
     if (status !== "review" || !hold?.provider_slug || addonIds.length === 0) {
       setAddonDetails([]);
       return;
     }
-    const firstOfferingId = hold.booking_services_snapshot?.[0]?.offering_id;
-    if (!firstOfferingId) return;
-    fetcher
-      .get<{ data?: { all_addons?: AddonInfo[] }; all_addons?: AddonInfo[] }>(
-        `/api/public/providers/${hold.provider_slug}/services/${firstOfferingId}/addons`
+    const offeringIds = (hold.booking_services_snapshot ?? [])
+      .map((s: any) => s.offering_id ?? s.id)
+      .filter(Boolean) as string[];
+    if (offeringIds.length === 0) return;
+    Promise.all(
+      offeringIds.map((serviceId) =>
+        fetcher
+          .get<{ data?: { all_addons?: AddonInfo[] }; all_addons?: AddonInfo[] }>(
+            `/api/public/providers/${hold!.provider_slug}/services/${serviceId}/addons`
+          )
+          .then((res) => {
+            const raw = (res as any)?.data?.all_addons ?? (res as any)?.all_addons ?? [];
+            return Array.isArray(raw) ? raw : [];
+          })
+          .catch(() => [] as AddonInfo[])
       )
-      .then((res) => {
-        const raw = (res as any)?.data?.all_addons ?? (res as any)?.all_addons ?? [];
-        const all = Array.isArray(raw) ? raw : [];
-        const byId = all.filter((a: AddonInfo) => addonIds.includes(a.id));
-        setAddonDetails(byId);
-      })
-      .catch(() => setAddonDetails([]));
-  }, [status, hold?.provider_slug, hold?.booking_services_snapshot, addonIds]);
+    ).then((results) => {
+      const byId = new Map<string, AddonInfo>();
+      for (const list of results) {
+        for (const a of list) {
+          if (a?.id && !byId.has(a.id)) byId.set(a.id, a);
+        }
+      }
+      const details = addonIds.map((id) => byId.get(id)).filter(Boolean) as AddonInfo[];
+      setAddonDetails(details);
+    });
+  }, [status, hold?.provider_slug, hold?.booking_services_snapshot, addonIds.join(",")]);
 
   useEffect(() => {
     if (status !== "review") return;
@@ -269,6 +292,57 @@ function BookContinueContent() {
       },
     }));
   }, []);
+
+  const handleRequestNow = useCallback(async () => {
+    if (!hold || !user) {
+      router.push(`/login?return_to=${encodeURIComponent(`/book/continue?hold_id=${holdId}`)}`);
+      return;
+    }
+    setRequestingNow(true);
+    setValidationError(null);
+    try {
+      const requestPayload = {
+        provider_id: hold.provider_id,
+        services: (hold.booking_services_snapshot ?? []).map((s: any) => ({
+          offering_id: s.offering_id ?? s.id ?? "",
+          staff_id: hold.staff_id ?? undefined,
+        })),
+        selected_datetime: hold.start_at,
+        location_type: hold.location_type === "at_home" ? "at_home" : "at_salon",
+        location_id: hold.location_id ?? null,
+        address: hold.address_snapshot ?? null,
+        addons: addonIds ?? [],
+        tip_amount: tipAmount ?? 0,
+        travel_fee: hold.travel_fee ?? 0,
+      };
+      const hasClientFromSession = clientInfo && (clientInfo.firstName || clientInfo.lastName || clientInfo.email || clientInfo.phone);
+      const effectiveClient = hasClientFromSession ? clientInfo! : clientForm;
+      if (effectiveClient && (effectiveClient.firstName || effectiveClient.lastName || effectiveClient.email)) {
+        (requestPayload as Record<string, unknown>).client_info = {
+          firstName: effectiveClient.firstName?.trim() || "Guest",
+          lastName: effectiveClient.lastName?.trim() || "User",
+          email: effectiveClient.email?.trim() || undefined,
+          phone: effectiveClient.phone?.trim() || undefined,
+        };
+      }
+      const res = await fetcher.post<{ id: string } | { data: { id: string } }>(
+        "/api/me/on-demand/requests",
+        { provider_id: hold.provider_id, request_payload: requestPayload }
+      );
+      const data = res as { id?: string; data?: { id?: string } };
+      const requestId = data?.id ?? data?.data?.id;
+      if (requestId) {
+        router.replace(`/book/on-demand/waiting?requestId=${encodeURIComponent(requestId)}`);
+      } else {
+        setValidationError("Could not submit request. Try again or complete a scheduled booking.");
+      }
+    } catch (err) {
+      const msg = err instanceof FetchError ? err.message : "Could not submit request. Try again or complete a scheduled booking.";
+      setValidationError(msg);
+    } finally {
+      setRequestingNow(false);
+    }
+  }, [hold, user, holdId, addonIds, tipAmount, clientInfo, clientForm, router]);
 
   const handleComplete = async () => {
     if (!holdId || !hold) return;
@@ -312,6 +386,7 @@ function BookContinueContent() {
       const payload: Record<string, any> = {
         payment_method: paymentMethod,
         payment_option: paymentOption,
+        use_wallet: false,
         custom_field_values: Object.keys(bookingCustomValues).length > 0 ? bookingCustomValues : undefined,
         provider_form_responses:
           Object.keys(providerFormValues).length > 0 ? providerFormValues : undefined,
@@ -320,6 +395,7 @@ function BookContinueContent() {
         tip_amount: tipAmount > 0 ? tipAmount : undefined,
         promotion_code: promotionCode.trim() || undefined,
       };
+      if (rescheduleBookingId) payload.reschedule_booking_id = rescheduleBookingId;
       if (effectiveClient && (effectiveClient.firstName || effectiveClient.lastName || effectiveClient.email || effectiveClient.phone)) {
         const rawPhone = effectiveClient.phone?.trim();
         const phoneE164 =
@@ -819,6 +895,26 @@ function BookContinueContent() {
 
           {validationError && (
             <p className="text-sm font-medium" style={{ color: BOOKING_WAITLIST_TEXT }}>{validationError}</p>
+          )}
+          {onDemandConfig?.enabled && onDemandAcceptEnabled && hold?.provider_on_demand_accept_enabled && (
+            <button
+              type="button"
+              className="w-full rounded-2xl h-14 font-semibold flex items-center justify-center gap-2 min-h-[44px] transition-transform active:scale-[0.98] disabled:opacity-70 mb-3 border-2"
+              style={{
+                backgroundColor: "transparent",
+                color: BOOKING_TEXT_PRIMARY,
+                borderColor: BOOKING_EDGE,
+              }}
+              onClick={handleRequestNow}
+              disabled={requestingNow || (status as string) === "consuming"}
+            >
+              {requestingNow ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Zap className="h-5 w-5" style={{ color: BOOKING_ACCENT }} />
+              )}
+              {requestingNow ? "Submitting..." : "Request now"}
+            </button>
           )}
           <button
             type="button"

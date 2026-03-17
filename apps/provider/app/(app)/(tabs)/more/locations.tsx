@@ -91,6 +91,27 @@ export default function LocationsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ paddingHorizontal: 16 }}>
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/(app)/(tabs)/more/settings/distance-settings" as never);
+            }}
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 16, borderWidth: 1, borderColor: "#bae6fd", backgroundColor: "#f0f9ff", padding: 16, marginBottom: 16 }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Set service radius and distance for house calls"
+          >
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#7dd3fc", marginRight: 12 }}>
+                <Ionicons name="navigate-outline" size={20} color="#0369a1" />
+              </View>
+              <View>
+                <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.gray[900] }}>Distance & radius</Text>
+                <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>How far you travel for house calls</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#0ea5e9" />
+          </TouchableOpacity>
           {locations.length === 0 ? (
             <View style={{ paddingVertical: 48, alignItems: "center" }}>
               <View style={{ width: 64, height: 64, alignItems: "center", justifyContent: "center", borderRadius: 32, backgroundColor: "#ccfbf1", marginBottom: 16 }}>

@@ -11,7 +11,7 @@ import type { Booking } from "@/types/beautonomi";
 import { z } from "zod";
 
 const verifyArrivalSchema = z.object({
-  otp: z.string().min(6).max(6),
+  otp: z.string().regex(/^\d{4}$|^\d{6}$/, "OTP must be 4 or 6 digits"),
 });
 
 /**
@@ -28,7 +28,7 @@ export async function POST(
     // Allow any authenticated user (customer, provider, etc.)
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
 
@@ -61,9 +61,9 @@ export async function POST(
       return notFoundResponse("Booking not found");
     }
 
-    const bookingData = booking as any;
+    type VerifyBookingRow = { location_type?: string; arrival_otp?: string; arrival_otp_expires_at?: string; arrival_otp_verified?: boolean };
+    const bookingData = booking as VerifyBookingRow;
 
-    // Only allow for at-home bookings
     if (bookingData.location_type !== "at_home") {
       return errorResponse("This endpoint is only for at-home bookings", "INVALID_REQUEST", 400);
     }

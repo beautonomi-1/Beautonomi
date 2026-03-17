@@ -45,6 +45,8 @@ interface EarningsData {
   this_month: number;
   last_month: number;
   growth_percentage: number;
+  walk_in_additional_charges_total?: number;
+  walk_in_additional_charges_this_period?: number;
 }
 
 interface PayoutAccount {
@@ -204,6 +206,11 @@ export default function FinanceHubPage() {
           {pendingPayouts > 0 && (
             <p className="text-sm text-amber-600 mt-2">
               Pending payout requests: ZAR {pendingPayouts.toLocaleString()}
+            </p>
+          )}
+          {((earnings?.walk_in_additional_charges_this_period ?? earnings?.walk_in_additional_charges_total ?? 0) > 0) && (
+            <p className="text-sm text-gray-500 mt-2">
+              Walk-in add-ons (this period): ZAR {(earnings?.walk_in_additional_charges_this_period ?? earnings?.walk_in_additional_charges_total ?? 0).toLocaleString()} — not in payout balance
             </p>
           )}
           <div className="mt-4 flex flex-wrap gap-2 items-center">

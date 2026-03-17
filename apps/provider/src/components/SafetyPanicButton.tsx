@@ -1,7 +1,7 @@
 import React from "react";
 import { TouchableOpacity, Text, ActivityIndicator, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useModuleConfig, useFeatureFlag, useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useApiPost } from "@/hooks/useApi";
 import { twStyle } from "@/lib/twStyle";
 
@@ -14,9 +14,10 @@ interface SafetyPanicButtonProps {
  * Renders nothing when disabled.
  */
 export function SafetyPanicButton({ bookingId = null }: SafetyPanicButtonProps) {
+  const { bundle } = useConfigBundle();
   const safetyConfig = useModuleConfig("safety") as { enabled?: boolean } | undefined;
   const panicEnabled = useFeatureFlag("safety.panic.enabled");
-  const { execute: postPanic, loading } = useApiPost<{ booking_id?: string; metadata?: Record<string, string> }, { data: { id: string } }>("/api/me/safety/panic");
+  const { execute: postPanic, loading } = useApiPost<{ booking_id?: string; metadata?: Record<string, string>; environment?: string }, { data: { id: string } }>("/api/me/safety/panic");
 
   const enabled = Boolean(safetyConfig?.enabled) && panicEnabled;
   if (!enabled) return null;
@@ -34,6 +35,7 @@ export function SafetyPanicButton({ bookingId = null }: SafetyPanicButtonProps) 
             const res = await postPanic({
               booking_id: bookingId ?? undefined,
               metadata: { source: "provider_app" },
+              ...(bundle?.meta?.env && { environment: bundle.meta.env }),
             });
             if (res?.error) {
               Alert.alert("Error", "Unable to send request. Please call emergency services if in danger.");

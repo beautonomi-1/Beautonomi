@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, notFoundResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 /**
@@ -13,8 +14,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRoleInApi(['superadmin'], request);
-    if (!auth) throw new Error("Authentication required");
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    if (!user) throw new Error("Authentication required");
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -30,7 +31,9 @@ export async function POST(
       return notFoundResponse("Payout not found");
     }
 
-    if ((payout as any).status !== "pending") {
+    type PayoutRow = { status: string; provider_id?: string; amount: number };
+    const payoutRow = payout as PayoutRow;
+    if (payoutRow.status !== "pending") {
       return errorResponse("Payout is not pending", "INVALID_STATE", 400);
     }
 
@@ -39,7 +42,7 @@ export async function POST(
       .from("payouts")
       .update({
         status: "processing",
-        approved_by: auth.user.id,
+        approved_by: user.id,
         approved_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         admin_notes: body.notes || null,
@@ -56,28 +59,33 @@ export async function POST(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.payout.approve",
       entity_type: "payout",
       entity_id: id,
-      metadata: { provider_id: (payout as any).provider_id, amount: (payout as any).amount },
+      metadata: { provider_id: payoutRow.provider_id, amount: payoutRow.amount },
     });
 
-    // Notify provider
     try {
       const { sendToUser } = await import("@/lib/notifications/onesignal");
-      const providerData = (updatedPayout as any).provider;
+      const updatedWithProvider = updatedPayout as PayoutRow & { provider?: { user_id?: string } };
+      const providerData = updatedWithProvider.provider;
       if (providerData?.user_id) {
-        await sendToUser(providerData.user_id, {
-          title: "Payout Approved",
-          message: `Your payout request of ZAR ${(payout as any).amount.toFixed(2)} has been approved and is being processed.`,
-          data: {
-            type: "payout_approved",
-            payout_id: id,
+        await sendToUser(
+          providerData.user_id,
+          {
+            title: "Payout Approved",
+            message: `Your payout request of ZAR ${payoutRow.amount.toFixed(2)} has been approved and is being processed.`,
+            data: {
+              type: "payout_approved",
+              payout_id: id,
+            },
+            url: `/provider/finance`,
           },
-          url: `/provider/finance`,
-        });
+          ["push"],
+          { appType: "provider" }
+        );
       }
     } catch (notifError) {
       console.error("Error sending notification:", notifError);

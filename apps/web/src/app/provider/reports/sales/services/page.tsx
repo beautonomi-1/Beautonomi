@@ -11,7 +11,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface ServicePerformanceData {
   totalServices: number;
@@ -91,7 +91,7 @@ export default function ServicePerformanceReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data, "service-performance");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "service-performance");
     exportToCSV(exportData, "service-performance-report");
   };
 

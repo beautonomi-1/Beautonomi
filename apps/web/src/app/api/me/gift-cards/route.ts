@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRole } from "@/lib/supabase/auth-server";
+import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServer();
+    const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+    const supabase = await getSupabaseServer(request);
     const supabaseAdmin = getSupabaseAdmin();
-    const { user } = await requireRole(["customer", "provider_owner", "provider_staff"]);
 
     const giftCardIds = new Set<string>();
 

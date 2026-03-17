@@ -1,13 +1,12 @@
 import { View, Text, Linking, Pressable } from "react-native";
 import { Colors } from "@/constants/colors";
+import { APP_URL } from "@/config/public-env";
 
 type WrongAppScreenProps = {
   /** "customer" | "admin" */
   portal: string;
   onSignOut?: () => void;
 };
-
-const APP_URL = process.env.EXPO_PUBLIC_APP_URL ?? "";
 
 export function WrongAppScreen({ portal, onSignOut }: WrongAppScreenProps) {
   const isCustomer = portal === "customer";

@@ -106,15 +106,17 @@ export async function GET(request: NextRequest) {
     const { data: timeCards } = await supabaseAdmin
       .from("staff_time_cards")
       .select("staff_id, total_hours")
-      .in("staff_id", staffMembers.map((s: any) => s.id))
+      .in("staff_id", staffMembers.map((s: { id: string }) => s.id))
       .gte("date", fromDate.toISOString().split("T")[0])
       .lte("date", toDate.toISOString().split("T")[0])
       .not("total_hours", "is", null);
 
     const hoursByStaff = new Map<string, number>();
-    for (const tc of timeCards || []) {
-      const s = (tc as any).staff_id;
-      hoursByStaff.set(s, (hoursByStaff.get(s) || 0) + Number((tc as any).total_hours || 0));
+    type TimeCardRow = { staff_id?: string; total_hours?: number };
+    for (const tc of timeCards ?? []) {
+      const row = tc as TimeCardRow;
+      const s = row.staff_id;
+      if (s) hoursByStaff.set(s, (hoursByStaff.get(s) ?? 0) + Number(row.total_hours ?? 0));
     }
 
     const tipsByStaff = await getTipsByStaff(supabaseAdmin, providerId, fromDate, toDate);
@@ -132,21 +134,23 @@ export async function GET(request: NextRequest) {
 
       let appointmentsCount = 0;
       let revenue = 0;
-      for (const b of bookings || []) {
-        const services = (b as any).booking_services || [];
-        const staffServices = services.filter((s: any) => s.staff_id === staff.id);
+      type BookingWithServices = { id: string; booking_services?: Array<{ staff_id?: string; price?: number }> };
+      for (const b of bookings ?? []) {
+        const row = b as BookingWithServices;
+        const services = row.booking_services ?? [];
+        const staffServices = services.filter((s: { staff_id?: string }) => s.staff_id === staff.id);
         if (staffServices.length === 0) continue;
         appointmentsCount += 1;
-        const totalPrice = services.reduce((s: number, x: any) => s + Number(x.price || 0), 0);
-        const staffPrice = staffServices.reduce((s: number, x: any) => s + Number(x.price || 0), 0);
+        const totalPrice = services.reduce((sum: number, x: { price?: number }) => sum + Number(x.price ?? 0), 0);
+        const staffPrice = staffServices.reduce((sum: number, x: { price?: number }) => sum + Number(x.price ?? 0), 0);
         if (totalPrice > 0) {
-          revenue += (revenueByBooking.get((b as any).id) || 0) * (staffPrice / totalPrice);
+          revenue += (revenueByBooking.get(row.id) ?? 0) * (staffPrice / totalPrice);
         }
       }
 
       results.push({
         team_member_id: staff.id,
-        team_member_name: (staff.users as any)?.full_name || "Unknown",
+        team_member_name: (staff.users as { full_name?: string } | null)?.full_name ?? "Unknown",
         appointments_count: appointmentsCount,
         revenue,
         tips: tipsByStaff.get(staff.id) || 0,

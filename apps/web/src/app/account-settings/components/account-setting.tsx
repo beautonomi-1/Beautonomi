@@ -5,7 +5,7 @@ import {
   FaUser, FaShieldAlt, FaCreditCard, FaFileAlt, 
   FaBell, FaEye, FaGlobe, FaSuitcase, 
   FaGift, FaMapMarkerAlt, FaCalendarAlt, FaHeart, 
-  FaComments, FaStar, FaInfoCircle, FaShareAlt, FaWallet, FaBuilding, FaStore, FaTrophy,
+  FaComments, FaStar, FaInfoCircle, FaShareAlt, FaWallet, FaStore, FaTrophy,
   FaShoppingBag, FaUndoAlt
 } from 'react-icons/fa';
 import AboutUsModal from '@/components/global/about-us-modal';
@@ -42,7 +42,6 @@ const cardData: CardData[] = [
   { icon: FaGift, title: "Referral credit & coupon", description: "You have $0 referral credits and coupon. Learn more.", link: "/account-settings/referrals" },
   { icon: FaStar, title: "My Reviews", description: "View and edit your reviews for completed bookings", link: "/account-settings/reviews" },
   { icon: FaHeart, title: "Wishlists & Recently Viewed", description: "Manage your saved wishlists and view recently viewed items", link: "/account-settings/wishlists" },
-  { icon: FaBuilding, title: "Business Services", description: "Corporate packages, event bookings, and professional development", link: "/account-settings/business" },
   { icon: FaComments, title: "Messages", description: "View and manage your messages with beauty partners and clients", link: "/account-settings/messages" },
   { icon: FaSuitcase, title: "Custom Requests", description: "Request custom services and manage offers from providers", link: "/account-settings/custom-requests" },
   { icon: FaInfoCircle, title: "About Us", description: "Learn more about Beautonomi and our mission", link: "#about-us", isAction: true },

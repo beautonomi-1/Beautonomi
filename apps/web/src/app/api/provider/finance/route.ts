@@ -177,6 +177,10 @@ export async function GET(request: NextRequest) {
     const providerEarningsThis = sumNet(["provider_earnings"], { start: startDate, end: now });
     const providerEarningsLast = sumNet(["provider_earnings"], { start: lastMonthStart, end: lastMonthEnd });
 
+    // Walk-in additional charges (audit/reporting only; not included in payout balance)
+    const walkInAdditionalChargesTotal = sumNet(["walk_in_additional_charge"]);
+    const walkInAdditionalChargesThisPeriod = sumNet(["walk_in_additional_charge"], { start: startDate, end: now });
+
     const membershipSalesTotal = sumAmount(["membership_sale"], { start: startDate, end: now });
     const giftCardSalesTotal = sumAmount(["gift_card_sale"], { start: startDate, end: now });
     const travelFeesTotal = sumNet(["travel_fee"]);
@@ -215,6 +219,7 @@ export async function GET(request: NextRequest) {
       "tax",
       "membership_sale",
       "gift_card_sale",
+      "walk_in_additional_charge",
     ];
     
     const transactions = rows
@@ -227,7 +232,7 @@ export async function GET(request: NextRequest) {
         type:
           r.transaction_type === "refund"
             ? ("refund" as const)
-            : r.transaction_type === "provider_earnings"
+            : r.transaction_type === "provider_earnings" || r.transaction_type === "walk_in_additional_charge"
             ? ("booking" as const)
             : ("booking" as const),
         date: r.created_at,
@@ -257,6 +262,8 @@ export async function GET(request: NextRequest) {
         travel_fees_total: travelFeesTotal,
         travel_fees_this_period: travelFeesThisPeriod,
         refunds_total: refundsTotal,
+        walk_in_additional_charges_total: walkInAdditionalChargesTotal,
+        walk_in_additional_charges_this_period: walkInAdditionalChargesThisPeriod,
       },
       transactions: transactions,
     });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -14,11 +14,14 @@ interface ExpressLinkResponse {
   link_name: string;
   service_ids: string[];
   staff_ids: string[];
+  location_id?: string | null;
+  location_type?: string | null;
 }
 
 export default function ExpressBookLinkPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const linkSlug = params?.linkSlug as string;
   const [error, setError] = useState<string | null>(null);
 
@@ -34,10 +37,23 @@ export default function ExpressBookLinkPage() {
           setError("Booking link not found");
           return;
         }
-        const searchParams = new URLSearchParams();
-        if (data.service_ids?.[0]) searchParams.set("service", data.service_ids[0]);
-        if (data.staff_ids?.[0]) searchParams.set("staff", data.staff_ids[0]);
-        const query = searchParams.toString();
+        const q = new URLSearchParams();
+        if (data.service_ids?.length) {
+          if (data.service_ids.length === 1) {
+            q.set("service", data.service_ids[0]);
+          } else {
+            q.set("services", data.service_ids.join(","));
+          }
+        }
+        if (data.staff_ids?.[0]) q.set("staff", data.staff_ids[0]);
+        if (data.location_type === "at_home") {
+          q.set("location_type", "at_home");
+        } else if (data.location_type === "at_salon" || data.location_id) {
+          q.set("location_type", "at_salon");
+          if (data.location_id) q.set("location", data.location_id);
+        }
+        if (searchParams?.get("embed") === "1") q.set("embed", "1");
+        const query = q.toString();
         const target = `/book/${encodeURIComponent(data.provider_slug)}${query ? `?${query}` : ""}`;
         router.replace(target);
       } catch (err) {
@@ -49,7 +65,7 @@ export default function ExpressBookLinkPage() {
       }
     };
     resolve();
-  }, [linkSlug, router]);
+  }, [linkSlug, router, searchParams]);
 
   if (!linkSlug) {
     return (

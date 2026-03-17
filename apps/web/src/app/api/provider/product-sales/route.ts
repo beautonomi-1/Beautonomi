@@ -23,7 +23,8 @@ export async function GET(request: NextRequest) {
     const limit = Number(request.nextUrl.searchParams.get("limit")) || 50;
     const offset = Number(request.nextUrl.searchParams.get("offset")) || 0;
 
-    const { data: sales, error, count } = await (supabase.from("product_orders") as any)
+    const { data: sales, error, count } = await supabase
+      .from("product_orders")
       .select(
         "id, order_number, total_amount, payment_method, customer_name, customer_phone, created_at, product_order_items(product_name, quantity, unit_price)",
         { count: "exact" },
@@ -35,7 +36,8 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    const mapped = (sales ?? []).map((s: any) => ({
+    type SaleRow = { product_order_items?: unknown[]; [k: string]: unknown };
+    const mapped = (sales ?? []).map((s: SaleRow) => ({
       ...s,
       items: s.product_order_items ?? [],
       product_order_items: undefined,
@@ -55,6 +57,7 @@ const walkInSaleSchema = z.object({
     }),
   ).min(1),
   payment_method: z.enum(["cash", "yoco"]),
+  payment_reference: z.string().max(200).optional(),
   customer_name: z.string().max(100).optional(),
   customer_phone: z.string().max(20).optional(),
   customer_id: z.string().uuid().optional(),
@@ -75,7 +78,8 @@ export async function POST(request: NextRequest) {
 
     // Validate products and stock
     const productIds = parsed.items.map((i) => i.product_id);
-    const { data: products, error: prodErr } = await (supabase.from("products") as any)
+    const { data: products, error: prodErr } = await supabase
+      .from("products")
       .select("id, name, retail_price, quantity, image_urls, tax_rate, provider_id, is_active")
       .in("id", productIds)
       .eq("provider_id", providerId);
@@ -130,11 +134,12 @@ export async function POST(request: NextRequest) {
     // Generate order number
     const { data: seqData } = await supabase.rpc("nextval", {
       seq_name: "product_order_number_seq",
-    }) as any;
+    });
     const orderNum = `BO-W${seqData ?? Date.now()}`;
 
     // Create walk-in order (already paid, no platform fee)
-    const { data: order, error: orderErr } = await (supabase.from("product_orders") as any)
+    const { data: order, error: orderErr } = await supabase
+      .from("product_orders")
       .insert({
         order_number: orderNum,
         customer_id: parsed.customer_id ?? null,
@@ -146,6 +151,7 @@ export async function POST(request: NextRequest) {
         platform_fee: "0.00",
         total_amount: totalAmount.toFixed(2),
         payment_method: parsed.payment_method,
+        payment_reference: parsed.payment_reference ?? null,
         payment_status: "paid",
         status: "delivered",
         order_source: "walk_in",
@@ -168,11 +174,11 @@ export async function POST(request: NextRequest) {
       unit_price: oi.unit_price.toFixed(2),
       total_price: oi.total_price.toFixed(2),
     }));
-    await (supabase.from("product_order_items") as any).insert(itemsToInsert);
+    await supabase.from("product_order_items").insert(itemsToInsert);
 
     // Decrement stock
     for (const item of parsed.items) {
-      await supabase.rpc("decrement_product_stock" as any, {
+      await supabase.rpc("decrement_product_stock", {
         p_product_id: item.product_id,
         p_quantity: item.quantity,
       });

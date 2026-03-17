@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/supabase/auth-server";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(["superadmin"]);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
 
     const { id } = await params;
@@ -30,10 +31,11 @@ export async function GET(
       template: data,
       versions: versions || [],
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching email template:", error);
+    const message = error instanceof Error ? error.message : "Failed to fetch email template";
     return NextResponse.json(
-      { error: error.message || "Failed to fetch email template" },
+      { error: message },
       { status: 500 }
     );
   }
@@ -44,7 +46,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRole(["superadmin"]);
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
@@ -74,7 +76,7 @@ export async function PATCH(
     }
 
     // Update template
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
     if (subject_template !== undefined) updateData.subject_template = subject_template;
     if (body_template !== undefined) updateData.body_template = body_template;
@@ -111,10 +113,11 @@ export async function PATCH(
     }
 
     return NextResponse.json({ template: data });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error updating email template:", error);
+    const message = error instanceof Error ? error.message : "Failed to update email template";
     return NextResponse.json(
-      { error: error.message || "Failed to update email template" },
+      { error: message },
       { status: 500 }
     );
   }
@@ -125,7 +128,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRole(["superadmin"]);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
@@ -137,10 +140,11 @@ export async function DELETE(
     if (error) throw error;
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error deleting email template:", error);
+    const message = error instanceof Error ? error.message : "Failed to delete email template";
     return NextResponse.json(
-      { error: error.message || "Failed to delete email template" },
+      { error: message },
       { status: 500 }
     );
   }

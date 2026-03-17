@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 const updateServiceSchema = z.object({
   name: z.string().min(1).optional(),
@@ -26,8 +28,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -56,10 +58,11 @@ export async function GET(
       );
     }
 
+    type ServiceWithCategory = Record<string, unknown> & { category?: { name?: string } };
     return NextResponse.json({
       data: {
-        ...(service as Record<string, any>),
-        category_name: (service as any).category?.name || null,
+        ...(service as Record<string, unknown>),
+        category_name: (service as ServiceWithCategory).category?.name ?? null,
       },
       error: null,
     });
@@ -88,8 +91,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -161,8 +164,8 @@ export async function PUT(
       validationResult.data.slug = validationResult.data.slug.toLowerCase();
     }
 
-    const { data: service, error } = await (supabase
-      .from("master_services") as any)
+    const { data: service, error } = await supabase
+      .from("master_services")
       .update(validationResult.data)
       .eq("id", id)
       .select()
@@ -183,8 +186,8 @@ export async function PUT(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.catalog.service.update",
       entity_type: "master_service",
       entity_id: id,
@@ -220,8 +223,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -249,8 +252,8 @@ export async function DELETE(
     }
 
     // Soft delete by setting is_active to false
-    const { data: service, error } = await (supabase
-      .from("master_services") as any)
+    const { data: service, error } = await supabase
+      .from("master_services")
       .update({ is_active: false })
       .eq("id", id)
       .select()
@@ -271,8 +274,8 @@ export async function DELETE(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.catalog.service.delete",
       entity_type: "master_service",
       entity_id: id,

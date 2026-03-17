@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Image from "next/image";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import Breadcrumb from "@/components/ui/breadcrumb";
 import { validateFileType, validateFileSize, IMAGE_CONSTRAINTS } from "@/lib/supabase/storage-client";
 import { getPricingPlans } from "@/lib/supabase/pricing";
+import { ChipCombobox } from "@/components/ui/chip-combobox";
 
 interface GlobalCategory {
   id: string;
@@ -135,9 +136,12 @@ interface OnboardingData {
     [key: string]: { open: string; close: string; closed: boolean };
   };
   
-  // Step 14: Plan Selection
+  // Step 14: Plan Selection (planName from URL for display only)
   selected_plan_id?: string;
+  selected_plan_name?: string;
 }
+
+const ONBOARDING_DRAFT_STORAGE_KEY = "beautonomi_provider_onboarding_draft";
 
 // New streamlined step order
 const STEPS = [
@@ -146,7 +150,7 @@ const STEPS = [
   { id: 3, title: "Business Details", description: "Tell us about your business" },
   { id: 4, title: "Payment Setup", description: "Do you have a Yoco machine?" },
   { id: 5, title: "Current Software", description: "Are you moving from another system?" },
-  { id: 6, title: "Payroll", description: "How do you pay your staff?" },
+  { id: 6, title: "Payroll", description: "How do you pay your staff?", conditional: (data: Partial<OnboardingData>) => data.team_size !== "freelancer" },
   { id: 7, title: "Location", description: "Where are you located?" },
   { id: 8, title: "Photos", description: "Add your photos" },
   { id: 9, title: "Service Zones", description: "Select service areas", canSkip: true, conditional: (data: Partial<OnboardingData>) => data.business_type === "mobile" || data.business_type === "both" },
@@ -162,6 +166,7 @@ export default function ProviderOnboarding() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [inAppFromUrl, setInAppFromUrl] = useState(false);
   const [formData, setFormData] = useState<Partial<OnboardingData>>({
     team_size: undefined,
     owner_name: "",
@@ -188,14 +193,18 @@ export default function ProviderOnboarding() {
     selected_zone_ids: [],
   });
 
-  // Check for pre-selected plan from query params
+  // Check for pre-selected plan and entry-point params from URL
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      const planId = params.get('planId');
-      if (planId) {
-        setFormData(prev => ({ ...prev, selected_plan_id: planId }));
-      }
+      const planId = params.get("planId");
+      const planName = params.get("planName");
+      const inApp = params.get("in_app") === "1";
+      const updates: Partial<OnboardingData> = {};
+      if (planId) updates.selected_plan_id = planId;
+      if (planName) updates.selected_plan_name = planName;
+      if (Object.keys(updates).length) setFormData((prev) => ({ ...prev, ...updates }));
+      if (inApp) setInAppFromUrl(true);
     }
   }, []);
 
@@ -221,11 +230,28 @@ export default function ProviderOnboarding() {
       if (response.data && response.data.draft_data) {
         setFormData(response.data.draft_data);
         setCurrentStep(response.data.current_step || 1);
+        try {
+          sessionStorage.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
+        } catch {}
         toast.success("Resumed from saved draft");
       }
     } catch {
-      // No draft exists, that's fine
-      console.log("No draft found, starting fresh");
+      // No draft from server (e.g. not logged in or first time) — try sessionStorage so progress isn't lost
+      try {
+        const raw = typeof window !== "undefined" ? window.sessionStorage.getItem(ONBOARDING_DRAFT_STORAGE_KEY) : null;
+        if (raw) {
+          const parsed = JSON.parse(raw) as { draft_data?: Partial<OnboardingData>; current_step?: number };
+          if (parsed.draft_data) {
+            setFormData(parsed.draft_data);
+            if (typeof parsed.current_step === "number" && parsed.current_step >= 1) {
+              setCurrentStep(parsed.current_step);
+            }
+            toast.success("Resumed from saved progress");
+          }
+        }
+      } catch {
+        // Ignore parse errors
+      }
     }
   };
 
@@ -237,8 +263,17 @@ export default function ProviderOnboarding() {
         current_step: currentStep,
       });
     } catch (error) {
-      console.error("Failed to save draft:", error);
-      // Don't show error to user, it's background saving
+      // When not logged in (401), persist to sessionStorage so progress isn't lost
+      if (error instanceof FetchError && error.status === 401) {
+        try {
+          sessionStorage.setItem(
+            ONBOARDING_DRAFT_STORAGE_KEY,
+            JSON.stringify({ draft_data: formData, current_step: currentStep })
+          );
+        } catch {
+          // Ignore storage errors
+        }
+      }
     } finally {
       setIsSavingDraft(false);
     }
@@ -501,26 +536,15 @@ export default function ProviderOnboarding() {
       const subscriptionEndpoint = response.data?.subscription_endpoint;
       const selectedPlanId = response.data?.selected_plan_id;
 
-      // If a plan was selected, start subscription payment flow (redirect to Paystack)
+      // If a plan was selected, send user to subscription checkout (Cart + Order summary), then Paystack
       if (subscriptionEndpoint && selectedPlanId) {
-        toast.success("Redirecting to complete your subscription…", { duration: 3000 });
         try {
-          const subRes = await fetcher.post<{
-            data?: { authorization_url?: string; access_code?: string; reference?: string; message?: string };
-            error?: { message?: string; code?: string };
-          }>(subscriptionEndpoint, {
-            plan_id: selectedPlanId,
-            billing_period: "monthly",
-          });
-          const authUrl = (subRes as any).data?.authorization_url;
-          if (authUrl) {
-            window.location.href = authUrl;
-            return;
-          }
-        } catch (subErr) {
-          console.error("Subscription create failed:", subErr);
-          toast.error("Subscription setup failed. You can complete it from Settings → Subscription.");
-        }
+          sessionStorage.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
+        } catch {}
+        toast.success("Onboarding complete. Complete your subscription below.", { duration: 3000 });
+        const inAppParam = inAppFromUrl ? "&in_app=1" : "";
+        router.push(`/provider/subscription-checkout?planId=${selectedPlanId}${inAppParam}`);
+        return;
       }
 
       // Show detailed success message
@@ -534,6 +558,9 @@ export default function ProviderOnboarding() {
         });
       }
 
+      try {
+        sessionStorage.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
+      } catch {}
       // Small delay to let user see the success message
       setTimeout(() => {
         router.push("/provider/dashboard");
@@ -835,7 +862,7 @@ function Step1TeamSize({
           How many staff members are there?
         </p>
         <p className="text-sm text-gray-500 mt-2">
-          This helps us customize your setup experience
+          This helps us customize your setup (e.g. skip payroll for solo providers). You&apos;ll choose salon, mobile, or both in the next step.
         </p>
       </div>
       
@@ -848,12 +875,8 @@ function Step1TeamSize({
               type="button"
               onClick={() => {
                 updateData({ team_size: option.id as any });
-                // Auto-set business_type based on team size
-                if (option.id === "freelancer") {
-                  updateData({ business_type: "mobile" });
-                } else {
-                  updateData({ business_type: "salon" });
-                }
+                // Default business model by team size; user can change in Business Details
+                updateData({ business_type: option.id === "freelancer" ? "mobile" : "salon" });
               }}
               className={`relative p-6 rounded-2xl border-2 transition-all duration-200 text-left hover:shadow-lg ${
                 isSelected
@@ -1106,40 +1129,48 @@ function _Step1BusinessInfo({
             <p className="text-sm text-gray-500">Loading options...</p>
           </div>
         ) : (
-          <select
-            id="previous_software"
-            value={data.previous_software || ""}
-            onChange={(e) => {
-              updateData({ 
-                previous_software: e.target.value || undefined,
-                previous_software_other: e.target.value !== "other" ? undefined : data.previous_software_other
-              });
-            }}
-            className="w-full h-12 sm:h-14 px-4 text-base border border-gray-300 rounded-lg focus:border-primary focus:ring-primary bg-white"
-          >
-            {previousSoftwareOptions.length > 0 ? (
-              previousSoftwareOptions.map((option) => (
-                <option key={option.id} value={option.slug}>
-                  {option.name}
-                </option>
-              ))
-            ) : (
-              // Fallback if API fails
-              <>
-                <option value="">None / First time using salon software</option>
-                <option value="other">Other (please specify)</option>
-              </>
+          <>
+            <ChipCombobox
+              singleSelect
+              value={
+                data.previous_software === "other" && data.previous_software_other
+                  ? data.previous_software_other
+                  : data.previous_software || null
+              }
+              onChange={(v) => {
+                if (!v) {
+                  updateData({ previous_software: undefined, previous_software_other: undefined });
+                  return;
+                }
+                const known = new Set(["none", "other", ...previousSoftwareOptions.map((o) => o.slug)]);
+                if (known.has(v)) {
+                  updateData({
+                    previous_software: v,
+                    previous_software_other: v === "other" ? data.previous_software_other : undefined,
+                  });
+                } else {
+                  updateData({ previous_software: "other", previous_software_other: v });
+                }
+              }}
+              staticSuggestions={[
+                { value: "none", label: "None / First time using salon software" },
+                ...previousSoftwareOptions.map((o) => ({ value: o.slug, label: o.name })),
+                { value: "other", label: "Other" },
+              ]}
+              allowFreeForm
+              placeholder="Select or type software..."
+              aria-label="Previous salon software"
+            />
+            {data.previous_software === "other" && !data.previous_software_other && (
+              <Input
+                id="previous_software_other"
+                value={data.previous_software_other || ""}
+                onChange={(e) => updateData({ previous_software_other: e.target.value })}
+                placeholder="Enter the name of the software"
+                className="mt-3 h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
+              />
             )}
-          </select>
-        )}
-        {data.previous_software === "other" && (
-          <Input
-            id="previous_software_other"
-            value={data.previous_software_other || ""}
-            onChange={(e) => updateData({ previous_software_other: e.target.value })}
-            placeholder="Enter the name of the software"
-            className="mt-3 h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
-          />
+          </>
         )}
         <p className="text-xs sm:text-sm text-gray-600 mt-2 leading-relaxed">
           Help us understand where providers are coming from. This information is only visible to administrators.
@@ -1181,46 +1212,19 @@ function _Step1BusinessInfo({
           <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">(Optional)</span>
         </Label>
         <p className="text-xs sm:text-sm text-gray-600 mb-2">
-          Select the human languages you can communicate in with clients (e.g., English, Zulu, Afrikaans, Xhosa, etc.). 
-          This helps clients find providers who speak their language.
+          Select or type the languages you can communicate in with clients. At least one language is required.
         </p>
-        <div className="flex flex-wrap gap-2">
-          {["English", "Afrikaans", "Zulu", "Xhosa", "Sesotho", "Tswana", "Venda", "Tsonga", "Swati", "Ndebele", "Southern Sotho", "Northern Sotho"].map((lang) => {
-            const isSelected = (data.languages_spoken || ["English"]).includes(lang);
-            return (
-              <button
-                key={lang}
-                type="button"
-                onClick={() => {
-                  const current = data.languages_spoken || ["English"];
-                  if (isSelected) {
-                    // Don't allow removing if it's the only one
-                    if (current.length > 1) {
-                      updateData({ languages_spoken: current.filter((l) => l !== lang) });
-                    }
-                  } else {
-                    updateData({ languages_spoken: [...current, lang] });
-                  }
-                }}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  isSelected
-                    ? "bg-primary text-white border-2 border-primary"
-                    : "bg-white text-gray-700 border-2 border-gray-300 hover:border-primary hover:text-primary"
-                } ${isSelected && (data.languages_spoken || ["English"]).length === 1 ? "cursor-not-allowed opacity-75" : "cursor-pointer"}`}
-                disabled={isSelected && (data.languages_spoken || ["English"]).length === 1}
-                title={isSelected && (data.languages_spoken || ["English"]).length === 1 ? "At least one language is required" : ""}
-              >
-                {lang}
-                {isSelected && (data.languages_spoken || ["English"]).length > 1 && (
-                  <span className="ml-1">×</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <p className="text-xs text-gray-500 mt-2">
-          Selected: {(data.languages_spoken || ["English"]).join(", ")}
-        </p>
+        <ChipCombobox
+          singleSelect={false}
+          value={data.languages_spoken?.length ? data.languages_spoken : ["English"]}
+          onChange={(next) => updateData({ languages_spoken: next.length ? next : ["English"] })}
+          staticSuggestions={[
+            "English", "Afrikaans", "Zulu", "Xhosa", "Sesotho", "Tswana", "Venda", "Tsonga", "Swati", "Ndebele", "Southern Sotho", "Northern Sotho",
+          ].map((l) => ({ value: l, label: l }))}
+          allowFreeForm
+          placeholder="Add language..."
+          aria-label="Languages you speak"
+        />
       </div>
     </div>
   );
@@ -1306,10 +1310,9 @@ function Step2Identity({
             <span className="text-white text-sm font-bold">!</span>
           </div>
           <div>
-            <h4 className="font-semibold text-blue-900 mb-1">Salon Owner Information</h4>
+            <h4 className="font-semibold text-blue-900 mb-1">Owner / Contact Information</h4>
             <p className="text-sm text-blue-800 leading-relaxed">
-              We assume you are the salon owner creating this account. Please provide your personal details below. 
-              This information will be used for account verification and communication.
+              Whether you&apos;re a freelancer or salon owner, we need your details for verification and to contact you about bookings and payouts.
             </p>
           </div>
         </div>
@@ -1795,6 +1798,11 @@ function Step3BusinessDetails({
           <strong>💡 Tip:</strong> Complete business details help customers find you and build trust. 
           The more information you provide, the better your visibility on our platform.
         </p>
+        {data.team_size === "freelancer" && (
+          <p className="text-sm text-gray-600 mt-2">
+            <strong>Freelancer?</strong> Choose &quot;Freelancer (Mobile/At-Home)&quot; if you go to clients, or &quot;Salon/Studio&quot; if you have a fixed location (e.g. home studio). You can offer both.
+          </p>
+        )}
       </div>
 
       <div>
@@ -1898,44 +1906,19 @@ function Step3BusinessDetails({
           <span className="text-gray-500 font-normal text-sm ml-2">(Optional but recommended)</span>
         </Label>
         <p className="text-xs text-gray-600 mb-3">
-          Select the human languages you can communicate in with clients. This helps customers find providers who speak their language.
+          Select or type the languages you can communicate in with clients. At least one language is required.
         </p>
-        <div className="flex flex-wrap gap-2">
-          {["English", "Afrikaans", "Zulu", "Xhosa", "Sesotho", "Tswana", "Venda", "Tsonga", "Swati", "Ndebele", "Southern Sotho", "Northern Sotho"].map((lang) => {
-            const isSelected = (data.languages_spoken || ["English"]).includes(lang);
-            return (
-              <button
-                key={lang}
-                type="button"
-                onClick={() => {
-                  const current = data.languages_spoken || ["English"];
-                  if (isSelected) {
-                    if (current.length > 1) {
-                      updateData({ languages_spoken: current.filter((l) => l !== lang) });
-                    }
-                  } else {
-                    updateData({ languages_spoken: [...current, lang] });
-                  }
-                }}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                  isSelected
-                    ? "bg-primary text-white border-2 border-primary"
-                    : "bg-white text-gray-700 border-2 border-gray-300 hover:border-primary hover:text-primary"
-                } ${isSelected && (data.languages_spoken || ["English"]).length === 1 ? "cursor-not-allowed opacity-75" : "cursor-pointer"}`}
-                disabled={isSelected && (data.languages_spoken || ["English"]).length === 1}
-                title={isSelected && (data.languages_spoken || ["English"]).length === 1 ? "At least one language is required" : ""}
-              >
-                {lang}
-                {isSelected && (data.languages_spoken || ["English"]).length > 1 && (
-                  <span className="ml-1">×</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <p className="text-xs text-gray-500 mt-2">
-          Selected: {(data.languages_spoken || ["English"]).join(", ")}
-        </p>
+        <ChipCombobox
+          singleSelect={false}
+          value={data.languages_spoken?.length ? data.languages_spoken : ["English"]}
+          onChange={(next) => updateData({ languages_spoken: next.length ? next : ["English"] })}
+          staticSuggestions={[
+            "English", "Afrikaans", "Zulu", "Xhosa", "Sesotho", "Tswana", "Venda", "Tsonga", "Swati", "Ndebele", "Southern Sotho", "Northern Sotho",
+          ].map((l) => ({ value: l, label: l }))}
+          allowFreeForm
+          placeholder="Add language..."
+          aria-label="Languages you speak"
+        />
       </div>
 
       {/* Social Media Links */}
@@ -2295,11 +2278,37 @@ function Step5CurrentSoftware({
     loadOptions();
   }, []);
 
-  const options = [
-    { id: "none", name: "No, I'm new to salon software" },
-    ...softwareOptions.map(opt => ({ id: opt.slug, name: opt.name })),
-    { id: "other", name: "Other" },
-  ];
+  const knownSlugs = useMemo(
+    () => new Set(["none", "other", ...softwareOptions.map((o) => o.slug)]),
+    [softwareOptions]
+  );
+  const displayValue =
+    data.previous_software === "other" && data.previous_software_other
+      ? data.previous_software_other
+      : data.previous_software || null;
+  const staticSuggestions = useMemo(
+    () => [
+      { value: "none", label: "No, I'm new to salon software" },
+      ...softwareOptions.map((opt) => ({ value: opt.slug, label: opt.name })),
+      { value: "other", label: "Other" },
+    ],
+    [softwareOptions]
+  );
+
+  const handlePreviousSoftwareChange = (v: string | null) => {
+    if (!v) {
+      updateData({ previous_software: undefined, previous_software_other: undefined });
+      return;
+    }
+    if (knownSlugs.has(v)) {
+      updateData({
+        previous_software: v,
+        previous_software_other: v === "other" ? data.previous_software_other : undefined,
+      });
+    } else {
+      updateData({ previous_software: "other", previous_software_other: v });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -2311,7 +2320,7 @@ function Step5CurrentSoftware({
           Are you moving from another system?
         </p>
         <p className="text-sm text-gray-500">
-          This helps us provide better migration support and understand your needs
+          Select from the list or type your current software. This helps us provide better migration support.
         </p>
       </div>
 
@@ -2321,51 +2330,29 @@ function Step5CurrentSoftware({
         </div>
       ) : (
         <div className="space-y-4">
-          {options.map((option) => {
-            const isSelected = data.previous_software === option.id;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => {
-                  updateData({ previous_software: option.id, previous_software_other: undefined });
-                }}
-                className={`w-full p-5 rounded-xl border-2 transition-all duration-200 text-left ${
-                  isSelected
-                    ? "border-primary bg-primary/5 shadow-md"
-                    : "border-gray-200 hover:border-gray-300 bg-white"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-lg font-semibold text-gray-900">
-                    {option.name}
-                  </span>
-                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                    isSelected
-                      ? "border-primary bg-primary"
-                      : "border-gray-300"
-                  }`}>
-                    {isSelected && <Check className="w-4 h-4 text-white" />}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {data.previous_software === "other" && (
-        <div className="mt-4">
-          <Label htmlFor="previous_software_other" className="text-base font-semibold text-gray-900 mb-2 block">
-            What software were you using?
-          </Label>
-          <Input
-            id="previous_software_other"
-            value={data.previous_software_other || ""}
-            onChange={(e) => updateData({ previous_software_other: e.target.value })}
-            placeholder="Enter software name"
-            className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
+          <ChipCombobox
+            singleSelect
+            value={displayValue}
+            onChange={handlePreviousSoftwareChange}
+            staticSuggestions={staticSuggestions}
+            allowFreeForm
+            placeholder="Select or type software name..."
+            aria-label="Previous salon software"
           />
+          {data.previous_software === "other" && !data.previous_software_other && (
+            <div className="mt-2">
+              <Label htmlFor="previous_software_other" className="text-base font-semibold text-gray-900 mb-2 block">
+                What software were you using?
+              </Label>
+              <Input
+                id="previous_software_other"
+                value={data.previous_software_other || ""}
+                onChange={(e) => updateData({ previous_software_other: e.target.value })}
+                placeholder="Enter software name"
+                className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -2521,16 +2508,23 @@ function Step7Location({
     latitude: number;
     longitude: number;
   }) => {
+    // When Mapbox suggestion is selected we get real lat/long. When user types manually and blurs,
+    // AddressAutocomplete passes 0,0 — treat as "no coordinates" and preserve existing so zone suggestions still work.
+    const hasValidCoords =
+      addressData.latitude != null &&
+      addressData.longitude != null &&
+      !(addressData.latitude === 0 && addressData.longitude === 0);
+    const prev = data.address;
     updateData({
       address: {
         line1: addressData.address_line1,
-        line2: data.address?.line2 || undefined,
+        line2: prev?.line2 || undefined,
         city: addressData.city,
-        state: addressData.state || "",
-        postal_code: addressData.postal_code || "",
+        state: addressData.state ?? prev?.state ?? "",
+        postal_code: addressData.postal_code ?? prev?.postal_code ?? "",
         country: addressData.country,
-        latitude: addressData.latitude,
-        longitude: addressData.longitude,
+        latitude: hasValidCoords ? addressData.latitude : (prev?.latitude ?? undefined),
+        longitude: hasValidCoords ? addressData.longitude : (prev?.longitude ?? undefined),
       },
     });
   };
@@ -2567,19 +2561,32 @@ function Step7Location({
         <AddressAutocomplete
           value={data.address?.line1 || ""}
           onChange={handleAddressSelect}
+          onInputChange={(value) =>
+            updateData({
+              address: {
+                ...data.address,
+                line1: value,
+              } as OnboardingData["address"],
+            })
+          }
           placeholder="Start typing your address (e.g., 12 Gary Street, Johannesburg)"
           country={(() => {
-            // Convert country name to code for Mapbox if available
             const countryName = data.address?.country || "South Africa";
-            const countryObj = countries.find(c => c.name === countryName);
+            const countryObj = countries.find((c) => c.name === countryName);
             return countryObj?.code || countryName;
           })()}
           className="h-12 sm:h-14 text-base"
           required
         />
         <p className="text-xs sm:text-sm text-gray-500 mt-2">
-          💡 Start typing your address and select from suggestions to automatically fill in city, state, and postal code.
+          💡 Start typing and <strong>select a suggestion</strong> to fill city, state, postal code and map coordinates. Required for service zone suggestions.
         </p>
+        {data.address?.latitude != null && data.address?.longitude != null && (data.address.latitude !== 0 || data.address.longitude !== 0) && (
+          <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+            <MapPin className="w-3.5 h-3.5" />
+            Location captured: {data.address.latitude.toFixed(5)}, {data.address.longitude.toFixed(5)}
+          </p>
+        )}
       </div>
 
       {/* Apartment/Suite - Optional */}
@@ -3777,6 +3784,23 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
           )}
         </div>
       </div>
+      {(data.selected_plan_id || data.selected_plan_name) && (
+        <div>
+          <h3 className="font-semibold mb-2 text-base sm:text-lg">Subscription plan</h3>
+          <div className="bg-primary/5 border border-primary/20 p-3 sm:p-4 rounded-lg">
+            <p className="text-sm text-gray-800">
+              {data.selected_plan_name ? (
+                <span className="font-medium">{data.selected_plan_name}</span>
+              ) : (
+                <span className="font-medium">Plan selected</span>
+              )}
+              {data.selected_plan_id && !data.selected_plan_name && (
+                <span className="text-gray-500 ml-1">(you&apos;ll choose your plan on the next step)</span>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
       {data.services && data.services.length > 0 ? (
         <div>
           <h3 className="font-semibold mb-2 text-base sm:text-lg">Services ({data.services.length})</h3>

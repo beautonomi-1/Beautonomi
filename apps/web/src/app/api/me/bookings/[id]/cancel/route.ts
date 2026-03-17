@@ -19,7 +19,7 @@ export async function POST(
     const { user } = await requireAuthInApi(request);
     const { id: bookingId } = await params;
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const adminSupabase = getSupabaseAdmin();
 
     // Load booking (include version for conflict detection)
@@ -102,8 +102,8 @@ export async function POST(
       // Body is optional
     }
 
-    // Check for conflicts if version is provided in request body
-    if (body.version !== undefined && (booking as any).version !== body.version) {
+    type BookingRow = { version?: number };
+    if (body.version !== undefined && (booking as BookingRow).version !== body.version) {
       return handleApiError(
         new Error("Booking was modified by another user"),
         "This booking was modified by another user. Please refresh and try again.",
@@ -112,8 +112,7 @@ export async function POST(
       );
     }
 
-    // Cancel the booking (increment version for conflict detection)
-    const currentVersion = (booking as any).version || 0;
+    const currentVersion = (booking as BookingRow).version ?? 0;
     const { data: updatedBooking, error: updateError } = await adminSupabase
       .from('bookings')
       .update({

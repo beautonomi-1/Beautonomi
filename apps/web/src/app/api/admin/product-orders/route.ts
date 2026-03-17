@@ -1,17 +1,17 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_ECOMMERCE } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/product-orders — superadmin: list all product orders with stats
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_ECOMMERCE, request);
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
 
@@ -21,7 +21,9 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20");
     const offset = (page - 1) * limit;
 
-    let query = (supabase.from("product_orders") as any)
+    type OrderStatRow = { status?: string; total_amount?: number | string; payment_status?: string };
+    let query = supabase
+      .from("product_orders")
       .select(
         `*,
         items:product_order_items(id, product_name, quantity, unit_price, total_price),
@@ -38,19 +40,20 @@ export async function GET(request: NextRequest) {
     const { data: orders, error, count } = await query;
     if (error) throw error;
 
-    // Aggregate stats
-    const { data: stats } = await (supabase.from("product_orders") as any)
+    const { data: stats } = await supabase
+      .from("product_orders")
       .select("status, total_amount, payment_status")
       .order("created_at", { ascending: false });
 
+    const statRows = (stats ?? []) as OrderStatRow[];
     const summary = {
-      total_orders: (stats ?? []).length,
-      total_revenue: (stats ?? [])
-        .filter((o: any) => o.payment_status === "paid")
-        .reduce((s: number, o: any) => s + Number(o.total_amount), 0),
-      pending: (stats ?? []).filter((o: any) => o.status === "pending").length,
-      delivered: (stats ?? []).filter((o: any) => o.status === "delivered").length,
-      cancelled: (stats ?? []).filter((o: any) => o.status === "cancelled").length,
+      total_orders: statRows.length,
+      total_revenue: statRows
+        .filter((o) => o.payment_status === "paid")
+        .reduce((s, o) => s + Number(o.total_amount ?? 0), 0),
+      pending: statRows.filter((o) => o.status === "pending").length,
+      delivered: statRows.filter((o) => o.status === "delivered").length,
+      cancelled: statRows.filter((o) => o.status === "cancelled").length,
     };
 
     return successResponse({

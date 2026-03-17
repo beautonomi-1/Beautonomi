@@ -38,7 +38,6 @@ Types: `packages/types/src/parity.ts`
 | account_membership | /account-settings/membership | .../membership | yes | ✓ | ✓ | ✓ |
 | account_loyalty | /account-settings/loyalty | .../loyalty | yes | ✓ | ✓ | ✓ |
 | account_referrals | /account-settings/referrals | .../referrals | yes | - | ✓ | ✓ |
-| account_business | /account-settings/business | .../business | yes | ✓ | ✓ | ✓ |
 | gift_card | /gift-card | /(app)/gift-card-purchase | yes | - | ✓ | ✓ |
 | login | (modal) | /(auth)/login | no | - | ✓ | ✓ |
 | signup | /signup | /(auth)/login | no | - | ✓ | ✓ |

@@ -48,15 +48,15 @@ async function getBookingDetails(bookingId: string): Promise<any> {
     .eq("id", bookingId)
     .single();
   
-  // Transform booking_services to match expected format
+  type BookingServiceRow = { offerings?: { title?: string; price?: number; duration_minutes?: number } };
   if (booking) {
     if (booking.booking_services && Array.isArray(booking.booking_services)) {
-      booking.services = booking.booking_services.map((bs: any) => ({
+      booking.services = (booking.booking_services as BookingServiceRow[]).map((bs) => ({
         ...bs,
         service: {
-          name: bs.offerings?.title || 'Service',
-          price: bs.offerings?.price || 0,
-          duration: bs.offerings?.duration_minutes || 60,
+          name: bs.offerings?.title ?? "Service",
+          price: bs.offerings?.price ?? 0,
+          duration: bs.offerings?.duration_minutes ?? 60,
         },
       }));
     } else {
@@ -94,7 +94,7 @@ export async function notifyBookingConfirmed(bookingId: string, channels?: Notif
     provider_name: booking.provider?.business_name || "Provider",
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
-    services: booking.services?.map((s: any) => s.service?.name).join(", ") || "Services",
+    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
     total_amount: `ZAR ${booking.total_amount || 0}`,
     booking_number: booking.booking_number || bookingId,
     booking_id: bookingId,
@@ -106,7 +106,8 @@ export async function notifyBookingConfirmed(bookingId: string, channels?: Notif
     "booking_confirmed",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -149,7 +150,8 @@ export async function notifyBookingReminder24h(bookingId: string, channels?: Not
     "booking_reminder_24h",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -173,7 +175,8 @@ export async function notifyBookingReminder2h(bookingId: string, channels?: Noti
     "booking_reminder_2h",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -204,7 +207,7 @@ export async function notifyBookingCancelled(
     : "booking_cancelled";
 
   // Notify customer
-  await sendTemplateNotification(templateKey, [booking.customer_id], variables, channels);
+  await sendTemplateNotification(templateKey, [booking.customer_id], variables, channels, { appType: "customer" });
 
   // If cancelled by customer, notify provider
   if (cancelledBy === "customer" && booking.provider?.user_id) {
@@ -215,10 +218,11 @@ export async function notifyBookingCancelled(
         customer_name: booking.customer?.full_name || "Customer",
         booking_date: variables.booking_date,
         booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
-        services: booking.services?.map((s: any) => s.service?.name).join(", ") || "Services",
+        services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
         booking_id: bookingId,
       },
-      channels
+      channels,
+      { appType: "provider" }
     );
   }
 
@@ -247,7 +251,7 @@ export async function notifyBookingRescheduled(
   };
 
   // Notify customer
-  await sendTemplateNotification("booking_rescheduled", [booking.customer_id], variables, channels);
+  await sendTemplateNotification("booking_rescheduled", [booking.customer_id], variables, channels, { appType: "customer" });
 
   // Notify provider
   if (booking.provider?.user_id) {
@@ -258,7 +262,8 @@ export async function notifyBookingRescheduled(
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,
       },
-      channels
+      channels,
+      { appType: "provider" }
     );
   }
 
@@ -289,7 +294,8 @@ export async function notifyProviderEnRoute(bookingId: string, estimatedArrival:
     "provider_en_route_home",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -313,7 +319,8 @@ export async function notifyProviderArrivingSoon(bookingId: string, minutes: num
     "provider_arriving_soon_home",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -336,7 +343,8 @@ export async function notifyProviderArrived(bookingId: string, channels?: Notifi
     "provider_arrived_home",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -362,7 +370,8 @@ export async function notifyHomeServiceLocationDetails(bookingId: string, channe
     "home_service_location_details",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -386,7 +395,8 @@ export async function notifyServiceLocationRequired(bookingId: string, channels?
     "home_service_location_required",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -415,7 +425,8 @@ export async function notifyServiceLocationChanged(
     "home_service_location_changed",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -438,7 +449,8 @@ export async function notifyProviderNeedsDirections(bookingId: string, channels?
     "provider_needs_directions",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -461,7 +473,8 @@ export async function notifyProviderLocationShared(bookingId: string, trackingUr
     "provider_location_shared",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -505,7 +518,8 @@ export async function notifySalonDirections(bookingId: string, channels?: Notifi
     "salon_directions",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -537,7 +551,8 @@ export async function notifySalonArrivalReminder(bookingId: string, channels?: N
     "salon_arrival_reminder",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -567,7 +582,8 @@ export async function notifyCustomerArrivedSalon(bookingId: string, channels?: N
     "customer_arrived_salon",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -598,7 +614,8 @@ export async function notifyWaitingArea(bookingId: string, waitingArea: string, 
     "salon_waiting_area",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -623,7 +640,8 @@ export async function notifyServiceStarted(bookingId: string, serviceDuration: s
     "service_started",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -643,7 +661,8 @@ export async function notifyServiceInProgress(bookingId: string, channels?: Noti
     "service_in_progress",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -664,7 +683,8 @@ export async function notifyServiceAlmostDone(bookingId: string, remainingTime: 
     "service_almost_done",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -693,7 +713,8 @@ export async function notifyServiceExtended(
     "service_extended",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -706,7 +727,7 @@ export async function notifyServiceCompleted(bookingId: string, channels?: Notif
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    services: booking.services?.map((s: any) => s.service?.name).join(", ") || "Services",
+    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
     booking_id: bookingId,
   };
 
@@ -714,7 +735,8 @@ export async function notifyServiceCompleted(bookingId: string, channels?: Notif
     "service_completed",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -746,7 +768,8 @@ export async function notifyProviderRunningLate(
     "provider_running_late",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -766,7 +789,8 @@ export async function notifyProviderArrivedEarly(bookingId: string, channels?: N
     "provider_arrived_early",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -796,7 +820,8 @@ export async function notifyCustomerRunningLate(bookingId: string, channels?: No
     "customer_running_late",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -819,7 +844,8 @@ export async function notifyCustomerNoShow(bookingId: string, noShowFee: number,
     "customer_no_show",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -852,7 +878,8 @@ export async function notifyPaymentSuccessful(
     "payment_successful",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -879,7 +906,8 @@ export async function notifyPaymentFailed(
     "payment_failed",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -906,7 +934,8 @@ export async function notifyPaymentPending(
     "payment_pending",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -927,7 +956,8 @@ export async function notifyPaymentMethodExpired(bookingId: string, amount: numb
     "payment_method_expired",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -954,7 +984,8 @@ export async function notifyPartialPayment(
     "partial_payment_received",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -981,7 +1012,8 @@ export async function notifyRefundProcessed(
     "refund_processed",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1008,7 +1040,8 @@ export async function notifyInvoiceGenerated(
     "invoice_generated",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1035,7 +1068,8 @@ export async function notifyReceiptSent(
     "receipt_sent",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1056,7 +1090,7 @@ export async function notifyProviderNewBooking(bookingId: string, channels?: Not
     customer_name: booking.customer?.full_name || "Customer",
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
-    services: booking.services?.map((s: any) => s.service?.name).join(", ") || "Services",
+    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
     total_amount: `ZAR ${booking.total_amount || 0}`,
     booking_id: bookingId,
   };
@@ -1065,7 +1099,8 @@ export async function notifyProviderNewBooking(bookingId: string, channels?: Not
     "provider_booking_request",
     [booking.provider.user_id],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -1096,7 +1131,7 @@ export async function notifyProviderNewCustomer(bookingId: string, channels?: No
     customer_name: booking.customer?.full_name || "Customer",
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
-    services: booking.services?.map((s: any) => s.service?.name).join(", ") || "Services",
+    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
     booking_id: bookingId,
   };
 
@@ -1104,7 +1139,8 @@ export async function notifyProviderNewCustomer(bookingId: string, channels?: No
     "provider_new_customer",
     [booking.provider.user_id],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -1122,7 +1158,7 @@ export async function notifyProviderReturningCustomer(bookingId: string, visitNu
     visit_number: visitNumber.toString(),
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
-    services: booking.services?.map((s: any) => s.service?.name).join(", ") || "Services",
+    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
     booking_id: bookingId,
   };
 
@@ -1130,7 +1166,8 @@ export async function notifyProviderReturningCustomer(bookingId: string, visitNu
     "provider_recurring_customer",
     [booking.provider.user_id],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -1147,7 +1184,7 @@ export async function notifyProviderPreferredCustomer(bookingId: string, totalBo
     customer_name: booking.customer?.full_name || "Customer",
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
-    services: booking.services?.map((s: any) => s.service?.name).join(", ") || "Services",
+    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
     total_bookings: totalBookings.toString(),
     booking_id: bookingId,
   };
@@ -1156,7 +1193,8 @@ export async function notifyProviderPreferredCustomer(bookingId: string, totalBo
     "provider_preferred_customer",
     [booking.provider.user_id],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -1191,7 +1229,8 @@ export async function notifyProviderPayoutProcessed(
     "provider_payout_processed",
     [provider.user_id],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -1226,7 +1265,8 @@ export async function notifyProviderPayoutScheduled(
     "provider_payout_scheduled",
     [provider.user_id],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -1259,7 +1299,8 @@ export async function notifyProviderPayoutFailed(
     "provider_payout_failed",
     [provider.user_id],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -1296,7 +1337,8 @@ export async function notifyProviderWeeklyEarnings(
     "provider_earnings_summary",
     [provider.user_id],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -1327,7 +1369,8 @@ export async function notifyProviderAvailabilityChanged(
     "provider_availability_changed",
     [provider.user_id],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -1360,7 +1403,8 @@ export async function notifyProviderHolidayMode(
     "provider_holiday_mode",
     [provider.user_id],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -1391,7 +1435,8 @@ export async function notifyProviderHolidayModeEnding(
     "provider_holiday_mode_ending",
     [provider.user_id],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -1424,7 +1469,8 @@ export async function notifyProviderBreakScheduled(
     "provider_break_scheduled",
     [provider.user_id],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -1442,7 +1488,7 @@ export async function notifyReviewReminder(bookingId: string, channels?: Notific
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    services: booking.services?.map((s: any) => s.service?.name).join(", ") || "Services",
+    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
     booking_id: bookingId,
   };
 
@@ -1450,7 +1496,8 @@ export async function notifyReviewReminder(bookingId: string, channels?: Notific
     "review_reminder",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1475,7 +1522,8 @@ export async function notifyProviderNewReview(
     "provider_new_review",
     [providerUserId],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -1488,7 +1536,7 @@ export async function notifyBookingFollowUp(bookingId: string, channels?: Notifi
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    services: booking.services?.map((s: any) => s.service?.name).join(", ") || "Services",
+    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_id: bookingId,
   };
@@ -1497,7 +1545,8 @@ export async function notifyBookingFollowUp(bookingId: string, channels?: Notifi
     "booking_follow_up",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1510,7 +1559,7 @@ export async function notifyThankYouAfterService(bookingId: string, channels?: N
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    services: booking.services?.map((s: any) => s.service?.name).join(", ") || "Services",
+    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
   };
 
@@ -1518,7 +1567,8 @@ export async function notifyThankYouAfterService(bookingId: string, channels?: N
     "thank_you_after_service",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1552,7 +1602,8 @@ export async function notifyAddonAdded(
     "addon_added",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1580,7 +1631,8 @@ export async function notifyAddonRemoved(
     "addon_removed",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1609,7 +1661,8 @@ export async function notifyServiceUpgradeOffered(
     "service_upgrade_offered",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1641,7 +1694,8 @@ export async function notifyTravelFeeApplied(
     "travel_fee_applied",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1670,7 +1724,7 @@ export async function notifyBookingTimeChanged(
   };
 
   // Notify customer
-  await sendTemplateNotification("booking_time_changed", [booking.customer_id], variables, channels);
+  await sendTemplateNotification("booking_time_changed", [booking.customer_id], variables, channels, { appType: "customer" });
 
   // Notify provider
   if (booking.provider?.user_id) {
@@ -1681,7 +1735,8 @@ export async function notifyBookingTimeChanged(
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,
       },
-      channels
+      channels,
+      { appType: "provider" }
     );
   }
 
@@ -1710,7 +1765,7 @@ export async function notifyBookingDateChanged(
   };
 
   // Notify customer
-  await sendTemplateNotification("booking_date_changed", [booking.customer_id], variables, channels);
+  await sendTemplateNotification("booking_date_changed", [booking.customer_id], variables, channels, { appType: "customer" });
 
   // Notify provider
   if (booking.provider?.user_id) {
@@ -1721,7 +1776,8 @@ export async function notifyBookingDateChanged(
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,
       },
-      channels
+      channels,
+      { appType: "provider" }
     );
   }
 
@@ -1744,7 +1800,8 @@ export async function notifyPasswordReset(userId: string, resetToken: string, ch
     "password_reset",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1760,7 +1817,8 @@ export async function notifyEmailVerification(userId: string, verificationToken:
     "email_verification",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1776,7 +1834,8 @@ export async function notifyAccountSuspended(userId: string, suspensionReason: s
     "account_suspended",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1792,7 +1851,8 @@ export async function notifyWelcomeMessage(userId: string, channels?: Notificati
     "welcome_message",
     [userId],
     {},
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1822,7 +1882,8 @@ export async function notifyPromotionAvailable(
     "promotion_available",
     userIds,
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1852,7 +1913,8 @@ export async function notifyLoyaltyPointsEarned(
     "loyalty_points_earned",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1876,7 +1938,8 @@ export async function notifyLoyaltyPointsRedeemed(
     "loyalty_points_redeemed",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1900,7 +1963,8 @@ export async function notifyLoyaltyTierUpgraded(
     "loyalty_tier_upgraded",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1924,7 +1988,8 @@ export async function notifyReferralBonusEarned(
     "referral_bonus_earned",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1946,7 +2011,8 @@ export async function notifyReferralCodeUsed(
     "referral_code_used",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -1978,7 +2044,8 @@ export async function notifyServicePackagePurchased(
     "service_package_purchased",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2004,7 +2071,8 @@ export async function notifyServicePackageExpiring(
     "service_package_expiring",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2028,7 +2096,8 @@ export async function notifyServicePackageExpired(
     "service_package_expired",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2052,7 +2121,8 @@ export async function notifyServicePackageUsed(
     "service_package_used",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2082,7 +2152,8 @@ export async function notifyOrderConfirmation(
     "order_confirmation",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2110,7 +2181,8 @@ export async function notifyGiftCardPurchased(
     "gift_card_purchased",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2136,7 +2208,8 @@ export async function notifyGiftCardReceived(
     "gift_card_received",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2164,7 +2237,8 @@ export async function notifyMembershipRenewalReminder(
     "membership_renewal_reminder",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2186,7 +2260,8 @@ export async function notifyMembershipActivated(
     "membership_activated",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2214,7 +2289,8 @@ export async function notifyNewMessage(
     "new_message",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2238,7 +2314,8 @@ export async function notifySupportTicketCreated(
     "support_ticket_created",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2262,7 +2339,8 @@ export async function notifySupportTicketUpdated(
     "support_ticket_updated",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2290,7 +2368,7 @@ export async function notifyDisputeOpened(
   };
 
   // Notify customer
-  await sendTemplateNotification("dispute_opened", [booking.customer_id], variables, channels);
+  await sendTemplateNotification("dispute_opened", [booking.customer_id], variables, channels, { appType: "customer" });
 
   // Notify provider
   if (booking.provider?.user_id) {
@@ -2301,7 +2379,8 @@ export async function notifyDisputeOpened(
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,
       },
-      channels
+      channels,
+      { appType: "provider" }
     );
   }
 
@@ -2329,7 +2408,7 @@ export async function notifyDisputeResolved(
   };
 
   // Notify customer
-  await sendTemplateNotification("dispute_resolved", [booking.customer_id], variables, channels);
+  await sendTemplateNotification("dispute_resolved", [booking.customer_id], variables, channels, { appType: "customer" });
 
   // Notify provider
   if (booking.provider?.user_id) {
@@ -2340,7 +2419,8 @@ export async function notifyDisputeResolved(
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,
       },
-      channels
+      channels,
+      { appType: "provider" }
     );
   }
 
@@ -2370,7 +2450,8 @@ export async function notifyComplaintFiled(
     "complaint_filed",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2396,7 +2477,8 @@ export async function notifyQualityIssueReported(
     "quality_issue_reported",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2422,7 +2504,8 @@ export async function notifySafetyCheckIn(bookingId: string, channels?: Notifica
     "safety_check_in",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2466,7 +2549,7 @@ export async function notifySpecialInstructionsAdded(
   };
 
   // Notify customer
-  await sendTemplateNotification("special_instructions_added", [booking.customer_id], variables, channels);
+  await sendTemplateNotification("special_instructions_added", [booking.customer_id], variables, channels, { appType: "customer" });
 
   // Notify provider
   if (booking.provider?.user_id) {
@@ -2477,7 +2560,8 @@ export async function notifySpecialInstructionsAdded(
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,
       },
-      channels
+      channels,
+      { appType: "provider" }
     );
   }
 
@@ -2502,7 +2586,7 @@ export async function notifyAllergyAlert(
     allergies: allergies,
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
-    services: booking.services?.map((s: any) => s.service?.name).join(", ") || "Services",
+    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
     booking_id: bookingId,
   };
 
@@ -2510,7 +2594,8 @@ export async function notifyAllergyAlert(
     "allergy_alert_provider",
     [booking.provider.user_id],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -2538,7 +2623,7 @@ export async function notifyWeatherAlert(
   };
 
   // Notify customer
-  await sendTemplateNotification("weather_alert", [booking.customer_id], variables, channels);
+  await sendTemplateNotification("weather_alert", [booking.customer_id], variables, channels, { appType: "customer" });
 
   // Notify provider
   if (booking.provider?.user_id) {
@@ -2549,7 +2634,8 @@ export async function notifyWeatherAlert(
         customer_name: booking.customer?.full_name || "Customer",
         ...variables,
       },
-      channels
+      channels,
+      { appType: "provider" }
     );
   }
 
@@ -2600,7 +2686,8 @@ export async function notifyProviderProfileRejected(
     "provider_profile_rejected",
     [providerUserId],
     variables,
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -2632,7 +2719,8 @@ export async function notifyBookingWaitlistAvailable(
     "booking_waitlist_available",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2660,7 +2748,8 @@ export async function notifyProviderRecommendation(
     "provider_recommendation",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2688,7 +2777,8 @@ export async function notifyServiceSuggestion(
     "service_suggestion",
     [userId],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }
 
@@ -2720,6 +2810,7 @@ export async function notifyEmergencyCancellation(
     "booking_cancelled_emergency",
     [booking.customer_id],
     variables,
-    channels
+    channels,
+    { appType: "customer" }
   );
 }

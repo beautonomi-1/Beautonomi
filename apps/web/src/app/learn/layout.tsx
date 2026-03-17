@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, Search, ChevronRight, BookOpen, Users, Briefcase } from "lucide-react";
+import { Menu, Search, ChevronRight, BookOpen, Users, Briefcase, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchWithSuggestions } from "./components/search-with-suggestions";
 import {
@@ -12,8 +12,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Drawer } from "vaul";
-import * as Dialog from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
 import { LearnProvider, useLearnContext } from "./learn-context";
 import "./learn.css";
@@ -251,6 +249,7 @@ function LearnLayoutInner({ children }: { children: React.ReactNode }) {
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [searchQ, setSearchQ] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const drawerCloseButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (pathname !== "/learn") setSearchHeroVisible(false);
@@ -282,6 +281,17 @@ function LearnLayoutInner({ children }: { children: React.ReactNode }) {
 
   const isHome = pathname === "/learn";
   const showCompactSearch = !searchHeroVisible || !isHome;
+
+  useEffect(() => {
+    if (drawerOpen) {
+      const t = requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          drawerCloseButtonRef.current?.focus();
+        });
+      });
+      return () => cancelAnimationFrame(t);
+    }
+  }, [drawerOpen]);
 
   const sidebarContent = (
     <>
@@ -326,32 +336,24 @@ function LearnLayoutInner({ children }: { children: React.ReactNode }) {
         )}
       >
         <div className="flex min-h-[56px] md:min-h-[56px] items-center gap-2 px-4 py-2">
-          {/* Mobile: open bottom drawer */}
-          <Drawer.Root open={drawerOpen} onOpenChange={setDrawerOpen} direction="bottom">
-            <button
-              type="button"
-              className="md:hidden h-11 w-11 min-w-[44px] min-h-[44px] shrink-0 rounded-full text-zinc-600 hover:bg-zinc-100 transition-all duration-200 ease-in-out active:scale-[0.97] touch-manipulation inline-flex items-center justify-center"
-              aria-label="Open topics"
-              onClick={() => setDrawerOpen(true)}
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <Drawer.Portal>
-              <Drawer.Overlay className="bg-black/40 backdrop-blur-sm" />
-              <Drawer.Content
-                className="flex flex-col rounded-t-[24px] bg-zinc-50 border border-b-0 border-zinc-200/50 max-h-[85vh] mx-auto focus:outline-none"
-                aria-describedby={undefined}
-              >
-                <Dialog.Title className="sr-only">Topics</Dialog.Title>
-                <Dialog.Description className="sr-only">Browse learning center topics and articles.</Dialog.Description>
-                <div className="w-12 h-1 rounded-full bg-zinc-200 mx-auto mt-3 flex-shrink-0" />
-                <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-                  {sidebarContent}
-                </div>
-              </Drawer.Content>
-            </Drawer.Portal>
-          </Drawer.Root>
+          {/* Mobile: open topics panel (custom overlay — no Vaul for reliable touch) */}
+          <button
+            type="button"
+            className="md:hidden relative z-[41] h-11 w-11 min-w-[44px] min-h-[44px] shrink-0 rounded-full text-zinc-600 hover:bg-zinc-100 active:bg-zinc-200 transition-colors duration-200 ease-in-out active:scale-[0.97] touch-manipulation inline-flex items-center justify-center cursor-pointer select-none"
+            aria-label="Open topics menu"
+            aria-expanded={drawerOpen}
+            onClick={() => setDrawerOpen(true)}
+          >
+            <Menu className="h-5 w-5 pointer-events-none" aria-hidden />
+          </button>
 
+          <Link
+            href="/"
+            className="text-sm font-medium text-zinc-600 hover:text-zinc-900 shrink-0 transition-colors duration-200"
+          >
+            Home
+          </Link>
+          <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden />
           <Link
             href="/learn"
             className="font-bold text-black text-base md:text-lg shrink-0 hover:text-[#ff0077] transition-colors duration-200 tracking-tight"
@@ -378,6 +380,39 @@ function LearnLayoutInner({ children }: { children: React.ReactNode }) {
           )}
         </div>
       </header>
+
+      {/* Mobile topics panel: custom overlay + bottom sheet (no Vaul) */}
+      {drawerOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-[45] bg-black/40 backdrop-blur-sm md:hidden"
+            aria-hidden
+            onClick={() => setDrawerOpen(false)}
+          />
+          <div
+            className="fixed bottom-0 left-0 right-0 z-[46] flex flex-col rounded-t-[24px] bg-zinc-50 border border-b-0 border-zinc-200/50 max-h-[85vh] mx-auto md:hidden shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Topics"
+          >
+            <div className="flex items-center justify-between gap-2 px-3 pt-3 pb-2 flex-shrink-0">
+              <div className="w-12 h-1 rounded-full bg-zinc-200 flex-shrink-0" aria-hidden />
+              <button
+                type="button"
+                ref={drawerCloseButtonRef}
+                onClick={() => setDrawerOpen(false)}
+                className="h-10 w-10 min-w-[44px] min-h-[44px] rounded-full text-zinc-600 hover:bg-zinc-100 active:bg-zinc-200 inline-flex items-center justify-center touch-manipulation -mr-1"
+                aria-label="Close topics menu"
+              >
+                <X className="h-5 w-5" aria-hidden />
+              </button>
+            </div>
+            <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
+              {sidebarContent}
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="flex">
         {/* Desktop sidebar: glass, 1px stroke */}

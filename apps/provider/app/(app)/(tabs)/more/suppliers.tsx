@@ -33,7 +33,13 @@ interface Supplier {
   status: "active" | "inactive";
   product_count: number;
   total_orders: number;
-  created_at: string;
+  created_at: string | null;
+}
+
+/** Legacy entries (from product.supplier text) are read-only; no edit/delete. */
+const LEGACY_SUPPLIER_ID_PREFIX = "legacy:";
+function isLegacySupplier(s: Supplier): boolean {
+  return s.id.startsWith(LEGACY_SUPPLIER_ID_PREFIX);
 }
 
 interface SupplierForm {
@@ -476,22 +482,32 @@ export default function SuppliersScreen() {
               </View>
             )}
 
-            <View style={{ flexDirection: "row" }}>
-              <TouchableOpacity
-                style={{ flex: 1, marginRight: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#eef2ff", paddingVertical: 12 }}
-                onPress={() => openEditForm(selectedSupplier)}
-              >
-                <Ionicons name="create-outline" size={16} color="#6366f1" />
-                <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "500", color: "#4338ca" }}>Edit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#fee2e2", paddingVertical: 12 }}
-                onPress={() => handleDelete(selectedSupplier)}
-              >
-                <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "500", color: "#b91c1c" }}>Delete</Text>
-              </TouchableOpacity>
-            </View>
+            {isLegacySupplier(selectedSupplier) && (
+              <View style={{ marginBottom: 16, borderRadius: 12, backgroundColor: Colors.gray[50], padding: 12 }}>
+                <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
+                  This supplier is from your product list. Add them as a managed supplier to store contact details and edit.
+                </Text>
+              </View>
+            )}
+
+            {!isLegacySupplier(selectedSupplier) && (
+              <View style={{ flexDirection: "row" }}>
+                <TouchableOpacity
+                  style={{ flex: 1, marginRight: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#eef2ff", paddingVertical: 12 }}
+                  onPress={() => openEditForm(selectedSupplier)}
+                >
+                  <Ionicons name="create-outline" size={16} color="#6366f1" />
+                  <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "500", color: "#4338ca" }}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#fee2e2", paddingVertical: 12 }}
+                  onPress={() => handleDelete(selectedSupplier)}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                  <Text style={{ marginLeft: 6, fontSize: 14, fontWeight: "500", color: "#b91c1c" }}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         )}
       </BottomSheet>

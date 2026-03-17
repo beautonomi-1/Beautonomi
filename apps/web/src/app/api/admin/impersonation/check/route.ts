@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       isImpersonating: !!adminId,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error checking impersonation status:", error);
     return NextResponse.json(
       { isImpersonating: false },

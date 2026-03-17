@@ -130,7 +130,7 @@ export function subscribeToCustomerBookings(
 }
 
 /**
- * Subscribe to waitlist matches
+ * Subscribe to waitlist matches (status = notified)
  */
 export function subscribeToWaitlist(
   supabase: SupabaseClient,
@@ -164,6 +164,40 @@ export function subscribeToWaitlist(
       supabase.removeChannel(channel);
     } catch {
       // Ignore when channel is still connecting (e.g. React Strict Mode unmount)
+    }
+  };
+}
+
+/**
+ * Subscribe to all waitlist_entries changes for a provider (INSERT, UPDATE, DELETE).
+ * Use on the waitlist page to refetch when entries change.
+ */
+export function subscribeToWaitlistEntries(
+  supabase: SupabaseClient,
+  providerId: string,
+  onChanged: () => void
+): () => void {
+  const channel = supabase
+    .channel(`waitlist-entries:${providerId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'waitlist_entries',
+        filter: `provider_id=eq.${providerId}`,
+      },
+      () => {
+        onChanged();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    try {
+      supabase.removeChannel(channel);
+    } catch {
+      // Ignore when channel is still connecting
     }
   };
 }

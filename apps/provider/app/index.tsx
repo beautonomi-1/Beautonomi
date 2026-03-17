@@ -156,6 +156,8 @@ export default function Index() {
       clearTimeout(t);
       clearTimeout(timeoutId);
     };
+    // runProfileCheck is intentionally omitted to avoid re-running on every identity change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portalState, session]);
 
   if (loading || portalState === "idle" || portalState === "loading") {

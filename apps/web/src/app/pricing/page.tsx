@@ -71,8 +71,12 @@ export default function PricingPage() {
       }
       setIsLoginModalOpen(true);
     } else if (role === "provider_owner" || role === "provider_staff") {
-      // If already a provider, redirect to dashboard (they can manage subscription there)
-      router.push("/provider/dashboard");
+      // If already a provider with a plan selected, go to checkout (e.g. to subscribe or upgrade); otherwise dashboard
+      if (planId) {
+        router.push(`/provider/subscription-checkout?planId=${planId}`);
+      } else {
+        router.push("/provider/dashboard");
+      }
     } else {
       // Pass plan information to onboarding via query params
       const params = new URLSearchParams();
@@ -211,17 +215,18 @@ export default function PricingPage() {
         setOpen={setIsLoginModalOpen}
         redirectContext="provider"
         onAuthSuccess={() => {
-          // After successful login, redirect to onboarding with selected plan
+          // After successful login: existing providers go to checkout; others to onboarding
           const planId = sessionStorage.getItem('selectedPlanId');
           const planName = sessionStorage.getItem('selectedPlanName');
-          if (planId && planName) {
+          sessionStorage.removeItem('selectedPlanId');
+          sessionStorage.removeItem('selectedPlanName');
+          if (planId && (role === "provider_owner" || role === "provider_staff")) {
+            router.push(`/provider/subscription-checkout?planId=${planId}`);
+          } else if (planId && planName) {
             const params = new URLSearchParams();
             params.set('planId', planId);
             params.set('planName', planName);
             router.push(`/provider/onboarding?${params.toString()}`);
-            // Clear stored plan info
-            sessionStorage.removeItem('selectedPlanId');
-            sessionStorage.removeItem('selectedPlanName');
           } else {
             router.push("/provider/onboarding");
           }

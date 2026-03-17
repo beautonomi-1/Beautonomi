@@ -1,7 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
-import "slick-carousel/slick/slick.css";
-import "slick-carousel/slick/slick-theme.css";
+import { useState, useCallback } from "react";
 import Image from "next/image";
 import Waxing from "../../../../public/images/waxing.png";
 import Waxing1 from "../../../../public/images/wax.png";
@@ -19,20 +17,16 @@ import Hairstyling from "../../../../public/images/curling-hair.png";
 import BeardGroming from "../../../../public/images/barbershop.png";
 import Hairdye from "../../../../public/images/hair-dye (1).png";
 import Hairdye1 from "../../../../public/images/hair-dye.png";
-import Slider from "react-slick";
+import { EmblaSlider, type EmblaSliderApi } from "@/components/ui/embla-slider";
 import { Button } from "@/components/ui/button";
 import { EssentialsButtons } from "@/app/category/components/amenties";
 
 const CategorySlider = () => {
-  const sliderRef = useRef<Slider>(null);
+  const [sliderApi, setSliderApi] = useState<EmblaSliderApi | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState(["wifi", "kitchen"]);
 
-  const handleNext = () => {
-    if (sliderRef.current) {
-      sliderRef.current.slickNext();
-    }
-  };
+  const handleNext = useCallback(() => sliderApi?.scrollNext(), [sliderApi]);
 
   const toggleOption = (option: string) => {
     setSelectedOptions((prev) =>
@@ -40,22 +34,6 @@ const CategorySlider = () => {
         ? prev.filter((item) => item !== option)
         : [...prev, option]
     );
-  };
-
-  const settings = {
-    infinite: true,
-    slidesToShow: 12,
-    slidesToScroll: 1,
-    speed: 100,
-    arrows: false,
-    responsive: [
-      { breakpoint: 2340, settings: { slidesToShow: 14 } },
-      { breakpoint: 1580, settings: { slidesToShow: 12 } },
-      { breakpoint: 1280, settings: { slidesToShow: 8 } },
-      { breakpoint: 1024, settings: { slidesToShow: 8 } },
-      { breakpoint: 768, settings: { slidesToShow: 6 } },
-      { breakpoint: 480, settings: { slidesToShow: 4 } },
-    ],
   };
 
   const Filter = [
@@ -87,32 +65,25 @@ const CategorySlider = () => {
           >
             <ChevronRightIcon className="h-5 w-5 text-gray-500" />
           </button>
-          <Slider ref={sliderRef} {...settings} className="mt-6">
+          <EmblaSlider slidesToShow={8} loop setApi={setSliderApi} className="mt-6">
             {Filter.map((item, index) => (
               <div key={index} className="px-4">
-                {" "}
                 <div className="flex flex-col items-center justify-center cursor-pointer group p-2 mx-4 h-full">
                   <div className="flex flex-col items-center justify-center min-w-40 h-full">
                     <Image
                       src={item.img}
                       alt={item.title}
-                      className="transition-all duration-300 group-hover:scale-110 h-8 w-8" // Adjust size as needed
+                      className="transition-all duration-300 group-hover:scale-110 h-8 w-8"
                     />
                     <p className="font-light text-xs text-gray-700 mt-1 transition-all duration-300 group-hover:text-black text-center">
                       {item.title}
                     </p>
                   </div>
-                  <span className="border-b-2 border-transparent group-hover:border-gray-300 w-16 mt-1 transition-all duration-300"></span>
+                  <span className="border-b-2 border-transparent group-hover:border-gray-300 w-16 mt-1 transition-all duration-300" />
                 </div>
               </div>
             ))}
-          </Slider>
-          <button
-            onClick={handleNext}
-            className="absolute -right-0 top-12 transform -translate-y-1/2 bg-white border h-8 w-8 rounded-full flex items-center justify-center z-10 hover:bg-gray-100 transition-all duration-200 hover:scale-105 hover:shadow-md"
-          >
-            <ChevronRightIcon className="h-5 w-5 text-gray-500" />
-          </button>
+          </EmblaSlider>
         </div>
         <div className="w-full md:w-1/4 flex flex-col md:flex-row items-center justify-end gap-4">
           <div>

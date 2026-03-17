@@ -3,6 +3,28 @@ import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successRespon
 import { createClient } from "@supabase/supabase-js";
 import { addMinutes } from "date-fns";
 
+const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+function dayKeyFromDate(dateStr: string): (typeof DAY_KEYS)[number] {
+  const d = new Date(dateStr + "T12:00:00").getDay();
+  return DAY_KEYS[d];
+}
+
+type WorkingHoursDay = {
+  is_open?: boolean;
+  open_time?: string;
+  close_time?: string;
+  breaks?: { start: string; end: string }[];
+};
+
+function parseTimeToMinutes(time: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(time);
+  if (!m) return null;
+  const hh = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  if (Number.isNaN(hh) || Number.isNaN(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return hh * 60 + mm;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
@@ -83,6 +105,80 @@ export async function GET(request: NextRequest) {
         }
       }
     });
+
+    // Optional: working hours – if we have staff or location hours for this day, check slot is within and not in a break
+    const startMin = startTime.getHours() * 60 + startTime.getMinutes();
+    const endMin = endTime.getHours() * 60 + endTime.getMinutes();
+    if (staffIds.length === 1) {
+      const { data: staff } = await supabaseAdmin
+        .from("provider_staff")
+        .select("id, working_hours")
+        .eq("id", staffIds[0])
+        .eq("provider_id", providerId)
+        .single();
+      const wh = (staff?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKeyFromDate(dateStr)];
+      if (wh && wh.is_open !== false && wh.open_time && wh.close_time) {
+        const openMin = parseTimeToMinutes(wh.open_time);
+        const closeMin = parseTimeToMinutes(wh.close_time);
+        if (openMin !== null && closeMin !== null && closeMin > openMin) {
+          if (startMin < openMin || endMin > closeMin) conflicts.push("Outside working hours");
+          for (const br of wh.breaks ?? []) {
+            const bs = parseTimeToMinutes(br.start);
+            const be = parseTimeToMinutes(br.end);
+            if (bs !== null && be !== null && be > bs && startMin < be && endMin > bs) {
+              conflicts.push("Overlaps break");
+              break;
+            }
+          }
+        }
+      }
+    } else if (locationId) {
+      const { data: loc } = await supabaseAdmin
+        .from("provider_locations")
+        .select("id, working_hours")
+        .eq("id", locationId)
+        .eq("provider_id", providerId)
+        .single();
+      const wh = (loc?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKeyFromDate(dateStr)];
+      if (wh && wh.is_open !== false && wh.open_time && wh.close_time) {
+        const openMin = parseTimeToMinutes(wh.open_time);
+        const closeMin = parseTimeToMinutes(wh.close_time);
+        if (openMin !== null && closeMin !== null && closeMin > openMin) {
+          if (startMin < openMin || endMin > closeMin) conflicts.push("Outside working hours");
+          for (const br of wh.breaks ?? []) {
+            const bs = parseTimeToMinutes(br.start);
+            const be = parseTimeToMinutes(br.end);
+            if (bs !== null && be !== null && be > bs && startMin < be && endMin > bs) {
+              conflicts.push("Overlaps break");
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // Optional: availability_blocks overlapping this slot
+    const startOfDayIso = `${dateStr}T00:00:00`;
+    const endOfDayIso = `${dateStr}T23:59:59`;
+    const { data: availabilityBlocksRaw } = await supabaseAdmin
+      .from("availability_blocks")
+      .select("start_at, end_at, staff_id, location_id")
+      .eq("provider_id", providerId)
+      .gt("end_at", startOfDayIso)
+      .lt("start_at", endOfDayIso);
+    const availabilityBlocks = (availabilityBlocksRaw ?? []).filter((ab: { staff_id?: string | null; location_id?: string | null }) => {
+      const staffOk = ab.staff_id == null || staffIds.length !== 1 || ab.staff_id === staffIds[0];
+      const locOk = ab.location_id == null || !locationId || ab.location_id === locationId;
+      return staffOk && locOk;
+    });
+    for (const ab of availabilityBlocks) {
+      const abStart = new Date(ab.start_at);
+      const abEnd = new Date(ab.end_at);
+      if (startTime < abEnd && endTime > abStart) {
+        conflicts.push("Blocked time (unavailable)");
+        break;
+      }
+    }
 
     return successResponse({
       available: conflicts.length === 0,

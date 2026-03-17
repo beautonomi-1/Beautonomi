@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, notFoundResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 const updateSchema = z.object({
@@ -18,12 +19,12 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = updateSchema.parse(await request.json());
 
-    const { data: row, error } = await (supabase.from("loyalty_milestones") as any)
+    const { data: row, error } = await supabase.from("loyalty_milestones")
       .update({
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.description !== undefined ? { description: body.description } : {}),
@@ -61,14 +62,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
     const { data: existing } = await supabase.from("loyalty_milestones").select("id").eq("id", id).maybeSingle();
     if (!existing) return notFoundResponse("Milestone not found");
 
-    const { error } = await (supabase.from("loyalty_milestones") as any).delete().eq("id", id);
+    const { error } = await supabase.from("loyalty_milestones").delete().eq("id", id);
     if (error) throw error;
 
     await writeAuditLog({

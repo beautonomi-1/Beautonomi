@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   notFoundResponse,
   handleApiError,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_ECOMMERCE } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const resolveSchema = z.object({
@@ -23,10 +23,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_ECOMMERCE, request);
     const supabase = await getSupabaseServer(request);
 
-    const { data, error } = await (supabase.from("product_return_requests") as any)
+    const { data, error } = await supabase
+      .from("product_return_requests")
       .select(
         `*,
         order:product_orders(*,items:product_order_items(*)),
@@ -52,12 +53,13 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_ECOMMERCE, request);
     const body = await request.json();
     const parsed = resolveSchema.parse(body);
     const supabase = await getSupabaseServer(request);
 
-    const { data: req } = await (supabase.from("product_return_requests") as any)
+    const { data: req } = await supabase
+      .from("product_return_requests")
       .select("id, status, refund_amount")
       .eq("id", id)
       .single();
@@ -66,7 +68,7 @@ export async function PATCH(
 
     const isRefund = ["full_refund", "partial_refund", "store_credit"].includes(parsed.resolution);
 
-    const update: Record<string, any> = {
+    const update: Record<string, unknown> = {
       status: isRefund ? "refunded" : "resolved_by_admin",
       resolution: parsed.resolution,
       admin_notes: parsed.admin_notes ?? null,
@@ -80,7 +82,8 @@ export async function PATCH(
       update.refund_method = "admin_override";
     }
 
-    const { data, error } = await (supabase.from("product_return_requests") as any)
+    const { data, error } = await supabase
+      .from("product_return_requests")
       .update(update)
       .eq("id", id)
       .select()

@@ -77,10 +77,9 @@ export async function POST(request: NextRequest) {
       }
 
       geocodeResult = results[0];
-    } catch (mapboxError: any) {
-      // If Mapbox is not configured, return error
-      if (mapboxError.message?.includes("not configured") || 
-          mapboxError.message?.includes("MAPBOX_ACCESS_TOKEN")) {
+    } catch (mapboxError: unknown) {
+      const msg = mapboxError instanceof Error ? mapboxError.message : String(mapboxError);
+      if (msg?.includes("not configured") || msg?.includes("MAPBOX_ACCESS_TOKEN")) {
         console.warn("Mapbox not configured, cannot validate address");
         return errorResponse(
           "Address validation is temporarily unavailable. Please contact support.",
@@ -99,10 +98,10 @@ export async function POST(request: NextRequest) {
     // Build service address early (needed for zone checking and for clients to save)
     const serviceAddress = {
       line1: geocodeResult.place_name.split(",")[0] || body.address,
-      city: geocodeResult.context?.find((c: any) => c.id.startsWith("place."))?.text || "",
-      state: geocodeResult.context?.find((c: any) => c.id.startsWith("region."))?.text || "",
-      country: geocodeResult.context?.find((c: any) => c.id.startsWith("country."))?.text || HOUSE_CALL_CONFIG.DEFAULT_COUNTRY_NAME,
-      postalCode: geocodeResult.context?.find((c: any) => c.id.startsWith("postcode."))?.text || "",
+      city: geocodeResult.context?.find((c: { id: string; text?: string }) => c.id.startsWith("place."))?.text ?? "",
+      state: geocodeResult.context?.find((c: { id: string; text?: string }) => c.id.startsWith("region."))?.text ?? "",
+      country: geocodeResult.context?.find((c: { id: string; text?: string }) => c.id.startsWith("country."))?.text ?? HOUSE_CALL_CONFIG.DEFAULT_COUNTRY_NAME,
+      postalCode: geocodeResult.context?.find((c: { id: string; text?: string }) => c.id.startsWith("postcode."))?.text ?? "",
       coordinates: clientCoordinates,
     };
 
@@ -155,9 +154,11 @@ export async function POST(request: NextRequest) {
     let nearestLocation = providerLocations[0];
     let minDistance = Infinity;
 
+    type LocRow = { latitude?: number; longitude?: number; address_lat?: number; address_lng?: number };
     for (const loc of providerLocations) {
-      const lat = (loc as any).latitude ?? (loc as any).address_lat;
-      const lng = (loc as any).longitude ?? (loc as any).address_lng;
+      const row = loc as LocRow;
+      const lat = row.latitude ?? row.address_lat;
+      const lng = row.longitude ?? row.address_lng;
       if (lat == null || lng == null) continue;
       const dist = mapbox.calculateDistance(
         { latitude: lat, longitude: lng },
@@ -169,8 +170,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const nlat = (nearestLocation as any).latitude ?? (nearestLocation as any).address_lat;
-    const nlng = (nearestLocation as any).longitude ?? (nearestLocation as any).address_lng;
+    const nearest = nearestLocation as LocRow;
+    const nlat = nearest.latitude ?? nearest.address_lat;
+    const nlng = nearest.longitude ?? nearest.address_lng;
     if (nlat == null || nlng == null) {
       return errorResponse(
         "Provider location coordinates not configured. Please contact the provider.",
@@ -200,9 +202,20 @@ export async function POST(request: NextRequest) {
     const maxDistance = provider.max_service_distance_km || HOUSE_CALL_CONFIG.DEFAULT_MAX_SERVICE_DISTANCE_KM;
     const isDistanceFilterEnabled = provider.is_distance_filter_enabled || false;
 
-    // First, check if address is within any active platform zone
-    let matchedPlatformZone: any = null;
-    let matchedZone: any = null;
+    type ProviderZoneSelectionRow = {
+      id: string;
+      travel_fee?: number | string;
+      travel_time_minutes?: number;
+    };
+    type ZoneRow = Record<string, unknown> & {
+      id?: string;
+      name?: string;
+      travel_fee?: number | string | null;
+      travel_time_minutes?: number | null;
+      provider_selection?: ProviderZoneSelectionRow | null;
+    };
+    let matchedPlatformZone: ZoneRow | null = null;
+    let matchedZone: ZoneRow | null = null;
     const { data: platformZones } = await supabase
       .from("platform_zones")
       .select("*")
@@ -235,11 +248,12 @@ export async function POST(request: NextRequest) {
           const polygon = zone.polygon_coordinates;
           if (Array.isArray(polygon) && polygon.length > 0) {
             const ring = Array.isArray(polygon[0]) ? polygon[0] : polygon;
-            const polygonCoords = ring.map((coord: any) => {
+            type CoordInput = number[] | { lng?: number; longitude?: number; lat?: number; latitude?: number };
+            const polygonCoords = ring.map((coord: CoordInput) => {
               if (Array.isArray(coord)) {
                 return { longitude: coord[0], latitude: coord[1] };
               }
-              return { longitude: coord.lng || coord.longitude, latitude: coord.lat || coord.latitude };
+              return { longitude: coord.lng ?? coord.longitude ?? 0, latitude: coord.lat ?? coord.latitude ?? 0 };
             });
             
             let inside = false;
@@ -277,11 +291,21 @@ export async function POST(request: NextRequest) {
       }
 
       // Check if provider has selected this platform zone
+      const platformZoneId = matchedPlatformZone.id ?? null;
+      if (!platformZoneId) {
+        return successResponse({
+          valid: false,
+          travelFee: 0,
+          zoneId: null,
+          distanceKm: parseFloat(distanceKm.toFixed(2)),
+          reason: "Service zone configuration is incomplete. Please contact the provider.",
+        });
+      }
       const { data: providerSelection } = await supabase
         .from("provider_zone_selections")
         .select("*")
         .eq("provider_id", providerId)
-        .eq("platform_zone_id", matchedPlatformZone.id)
+        .eq("platform_zone_id", platformZoneId)
         .eq("is_active", true)
         .single();
 
@@ -453,7 +477,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return errorResponse(
-        error.issues.map((e: any) => e.message).join(", "),
+        error.issues.map((e: { message: string }) => e.message).join(", "),
         "VALIDATION_ERROR",
         400
       );

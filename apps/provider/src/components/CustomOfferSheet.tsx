@@ -8,6 +8,7 @@ import { View, Text, TextInput, TouchableOpacity, Alert, Platform } from "react-
 import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useApi } from "@/hooks/useApi";
@@ -180,24 +181,18 @@ export function CustomOfferSheet({
         />
 
         {globalCategories.length > 0 && (
-          <>
+          <View style={twStyle("mb-3")}>
             <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Service category (optional)</Text>
-            <View style={twStyle("mb-3 flex-row flex-wrap")}>
-              {globalCategories.map((cat) => (
-                <TouchableOpacity
-                  key={cat.id}
-                  onPress={() => setServiceCategoryId(serviceCategoryId === cat.id ? null : cat.id)}
-                  style={[twStyle(`rounded-xl border px-3 py-2 ${
-                    serviceCategoryId === cat.id ? "border-primary bg-primary/10" : "border-gray-200 bg-gray-50"
-                  }`), { marginRight: 8, marginBottom: 8 }]}
-                >
-                  <Text style={twStyle(`text-sm ${serviceCategoryId === cat.id ? "text-primary font-medium" : "text-gray-600"}`)}>
-                    {cat.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </>
+            <ChipCombobox
+              singleSelect
+              value={serviceCategoryId}
+              onChange={setServiceCategoryId}
+              staticSuggestions={globalCategories.map((cat) => ({ value: cat.id, label: cat.name }))}
+              allowFreeForm={false}
+              placeholder="Select category"
+              accessibilityLabel="Service category"
+            />
+          </View>
         )}
 
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>

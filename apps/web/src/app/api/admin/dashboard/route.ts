@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requireAdminSection, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { ADMIN_SECTION_OVERVIEW } from '@/lib/admin-sections';
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
 
     const supabase = await getSupabaseServer(request);
     
@@ -101,10 +102,11 @@ export async function GET(request: NextRequest) {
         const rows = data || [];
         
         // Calculate sums using in-memory aggregation
+        type LedgerRow = { transaction_type?: string; amount?: number; net?: number; fees?: number };
         const sum = (types: string[], field: "amount" | "net") =>
-          rows.filter((r: any) => types.includes(r.transaction_type)).reduce((s: number, r: any) => s + Number(r[field] || 0), 0);
+          (rows as LedgerRow[]).filter((r) => types.includes(r.transaction_type ?? "")).reduce((s, r) => s + Number(r[field] ?? 0), 0);
         const sumFees = (types: string[]) =>
-          rows.filter((r: any) => types.includes(r.transaction_type)).reduce((s: number, r: any) => s + Number((r as any).fees || 0), 0);
+          (rows as LedgerRow[]).filter((r) => types.includes(r.transaction_type ?? "")).reduce((s, r) => s + Number(r.fees ?? 0), 0);
         
         return {
           service_collected_net: sum(["payment", "additional_charge_payment"], "amount"),

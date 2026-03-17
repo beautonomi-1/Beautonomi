@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 const serviceSchema = z.object({
   name: z.string().min(1, "Service name is required"),
@@ -27,8 +29,8 @@ void _updateServiceSchema;
  */
 export async function GET(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -58,31 +60,31 @@ export async function GET(request: Request) {
       );
     }
 
-    // Fetch category names separately
-    const categoryIds = [...new Set((services || []).map((s: any) => s.category_id).filter(Boolean))];
-    let categoriesData: any[] = [];
-    
+    type ServiceRow = { category_id?: string };
+    type CategoryRow = { id: string; name?: string; slug?: string };
+    const categoryIds = [...new Set((services || []).map((s: ServiceRow) => s.category_id).filter(Boolean))] as string[];
+    let categoriesData: CategoryRow[] = [];
+
     if (categoryIds.length > 0) {
       try {
         const { data, error: categoriesError } = await supabase
           .from("global_service_categories")
           .select("id, name, slug")
           .in("id", categoryIds);
-        
+
         if (!categoriesError) {
-          categoriesData = data || [];
+          categoriesData = (data as CategoryRow[]) || [];
         }
       } catch (e) {
         console.error("Error fetching categories:", e);
       }
     }
-    
-    const categoriesMap = new Map(categoriesData.map((c: any) => [c.id, c]));
 
-    // Transform to include category_name
-    const transformedServices = (services || []).map((service: any) => ({
+    const categoriesMap = new Map(categoriesData.map((c: CategoryRow) => [c.id, c]));
+
+    const transformedServices = (services || []).map((service: ServiceRow & { category_id?: string }) => ({
       ...service,
-      category_name: categoriesMap.get(service.category_id)?.name || null,
+      category_name: categoriesMap.get(service.category_id ?? "")?.name ?? null,
     }));
 
     return NextResponse.json({
@@ -111,8 +113,8 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -187,8 +189,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: service, error } = await (supabase
-      .from("master_services") as any)
+    const { data: service, error } = await supabase
+      .from("master_services")
       .insert({
         name,
         slug: slug.toLowerCase(),
@@ -218,11 +220,11 @@ export async function POST(request: Request) {
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.catalog.service.create",
       entity_type: "master_service",
-      entity_id: (service as any).id,
+      entity_id: (service as { id: string }).id,
       metadata: { name, slug: slug.toLowerCase(), category_id, subcategory_id, is_active },
     });
 

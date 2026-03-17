@@ -31,7 +31,7 @@ export async function POST(
     const validated = rescheduleSchema.parse(body);
     const newDatetime = new Date(validated.new_datetime);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const adminSupabase = getSupabaseAdmin();
 
     // Load booking with services
@@ -158,7 +158,8 @@ export async function POST(
 
     // Total blocked span = sum(durations) + sum(buffers) to match book flow
     let totalDuration = 0;
-    bookingServices.forEach((bs: any) => {
+    type BsRow = { duration_minutes?: number; offerings?: { duration_minutes?: number; buffer_minutes?: number } };
+    bookingServices.forEach((bs: BsRow) => {
       const dur = bs.duration_minutes ?? bs.offerings?.duration_minutes ?? 60;
       const buf = bs.offerings?.buffer_minutes ?? 15;
       totalDuration += dur + buf;
@@ -207,19 +208,20 @@ export async function POST(
 
     // Update all booking_services with new times
     let cursor = newDatetime;
-    const updatePromises = bookingServices.map(async (bs: any) => {
+    type BsUpdateRow = BsRow & { id: string };
+    const updatePromises = bookingServices.map(async (bs: BsUpdateRow) => {
       const start = new Date(cursor);
-      const duration = bs.duration_minutes || bs.offerings?.duration_minutes || 60;
+      const duration = bs.duration_minutes ?? bs.offerings?.duration_minutes ?? 60;
       const end = new Date(start.getTime() + duration * 60000);
-      const buffer = bs.offerings?.buffer_minutes || 15;
+      const buffer = bs.offerings?.buffer_minutes ?? 15;
 
       const { error } = await adminSupabase
-        .from('booking_services')
+        .from("booking_services")
         .update({
           scheduled_start_at: start.toISOString(),
           scheduled_end_at: end.toISOString(),
         })
-        .eq('id', bs.id);
+        .eq("id", bs.id);
 
       if (error) {
         throw error;
@@ -271,7 +273,7 @@ export async function POST(
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(
-        new Error(error.issues.map((e: any) => e.message).join(", ")),
+        new Error(error.issues.map((e: { message: string }) => e.message).join(", ")),
         "Validation failed",
         "VALIDATION_ERROR",
         400

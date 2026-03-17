@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_ECOMMERCE } from "@/lib/admin-sections";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 
@@ -29,7 +30,7 @@ const addonSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user: authUser } = await requireRoleInApi(["superadmin", "provider_owner"], request);
+    const { user: authUser } = await requireAdminSection(ADMIN_SECTION_ECOMMERCE, request);
 
     const supabase = await getSupabaseServer(request);
     if (!supabase) {
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
         .single();
 
       if (provider) {
-        query = query.eq("provider_id", (provider as any).id);
+        query = query.eq("provider_id", (provider as { id: string }).id);
       } else {
         return NextResponse.json({
           data: [],
@@ -87,7 +88,8 @@ export async function GET(request: NextRequest) {
 
     // service_addons view is from offerings; use applicable_service_ids (no service_addon_associations table)
     if (addons && addons.length > 0) {
-      const addonsWithServices = addons.map((addon: any) => ({
+      type AddonRow = { name?: string; title?: string; applicable_service_ids?: string[]; [key: string]: unknown };
+      const addonsWithServices = addons.map((addon: AddonRow) => ({
         ...addon,
         name: addon.name ?? addon.title ?? "",
         service_ids: Array.isArray(addon.applicable_service_ids) ? addon.applicable_service_ids : [],
@@ -110,7 +112,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user: authUser } = await requireRoleInApi(["superadmin", "provider_owner"], request);
+    const { user: authUser } = await requireAdminSection(ADMIN_SECTION_ECOMMERCE, request);
 
     const supabase = await getSupabaseServer(request);
     if (!supabase) {
@@ -169,7 +171,7 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (provider) {
-          validationResult.data.provider_id = (provider as any).id;
+          validationResult.data.provider_id = (provider as { id: string }).id;
         } else {
           return NextResponse.json(
             {
@@ -187,8 +189,8 @@ export async function POST(request: NextRequest) {
 
     const { service_ids, ...addonData } = validationResult.data;
 
-    const { data: addon, error } = await (supabase
-      .from("service_addons") as any)
+    const { data: addon, error } = await supabase
+      .from("service_addons")
       .insert({
         ...addonData,
         created_at: new Date().toISOString(),
@@ -214,25 +216,26 @@ export async function POST(request: NextRequest) {
     // Create service associations
     if (service_ids && service_ids.length > 0) {
       const associations = service_ids.map((serviceId: string) => ({
-        addon_id: (addon as any).id,
+        addon_id: (addon as { id: string }).id,
         service_id: serviceId,
         created_at: new Date().toISOString(),
       }));
 
-      await (supabase as any).from("service_addon_associations").insert(associations);
+      await supabase.from("service_addon_associations").insert(associations);
     }
 
+    const addonOut = addon as { id: string; provider_id?: string | null; type?: string; price?: number; currency?: string };
     await writeAuditLog({
       actor_user_id: authUser.id,
-      actor_role: (authUser as any).role || "superadmin",
+      actor_role: authUser.role ?? "superadmin",
       action: "admin.addon.create",
       entity_type: "service_addon",
-      entity_id: (addon as any).id,
-      metadata: { provider_id: (addon as any).provider_id || null, type: (addon as any).type, price: (addon as any).price, currency: (addon as any).currency },
+      entity_id: addonOut.id,
+      metadata: { provider_id: addonOut.provider_id ?? null, type: addonOut.type, price: addonOut.price, currency: addonOut.currency },
     });
 
     return NextResponse.json({
-      data: { ...(addon as Record<string, any>), service_ids },
+      data: { ...(addon as Record<string, unknown>), service_ids },
       error: null,
     });
   } catch (error) {

@@ -10,7 +10,7 @@ import { Download, TrendingUp, TrendingDown } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface BusinessComparisonData {
   period: string;
@@ -67,7 +67,7 @@ export default function BusinessComparisonReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data, "business-comparison");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "business-comparison");
     exportToCSV(exportData, "business-comparison-report");
   };
 

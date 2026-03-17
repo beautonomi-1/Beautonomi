@@ -272,7 +272,6 @@ Source of truth for customer-facing routes in the Next.js client portal. Used fo
 | account_membership | /account-settings/membership | stack |
 | account_loyalty | /account-settings/loyalty | stack |
 | account_referrals | /account-settings/referrals | stack |
-| account_business | /account-settings/business | stack |
 | gift_card | /gift-card | stack |
 | login | (modal) | auth |
 | signup | /signup | auth |

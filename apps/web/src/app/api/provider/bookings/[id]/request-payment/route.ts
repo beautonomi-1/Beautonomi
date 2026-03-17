@@ -110,7 +110,8 @@ export async function POST(
           booking_id: id,
           charge_description: newCharge.description || "Additional charge",
         },
-        ["push", "email"]
+        ["push", "email"],
+        { appType: "customer" }
       );
     } catch (notifError) {
       console.error("Error sending additional payment request notification:", notifError);

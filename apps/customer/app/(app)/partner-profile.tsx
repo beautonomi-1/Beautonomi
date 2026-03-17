@@ -574,7 +574,11 @@ function MembershipCard({ plan, onJoin, contentPadding }: { plan: MembershipPlan
    ═══════════════════════════════════════════ */
 export default function PartnerProfileScreen() {
   useScreenTracking("Partner Profile");
-  const { slug } = useLocalSearchParams<{ slug: string }>();
+  const { slug, campaign_id: paramCampaignId, provider_id: paramProviderId } = useLocalSearchParams<{
+    slug: string;
+    campaign_id?: string;
+    provider_id?: string;
+  }>();
   const { user } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
   const { contentPadding } = useResponsive();
@@ -836,22 +840,34 @@ export default function PartnerProfileScreen() {
     );
   }, [user, provider]);
 
-  /* ── Book ── */
+  /* ── Book (pass ad attribution when user came from sponsored result) ── */
+  const bookParams = useCallback(
+    (overrides?: { service_id?: string; duration_minutes?: string }) => {
+      const p: Record<string, string> = { slug: slug as string };
+      if (paramCampaignId) p.campaign_id = paramCampaignId;
+      if (paramProviderId) p.provider_id = paramProviderId;
+      if (overrides?.service_id) p.service_id = overrides.service_id;
+      if (overrides?.duration_minutes) p.duration_minutes = overrides.duration_minutes;
+      return p;
+    },
+    [slug, paramCampaignId, paramProviderId]
+  );
+
   const handleBookService = useCallback(
     (svc: ProviderService) => {
       haptic.medium();
       const sid = svc.variants?.[0]?.id || svc.id;
       const dur = svc.variants?.[0]?.duration_minutes || svc.duration_minutes;
-      router.push({ pathname: "/(app)/book", params: { slug: slug as string, service_id: sid, duration_minutes: String(dur) } });
+      router.push({ pathname: "/(app)/book", params: bookParams({ service_id: sid, duration_minutes: String(dur) }) });
     },
-    [slug]
+    [bookParams]
   );
 
   const handleBook = useCallback(() => {
     haptic.medium();
     if (services?.categories?.[0]?.services?.[0]) handleBookService(services.categories[0].services[0]);
-    else router.push({ pathname: "/(app)/book", params: { slug: slug as string } });
-  }, [services, slug, handleBookService]);
+    else router.push({ pathname: "/(app)/book", params: bookParams() });
+  }, [services, handleBookService, bookParams]);
 
   /* ── Gallery ── */
   const images = (() => {

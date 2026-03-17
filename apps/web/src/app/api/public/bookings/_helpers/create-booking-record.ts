@@ -184,6 +184,8 @@ export async function createBookingRecord(
         servicesMap
       );
 
+      // Only insert the primary contact into booking_participants (UNIQUE(booking_id) allows one row per booking).
+      // Other participants are represented by guest_name on booking_services.
       const groupBooking = await createGroupBooking(
         adminSupabase,
         draft.provider_id,
@@ -197,13 +199,6 @@ export async function createBookingRecord(
             participant_phone: clientInfo.phone || null,
             is_primary_contact: true,
           },
-          ...v.groupParticipants.map((p: any) => ({
-            booking_id: booking.id,
-            participant_name: p.name,
-            participant_email: p.email || null,
-            participant_phone: p.phone || null,
-            is_primary_contact: false,
-          })),
         ]
       );
 

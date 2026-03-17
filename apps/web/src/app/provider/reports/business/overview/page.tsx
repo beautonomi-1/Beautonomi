@@ -11,7 +11,7 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface BusinessOverviewData {
   period: string;
@@ -72,7 +72,7 @@ export default function BusinessOverviewReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data, "business-overview");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "business-overview");
     exportToCSV(exportData, "business-overview-report");
   };
 

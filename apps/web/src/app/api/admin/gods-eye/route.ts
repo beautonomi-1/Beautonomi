@@ -1,11 +1,14 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+
+type ProviderRow = { id: string; business_name?: string; owner_name?: string; rating_average?: number; status?: string; created_at?: string };
 
 export async function GET(request: NextRequest) {
   try {
     // Require superadmin role
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
 
     const supabase = getSupabaseAdmin();
 
@@ -74,7 +77,8 @@ export async function GET(request: NextRequest) {
         }
 
         const rows = data || [];
-        return rows.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+        type RevenueRow = { amount?: number };
+        return (rows as RevenueRow[]).reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
       } catch (err) {
         console.error("Error calculating revenue:", err);
         return 0;
@@ -94,7 +98,7 @@ export async function GET(request: NextRequest) {
       .select('id, business_name, owner_name, rating_average, status')
       .limit(20);
 
-    const allProviderIds = (activeProvidersData || []).map((p: any) => p.id);
+    const allProviderIds = (activeProvidersData || []).map((p: ProviderRow) => p.id);
 
     // Revenue from finance_transactions (provider_earnings, travel_fee, tip)
     const providerRevenue: Record<string, number> = {};
@@ -104,7 +108,8 @@ export async function GET(request: NextRequest) {
         .select('provider_id, net, amount')
         .in('provider_id', allProviderIds)
         .in('transaction_type', ['provider_earnings', 'travel_fee', 'tip']);
-      (providerTxRows || []).forEach((t: any) => {
+      type TxRow = { provider_id?: string; net?: number; amount?: number };
+      (providerTxRows || []).forEach((t: TxRow) => {
         const id = t.provider_id;
         if (!id) return;
         if (!providerRevenue[id]) providerRevenue[id] = 0;
@@ -119,13 +124,13 @@ export async function GET(request: NextRequest) {
         .from('bookings')
         .select('provider_id')
         .in('provider_id', allProviderIds);
-      (bookingRows || []).forEach((b: any) => {
+      (bookingRows || []).forEach((b: { provider_id?: string }) => {
         bookingsCounts[b.provider_id] = (bookingsCounts[b.provider_id] || 0) + 1;
       });
     }
 
     const topProviders = (activeProvidersData || [])
-      .map((provider: any) => ({
+      .map((provider: ProviderRow) => ({
         id: provider.id,
         name: provider.business_name || provider.owner_name || 'Unknown',
         bookings_count: bookingsCounts[provider.id] || 0,
@@ -142,7 +147,8 @@ export async function GET(request: NextRequest) {
       .eq('role', 'customer')
       .limit(20);
 
-    const customerIds = (topCustomersData || []).map((c: any) => c.id);
+    type CustomerRow = { id: string; full_name?: string; email?: string };
+    const customerIds = (topCustomersData || []).map((c: CustomerRow) => c.id);
     const customerBookingsCounts: Record<string, number> = {};
     const customerSpent: Record<string, number> = {};
 
@@ -151,10 +157,11 @@ export async function GET(request: NextRequest) {
         .from('bookings')
         .select('id, customer_id')
         .in('customer_id', customerIds);
-      (customerBookings || []).forEach((b: any) => {
-        customerBookingsCounts[b.customer_id] = (customerBookingsCounts[b.customer_id] || 0) + 1;
+      type BookingRef = { id: string; customer_id?: string };
+      (customerBookings || []).forEach((b: BookingRef) => {
+        customerBookingsCounts[b.customer_id ?? ""] = (customerBookingsCounts[b.customer_id ?? ""] || 0) + 1;
       });
-      const bookingIds = (customerBookings || []).map((b: any) => b.id);
+      const bookingIds = (customerBookings || []).map((b: BookingRef) => b.id);
       if (bookingIds.length > 0) {
         const { data: txRows } = await supabase
           .from('finance_transactions')
@@ -162,10 +169,11 @@ export async function GET(request: NextRequest) {
           .in('booking_id', bookingIds)
           .in('transaction_type', ['payment', 'additional_charge_payment']);
         const bookingToCustomer: Record<string, string> = {};
-        (customerBookings || []).forEach((b: any) => {
-          bookingToCustomer[b.id] = b.customer_id;
+        (customerBookings || []).forEach((b: BookingRef) => {
+          bookingToCustomer[b.id] = b.customer_id ?? "";
         });
-        (txRows || []).forEach((t: any) => {
+        type TxRow = { booking_id?: string; amount?: number };
+        (txRows || []).forEach((t: TxRow) => {
           const cid = bookingToCustomer[t.booking_id];
           if (cid) {
             customerSpent[cid] = (customerSpent[cid] || 0) + Number(t.amount || 0);
@@ -174,7 +182,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const topCustomers = (topCustomersData || []).map((customer: any) => ({
+    const topCustomers = (topCustomersData || []).map((customer: CustomerRow) => ({
       id: customer.id,
       name: customer.full_name || customer.email || 'Unknown',
       bookings_count: customerBookingsCounts[customer.id] || 0,
@@ -200,7 +208,8 @@ export async function GET(request: NextRequest) {
       .limit(20);
 
     if (recentBookings) {
-      recentBookings.forEach((booking: any) => {
+      type BookingActivityRow = { id: string; booking_number?: string; status?: string; created_at?: string };
+      recentBookings.forEach((booking: BookingActivityRow) => {
         recentActivity.push({
           id: `booking-${booking.id}`,
           type: 'booking',
@@ -221,7 +230,8 @@ export async function GET(request: NextRequest) {
       .limit(10);
 
     if (recentUsers) {
-      recentUsers.forEach((user: any) => {
+      type UserActivityRow = { id: string; full_name?: string; email?: string; created_at?: string };
+      recentUsers.forEach((user: UserActivityRow) => {
         recentActivity.push({
           id: `user-${user.id}`,
           type: 'user',
@@ -242,7 +252,7 @@ export async function GET(request: NextRequest) {
       .limit(10);
 
     if (recentProviders) {
-      recentProviders.forEach((provider: any) => {
+      recentProviders.forEach((provider: ProviderRow) => {
         recentActivity.push({
           id: `provider-${provider.id}`,
           type: 'provider',

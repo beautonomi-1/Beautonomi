@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     const { player_id, platform } = validationResult.data;
 
-    await registerDevice(user.id, player_id, platform);
+    await registerDevice(user.id, player_id, platform, "provider");
 
     return successResponse({ registered: true });
   } catch (error) {

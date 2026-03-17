@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, User, Phone, Mail, MessageSquare } from "lucide-react";
 import AuthGuard from "@/components/auth/auth-guard";
 import { SettingsDetailLayout, PageHeader } from "@/components/provider";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { useWaitlistEntriesRealtime } from "@/hooks/useSupabaseRealtime";
 
 interface WaitlistEntry {
   id: string;
@@ -35,6 +38,7 @@ interface WaitlistEntry {
 }
 
 export default function ProviderWaitlistPage() {
+  const { provider } = useProviderPortal();
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +65,14 @@ export default function ProviderWaitlistPage() {
       setIsLoading(false);
     }
   };
+
+  const loadWaitlistRef = React.useRef(loadWaitlist);
+  loadWaitlistRef.current = loadWaitlist;
+  const refreshWaitlist = useCallback(() => {
+    loadWaitlistRef.current?.();
+  }, []);
+  const supabaseClient = getSupabaseClient();
+  useWaitlistEntriesRealtime(supabaseClient, provider?.id, refreshWaitlist);
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {

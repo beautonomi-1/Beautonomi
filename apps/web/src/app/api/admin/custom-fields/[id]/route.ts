@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { successResponse, handleApiError, requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { successResponse, handleApiError, requireAdminSection  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const updateCustomFieldSchema = z.object({
@@ -27,7 +28,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const { id } = await params;
     const adminSupabase = getSupabaseAdmin();
 
@@ -57,7 +58,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const { id } = await params;
     const body = await request.json();
     const validated = updateCustomFieldSchema.parse(body);
@@ -110,7 +111,7 @@ export async function PUT(
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(
-        new Error(error.issues.map((e: any) => e.message).join(", ")),
+        new Error(error.issues.map((e: { message: string }) => e.message).join(", ")),
         "Validation failed",
         "VALIDATION_ERROR",
         400
@@ -142,7 +143,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const { id } = await params;
     const adminSupabase = getSupabaseAdmin();
 

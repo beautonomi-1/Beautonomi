@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { useSavedAddresses } from "@/hooks/useSavedAddresses";
+import { useSavedAddresses, type SavedAddress } from "@/hooks/useSavedAddresses";
 import { Button } from "@/components/ui/button";
 import { Plus, Edit, Trash2, MapPin, Star, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -24,43 +24,45 @@ export default function SavedAddressesPage() {
   const { addresses, isLoading, saveAddress, updateAddress, deleteAddress } =
     useSavedAddresses();
   const [showDialog, setShowDialog] = useState(false);
-  const [editingAddress, setEditingAddress] = useState<any>(null);
+  const [editingAddress, setEditingAddress] = useState<SavedAddress | null>(null);
 
   const handleCreate = () => {
     setEditingAddress(null);
     setShowDialog(true);
   };
 
-  const handleEdit = (address: any) => {
+  const handleEdit = (address: SavedAddress) => {
     setEditingAddress(address);
     setShowDialog(true);
   };
 
-  const handleDelete = async (address: any) => {
+  const handleDelete = async (address: SavedAddress) => {
     if (!confirm(`Are you sure you want to delete "${address.label || address.address_line1}"?`))
       return;
 
     try {
       await deleteAddress(address.id);
       toast.success("Address deleted");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to delete address");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to delete address";
+      toast.error(message);
     }
   };
 
-  const handleSave = async (addressData: any) => {
+  const handleSave = async (addressData: Record<string, unknown>) => {
     try {
       if (editingAddress) {
-        await updateAddress(editingAddress.id, addressData);
+        await updateAddress(editingAddress.id, addressData as { label?: string; address_line1?: string; address_line2?: string | null; city?: string; state?: string | null; postal_code?: string | null; country?: string; latitude?: number | null; longitude?: number | null; is_default?: boolean; [key: string]: unknown });
         toast.success("Address updated");
       } else {
-        await saveAddress(addressData);
+        await saveAddress(addressData as { label: string; address_line1: string; address_line2?: string | null; city: string; state?: string | null; postal_code?: string | null; country: string; latitude?: number | null; longitude?: number | null; is_default: boolean; [key: string]: unknown });
         toast.success("Address saved");
       }
       setShowDialog(false);
       setEditingAddress(null);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to save address");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Failed to save address";
+      toast.error(message);
     }
   };
 

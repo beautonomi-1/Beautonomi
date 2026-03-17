@@ -1,14 +1,13 @@
 "use client";
-import React, { useState, useRef, useEffect } from "react";
+
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import Image from "next/image";
-import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
 import CarouselCard from "@/app/home/components/carousel-card";
 import MapIcon from "./../../../../public/images/map.svg";
 import { X } from "lucide-react";
 
-// Import your slide images
 import slide1 from "../../../../public/images/hairdresser.jpg";
 import slide2 from "../../../../public/images/istockphoto-921797424-612x612.jpg";
 import slide3 from "../../../../public/images/istockphoto-1335216008-612x612.jpg";
@@ -16,34 +15,44 @@ import slide4 from "../../../../public/images/355803-1600x1066-eye-shapes-makeup
 
 const ITEMS_PER_PAGE = 6;
 
-const createPriceIcon = (price: number) => {
-  return L.divIcon({
-    className: "custom-price-marker",
-    html: `<div style="background-color: white; border-radius: 10px; padding: 5px 10px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">$${price}</div>`,
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
-  });
-};
+function createPriceMarker(price: number): HTMLDivElement {
+  const el = document.createElement("div");
+  el.className = "custom-price-marker";
+  el.style.backgroundColor = "white";
+  el.style.borderRadius = "10px";
+  el.style.padding = "5px 10px";
+  el.style.fontWeight = "bold";
+  el.style.boxShadow = "0 2px 5px rgba(0,0,0,0.2)";
+  el.textContent = `$${price}`;
+  return el;
+}
 
-function MapUpdater({
-  center,
-  zoom,
-}: {
-  center: [number, number];
-  zoom: number;
-}) {
-  const map = useMap();
-  useEffect(() => {
-    map.setView(center, zoom);
-  }, [center, zoom, map]);
-  return null;
+interface ListingItem {
+  id: number;
+  lat: number;
+  lng: number;
+  price: number;
+  slides: { src: unknown; alt: string }[];
+  content: {
+    title: string;
+    subtitle: string;
+    dates: string;
+    amountstatus: string;
+    ratings: string;
+    ratingsVisible: string;
+    guestfav: string;
+    iconType: string;
+  };
 }
 
 const MapSlider = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showMap, setShowMap] = useState(false);
-  const [selectedListing, setSelectedListing] = useState<any>(null);
-  const mapRef = useRef<L.Map | null>(null);
+  const [selectedListing, setSelectedListing] = useState<ListingItem | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const onMarkerClickRef = useRef<(listing: ListingItem) => void>(() => {});
 
   const cardsData = [
     {
@@ -264,22 +273,30 @@ const MapSlider = () => {
     },
   ];
 
-  while (cardsData.length < 12) {
-    cardsData.push(...cardsData.slice(0, 2));
-  }
+  const fullCardsData = useMemo(() => {
+    const data = [...cardsData];
+    while (data.length < 12) {
+      data.push(...data.slice(0, 2));
+    }
+    return data;
+  }, []);
 
-  const listings = cardsData.map((card, index) => ({
-    id: index + 1,
-    lat: 51.5074 + (Math.random() - 0.5) * 0.01,
-    lng: -0.1278 + (Math.random() - 0.5) * 0.01,
-    price: Math.floor(Math.random() * 100) + 50,
-    ...card,
-  }));
+  const listings: ListingItem[] = useMemo(
+    () =>
+      fullCardsData.map((card, index) => ({
+        id: index + 1,
+        lat: 51.5074 + (Math.random() - 0.5) * 0.01,
+        lng: -0.1278 + (Math.random() - 0.5) * 0.01,
+        price: Math.floor(Math.random() * 100) + 50,
+        ...card,
+      })),
+    [fullCardsData]
+  );
 
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedCards = cardsData.slice(startIndex, endIndex);
-  const totalPages = Math.ceil(cardsData.length / ITEMS_PER_PAGE);
+  const paginatedCards = fullCardsData.slice(startIndex, endIndex);
+  const totalPages = Math.ceil(fullCardsData.length / ITEMS_PER_PAGE);
 
   const handlePageClick = (pageNumber: number) => {
     setCurrentPage(pageNumber);
@@ -289,30 +306,74 @@ const MapSlider = () => {
     setShowMap(!showMap);
   };
 
-  const handleMarkerClick = (listing: any) => {
+  const handleMarkerClick = (listing: ListingItem) => {
     setSelectedListing(listing);
     if (mapRef.current) {
-      mapRef.current.setView([listing.lat, listing.lng], 15);
+      mapRef.current.flyTo({
+        center: [listing.lng, listing.lat],
+        zoom: 15,
+        duration: 500,
+      });
     }
   };
+  onMarkerClickRef.current = handleMarkerClick;
 
   const handleCloseSelectedListing = () => {
     setSelectedListing(null);
   };
 
+  // Create/destroy Mapbox map when showMap toggles
   useEffect(() => {
-    if (showMap && mapRef.current) {
-      mapRef.current.invalidateSize();
+    if (!showMap || !mapContainerRef.current) {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+      return;
     }
-  }, [showMap]);
+
+    const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+    if (!token) return;
+
+    mapboxgl.accessToken = token;
+
+    const map = new mapboxgl.Map({
+      container: mapContainerRef.current,
+      style: "mapbox://styles/mapbox/light-v11",
+      center: [-0.1278, 51.5074],
+      zoom: 13,
+    });
+
+    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+    markersRef.current = listings.map((listing) => {
+      const el = createPriceMarker(listing.price);
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat([listing.lng, listing.lat])
+        .addTo(map);
+      el.addEventListener("click", () => onMarkerClickRef.current(listing));
+      return marker;
+    });
+
+    mapRef.current = map;
+
+    return () => {
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [showMap, listings]);
 
   return (
-    <div className="relative flex flex-col h-screen">
+    <div className="relative flex h-screen flex-col">
       <div
-        className={`flex-1 ${showMap ? "hidden" : "block"} w-full px-10`}
+        className={`flex-1 w-full px-10 ${showMap ? "hidden" : "block"}`}
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-7 justify-center lg:justify-start">
+        <div className="grid grid-cols-1 gap-7 justify-center md:grid-cols-2 lg:justify-start">
           {paginatedCards.map((card, index) => (
             <CarouselCard
               key={index}
@@ -322,14 +383,14 @@ const MapSlider = () => {
           ))}
         </div>
 
-        <div className="flex items-center justify-center mt-4 space-x-2 mb-6">
+        <div className="mb-6 mt-4 flex items-center justify-center space-x-2">
           <button
-            className="p-2 rounded-full disabled:opacity-50"
+            className="rounded-full p-2 disabled:opacity-50"
             onClick={() => handlePageClick(currentPage - 1)}
             disabled={currentPage === 1}
           >
             <svg
-              className="w-4 h-4 text-gray-600"
+              className="h-4 w-4 text-gray-600"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -357,12 +418,12 @@ const MapSlider = () => {
           ))}
 
           <button
-            className="p-2 rounded-full disabled:opacity-50"
+            className="rounded-full p-2 disabled:opacity-50"
             onClick={() => handlePageClick(currentPage + 1)}
             disabled={currentPage === totalPages}
           >
             <svg
-              className="w-4 h-4 text-gray-600"
+              className="h-4 w-4 text-gray-600"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -380,42 +441,24 @@ const MapSlider = () => {
       </div>
 
       <div
-        className={`flex-1 w-full ${showMap ? "block -mb-[450px]" : "hidden"}`}
-        style={{ height: showMap ? "h-screen" : "0" }}
+        className={`flex-1 w-full ${showMap ? "-mb-[450px] block" : "hidden"}`}
+        style={{ height: showMap ? "100%" : 0 }}
       >
         {showMap && (
-          <MapContainer
-            center={[51.5074, -0.1278]}
-            zoom={13}
-            style={{ height: "100%", width: "100%" }}
-            ref={mapRef}
-          >
-            <MapUpdater center={[51.5074, -0.1278]} zoom={13} />
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            {listings.map((listing) => (
-              <Marker
-                key={listing.id}
-                position={[listing.lat, listing.lng]}
-                icon={createPriceIcon(listing.price)}
-                eventHandlers={{
-                  click: () => handleMarkerClick(listing),
-                }}
-              />
-            ))}
-          </MapContainer>
+          <div ref={mapContainerRef} className="h-full w-full" />
         )}
       </div>
 
-      <div className="fixed bottom-10 w-full flex justify-center !z-[999]">
+      <div className="!z-[999] fixed bottom-10 w-full flex justify-center">
         <button
           onClick={toggleMap}
-          className="bg-white px-4 py-2 gap-2 rounded-full shadow-md flex items-center"
+          className="flex gap-2 rounded-full bg-white px-4 py-2 shadow-md"
           aria-label={showMap ? "Show List" : "Show Map"}
         >
           <Image
             src={MapIcon}
             alt={showMap ? "Show List" : "Show Map"}
-            className="w-5 h-5"
+            className="h-5 w-5"
           />
           <span className="text-sm font-medium">
             {showMap ? "Show List" : "Show Map"}
@@ -424,10 +467,10 @@ const MapSlider = () => {
       </div>
 
       {selectedListing && (
-        <div className="fixed right-5 bottom-24 !z-[9999] bg-white rounded-2xl shadow-lg p-4 w-[302px] overflow-hidden">
+        <div className="!z-[9999] fixed right-5 bottom-24 w-[302px] overflow-hidden rounded-2xl bg-white p-4 shadow-lg">
           <button
             onClick={handleCloseSelectedListing}
-            className="absolute top-2 right-2 z-10 bg-white rounded-full p-1"
+            className="absolute right-2 top-2 z-10 rounded-full bg-white p-1"
             aria-label="Close"
           >
             <X size={20} />

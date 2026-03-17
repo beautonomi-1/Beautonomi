@@ -27,15 +27,15 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
       );
       const url = res?.data?.authorization_url;
       if (!url) {
-        toast.error((res as any)?.error?.message || "Could not start card verification");
+        toast.error(res?.error?.message || "Could not start card verification");
         return;
       }
       window.open(url, "_blank", "noopener,noreferrer");
       toast.info("Complete verification in the new tab, then refresh this page.");
       onClose();
       onCardAdded?.();
-    } catch (err: any) {
-      toast.error(err?.message || "Could not add card");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Could not add card");
     } finally {
       setAddingCard(false);
     }

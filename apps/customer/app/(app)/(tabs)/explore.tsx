@@ -33,6 +33,7 @@ const GAP = 10;
 const BEAUTY_CATEGORIES = [
   { key: "all", label: "For You", icon: "sparkles" as const },
   { key: "trending", label: "Trending", icon: "trending-up" as const },
+  { key: "nearby", label: "Near me", icon: "location-outline" as const },
   { key: "hair", label: "Hair", icon: "cut-outline" as const },
   { key: "nails", label: "Nails", icon: "color-palette-outline" as const },
   { key: "makeup", label: "Makeup", icon: "brush-outline" as const },
@@ -299,15 +300,20 @@ function CategoryChip({
   icon,
   active,
   onPress,
+  disabled,
+  loading,
 }: {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   active: boolean;
   onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
 }) {
   return (
     <TouchableOpacity
       onPress={onPress}
+      disabled={disabled}
       activeOpacity={0.7}
       style={{
         flexDirection: "row",
@@ -317,6 +323,7 @@ function CategoryChip({
         borderRadius: 999,
         backgroundColor: active ? "#111827" : "#F3F4F6",
         marginRight: 8,
+        opacity: disabled ? 0.6 : 1,
       }}
       accessibilityLabel={label}
       accessibilityRole="button"
@@ -470,6 +477,7 @@ export default function ExploreScreen() {
 
   const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [nearbyLoading, setNearbyLoading] = useState(false);
 
   const {
     posts,
@@ -482,6 +490,7 @@ export default function ExploreScreen() {
     loadMore,
     initialLoad,
     applyFilters,
+    setPostSaved,
   } = useExploreFeed();
 
   useEffect(() => {
@@ -491,12 +500,32 @@ export default function ExploreScreen() {
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const triggerFilterUpdate = useCallback(
-    (cat: string, search: string) => {
-      const sort = cat === "trending" ? ("trending" as const) : ("chronological" as const);
-      const category = cat === "all" || cat === "trending" ? null : cat;
-      applyFilters({ category, search: search.trim() || null, sort });
+    (cat: string, search: string, nearMeCoords?: { lat: number; lng: number } | null) => {
+      if (cat === "nearby" && nearMeCoords) {
+        applyFilters({
+          category: null,
+          search: search.trim() || null,
+          sort: "nearby",
+          lat: nearMeCoords.lat,
+          lng: nearMeCoords.lng,
+          radius_km: 50,
+        });
+        return;
+      }
+      const sort: "chronological" | "trending" | "for_you" =
+        cat === "trending"
+          ? "trending"
+          : cat === "all" && user
+            ? "for_you"
+            : "chronological";
+      const category = cat === "all" || cat === "trending" || cat === "nearby" ? null : cat;
+      applyFilters({
+        category,
+        search: search.trim() || null,
+        sort,
+      });
     },
-    [applyFilters],
+    [applyFilters, user],
   );
 
   const handleLike = useCallback(
@@ -522,15 +551,19 @@ export default function ExploreScreen() {
     async (post: ExplorePost) => {
       if (!user) return;
       haptic.light();
+      const previous = post.is_saved;
+      setPostSaved(post.id, !previous);
       try {
-        if (post.is_saved) {
+        if (previous) {
           await api.delete(`/api/explore/saved?post_id=${post.id}`);
         } else {
           await api.post("/api/explore/saved", { post_id: post.id });
         }
-      } catch {}
+      } catch {
+        setPostSaved(post.id, !!previous);
+      }
     },
-    [user],
+    [user, setPostSaved],
   );
 
   const onPostPress = useCallback((post: ExplorePost) => {
@@ -541,11 +574,41 @@ export default function ExploreScreen() {
     if (hasMore && !loadingMore) loadMore();
   }, [hasMore, loadingMore, loadMore]);
 
-  const handleCategoryPress = useCallback((key: string) => {
-    haptic.selection();
-    setActiveCategory(key);
-    triggerFilterUpdate(key, searchQuery);
-  }, [searchQuery, triggerFilterUpdate]);
+  const handleCategoryPress = useCallback(
+    async (key: string) => {
+      haptic.selection();
+      if (key === "nearby") {
+        setNearbyLoading(true);
+        try {
+          const { getCurrentPositionAsync, requestForegroundPermissionsAsync } = await import("expo-location");
+          const { status } = await requestForegroundPermissionsAsync();
+          if (status !== "granted") {
+            const res = await api.get<{ data?: { latitude?: number; longitude?: number } }>("/api/public/ip-geolocation");
+            const d = (res as any)?.data ?? res?.data;
+            if (d?.latitude != null && d?.longitude != null) {
+              setActiveCategory("nearby");
+              triggerFilterUpdate("nearby", searchQuery, { lat: Number(d.latitude), lng: Number(d.longitude) });
+            }
+          } else {
+            const loc = await getCurrentPositionAsync({});
+            setActiveCategory("nearby");
+            triggerFilterUpdate("nearby", searchQuery, {
+              lat: loc.coords.latitude,
+              lng: loc.coords.longitude,
+            });
+          }
+        } catch {
+          // keep current category
+        } finally {
+          setNearbyLoading(false);
+        }
+        return;
+      }
+      setActiveCategory(key);
+      triggerFilterUpdate(key, searchQuery);
+    },
+    [searchQuery, triggerFilterUpdate],
+  );
 
   const handleSearchChange = useCallback(
     (text: string) => {
@@ -677,10 +740,12 @@ export default function ExploreScreen() {
                 {BEAUTY_CATEGORIES.map((cat) => (
                   <CategoryChip
                     key={cat.key}
-                    label={cat.label}
+                    label={cat.key === "nearby" && nearbyLoading ? "…" : cat.label}
                     icon={cat.icon}
                     active={activeCategory === cat.key}
                     onPress={() => handleCategoryPress(cat.key)}
+                    disabled={cat.key === "nearby" && nearbyLoading}
+                    loading={cat.key === "nearby" && nearbyLoading}
                   />
                 ))}
               </View>

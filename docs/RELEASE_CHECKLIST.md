@@ -24,6 +24,8 @@ Use this checklist before deploying to staging or production. Each app can be bu
 
 ## Build (per app, no Turbo required)
 
+**Note (Windows):** Running `pnpm exec turbo run dev --filter=web` (or typecheck/lint) may fail with `spawnSync turbo.exe EPERM` on some Windows/PowerShell environments. Workaround: run tasks directly in each app (e.g. `cd apps\web; npx pnpm run typecheck`, then `lint`, then `test:run`). See also `docs/audit/DEVOPS_TOOLING.md` if you need to document environment-specific issues.
+
 ### Web
 
 ```bash
@@ -84,4 +86,4 @@ pnpm run lint
 
 - [ ] Monitor logs for 5xx and webhook errors (see `docs/OBSERVABILITY_AND_ALERTS.md`).
 - [ ] Confirm key flows: search, book, pay, webhook processing.
-- [ ] Update `docs/PRODUCTION_READINESS_REPORT.md` "Automated Check Results" section if you ran scripts and have new output to append.
+- [ ] Update `docs/PRODUCTION_READINESS.md` (or run scripts and note results) if you ran readiness-check/verify-public-endpoints and have new output to document.
