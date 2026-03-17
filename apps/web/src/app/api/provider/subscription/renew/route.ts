@@ -14,6 +14,8 @@ export async function POST(request: NextRequest) {
     const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
+    const body = await request.json().catch(() => ({}));
+    const in_app = !!((body as { in_app?: boolean }).in_app);
 
     // Get current subscription
     const { data: subscription } = await supabase
@@ -26,31 +28,35 @@ export async function POST(request: NextRequest) {
       return notFoundResponse('No subscription found');
     }
 
-    const sub = subscription as any;
-    const billingPeriod = (sub.billing_period || "monthly") as "monthly" | "yearly";
+    type SubRow = { billing_period?: string; plan_id?: string };
+    type PlanRow = { id: string; name?: string; currency?: string; price_monthly?: number; price_yearly?: number; is_active?: boolean };
+    const sub = subscription as SubRow;
+    const billingPeriod = (sub.billing_period ?? "monthly") as "monthly" | "yearly";
 
     const { data: plan, error: planError } = await supabase
       .from("subscription_plans")
       .select("id, name, currency, price_monthly, price_yearly, is_active")
       .eq("id", sub.plan_id)
       .single();
-    if (planError || !plan || (plan as any).is_active === false) {
-      throw planError || new Error("Subscription plan not found");
+    const planData = plan as PlanRow | null;
+    if (planError || !planData || planData.is_active === false) {
+      throw planError ?? new Error("Subscription plan not found");
     }
 
     const amount =
       billingPeriod === "yearly"
-        ? Number((plan as any).price_yearly || 0)
-        : Number((plan as any).price_monthly || 0);
+        ? Number(planData.price_yearly ?? 0)
+        : Number(planData.price_monthly ?? 0);
     if (!amount || amount <= 0) throw new Error("Invalid plan amount");
 
-    const { data: order, error: orderError } = await (supabase.from("provider_subscription_orders") as any)
+    const { data: order, error: orderError } = await supabase
+      .from("provider_subscription_orders")
       .insert({
         provider_id: providerId,
         plan_id: sub.plan_id,
         billing_period: billingPeriod,
         amount,
-        currency: (plan as any).currency || "ZAR",
+        currency: planData.currency ?? "ZAR",
         status: "pending",
       })
       .select("*")
@@ -66,12 +72,15 @@ export async function POST(request: NextRequest) {
     if (!email) throw new Error("User email is required for payment");
 
     const reference = generateTransactionReference("provider_subscription", order.id);
-    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/checkout/success?payment_type=provider_subscription`;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+    const callbackUrl = in_app
+      ? `${baseUrl}/provider/subscription?payment_success=true&in_app=1`
+      : `${baseUrl}/provider/subscription?payment_success=true`;
 
     const paystackData = await initializePaystackTransaction({
       email,
       amountInSmallestUnit: convertToSmallestUnit(amount),
-      currency: (plan as any).currency || "ZAR",
+      currency: planData.currency ?? "ZAR",
       reference,
       callback_url: callbackUrl,
       metadata: {
@@ -84,7 +93,8 @@ export async function POST(request: NextRequest) {
 
     const paymentUrl = paystackData?.data?.authorization_url || null;
 
-    await (supabase.from("provider_subscription_orders") as any)
+    await supabase
+      .from("provider_subscription_orders")
       .update({ paystack_reference: reference, updated_at: new Date().toISOString() })
       .eq("id", order.id);
 

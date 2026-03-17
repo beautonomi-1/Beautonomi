@@ -7,7 +7,8 @@ import { verifyCronRequest } from "@/lib/cron-auth";
  * GET /api/cron/expire-on-demand-requests
  *
  * Marks on_demand_requests as expired where status='requested' and expires_at < now().
- * Call every minute (or every 30s) from Vercel Cron or similar.
+ * Runs daily (e.g. Vercel Cron). Expiry UX is driven by client timer and lazy expiry on GET;
+ * this job is for DB cleanup only.
  */
 export async function GET(request: NextRequest) {
   try {

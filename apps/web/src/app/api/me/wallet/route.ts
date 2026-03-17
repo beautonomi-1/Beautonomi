@@ -5,7 +5,7 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Ensure wallet exists (created on signup, but be defensive)
     const { data: walletExisting } = await supabase
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
       .eq("user_id", user.id)
       .maybeSingle();
     if (!walletExisting) {
-      await (supabase.from("user_wallets") as any).insert({ user_id: user.id, currency: "ZAR" });
+      await supabase.from("user_wallets").insert({ user_id: user.id, currency: "ZAR" });
     }
 
     const { data: wallet, error: walletError } = await supabase
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const { data: txs, error: txError } = await supabase
       .from("wallet_transactions")
       .select("id, wallet_id, type, amount, description, reference_id, reference_type, created_at")
-      .eq("wallet_id", (wallet as any).id)
+      .eq("wallet_id", wallet.id)
       .order("created_at", { ascending: false })
       .limit(50);
     if (txError) throw txError;

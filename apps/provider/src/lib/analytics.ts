@@ -103,7 +103,7 @@ export function trackWalkInCreated(bookingId: string) {
 }
 
 export function trackBookingCompleted(bookingId: string, revenue: number) {
-  track("booking_completed", { booking_id: bookingId, revenue });
+  track("provider_booking_completed", { booking_id: bookingId, revenue });
 }
 
 export function trackBookingCancelled(bookingId: string, reason?: string) {
@@ -229,6 +229,24 @@ export function trackReturnProcessed(returnId: string, action: string, refundAmo
 
 export function trackShippingConfigUpdated(deliveryEnabled: boolean, collectionEnabled: boolean) {
   track("shipping_config_updated", { delivery_enabled: deliveryEnabled, collection_enabled: collectionEnabled });
+}
+
+// ── Support Tickets ──────────────────────────────────────────────────────────
+
+export function trackSupportTicketsView() {
+  track("provider_support_tickets_view");
+}
+
+export function trackSupportTicketDetailView(ticketId: string, ticketNumber?: string) {
+  track("provider_support_ticket_detail_view", { ticket_id: ticketId, ticket_number: ticketNumber });
+}
+
+export function trackSupportTicketCreated(ticketNumber?: string) {
+  track("provider_support_ticket_created", { ticket_number: ticketNumber });
+}
+
+export function trackSupportTicketReply(ticketId: string) {
+  track("provider_support_ticket_reply", { ticket_id: ticketId });
 }
 
 // ── Navigation ───────────────────────────────────────────────────────────────

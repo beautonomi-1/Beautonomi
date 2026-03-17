@@ -76,7 +76,7 @@ export default function RequestReturnPage() {
     }
 
     try {
-      const res = await fetcher.post<{ data?: any; error?: string }>("/api/me/returns", {
+      const res = await fetcher.post<{ data?: unknown; error?: string }>("/api/me/returns", {
         order_id: orderId,
         order_item_id: selectedItem,
         reason,
@@ -89,10 +89,10 @@ export default function RequestReturnPage() {
       if (res?.data) {
         setSuccess(true);
       } else {
-        setError((res as any)?.error || "Failed to submit return request");
+        setError(res?.error ?? "Failed to submit return request");
       }
-    } catch (err: any) {
-      setError(err?.message || "Something went wrong");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
     }
     setSubmitting(false);
   };

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { requireRoleInApi } from '@/lib/supabase/api-helpers';
+import { requireAdminSection  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { writeConfigChangeLog } from "@/lib/config/config-change-log";
 
@@ -13,7 +14,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const supabase = getSupabaseAdmin();
 
     const { id } = await params;
@@ -52,7 +53,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['superadmin'], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const supabase = getSupabaseAdmin();
 
     const { id } = await params;
@@ -153,7 +154,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['superadmin'], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const supabase = getSupabaseAdmin();
 
     const { id } = await params;

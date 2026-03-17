@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requireAdminSection  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const supabase = await getSupabaseServer(request);
 
     if (!supabase) {
@@ -82,13 +83,14 @@ export async function GET(
         "Content-Disposition": `attachment; filename="user-${id}-export-${new Date().toISOString().split("T")[0]}.csv"`,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error exporting user data:", error);
+    const message = error instanceof Error ? error.message : "Failed to export user data";
     return NextResponse.json(
       {
         data: null,
         error: {
-          message: error.message || "Failed to export user data",
+          message,
           code: "SERVER_ERROR",
         },
       },

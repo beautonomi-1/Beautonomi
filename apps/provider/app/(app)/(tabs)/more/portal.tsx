@@ -1,108 +1,46 @@
 /**
- * In-app portal: loads a provider web path inside a WebView with session.
- * Not linked from any menu; kept for direct/deep links only. All provider features use native screens.
+ * Portal: opens the provider web path in the in-app browser (WebView).
  * Route: (app)/(tabs)/more/portal?path=/provider/...
+ * When no title param is passed, fetches profile to use business name as browser title.
  */
-import { useEffect, useState } from "react";
-import { View, Text, ActivityIndicator, TouchableOpacity } from "react-native";
+import { useEffect, useRef } from "react";
+import { View, ActivityIndicator, Text } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { WebView } from "react-native-webview";
-import * as Haptics from "expo-haptics";
-import { Colors } from "@/constants/colors";
+import { useApi } from "@/hooks/useApi";
 import { getWebProviderBaseUrl } from "@/lib/web-url";
-import { supabase } from "@/lib/supabase/client";
-import { ScreenContainer } from "@/components/ui/ScreenContainer";
-import { ScreenHeader } from "@/components/ui/ScreenHeader";
 
 const DEFAULT_PATH = "/provider/dashboard";
+
+interface ProviderProfile {
+  business_name: string | null;
+}
 
 export default function PortalScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ path?: string; title?: string }>();
   const pathParam = params.path ? decodeURIComponent(params.path) : DEFAULT_PATH;
   const path = pathParam.startsWith("/") ? pathParam : `/${pathParam}`;
-  const displayTitle = params.title ? decodeURIComponent(params.title) : "Settings";
-  const [sessionTokens, setSessionTokens] = useState<{ access_token: string; refresh_token: string } | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const titleParam = params.title ? decodeURIComponent(params.title) : null;
+  const { data: profile, loading } = useApi<ProviderProfile>("/api/provider/profile");
+  const hasRedirected = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
-      if (cancelled) return;
-      if (session?.access_token && session.refresh_token) {
-        setSessionTokens({ access_token: session.access_token, refresh_token: session.refresh_token });
-      } else {
-        setLoadError("Not signed in");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const baseUrl = getWebProviderBaseUrl();
-  const embedPath = "/provider/embed";
-  const pathQuery = encodeURIComponent(path);
-  const hash = sessionTokens
-    ? "#" + encodeURIComponent(JSON.stringify({
-        access_token: sessionTokens.access_token,
-        refresh_token: sessionTokens.refresh_token,
-      }))
-    : "";
-  const uri = `${baseUrl}${embedPath}?path=${pathQuery}${hash}`;
-
-  if (loadError) {
-    return (
-      <ScreenContainer scrollable={false}>
-        <ScreenHeader title={displayTitle} onBack={() => router.back()} />
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <Text style={{ textAlign: "center", color: Colors.gray[600] }}>{loadError}</Text>
-          <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16, borderRadius: 12, backgroundColor: Colors.gray[900], paddingHorizontal: 24, paddingVertical: 12 }}>
-            <Text style={{ fontWeight: "500", color: Colors.white }}>Go back</Text>
-          </TouchableOpacity>
-        </View>
-      </ScreenContainer>
-    );
-  }
-
-  if (!sessionTokens) {
-    return (
-      <ScreenContainer scrollable={false}>
-        <ScreenHeader title={displayTitle} onBack={() => router.back()} />
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={{ marginTop: 12, color: Colors.gray[500] }}>Loading…</Text>
-        </View>
-      </ScreenContainer>
-    );
-  }
+    if (hasRedirected.current) return;
+    if (!titleParam && loading) return;
+    const displayTitle = titleParam ?? profile?.business_name?.trim() ?? "Portal";
+    hasRedirected.current = true;
+    const baseUrl = getWebProviderBaseUrl().replace(/\/$/, "");
+    const url = `${baseUrl}${path}`;
+    router.replace({
+      pathname: "/(app)/(tabs)/more/in-app-browser",
+      params: { url: encodeURIComponent(url), title: encodeURIComponent(displayTitle) },
+    } as never);
+  }, [path, titleParam, loading, profile?.business_name, router]);
 
   return (
-    <ScreenContainer scrollable={false}>
-      <ScreenHeader
-        title={displayTitle}
-        onBack={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          router.back();
-        }}
-      />
-      <View style={{ flex: 1 }}>
-        <WebView
-          source={{ uri }}
-          style={{ flex: 1 }}
-          onError={(e) => setLoadError(e.nativeEvent.description || "Failed to load")}
-          onHttpError={(e) => setLoadError(`HTTP ${e.nativeEvent.statusCode}`)}
-          startInLoadingState
-          renderLoading={() => (
-            <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
-              <ActivityIndicator size="large" color={Colors.primary} />
-              <Text style={{ marginTop: 12, color: Colors.gray[500] }}>Loading…</Text>
-            </View>
-          )}
-        />
-      </View>
-    </ScreenContainer>
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <ActivityIndicator size="large" />
+      <Text style={{ marginTop: 12, fontSize: 14, color: "#6b7280" }}>Opening portal…</Text>
+    </View>
   );
 }

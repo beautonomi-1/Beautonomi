@@ -78,6 +78,8 @@ Apps should also use fallback polling (e.g. every 10–15s) if realtime is unava
 
 Config bundle and flags are read at app startup and refreshed periodically (e.g. every 10 minutes). No app release needed to toggle.
 
+**Provider settings UI:** The "Accept on-demand requests" switch on the provider online-booking settings page (`apps/web/src/app/provider/settings/appointment-activity/online-booking`) is implemented; it persists `on_demand_accept_enabled` via `PATCH /api/provider/settings/online-booking-mangomint`.
+
 ## UX states
 
 - **Customer:** Requesting → Waiting (timer + loader) → Accepted (navigate to booking or result) or Declined/Expired/Cancelled (result screen with CTAs).
@@ -90,11 +92,20 @@ Accept, decline, and cancel use a single `UPDATE ... WHERE status='requested' AN
 ## Expiring requests
 
 - **Client-side:** Treat as expired when `now() >= expires_at` (timer reaches 0).
-- **Server-side (optional):** Call `GET /api/cron/expire-on-demand-requests` (with `Authorization: Bearer <CRON_SECRET>`) every minute to set `status='expired'` for rows where `status='requested'` and `expires_at < now()`. This lets realtime subscribers see the status change. In this repo, `apps/web/vercel.json` includes a cron that runs this route every minute (`* * * * *`).
+- **Lazy expiry:** GET `/api/me/on-demand/requests/[id]` and GET `/api/provider/on-demand/requests/[id]` mark a request as expired when fetched if `status='requested'` and `expires_at <= now()`, so customers and providers see the correct status without relying on cron.
+- **Server-side (optional):** Call `GET /api/cron/expire-on-demand-requests` (with `Authorization: Bearer <CRON_SECRET>`) periodically (e.g. daily) for DB cleanup. Expiry UX is via client timer and lazy expiry; no need for per-minute cron. In this repo, `apps/web/vercel.json` runs this route daily (`0 2 * * *`).
 
 ## Ringtone
 
 Reuses existing `GET /api/public/on-demand/ringtone-url?environment=...` (signed URL). No secrets in client.
+
+## Push when provider app is closed
+
+When the provider app is **closed or in background**, Realtime and in-app polling are not active. To still prompt the provider to open and accept/decline:
+
+- **Backend:** After creating an on-demand request (`POST /api/me/on-demand/requests`), the API sends a **push notification** to the provider (owner + active staff) via OneSignal, with `type: "on_demand_incoming"` and `on_demand_request_id: <id>` in the payload. The push uses high priority (`priority: 10`) and `ios_interruption_level: "time_sensitive"` so it can surface like an incoming call.
+- **Provider app:** When the user **taps** that notification, `PushNotificationsProvider` routes to `(app)/on-demand/incoming/[id]`, which loads the request and plays the ringtone (same as when the app was already open). So the flow works like WhatsApp: notification appears and rings; tap opens the app to the accept/decline screen.
+- **Implementation:** Push send is in `apps/web/src/app/api/me/on-demand/requests/route.ts` (after insert). Device lookup uses admin client so the customer’s session does not block reading provider devices. Routing is in `apps/provider/src/providers/PushNotificationsProvider.tsx` (case `on_demand_incoming`).
 
 ## Cross-platform wiring checklist
 
@@ -107,8 +118,37 @@ Reuses existing `GET /api/public/on-demand/ringtone-url?environment=...` (signed
 | **Web (customer)** | Waiting | `/book/on-demand/waiting?requestId=` | `GET /api/me/on-demand/requests/[id]`, poll 12s | Accept+booking_id → `/account-settings/bookings/[id]`; else → `/book/on-demand/result?status=...&requestId=` |
 | | Result | `/book/on-demand/result?status=&requestId=` | — | "View my bookings" → `/account-settings/bookings`; "Back to home" → `/` |
 | | Post-accept | `/account-settings/bookings/[id]` | `GET /api/me/bookings/[id]` | Booking # in title, acceptance strip for confirmed/pending/started, Help from `ui_copy.waiting_help_url` |
-| **Provider (Expo)** | Incoming | Realtime INSERT `on_demand_requests` filter `provider_id` or poll `/api/provider/on-demand/requests` | Navigate to `(app)/on-demand/incoming/[id]` | Ringtone plays when screen shows requested request; stops on accept/decline/expiry |
+| **Provider (Expo)** | Incoming | Realtime INSERT or poll; **or push** when app closed (tap opens `(app)/on-demand/incoming/[id]`) | Navigate to `(app)/on-demand/incoming/[id]` | Ringtone plays when screen shows requested request; stops on accept/decline/expiry. Push is high-priority / time_sensitive. |
 | | Accept/Decline | `(app)/on-demand/incoming/[id]` | `GET /api/provider/on-demand/requests/[id]`, `POST .../accept`, `POST .../decline` | Accept → `(app)/(tabs)/more/bookings/[booking_id]` or back; Decline → back |
 | **Web (provider)** | Incoming | `OnDemandIncomingOverlay` polls `/api/provider/on-demand/requests` | Ringtone on new request; accept → `POST .../accept` → `window.location.href=/provider/bookings/[booking_id]`; decline → `POST .../decline`, close overlay |
 
 **Config:** All customer waiting/result and provider incoming use `useModuleConfig('on_demand')` (or web `ConfigBundleProvider`). Same `ui_copy` keys across platforms: `waiting_title`, `waiting_headline`, `waiting_provider_message`, `waiting_help_url`, `waiting_timer_label`, `waiting_cancel_cta`, accepted/declined/expired titles and subtitles.
+
+---
+
+## Post-acceptance UX (customer)
+
+When a provider **accepts** an on-demand request, the customer is sent to **Booking detail** (`booking-detail` screen). The following is implemented and aligned with a reference "order tracking" pattern.
+
+### Reference pattern (order tracking screen)
+
+- **Header:** Back + Order #ID + status bar.
+- **Tabs:** Tracking | Receipt | Details.
+- **Acceptance block:** Green check, "Order accepted [time]", provider name below.
+- **Status block:** Headline and themed illustrations.
+- **Tracking milestones:** e.g. Request sent → Accepted → Preparing → En route → In progress → Completed.
+- **Help:** Link from `ui_copy.waiting_help_url` or app config.
+
+### What the customer sees today (Beautonomi) — implemented
+
+After on-demand accept, the app navigates to booking-detail (customer app) or `/account-settings/bookings/[id]` (web). The **booking-detail** screen includes:
+
+- **Header:** Booking # in screen title.
+- **Acceptance strip** (confirmed/pending/started): Green check, "Booking confirmed [time]", "Your booking with [Provider name] is confirmed.", optional Help from `ui_copy.waiting_help_url`.
+- **Tabs (customer app):** Tracking | Receipt | Details — status block, milestones, payment, full details.
+- **Web:** Booking #, acceptance strip, Help, full details.
+
+### Data and API
+
+- **Already available:** `booking_number`, `provider.business_name`, `selected_datetime`, `status`, services, location, payment.
+- **Optional:** `confirmed_at` or `accepted_at` for "Booking accepted at [time]"; `on_demand_request_id` to detect on-demand; ETA/arrival window when provider app sends it (backend supports provider_en_route_at, provider_arrived_at, estimated_arrival).

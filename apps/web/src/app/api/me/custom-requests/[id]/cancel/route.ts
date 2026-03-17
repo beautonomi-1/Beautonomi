@@ -23,7 +23,7 @@ export async function POST(
 ) {
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
     if (!id) {

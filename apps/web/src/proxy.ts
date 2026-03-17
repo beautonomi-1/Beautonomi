@@ -62,7 +62,6 @@ export async function proxy(request: NextRequest) {
       '/explore',
       '/partner-profile',
       '/help',
-      '/news',
       '/resources',
       '/become-a-partner',
       '/career',
@@ -76,6 +75,7 @@ export async function proxy(request: NextRequest) {
       '/against-discrimination',
       '/BCover-for-partners',
       '/beautonomi-friendly',
+      '/admin/login', // Admin login page – auth and role check happen client-side
     ];
 
     const isPublicRoute = publicRoutes.some(route => pathname === route || pathname.startsWith(route + '/'));
@@ -115,8 +115,8 @@ export async function proxy(request: NextRequest) {
               .single();
             
             if (provider) {
-              const userData = (provider as any).users;
-              const includeInSearchEngines = userData?.include_in_search_engines ?? false;
+              const prov = provider as { users?: { include_in_search_engines?: boolean } };
+              const includeInSearchEngines = prov.users?.include_in_search_engines ?? false;
               
               // Create response
               const response = NextResponse.next();
@@ -244,7 +244,7 @@ export async function proxy(request: NextRequest) {
           return null;
         }
 
-        const { data: userData, error: userError } = result as any;
+        const { data: userData, error: userError } = result as { data?: { role: string }; error?: unknown };
 
         if (userError) {
           console.error("Error fetching user role:", userError);
@@ -308,11 +308,14 @@ export async function proxy(request: NextRequest) {
       }
     }
 
-    // Admin routes - require superadmin role
+    // Admin routes - require admin role (any of ALL_ADMIN_ROLES); unauthenticated → admin login
     if (pathname.startsWith('/admin')) {
       try {
         if (!user) {
-          return redirectToLogin(pathname);
+          // Send to dedicated admin login so user sees "Admin sign in", not global login modal
+          const adminLoginUrl = new URL('/admin/login', request.url);
+          adminLoginUrl.searchParams.set('next', pathname);
+          return NextResponse.redirect(adminLoginUrl);
         }
 
         const userRole = await getUserRole(user.id);
@@ -322,8 +325,20 @@ export async function proxy(request: NextRequest) {
           return redirectToHome();
         }
 
-        // Check if user is superadmin
-        if (userRole !== 'superadmin') {
+        // Allow any admin role (superadmin + section admins); RoleGuard enforces section access client-side
+        const adminRoles = [
+          'superadmin',
+          'admin_support',
+          'admin_finance',
+          'admin_trust',
+          'admin_content',
+          'admin_ecommerce',
+          'admin_marketing',
+          'admin_integrations',
+          'admin_operations',
+          'admin_platform_config',
+        ];
+        if (!adminRoles.includes(userRole)) {
           return redirectToHome();
         }
 

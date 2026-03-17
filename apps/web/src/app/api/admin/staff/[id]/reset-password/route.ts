@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 
 /**
  * POST /api/admin/staff/[id]/reset-password
@@ -12,7 +13,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const supabase = getSupabaseAdmin();
     const { id } = await params;
 
@@ -26,14 +27,17 @@ export async function POST(
       return notFoundResponse("Staff member not found");
     }
 
-    let email: string | null = (staff as any).email?.trim() || null;
-    if (!email && (staff as any).user_id) {
+    type StaffRow = { email?: string | null; user_id?: string };
+    type UserRow = { email?: string | null };
+    const staffRow = staff as StaffRow;
+    let email: string | null = staffRow.email?.trim() ?? null;
+    if (!email && staffRow.user_id) {
       const { data: user } = await supabase
         .from("users")
         .select("email")
-        .eq("id", (staff as any).user_id)
+        .eq("id", staffRow.user_id)
         .single();
-      email = (user as any)?.email?.trim() || null;
+      email = (user as UserRow | null)?.email?.trim() ?? null;
     }
 
     if (!email) {

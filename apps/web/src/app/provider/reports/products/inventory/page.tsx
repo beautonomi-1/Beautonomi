@@ -9,7 +9,7 @@ import { Download, Package, AlertTriangle, DollarSign, CheckCircle } from "lucid
 import { fetcher } from "@/lib/http/fetcher";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface InventoryData {
   totalProducts: number;
@@ -73,7 +73,7 @@ export default function InventoryReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data, "inventory");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "inventory");
     exportToCSV(exportData, "inventory-report");
   };
 

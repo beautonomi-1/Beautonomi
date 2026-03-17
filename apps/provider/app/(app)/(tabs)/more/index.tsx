@@ -88,6 +88,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
     title: "Settings",
     items: [
       { icon: "settings-outline", label: "Settings & account", subtitle: "Business settings & rewards", route: "/(app)/(tabs)/more/settings-account-hub", color: "#6b7280", bg: Colors.gray[100] },
+      { icon: "help-buoy-outline", label: "Help & support", subtitle: "Contact support & my tickets", route: "/(app)/(tabs)/more/contact-support", color: "#0ea5e9", bg: "#e0f2fe" },
     ],
   },
 ];

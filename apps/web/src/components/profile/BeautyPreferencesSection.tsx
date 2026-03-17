@@ -16,9 +16,9 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
+import { ChipCombobox } from "@/components/ui/chip-combobox";
 
 interface BeautyPreferences {
   hair_type?: string;
@@ -92,7 +92,6 @@ export default function BeautyPreferencesSection({
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState<BeautyPreferences>(preferences);
-  const [allergyInput, setAllergyInput] = useState("");
 
   useEffect(() => {
     setFormData(preferences);
@@ -104,29 +103,11 @@ export default function BeautyPreferencesSection({
       await fetcher.patch("/api/me/beauty-preferences", formData);
       toast.success("Beauty preferences saved");
       onUpdate?.();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to save preferences");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to save preferences");
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleAddAllergy = () => {
-    if (!allergyInput.trim()) return;
-    const newAllergies = [...(formData.allergies || []), allergyInput.trim()];
-    setFormData({ ...formData, allergies: newAllergies });
-    setAllergyInput("");
-  };
-
-  const handleRemoveAllergy = (allergy: string) => {
-    const newAllergies = (formData.allergies || []).filter((a) => a !== allergy);
-    setFormData({ ...formData, allergies: newAllergies });
-  };
-
-  const handleAddSuggestedAllergy = (allergy: string) => {
-    if ((formData.allergies || []).includes(allergy)) return;
-    const newAllergies = [...(formData.allergies || []), allergy];
-    setFormData({ ...formData, allergies: newAllergies });
   };
 
   const hasChanges = JSON.stringify(formData) !== JSON.stringify(preferences);
@@ -204,64 +185,16 @@ export default function BeautyPreferencesSection({
             {/* Allergies */}
             <div>
               <Label htmlFor="allergies">Allergies & Sensitivities</Label>
-              <div className="mt-2 space-y-2">
-                <div className="flex gap-2">
-                  <input
-                    id="allergies"
-                    type="text"
-                    value={allergyInput}
-                    onChange={(e) => setAllergyInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAddAllergy();
-                      }
-                    }}
-                    placeholder="Add allergy or sensitivity"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAddAllergy}
-                  >
-                    Add
-                  </Button>
-                </div>
-                {ALLERGY_SUGGESTIONS.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {ALLERGY_SUGGESTIONS.map((allergy) => (
-                      <Badge
-                        key={allergy}
-                        variant="outline"
-                        className="cursor-pointer hover:bg-gray-100"
-                        onClick={() => handleAddSuggestedAllergy(allergy)}
-                      >
-                        + {allergy}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-                {formData.allergies && formData.allergies.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {formData.allergies.map((allergy) => (
-                      <Badge
-                        key={allergy}
-                        variant="default"
-                        className="bg-gray-100 text-gray-700 hover:bg-gray-200"
-                      >
-                        {allergy}
-                        <button
-                          onClick={() => handleRemoveAllergy(allergy)}
-                          className="ml-2 hover:text-red-600"
-                        >
-                          ×
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                )}
+              <div className="mt-2">
+                <ChipCombobox
+                  singleSelect={false}
+                  value={formData.allergies || []}
+                  onChange={(allergies) => setFormData({ ...formData, allergies })}
+                  staticSuggestions={ALLERGY_SUGGESTIONS.map((a) => ({ value: a, label: a }))}
+                  allowFreeForm
+                  placeholder="Add allergy or sensitivity..."
+                  aria-label="Allergies and sensitivities"
+                />
               </div>
             </div>
 

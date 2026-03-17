@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Text, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useModuleConfig, useFeatureFlag, useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { api } from "@/lib/api-client";
 
 interface SafetyPanicButtonProps {
@@ -13,6 +13,7 @@ interface SafetyPanicButtonProps {
  * Renders nothing when disabled.
  */
 export function SafetyPanicButton({ bookingId = null }: SafetyPanicButtonProps) {
+  const { bundle } = useConfigBundle();
   const safetyConfig = useModuleConfig("safety") as { enabled?: boolean } | undefined;
   const panicEnabled = useFeatureFlag("safety.panic.enabled");
   const [loading, setLoading] = useState(false);
@@ -35,6 +36,7 @@ export function SafetyPanicButton({ bookingId = null }: SafetyPanicButtonProps) 
               const res = await api.post<{ data: { id: string } }>("/api/me/safety/panic", {
                 booking_id: bookingId ?? undefined,
                 metadata: { source: "customer_app" },
+                ...(bundle?.meta?.env && { environment: bundle.meta.env }),
               });
               if (res.error) {
                 Alert.alert("Error", "Unable to send request. Please call emergency services if in danger.");

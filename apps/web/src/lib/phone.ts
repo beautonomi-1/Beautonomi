@@ -1,6 +1,7 @@
 /**
  * Client-safe phone normalization for E.164 (Supabase Auth / DB compatible).
- * Handles leading 0 (e.g. 082... → +2782...) when country code is provided.
+ * Supabase expects E.164: + followed by digits only, no spaces; national leading 0
+ * removed when combined with country code (e.g. +27 082... → +2782...).
  */
 
 /**
@@ -24,6 +25,48 @@ export function normalizePhoneToE164(
   }
   const digitsOnly = cleaned.replace(/\D/g, "");
   if (/^[1-9]\d{7,14}$/.test(digitsOnly)) return "+" + digitsOnly;
+  return undefined;
+}
+
+/** Country codes (without +) used to parse E.164 strings; longest first to avoid wrong split. */
+const E164_COUNTRY_CODES = [
+  "254", "234", "233", "27", "91", "81", "86", "61", "49", "44", "39", "33", "34", "48", "46", "47", "31", "7", "1",
+];
+
+/**
+ * Normalize a full phone string (with or without space, with or without leading 0) to E.164.
+ * Use when you have a single string like "+27 0823456789" or "+270823456789".
+ */
+export function normalizeFullPhoneToE164(full: string | null | undefined): string | undefined {
+  if (!full) return undefined;
+  const trimmed = full.trim();
+  if (!trimmed) return undefined;
+
+  // Already E.164 (digits only after +, no space, valid length)
+  const noSpace = trimmed.replace(/[\s\-\(\)]/g, "");
+  if (/^\+\d{8,15}$/.test(noSpace)) {
+    const digits = noSpace.slice(1);
+    // If it looks like countryCode + "0" + national (e.g. 270823456789), strip the 0
+    for (const cc of E164_COUNTRY_CODES) {
+      if (digits.startsWith(cc + "0")) {
+        const national = digits.slice(cc.length + 1);
+        if (national.length >= 7 && national.length <= 14) {
+          const e164 = "+" + cc + national;
+          if (/^\+[1-9]\d{7,14}$/.test(e164)) return e164;
+        }
+      }
+    }
+    return noSpace;
+  }
+
+  // Has space: split into country code and national number
+  const match = trimmed.match(/^(\+\d{1,4})\s+(.+)$/);
+  if (match) {
+    const countryCode = match[1];
+    const national = match[2].trim().replace(/[\s\-\(\)]/g, "");
+    return normalizePhoneToE164(national, countryCode.replace(/^\+/, ""));
+  }
+
   return undefined;
 }
 

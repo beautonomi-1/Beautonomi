@@ -19,7 +19,7 @@ export async function PATCH(
 ) {
   try {
     const { user } = await requireAuthInApi(request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
 
@@ -80,7 +80,7 @@ export async function DELETE(
 ) {
   try {
     const { user } = await requireAuthInApi(request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
     // Verify ownership

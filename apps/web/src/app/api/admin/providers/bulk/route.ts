@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
-import { successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 
@@ -18,8 +19,8 @@ const bulkActionSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     const { provider_ids, action, reason } = validationResult.data;
 
-    let updateData: any = {};
+    let updateData: Record<string, unknown> = {};
     const results = { success: 0, failed: 0, errors: [] as string[] };
 
     switch (action) {
@@ -73,8 +74,8 @@ export async function POST(request: NextRequest) {
 
     // Log audit trail
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: `admin.providers.bulk.${action}`,
       entity_type: "provider",
       entity_id: provider_ids.join(","),

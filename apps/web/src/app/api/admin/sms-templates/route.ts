@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/supabase/auth-server";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(["superadmin"]);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
 
     const { searchParams } = new URL(request.url);
@@ -29,10 +30,11 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ templates: data || [] });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching SMS templates:", error);
+    const message = error instanceof Error ? error.message : "Failed to fetch SMS templates";
     return NextResponse.json(
-      { error: error.message || "Failed to fetch SMS templates" },
+      { error: message },
       { status: 500 }
     );
   }
@@ -40,7 +42,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRole(["superadmin"]);
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
 
     const body = await request.json();
@@ -85,10 +87,11 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ template: data });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error creating SMS template:", error);
+    const message = error instanceof Error ? error.message : "Failed to create SMS template";
     return NextResponse.json(
-      { error: error.message || "Failed to create SMS template" },
+      { error: message },
       { status: 500 }
     );
   }

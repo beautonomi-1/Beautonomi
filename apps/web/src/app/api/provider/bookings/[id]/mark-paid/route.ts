@@ -346,7 +346,8 @@ export async function POST(
             transaction_id: payment.id,
             booking_id: bookingId,
           },
-          ["push", "email"]
+          ["push", "email"],
+          { appType: "customer" }
         );
       } catch (pushError) {
         console.warn("OneSignal push notification failed:", pushError);

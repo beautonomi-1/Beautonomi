@@ -109,9 +109,12 @@ export default function GroupBookingsPage() {
     }
   };
 
-  const getStatusColor = (status: GroupBooking["status"]) => {
+  type GroupBookingStatus = GroupBooking["status"] | "confirmed" | "pending";
+  const getStatusColor = (status: GroupBookingStatus) => {
     switch (status) {
       case "booked":
+      case "confirmed":
+      case "pending":
         return "bg-blue-100 text-blue-800";
       case "started":
         return "bg-yellow-100 text-yellow-800";
@@ -119,7 +122,17 @@ export default function GroupBookingsPage() {
         return "bg-green-100 text-green-800";
       case "cancelled":
         return "bg-gray-100 text-gray-800";
+      default:
+        return "bg-gray-100 text-gray-800";
     }
+  };
+
+  const formatDateTime = (booking: GroupBooking) => {
+    if (booking.scheduled_at) {
+      const d = new Date(booking.scheduled_at);
+      return { dateStr: d.toLocaleDateString(), timeStr: d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
+    }
+    return { dateStr: booking.scheduled_date || "—", timeStr: booking.scheduled_time || "" };
   };
 
   if (isLoading) {
@@ -130,12 +143,7 @@ export default function GroupBookingsPage() {
     <div>
       <PageHeader
         title="Group Bookings"
-        subtitle="Manage group appointments with multiple participants"
-        primaryAction={{
-          label: "New Group Booking",
-          onClick: handleCreate,
-          icon: <Plus className="w-4 h-4 mr-2" />,
-        }}
+        subtitle="Group appointments created when customers book with multiple participants"
       />
 
       {/* Filters - Mobile First */}
@@ -188,12 +196,8 @@ export default function GroupBookingsPage() {
       {groupBookings.length === 0 ? (
         <SectionCard className="p-8 sm:p-12">
           <EmptyState
-            title="No group bookings"
-            description="Create group bookings to schedule multiple clients in one appointment"
-            action={{
-              label: "Create Group Booking",
-              onClick: handleCreate,
-            }}
+            title="No group bookings yet"
+            description="When customers book with multiple participants (e.g. bridal party, group events), those appointments will appear here."
           />
         </SectionCard>
       ) : (
@@ -215,29 +219,32 @@ export default function GroupBookingsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {groupBookings.map((booking) => (
+                  {groupBookings.map((booking) => {
+                    const { dateStr, timeStr } = formatDateTime(booking);
+                    const participantCount = booking.participants?.length ?? 0;
+                    return (
                     <TableRow key={booking.id}>
                       <TableCell className="font-medium">{booking.ref_number}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1 text-sm">
                           <Calendar className="w-3 h-3" />
                           <span>
-                            {booking.scheduled_date} {booking.scheduled_time}
+                            {dateStr} {timeStr}
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell>{booking.service_name}</TableCell>
-                      <TableCell>{booking.team_member_name}</TableCell>
+                      <TableCell>{booking.service_name ?? "—"}</TableCell>
+                      <TableCell>{booking.team_member_name ?? "—"}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Users className="w-3 h-3" />
                           <span>
-                            {booking.participants.length} participant{booking.participants.length !== 1 ? "s" : ""}
+                            {participantCount} participant{participantCount !== 1 ? "s" : ""}
                           </span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Money amount={booking.total_price} />
+                        {booking.total_price != null ? <Money amount={booking.total_price} /> : "—"}
                       </TableCell>
                       <TableCell>
                         <Badge className={getStatusColor(booking.status)}>{booking.status}</Badge>
@@ -264,7 +271,8 @@ export default function GroupBookingsPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -272,7 +280,10 @@ export default function GroupBookingsPage() {
 
           {/* Mobile Card View */}
           <div className="lg:hidden space-y-4">
-            {groupBookings.map((booking) => (
+            {groupBookings.map((booking) => {
+              const { dateStr, timeStr } = formatDateTime(booking);
+              const participants = booking.participants ?? [];
+              return (
               <SectionCard key={booking.id} className="p-4 sm:p-6">
                 <div className="space-y-4">
                   {/* Header */}
@@ -284,7 +295,7 @@ export default function GroupBookingsPage() {
                       <div className="flex items-center gap-1 text-sm text-gray-600">
                         <Calendar className="w-4 h-4" />
                         <span>
-                          {booking.scheduled_date} {booking.scheduled_time}
+                          {dateStr} {timeStr}
                         </span>
                       </div>
                     </div>
@@ -295,33 +306,34 @@ export default function GroupBookingsPage() {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Service:</span>
-                      <span className="font-medium">{booking.service_name}</span>
+                      <span className="font-medium">{booking.service_name ?? "—"}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Team Member:</span>
-                      <span className="font-medium">{booking.team_member_name}</span>
+                      <span className="font-medium">{booking.team_member_name ?? "—"}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Participants:</span>
                       <div className="flex items-center gap-1">
                         <Users className="w-4 h-4" />
                         <span className="font-medium">
-                          {booking.participants.length} participant{booking.participants.length !== 1 ? "s" : ""}
+                          {participants.length} participant{participants.length !== 1 ? "s" : ""}
                         </span>
                       </div>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Total Price:</span>
                       <span className="font-semibold text-base">
-                        <Money amount={booking.total_price} />
+                        {booking.total_price != null ? <Money amount={booking.total_price} /> : "—"}
                       </span>
                     </div>
                   </div>
 
                   {/* Participants List with Check-in/Check-out */}
+                  {participants.length > 0 && (
                   <div className="border-t pt-4 space-y-2">
                     <div className="font-medium text-sm mb-2">Participants</div>
-                    {booking.participants.map((participant) => (
+                    {participants.map((participant) => (
                       <div
                         key={participant.id}
                         className="flex items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg"
@@ -329,9 +341,11 @@ export default function GroupBookingsPage() {
                         <div className="flex-1">
                           <div className="font-medium text-sm">{participant.client_name}</div>
                           <div className="text-xs text-gray-500">{participant.service_name}</div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            <Money amount={participant.price} />
-                          </div>
+                          {participant.price != null && participant.price > 0 && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              <Money amount={participant.price} />
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           {!participant.checked_in ? (
@@ -363,6 +377,7 @@ export default function GroupBookingsPage() {
                       </div>
                     ))}
                   </div>
+                  )}
 
                   {/* Actions */}
                   <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t">
@@ -385,7 +400,8 @@ export default function GroupBookingsPage() {
                   </div>
                 </div>
               </SectionCard>
-            ))}
+              );
+            })}
           </div>
 
           {totalPages > 1 && (

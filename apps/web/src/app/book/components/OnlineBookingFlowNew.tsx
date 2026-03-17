@@ -124,6 +124,8 @@ interface OnlineBookingFlowNewProps {
   provider: Provider;
   queryParams?: {
     service?: string;
+    /** Comma-separated service IDs (e.g. from express link with multiple services) */
+    services?: string;
     staff?: string;
     location?: string;
     location_type?: "at_home" | "at_salon";
@@ -350,7 +352,22 @@ export default function OnlineBookingFlowNew({
         });
         setVariantsByServiceId(map);
 
-        if (queryParams.service) {
+        if (queryParams.services) {
+          const ids = queryParams.services.split(",").map((id) => id.trim()).filter(Boolean);
+          const entries = ids
+            .map((id) => list.find((s: any) => s.id === id || (s as any).slug === id))
+            .filter(Boolean)
+            .map((match: any) => ({
+              offering_id: match.id,
+              title: match.title,
+              duration_minutes: match.duration_minutes,
+              price: match.price,
+              currency: match.currency ?? "ZAR",
+            }));
+          if (entries.length > 0) {
+            setBookingData((prev) => ({ ...prev, selectedServices: entries }));
+          }
+        } else if (queryParams.service) {
           const match = list.find((s: any) => s.id === queryParams.service || (s as any).slug === queryParams.service);
           if (match) {
             setBookingData((prev) => ({
@@ -410,7 +427,7 @@ export default function OnlineBookingFlowNew({
       }
     };
     load();
-  }, [provider.slug, provider.id, queryParams.service, queryParams.staff, queryParams.anyone, queryParams.location]);
+  }, [provider.slug, provider.id, queryParams.service, queryParams.services, queryParams.staff, queryParams.anyone, queryParams.location]);
 
   // Load cancellation policy when we have provider and venue (for review step)
   useEffect(() => {
@@ -437,23 +454,38 @@ export default function OnlineBookingFlowNew({
       );
   }, [provider.id, bookingData.venueType, step]);
 
-  const primaryServiceId = bookingData.selectedServices[0]?.offering_id;
+  // Fetch addons for every selected service and merge (dedupe by id) so multi-service bookings show all applicable addons
+  const serviceIdsForAddons = bookingData.selectedServices
+    .map((s) => s.offering_id ?? (s as any).id)
+    .filter(Boolean) as string[];
   useEffect(() => {
-    if (!primaryServiceId) {
+    if (!provider.slug || serviceIdsForAddons.length === 0) {
       setAddons([]);
       return;
     }
-    fetcher
-      .get<{ data: { all_addons?: AddonOption[] }; all_addons?: AddonOption[] }>(
-        `/api/public/providers/${provider.slug}/services/${primaryServiceId}/addons`
+    Promise.all(
+      serviceIdsForAddons.map((serviceId) =>
+        fetcher
+          .get<{ data?: { all_addons?: AddonOption[] }; all_addons?: AddonOption[] }>(
+            `/api/public/providers/${provider.slug}/services/${serviceId}/addons`
+          )
+          .then((res) => {
+            const data = res as any;
+            return data?.data?.all_addons ?? data?.all_addons ?? data?.data ?? [];
+          })
+          .catch(() => [] as AddonOption[])
       )
-      .then((res) => {
-        const data = res as any;
-        const list = data?.data?.all_addons ?? data?.all_addons ?? data?.data ?? [];
-        setAddons(Array.isArray(list) ? list : []);
-      })
-      .catch(() => setAddons([]));
-  }, [provider.slug, primaryServiceId]);
+    ).then((results) => {
+      const byId = new Map<string, AddonOption>();
+      for (const list of results) {
+        const arr = Array.isArray(list) ? list : [];
+        for (const a of arr) {
+          if (a?.id && !byId.has(a.id)) byId.set(a.id, a);
+        }
+      }
+      setAddons(Array.from(byId.values()));
+    });
+  }, [provider.slug, serviceIdsForAddons.join(",")]);
 
   // Total slot span = sum(durations) + sum(buffers) so slots match hold/booking block. For group booking use max across primary and all participants.
   const slotParams = (() => {

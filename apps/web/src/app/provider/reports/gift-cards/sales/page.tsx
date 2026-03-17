@@ -11,7 +11,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface GiftCardSalesData {
   totalGiftCardsSold: number;
@@ -72,7 +72,7 @@ export default function GiftCardSalesReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data, "gift-card-sales");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "gift-card-sales");
     exportToCSV(exportData, "gift-card-sales-report");
   };
 

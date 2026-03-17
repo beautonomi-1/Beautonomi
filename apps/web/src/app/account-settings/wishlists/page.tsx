@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import Breadcrumb from "../components/breadcrumb";
@@ -11,8 +11,17 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import EmptyState from "@/components/ui/empty-state";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import ProviderCard from "@/app/home/components/provider-card-dynamic";
+import { ExplorePostCard } from "@/components/explore/ExplorePostCard";
 import type { PublicProviderCard } from "@/types/beautonomi";
-import { Plus } from "lucide-react";
+import type { ExplorePost } from "@/types/explore";
+import { Plus, LayoutGrid, ChevronDown, Check } from "lucide-react";
+
+type ExploreCollectionSummary = {
+  id: string;
+  name: string;
+  slug: string;
+  post_count: number;
+};
 
 type WishlistSummary = {
   id: string;
@@ -30,8 +39,52 @@ const Page = () => {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [wishlists, setWishlists] = useState<WishlistSummary[]>([]);
   const [savedProviders, setSavedProviders] = useState<PublicProviderCard[]>([]);
+  const [savedPosts, setSavedPosts] = useState<ExplorePost[]>([]);
+  const [savedPostsLoading, setSavedPostsLoading] = useState(false);
+  const [collections, setCollections] = useState<ExploreCollectionSummary[]>([]);
+  const [isCreatingBoard, setIsCreatingBoard] = useState(false);
+  const [boardDropdownPostId, setBoardDropdownPostId] = useState<string | null>(null);
+  const [boardActionLoading, setBoardActionLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
+
+  const updatePostCollectionIds = useCallback((postId: string, collectionId: string, add: boolean) => {
+    setSavedPosts((prev) =>
+      prev.map((p) => {
+        if (p.id !== postId) return p;
+        const ids = p.collection_ids ?? [];
+        if (add) return { ...p, collection_ids: ids.includes(collectionId) ? ids : [...ids, collectionId] };
+        return { ...p, collection_ids: ids.filter((id) => id !== collectionId) };
+      })
+    );
+    setCollections((prev) =>
+      prev.map((c) => {
+        if (c.id !== collectionId) return c;
+        return { ...c, post_count: c.post_count + (add ? 1 : -1) };
+      })
+    );
+  }, []);
+
+  const savedProviderIds = React.useMemo(
+    () => new Set(savedProviders.map((p) => p.id)),
+    [savedProviders]
+  );
+  const handleSaveProviderChange = useCallback(
+    (providerId: string, inWishlist: boolean) => {
+      if (inWishlist) {
+        fetcher
+          .get<{ data: PublicProviderCard[] }>("/api/me/wishlists/providers", { cache: "no-store" })
+          .then((res) => {
+            const d = (res as any)?.data ?? res;
+            setSavedProviders(Array.isArray(d) ? d : d?.data ?? []);
+          })
+          .catch(() => {});
+      } else {
+        setSavedProviders((prev) => prev.filter((p) => p.id !== providerId));
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (!user) return;
@@ -66,9 +119,35 @@ const Page = () => {
           setSavedProviders(providers.data || []);
         } catch (providersErr) {
           console.error("Error loading saved providers:", providersErr);
-          // Don't set error state - just show empty list
-          // The page will show "No saved providers yet" message
           setSavedProviders([]);
+        }
+
+        // Load saved posts for unified Saved experience
+        try {
+          setSavedPostsLoading(true);
+          const savedRes = await fetcher.get<{ data: ExplorePost[]; next_cursor?: string; has_more?: boolean }>(
+            "/api/explore/saved?limit=50",
+            { cache: "no-store" }
+          );
+          const body = (savedRes as any)?.data ?? savedRes;
+          const list = Array.isArray(body) ? body : body?.data ?? [];
+          setSavedPosts(list);
+        } catch (savedErr) {
+          console.error("Error loading saved posts:", savedErr);
+          setSavedPosts([]);
+        } finally {
+          setSavedPostsLoading(false);
+        }
+
+        // Load explore boards (collections)
+        try {
+          const collRes = await fetcher.get<{ data: ExploreCollectionSummary[] }>("/api/explore/collections", { cache: "no-store" });
+          const collBody = (collRes as any)?.data ?? collRes;
+          const collList = Array.isArray(collBody) ? collBody : collBody?.data ?? [];
+          setCollections(collList);
+        } catch (collErr) {
+          console.error("Error loading boards:", collErr);
+          setCollections([]);
         }
       } catch (err) {
         console.error("Unexpected error:", err);
@@ -164,30 +243,164 @@ const Page = () => {
           description={dataError}
           action={{ label: "Try Again", onClick: () => window.location.reload() }}
         />
-      ) : savedProviders.length === 0 ? (
+      ) : savedProviders.length === 0 && savedPosts.length === 0 && !savedPostsLoading ? (
         <div className="py-12">
           <EmptyState
-            title="No saved providers yet"
-            description="Start exploring and save your favorite providers by clicking the heart icon."
+            title="No saved posts or providers yet"
+            description="Save posts from Explore and save your favorite providers to see them here."
             action={{
-              label: "Explore Providers",
-              onClick: () => window.location.href = "/"
+              label: "Explore",
+              onClick: () => window.location.href = "/explore"
             }}
           />
         </div>
       ) : (
         <div className="space-y-8">
-          {/* Saved providers grid */}
+          {/* Saved posts section */}
+          {/* Boards (collections of saved posts) */}
           <div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {savedProviders.map((provider) => (
-                <ProviderCard
-                  key={provider.id}
-                  provider={provider}
-                  isInWishlistProp={true} // All providers on wishlist page are saved
-                />
-              ))}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Boards</h3>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+                onClick={() => {
+                  const name = window.prompt("Board name (e.g. Summer looks)");
+                  if (!name?.trim()) return;
+                  setIsCreatingBoard(true);
+                  fetcher
+                    .post("/api/explore/collections", { name: name.trim() })
+                    .then((res: any) => {
+                      const created = res?.data ?? res;
+                      setCollections((prev) => [...prev, { id: created.id, name: created.name, slug: created.slug, post_count: 0 }]);
+                    })
+                    .catch(() => {})
+                    .finally(() => setIsCreatingBoard(false));
+                }}
+                disabled={isCreatingBoard}
+              >
+                <Plus className="h-4 w-4" />
+                {isCreatingBoard ? "Creating…" : "New board"}
+              </Button>
             </div>
+            {collections.length === 0 ? (
+              <p className="text-sm text-gray-600">Create boards to organize saved posts (e.g. Summer looks).</p>
+            ) : (
+              <div className="flex flex-wrap gap-3">
+                {collections.map((c) => (
+                  <Link
+                    key={c.id}
+                    href={`/explore/collections/${c.id}`}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 hover:border-[#FF0077] hover:bg-pink-50/50 transition-colors"
+                  >
+                    <LayoutGrid className="h-4 w-4 text-gray-500" />
+                    <span className="font-medium text-gray-900">{c.name}</span>
+                    <span className="text-sm text-gray-500">({c.post_count})</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {(savedPosts.length > 0 || savedPostsLoading) && (
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Saved posts</h3>
+              {savedPostsLoading ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="bg-gray-100 rounded-2xl animate-pulse aspect-[4/5]" />
+                  ))}
+                </div>
+              ) : (
+                <div className="columns-2 sm:columns-3 lg:columns-4 gap-4">
+                  {savedPosts.map((post) => (
+                    <div key={post.id} className="break-inside-avoid mb-4 relative group">
+                      <ExplorePostCard
+                        post={post}
+                        isProviderInWishlist={savedProviderIds.has(post.provider_id)}
+                        onSaveProviderChange={handleSaveProviderChange}
+                      />
+                      {collections.length > 0 && (
+                        <div className="mt-2 relative">
+                          <button
+                            type="button"
+                            onClick={() => setBoardDropdownPostId((id) => (id === post.id ? null : post.id))}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-[#FF0077]"
+                          >
+                            Add to board
+                            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${boardDropdownPostId === post.id ? "rotate-180" : ""}`} />
+                          </button>
+                          {boardDropdownPostId === post.id && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-10"
+                                aria-hidden
+                                onClick={() => setBoardDropdownPostId(null)}
+                              />
+                              <div className="absolute left-0 top-full mt-1 z-20 min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                                {collections.map((c) => {
+                                  const inBoard = (post.collection_ids ?? []).includes(c.id);
+                                  return (
+                                    <button
+                                      key={c.id}
+                                      type="button"
+                                      disabled={boardActionLoading}
+                                      onClick={async () => {
+                                        setBoardActionLoading(true);
+                                        try {
+                                          if (inBoard) {
+                                            await fetcher.delete(`/api/explore/collections/${c.id}/posts?post_id=${post.id}`);
+                                            updatePostCollectionIds(post.id, c.id, false);
+                                          } else {
+                                            await fetcher.post(`/api/explore/collections/${c.id}/posts`, { post_id: post.id });
+                                            updatePostCollectionIds(post.id, c.id, true);
+                                          }
+                                        } finally {
+                                          setBoardActionLoading(false);
+                                        }
+                                      }}
+                                      className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                                    >
+                                      <span className="truncate">{c.name}</span>
+                                      {inBoard ? (
+                                        <span className="flex items-center gap-1 text-[#FF0077] shrink-0">
+                                          <Check className="h-4 w-4" /> In board
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-500 shrink-0">Add</span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Saved providers section */}
+          <div>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Saved providers</h3>
+            {savedProviders.length === 0 ? (
+              <p className="text-sm text-gray-600">No saved providers yet. Save providers from posts or search.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {savedProviders.map((provider) => (
+                  <ProviderCard
+                    key={provider.id}
+                    provider={provider}
+                    isInWishlistProp={true}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Wishlist Collections (Optional - shown if user has multiple wishlists) */}

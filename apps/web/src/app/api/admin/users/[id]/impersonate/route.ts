@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { cookies } from "next/headers";
@@ -37,7 +38,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user: adminUser } = await requireRoleInApi(["superadmin"], request);
+    const { user: adminUser } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
 
     const { id } = await params;
 
@@ -115,19 +116,20 @@ export async function POST(
     // Supabase returns: { properties: { action_link: "..." } }
     let actionLink: string | null = null;
     
+    type LinkDataShape = { properties?: { action_link?: string; actionLink?: string } | string; action_link?: string; actionLink?: string };
     if (linkData && typeof linkData === 'object') {
-      const data = linkData as any;
-      // Try properties.action_link first (most common)
-      if (data.properties?.action_link) {
-        actionLink = data.properties.action_link;
-      } else if (data.properties?.actionLink) {
-        actionLink = data.properties.actionLink;
+      const data = linkData as LinkDataShape;
+      const props = data.properties;
+      if (props && typeof props === "object" && props.action_link) {
+        actionLink = props.action_link;
+      } else if (props && typeof props === "object" && props.actionLink) {
+        actionLink = props.actionLink;
       } else if (data.action_link) {
         actionLink = data.action_link;
       } else if (data.actionLink) {
         actionLink = data.actionLink;
-      } else if (typeof data.properties === 'string') {
-        actionLink = data.properties;
+      } else if (typeof props === 'string') {
+        actionLink = props;
       }
     } else if (typeof linkData === 'string') {
       actionLink = linkData;
@@ -207,7 +209,7 @@ export async function POST(
       success: true,
       url: `/auth/callback?token_hash=${token}&type=recovery`,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in impersonation:", error);
     return handleApiError(error, "Failed to impersonate user");
   }

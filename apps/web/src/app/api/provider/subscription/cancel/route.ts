@@ -99,7 +99,8 @@ export async function POST(request: NextRequest) {
             app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
             year: new Date().getFullYear().toString(),
           },
-          ["push", "email", "sms"]
+          ["push", "email", "sms"],
+          { appType: "provider" }
         );
       } catch (notifError) {
         console.error("Error sending cancellation notification:", notifError);

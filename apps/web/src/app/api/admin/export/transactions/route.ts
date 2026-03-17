@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { arrayToCSV, generateCSVFilename } from "@/lib/utils/csv";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/export/transactions
@@ -11,12 +13,12 @@ import { checkRateLimit } from "@/lib/rate-limit";
  */
 export async function GET(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const { allowed, retryAfter } = checkRateLimit(auth.user.id, "export:transactions");
+    const { allowed, retryAfter } = checkRateLimit(user.id, "export:transactions");
     if (!allowed) {
       return NextResponse.json(
         {
@@ -99,7 +101,7 @@ export async function GET(request: Request) {
     const bookingIds = [
       ...new Set(
         (transactions || [])
-          .map((tx: any) => tx.booking_id)
+          .map((tx: { booking_id?: string }) => tx.booking_id)
           .filter(Boolean)
       ),
     ];
@@ -112,24 +114,26 @@ export async function GET(request: Request) {
         .in("id", bookingIds);
 
       if (bookings) {
-        bookingMap = new Map(bookings.map((b: any) => [b.id, b]));
+        bookingMap = new Map(bookings.map((b: { id: string; booking_number?: string }) => [b.id, b]));
       }
     }
 
     // Transform data for CSV
-    const csvData = (transactions || []).map((tx: any) => {
-      const booking = tx.booking_id ? bookingMap.get(tx.booking_id) : null;
+    type TxRow = { id: string; booking_id?: string; reference?: string; amount?: number; fees?: number; net_amount?: number; status?: string; provider?: string; created_at?: string };
+    type BookingRef = { id?: string; booking_number?: string };
+    const csvData = (transactions || []).map((tx: TxRow) => {
+      const booking = tx.booking_id ? (bookingMap.get(tx.booking_id) as BookingRef | undefined) : null;
       return {
         "Transaction ID": tx.id,
-        "Reference": tx.reference,
-        "Amount": tx.amount,
-        "Fees": tx.fees,
-        "Net Amount": tx.net_amount,
-        "Status": tx.status,
-        "Provider": tx.provider,
-        "Created At": tx.created_at,
-        "Booking ID": booking?.id || "",
-        "Booking Number": booking?.booking_number || "",
+        "Reference": tx.reference ?? "",
+        "Amount": tx.amount ?? "",
+        "Fees": tx.fees ?? "",
+        "Net Amount": tx.net_amount ?? "",
+        "Status": tx.status ?? "",
+        "Provider": tx.provider ?? "",
+        "Created At": tx.created_at ?? "",
+        "Booking ID": booking?.id ?? "",
+        "Booking Number": booking?.booking_number ?? "",
       };
     });
 

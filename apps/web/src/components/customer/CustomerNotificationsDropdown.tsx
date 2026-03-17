@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -15,6 +15,7 @@ import {
   Zap,
   Sparkles,
 } from "lucide-react";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   Popover,
   PopoverContent,
@@ -34,9 +35,11 @@ interface Notification {
   message: string;
   timestamp: string;
   link?: string;
+  action_url?: string;
   priority: 'low' | 'medium' | 'high';
   read: boolean;
   metadata?: Record<string, any>;
+  data?: Record<string, any>;
 }
 
 interface NotificationResponse {
@@ -102,32 +105,7 @@ export function CustomerNotificationsDropdown() {
   const router = useRouter();
   const { user } = useAuth();
 
-  useEffect(() => {
-    // Only fetch when user is authenticated (avoids 401 from API)
-    if (!user?.id) {
-      setIsLoading(false);
-      setNotifications([]);
-      setTotalUnread(0);
-      return;
-    }
-    loadNotifications();
-
-    // Refresh every 2 minutes
-    const interval = setInterval(loadNotifications, 120000);
-
-    // If popover is open, refresh more frequently (every 30 seconds)
-    let fastInterval: NodeJS.Timeout | null = null;
-    if (open) {
-      fastInterval = setInterval(loadNotifications, 30000);
-    }
-
-    return () => {
-      clearInterval(interval);
-      if (fastInterval) clearInterval(fastInterval);
-    };
-  }, [open, user?.id]);
-
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     try {
       setIsLoading(true);
       const response = await fetcher.get<{ data?: NotificationResponse } & NotificationResponse>('/api/me/notifications');
@@ -145,7 +123,40 @@ export function CustomerNotificationsDropdown() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setIsLoading(false);
+      setNotifications([]);
+      setTotalUnread(0);
+      return;
+    }
+    loadNotifications();
+
+    const supabase = getSupabaseClient();
+    const channel = supabase
+      .channel(`notifications:customer:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        () => {
+          loadNotifications();
+        }
+      )
+      .subscribe();
+
+    const interval = setInterval(loadNotifications, 120000);
+
+    return () => {
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // ignore
+      }
+      clearInterval(interval);
+    };
+  }, [user?.id, loadNotifications]);
 
   const handleNotificationClick = async (notification: Notification) => {
     // Mark as read
@@ -163,16 +174,18 @@ export function CustomerNotificationsDropdown() {
       }
     }
 
-    // Navigate if link exists
-    if (notification.link) {
+    const link = notification.link ?? notification.action_url;
+    const data = notification.data ?? notification.metadata ?? {};
+    if (link) {
       setOpen(false);
-      router.push(notification.link);
-    } else if (notification.metadata?.conversation_id) {
-      // Handle message notifications
+      router.push(link);
+    } else if (data.conversation_id) {
       setOpen(false);
-      router.push(`/account-settings/messages?conversation=${notification.metadata.conversation_id}`);
-    } else if (notification.metadata?.request_id) {
-      // Handle custom request/offer notifications
+      router.push(`/account-settings/messages?conversation=${data.conversation_id}`);
+    } else if (data.booking_id) {
+      setOpen(false);
+      router.push(`/account-settings/bookings/${data.booking_id}`);
+    } else if (data.request_id) {
       setOpen(false);
       router.push('/account-settings/custom-requests');
     }

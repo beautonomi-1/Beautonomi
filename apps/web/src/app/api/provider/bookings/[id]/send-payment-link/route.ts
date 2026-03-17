@@ -82,8 +82,10 @@ export async function POST(
       );
     }
 
-    const customer = (booking.customers as any);
-    const _provider = (booking.providers as any);
+    type CustomerRow = { email?: string; phone?: string };
+    type ProviderRow = { id?: string; business_name?: string };
+    const customer = booking.customers as CustomerRow | null;
+    const _provider = booking.providers as ProviderRow | null;
     const customerEmail = customer?.email;
     const customerPhone = customer?.phone;
 
@@ -146,7 +148,8 @@ export async function POST(
             payment_method: "Paystack",
             booking_id: bookingId,
           },
-          channels
+          channels,
+          { appType: "customer" }
         );
       } catch (pushError) {
         console.warn("OneSignal push notification failed:", pushError);

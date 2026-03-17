@@ -8,6 +8,7 @@ const updateGroupSchema = z.object({
   description: z.string().optional(),
   color: z.string().optional(),
   is_active: z.boolean().optional(),
+  resource_ids: z.array(z.string().uuid()).optional(),
 });
 
 /**
@@ -86,16 +87,43 @@ export async function PATCH(
       return notFoundResponse("Resource group not found");
     }
 
-    // Update group
+    const { resource_ids: resourceIds, ...groupFields } = validationResult.data;
+
+    const updatePayload: Record<string, unknown> = {};
+    if (groupFields.name !== undefined) updatePayload.name = groupFields.name;
+    if (groupFields.description !== undefined) updatePayload.description = groupFields.description;
+    if (groupFields.color !== undefined) updatePayload.color = groupFields.color;
+    if (groupFields.is_active !== undefined) updatePayload.is_active = groupFields.is_active;
+    updatePayload.updated_at = new Date().toISOString();
+
     const { data: updatedGroup, error: updateError } = await (supabase
       .from("resource_groups") as any)
-      .update(validationResult.data)
+      .update(updatePayload)
       .eq("id", id)
       .select()
       .single();
 
     if (updateError || !updatedGroup) {
       throw updateError || new Error("Failed to update resource group");
+    }
+
+    // If resource_ids provided: assign those resources to this group; unassign others that were in this group
+    if (resourceIds !== undefined) {
+      const idsSet = new Set(resourceIds || []);
+      const { data: currentInGroup } = await supabase
+        .from("resources")
+        .select("id")
+        .eq("provider_id", providerId)
+        .eq("group_id", id);
+      const currentIds = (currentInGroup || []).map((r: { id: string }) => r.id);
+      const toAssign = resourceIds || [];
+      const toUnassign = currentIds.filter((rid) => !idsSet.has(rid));
+      if (toUnassign.length > 0) {
+        await supabase.from("resources").update({ group_id: null, updated_at: new Date().toISOString() }).eq("provider_id", providerId).in("id", toUnassign);
+      }
+      if (toAssign.length > 0) {
+        await supabase.from("resources").update({ group_id: id, updated_at: new Date().toISOString() }).eq("provider_id", providerId).in("id", toAssign);
+      }
     }
 
     return successResponse(updatedGroup);

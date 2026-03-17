@@ -12,6 +12,9 @@ export interface CancellationPolicy {
   policy_text: string;
   late_cancellation_type: 'no_refund' | 'partial_refund' | 'full_refund';
   is_active: boolean;
+  /** Percentage to refund (0–100). When present, used for refund amount; else late_cancellation_type is used. */
+  refund_percentage?: number;
+  hours_before?: number;
 }
 
 export interface CancellationCheckResult {
@@ -64,35 +67,42 @@ export function canCancelBooking(
 
 /**
  * Get cancellation policy for a booking
- * Matches by provider_id and location_type (or NULL for both)
+ * Matches by provider_id and location_type (or NULL for both).
+ * When multiple rows match, resolves by is_default then created_at.
  */
 export async function getCancellationPolicy(
   supabase: any,
   providerId: string,
   locationType: 'at_salon' | 'at_home'
 ): Promise<CancellationPolicy | null> {
-  // First try to get location-specific policy
-  const { data: locationPolicy } = await supabase
+  // First try to get location-specific policy (at most one via is_default + created_at)
+  const { data: locationRows } = await supabase
     .from('cancellation_policies')
     .select('*')
     .eq('provider_id', providerId)
     .eq('location_type', locationType)
     .eq('is_active', true)
-    .maybeSingle();
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1);
 
+  const locationPolicy = locationRows?.[0];
   if (locationPolicy) {
     return locationPolicy as CancellationPolicy;
   }
 
-  // Fall back to general policy (location_type IS NULL)
-  const { data: generalPolicy } = await supabase
+  // Fall back to general policy (location_type IS NULL); resolve multiple by is_default then created_at
+  const { data: generalRows } = await supabase
     .from('cancellation_policies')
     .select('*')
     .eq('provider_id', providerId)
     .is('location_type', null)
     .eq('is_active', true)
-    .maybeSingle();
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1);
 
+  const generalPolicy = generalRows?.[0];
   if (generalPolicy) {
     return generalPolicy as CancellationPolicy;
   }

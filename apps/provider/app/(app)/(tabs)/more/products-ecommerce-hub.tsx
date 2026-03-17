@@ -14,6 +14,7 @@ type Product = {
   name: string;
   sku?: string | null;
   retail_price?: number;
+  quantity?: number;
   stock_quantity?: number;
 };
 
@@ -73,10 +74,10 @@ export default function ProductsEcommerceHubScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ marginBottom: 16 }}>
-          <View style={{ flexDirection: "row" }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 }}>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/products-hub" as never)}
-              style={{ flex: 1, marginRight: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
+              style={{ flex: 1, minWidth: "45%", marginHorizontal: 6, marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               activeOpacity={0.7}
             >
               <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#ede9fe" }}>
@@ -84,39 +85,53 @@ export default function ProductsEcommerceHubScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Products & inventory</Text>
-                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Manage catalog & stock</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Catalog & stock</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => router.push("/(app)/(tabs)/more/product-orders" as never)}
-              style={{ flex: 1, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16, marginBottom: 12 }}
+              onPress={() => router.push("/(app)/(tabs)/more/walk-in-sale" as never)}
+              style={{ flex: 1, minWidth: "45%", marginHorizontal: 6, marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
+              activeOpacity={0.7}
+            >
+              <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#fff7ed" }}>
+                <Ionicons name="cart-outline" size={22} color="#f97316" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Walk-in sale</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Quick in-person sales</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/more/orders-hub" as never)}
+              style={{ flex: 1, minWidth: "45%", marginHorizontal: 6, marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               activeOpacity={0.7}
             >
               <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#ccfbf1" }}>
                 <Ionicons name="receipt-outline" size={22} color="#0d9488" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Product orders</Text>
-                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>View & fulfill orders</Text>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Orders & returns</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Fulfill orders & refunds</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/more/settings/shipping-config" as never)}
+              style={{ flex: 1, minWidth: "45%", marginHorizontal: 6, marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
+              activeOpacity={0.7}
+            >
+              <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#f1f5f9" }}>
+                <Ionicons name="car-outline" size={22} color="#475569" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Shipping & collection</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Delivery options</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
             </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            onPress={() => router.push("/(app)/(tabs)/more/settings/shipping-config" as never)}
-            style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
-            activeOpacity={0.7}
-          >
-            <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#f1f5f9" }}>
-              <Ionicons name="car-outline" size={22} color="#475569" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Shipping & collection</Text>
-              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Delivery and collection options</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-          </TouchableOpacity>
         </View>
         {products.length === 0 ? (
           <View style={{ paddingVertical: 32, paddingHorizontal: 16, alignItems: "center" }}>
@@ -155,8 +170,10 @@ export default function ProductsEcommerceHubScreen() {
                       ZAR {p.retail_price.toLocaleString()}
                     </Text>
                   )}
-                  {p.stock_quantity != null && (
-                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Stock: {p.stock_quantity}</Text>
+                  {(p.quantity != null || p.stock_quantity != null) && (
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
+                      Stock: {p.quantity ?? p.stock_quantity}
+                    </Text>
                   )}
                   <Ionicons name="chevron-forward" size={18} color="#9ca3af" style={{ marginTop: 4 }} />
                 </View>

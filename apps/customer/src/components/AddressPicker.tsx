@@ -9,7 +9,7 @@ import {
   Modal,
   TouchableOpacity,
   TextInput,
-  FlatList,
+  ScrollView,
   ActivityIndicator,
   Pressable,
   Keyboard,
@@ -36,6 +36,8 @@ export interface AddressPickerSelection {
   latitude: number;
   longitude: number;
   displayName: string;
+  /** When selecting a saved address, its id so caller can skip "save?" modal */
+  addressId?: string;
   /** When selecting a Mapbox suggestion or saved address, full fields for save/hold */
   structured?: {
     address_line1: string;
@@ -95,22 +97,30 @@ export function AddressPicker({
     (addr: SavedAddress) => {
       haptic.light();
       Keyboard.dismiss();
-      if (addr.latitude && addr.longitude) {
+      if (addr.latitude != null && addr.longitude != null) {
         onSelect({
           label: addr.label,
           latitude: addr.latitude,
           longitude: addr.longitude,
           displayName: `${addr.address_line1}, ${addr.city}`,
+          addressId: addr.id,
           structured: {
             address_line1: addr.address_line1,
+            address_line2: addr.address_line2 ?? undefined,
             city: addr.city,
             state: addr.state ?? undefined,
             postal_code: addr.postal_code ?? undefined,
             country: addr.country,
           },
         });
+        onClose();
+      } else {
+        Alert.alert(
+          "No location data",
+          "This address doesn’t have coordinates. Edit it in Settings → Saved addresses and choose a location on the map, or delete and add it again.",
+          [{ text: "OK" }]
+        );
       }
-      onClose();
     },
     [onSelect, onClose],
   );
@@ -306,47 +316,19 @@ export function AddressPicker({
             </TouchableOpacity>
           </View>
 
-          {suggestions.length > 0 ? (
-            <FlatList
-              data={suggestions}
-              keyExtractor={(_, i) => String(i)}
-              style={{ maxHeight: 240, paddingHorizontal: contentPadding }}
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => handleSuggestionSelect(item)}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    paddingVertical: 14,
-                    borderBottomWidth: 1,
-                    borderColor: "#F3F4F6",
-                  }}
-                >
-                  <Ionicons name="location-outline" size={18} color="#6B7280" style={{ marginRight: 10 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }} numberOfLines={1}>
-                      {item.text}
-                    </Text>
-                    <Text style={{ fontSize: 12, color: "#9CA3AF" }} numberOfLines={1}>
-                      {item.place_name}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              )}
-            />
-          ) : user && addresses.length > 0 ? (
-            <View style={{ paddingHorizontal: contentPadding, paddingTop: 8 }}>
-              <Text style={{ fontSize: 13, fontWeight: "600", color: "#6B7280", marginBottom: 8 }}>
-                Saved addresses
-              </Text>
-              <FlatList
-                data={addresses}
-                keyExtractor={(a) => a.id}
-                style={{ maxHeight: 240 }}
-                keyboardShouldPersistTaps="handled"
-                renderItem={({ item }) => (
+          <ScrollView
+            style={{ maxHeight: 320 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={true}
+          >
+            {user && addresses.length > 0 && (
+              <View style={{ paddingHorizontal: contentPadding, paddingTop: 8, marginBottom: 8 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#6B7280", marginBottom: 8 }}>
+                  Saved addresses
+                </Text>
+                {addresses.map((item) => (
                   <TouchableOpacity
+                    key={item.id}
                     onPress={() => handleSavedSelect(item)}
                     style={{
                       flexDirection: "row",
@@ -392,20 +374,55 @@ export function AddressPicker({
                       </View>
                     )}
                   </TouchableOpacity>
-                )}
-              />
-            </View>
-          ) : addressesLoading ? (
-            <View style={{ padding: 24, alignItems: "center" }}>
-              <ActivityIndicator size="small" color={Colors.primary} />
-            </View>
-          ) : (
-            <View style={{ padding: 24, alignItems: "center" }}>
-              <Text style={{ fontSize: 13, color: "#9CA3AF", textAlign: "center" }}>
-                Search for an address above or use your current location
-              </Text>
-            </View>
-          )}
+                ))}
+              </View>
+            )}
+
+            {suggestions.length > 0 && (
+              <View style={{ paddingHorizontal: contentPadding, marginBottom: 16 }}>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#6B7280", marginBottom: 8 }}>
+                  Search results
+                </Text>
+                {suggestions.map((item, index) => (
+                  <TouchableOpacity
+                    key={`${index}-${item.place_name}`}
+                    onPress={() => handleSuggestionSelect(item)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingVertical: 14,
+                      borderBottomWidth: 1,
+                      borderColor: "#F3F4F6",
+                    }}
+                  >
+                    <Ionicons name="location-outline" size={18} color="#6B7280" style={{ marginRight: 10 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }} numberOfLines={1}>
+                        {item.text}
+                      </Text>
+                      <Text style={{ fontSize: 12, color: "#9CA3AF" }} numberOfLines={1}>
+                        {item.place_name}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {addressesLoading && addresses.length === 0 && (
+              <View style={{ padding: 24, alignItems: "center" }}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+              </View>
+            )}
+
+            {!addressesLoading && addresses.length === 0 && suggestions.length === 0 && (
+              <View style={{ padding: 24, alignItems: "center" }}>
+                <Text style={{ fontSize: 13, color: "#9CA3AF", textAlign: "center" }}>
+                  Search for an address above or use your current location
+                </Text>
+              </View>
+            )}
+          </ScrollView>
           </Pressable>
         </KeyboardAvoidingView>
       </Pressable>

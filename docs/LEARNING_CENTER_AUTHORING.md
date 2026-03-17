@@ -20,13 +20,14 @@ How to add and edit Learning Center content from Superadmin (no code changes).
 
 ## Articles
 
-- **Create**: Use `POST /api/admin/content/learning/articles` with `category_id`, `title`, `slug`, `summary`, `body`, `status`, `audience`, `is_internal` (true only for internal-only articles), and optionally **content_type** (`article` | `video_guide`).
-- **Edit**: Use `PUT /api/admin/content/learning/articles/[id]` to change title, body, status (draft | published | scheduled | archived), featured order, **content_type**, etc.
+- **Create and edit in the CMS**: In **Learning Center → Articles**, use **Add article** to create or **Edit** on any row to change an article. The article editor lets you set category, title, slug, summary, **hero image URL** (`image_url`), **body** (HTML or Markdown), content format/type, status, audience, internal-only, featured order, and publish/schedule times. You can add images, GIFs, and video in the body using HTML (e.g. `<img src="..." />`, `<video>`, or embeds).
+- **API**: Create with `POST /api/admin/content/learning/articles`; edit with `PUT /api/admin/content/learning/articles/[id]`. Same fields as the CMS form.
 - **Content type**: `article` (default) = standard article; `video_guide` = appears under “Video guides” in **/learn/search** and in any result grouping by type.
 - **Slug**: Must be unique. Use lowercase, hyphens (e.g. `how-to-reschedule`).
-- **Body**: HTML or Markdown (set `content_format`). For rich text, use HTML.
+- **Body**: HTML or Markdown (set `content_format`). For rich text and media, use HTML in the body. Images, GIFs, and video embedded in the body (e.g. `<img>`, `<video>`, `<iframe>`) are styled to match the article text column. **YouTube**: On YouTube, click Share → Embed, copy the iframe code, and paste it into the article body; it will render with correct aspect ratio and in-context styling.
 - **Status**: Only `published` articles appear on the public site. Use `draft` while editing, `scheduled` with `scheduled_at` for future publish.
-- **Internal**: Set `is_internal: true` only for articles that should never appear publicly (e.g. ops playbooks).
+- **Internal**: Check **Internal only** for articles that should never appear publicly (e.g. ops playbooks).
+- **Hero image**: Set **Hero image URL** in the editor; it is shown at the top of the article on `/learn/article/[slug]`.
 
 ## Featured articles
 

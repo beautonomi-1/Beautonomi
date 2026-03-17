@@ -1,17 +1,50 @@
+import { useEffect, useState, useCallback } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useTranslation, supportedLanguages } from "@beautonomi/i18n";
+import { useTranslation, supportedLanguages, i18n } from "@beautonomi/i18n";
+import { useApi } from "@/hooks/useApi";
+import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { changeLanguage } from "@/lib/i18n";
 
-export default function LanguageSettings() {
-  const { i18n } = useTranslation();
+const API_LANGUAGE_CODES = new Set(["en", "af", "zu", "xh", "nso", "tn", "ts", "ve", "ss"]);
 
-  const handleSelect = async (code: string) => {
+interface PreferencesResponse {
+  preferences: { language: string; currency?: string; timezone?: string };
+}
+
+export default function LanguageSettings() {
+  useTranslation();
+  const [currentCode, setCurrentCode] = useState(() => (i18n.language || "en").split("-")[0]);
+  const { data: preferences, refresh } = useApi<PreferencesResponse>("/api/me/preferences");
+
+  useEffect(() => {
+    const serverLang = preferences?.preferences?.language;
+    if (serverLang && supportedLanguages.some((l) => l.code === serverLang) && serverLang !== (i18n.language || "en").split("-")[0]) {
+      changeLanguage(serverLang);
+      setCurrentCode(serverLang);
+    }
+  }, [preferences?.preferences?.language]);
+
+  useEffect(() => {
+    const handler = (lng: string) => setCurrentCode((lng || "en").split("-")[0]);
+    i18n.on("languageChanged", handler);
+    return () => {
+      i18n.off("languageChanged", handler);
+    };
+  }, []);
+
+  const handleSelect = useCallback(async (code: string) => {
+    if (code === currentCode) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await changeLanguage(code);
-  };
+    setCurrentCode(code);
+    if (API_LANGUAGE_CODES.has(code)) {
+      await api.post("/api/me/preferences", { language: code });
+      refresh();
+    }
+  }, [currentCode, refresh]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.white, paddingHorizontal: 20, paddingTop: 16 }}>
@@ -21,7 +54,7 @@ export default function LanguageSettings() {
 
       <View>
         {supportedLanguages.map((lang, index) => {
-          const isActive = i18n.language === lang.code;
+          const isActive = currentCode === lang.code;
           return (
             <TouchableOpacity
               key={lang.code}

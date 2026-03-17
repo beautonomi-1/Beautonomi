@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/notifications/logs
@@ -9,8 +11,8 @@ import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
  */
 export async function GET(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 

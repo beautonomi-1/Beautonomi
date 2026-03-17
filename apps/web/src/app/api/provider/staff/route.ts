@@ -15,6 +15,37 @@ interface StaffMember {
   is_active: boolean;
 }
 
+interface StaffMemberRow {
+  id: string;
+  user_id?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  avatar_url?: string;
+  role?: string;
+  is_active?: boolean;
+  mobile_ready?: boolean;
+  working_hours?: unknown;
+  staff_locations?: StaffLocationItem[];
+  users?: { full_name?: string; email?: string; phone?: string; avatar_url?: string } | null;
+}
+interface StaffLocationItem {
+  location_id: string;
+  location_name?: string | null;
+  location_city?: string | null;
+  is_primary?: boolean;
+  location?: { name?: string; city?: string };
+}
+interface LocationRow {
+  id: string;
+  name?: string;
+  city?: string;
+}
+interface AssignmentRow {
+  location_id: string;
+  is_primary?: boolean;
+}
+
 /**
  * GET /api/provider/staff
  *
@@ -127,47 +158,45 @@ export async function GET(request: NextRequest) {
 
     // Fetch related data separately to avoid RLS issues
     const staffWithDetails = await Promise.all(
-      (staff || []).map(async (member: any) => {
+      (staff || []).map(async (member: StaffMemberRow) => {
         // Try to fetch user data if user_id exists
-        let userData = null;
+        let userData: { full_name?: string; email?: string; phone?: string; avatar_url?: string } | null = null;
         if (member.user_id) {
           const { data: user } = await supabase
             .from("users")
             .select("id, full_name, email, phone, avatar_url")
             .eq("id", member.user_id)
             .maybeSingle();
-          userData = user;
+          userData = user as typeof userData;
         }
 
         // Try to fetch location assignments separately to avoid RLS issues
-        let locations: any[] = [];
+        let locations: StaffLocationItem[] = [];
         try {
           const { data: assignments } = await supabase
             .from("provider_staff_locations")
             .select("location_id, is_primary")
             .eq("staff_id", member.id);
-          
-          if (assignments && assignments.length > 0) {
-            // Fetch location details separately
-            const locationIds = assignments.map(a => a.location_id);
+          const assignmentRows = (assignments ?? []) as AssignmentRow[];
+          if (assignmentRows.length > 0) {
+            const locationIds = assignmentRows.map(a => a.location_id);
             const { data: locationDetails } = await supabase
               .from("provider_locations")
               .select("id, name, city")
               .in("id", locationIds);
-            
-            const locationMap = new Map((locationDetails || []).map((loc: any) => [loc.id, loc]));
-            
-            locations = assignments.map((sl: any) => {
+            const locRows = (locationDetails ?? []) as LocationRow[];
+            const locationMap = new Map(locRows.map((loc) => [loc.id, loc]));
+            locations = assignmentRows.map((sl) => {
               const location = locationMap.get(sl.location_id);
               return {
                 location_id: sl.location_id,
-                location_name: location?.name || null,
-                location_city: location?.city || null,
-                is_primary: sl.is_primary || false,
+                location_name: location?.name ?? null,
+                location_city: location?.city ?? null,
+                is_primary: sl.is_primary ?? false,
               };
             });
           }
-        } catch (locError) {
+        } catch (locError: unknown) {
           console.warn("Error fetching staff locations:", locError);
           // Continue without location data
         }
@@ -183,37 +212,35 @@ export async function GET(request: NextRequest) {
     // Transform to match expected format
     // Use provider_staff data first (since we store it there), then fall back to users table
     // Map database role format to API format
-    const transformedStaff = (staffWithDetails || []).map((member: any) => {
+    const transformedStaff = (staffWithDetails || []).map((member: StaffMemberRow & { staff_locations?: StaffLocationItem[] }) => {
       // Map database role (owner/manager/employee) to API format (provider_owner/provider_manager/provider_staff)
       const apiRole = member.role === "owner" ? "provider_owner"
                    : member.role === "manager" ? "provider_manager"
                    : "provider_staff";
-      
-      // Extract location assignments (staff_locations have location_name/location_city from join)
-      const locations = (member.staff_locations || []).map((sl: any) => ({
+      const staffLocs = member.staff_locations ?? [];
+      const locations = staffLocs.map((sl) => ({
         location_id: sl.location_id,
         location_name: sl.location_name ?? sl.location?.name ?? null,
         location_city: sl.location_city ?? sl.location?.city ?? null,
-        is_primary: sl.is_primary || false,
+        is_primary: sl.is_primary ?? false,
       }));
-      
       return {
         id: member.id,
         name: member.name || member.users?.full_name || "Staff Member",
         email: member.email || member.users?.email || "",
-        phone: member.phone || member.users?.phone || null,
-        avatar_url: member.avatar_url || member.users?.avatar_url || null,
+        phone: (member.phone || member.users?.phone) ?? null,
+        avatar_url: (member.avatar_url || member.users?.avatar_url) ?? null,
         role: apiRole,
         is_active: member.is_active ?? true,
-        mobileReady: member.mobile_ready ?? false, // Map snake_case to camelCase
-        locations: locations, // Include location assignments
-        primary_location_id: locations.find((l: any) => l.is_primary)?.location_id || null,
-        working_hours: member.working_hours ?? null, // For calendar: staff-specific working hours
+        mobileReady: member.mobile_ready ?? false,
+        locations,
+        primary_location_id: locations.find((l) => l.is_primary)?.location_id ?? null,
+        working_hours: member.working_hours ?? null,
       };
     });
 
     return successResponse(transformedStaff as StaffMember[]);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Staff API error:", error);
     // Provide more specific error message
     if (error instanceof Error) {
@@ -234,6 +261,14 @@ const addStaffSchema = z.object({
   name: z.string().optional(),
   phone: z.string().optional().nullable(),
   mobileReady: z.boolean().optional().default(false),
+  /** Assign staff to these locations (optional). If provided, must be valid provider location IDs. */
+  location_ids: z.array(z.string().uuid()).optional().default([]),
+  /** Assign staff to these services (optional). */
+  service_ids: z.array(z.string().uuid()).optional().default([]),
+  /** Commission rate 0–100 (optional). */
+  commission_rate: z.number().min(0).max(100).optional().nullable(),
+  /** Send invite (push/email) after create. Client may also call POST /api/provider/staff/[id]/invite. */
+  invite_email: z.boolean().optional().default(false),
 });
 
 /**
@@ -289,7 +324,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { email, role, name, phone, mobileReady } = validationResult.data;
+    const { email, role, name, phone, mobileReady, location_ids, service_ids, commission_rate, invite_email } = validationResult.data;
 
     // Map API role format to database role format
     // API uses: provider_staff, provider_manager, provider_owner
@@ -433,23 +468,24 @@ export async function POST(request: Request) {
                 throw manualError || new Error("Failed to create user profile manually");
               }
             }
-          } catch (manualError: any) {
+          } catch (manualError: unknown) {
             console.error("Failed to fetch or create user profile:", manualError);
             return errorResponse(
               "User account created but profile not found. Please try again or contact support.",
               "USER_FETCH_ERROR",
               500,
-              manualError || fetchError
+              manualError instanceof Error ? manualError : fetchError
             );
           }
         }
 
         console.log("User profile found:", createdUser.id);
         foundUser = createdUser;
-      } catch (error: any) {
+      } catch (error: unknown) {
         console.error("Error creating user:", error);
+        const message = error instanceof Error ? error.message : "Unknown error";
         return errorResponse(
-          `Failed to create user: ${error?.message || "Unknown error"}. Please ensure the user exists or contact support.`,
+          `Failed to create user: ${message}. Please ensure the user exists or contact support.`,
           "USER_CREATION_ERROR",
           500,
           error
@@ -470,8 +506,8 @@ export async function POST(request: Request) {
     }
 
     // Add staff member
-    const { data: newStaff, error: insertError } = await (supabase
-      .from("provider_staff") as any)
+    const { data: newStaff, error: insertError } = await supabase
+      .from("provider_staff")
       .insert({
         provider_id: providerId,
         user_id: foundUser.id,
@@ -500,6 +536,68 @@ export async function POST(request: Request) {
     }
 
     console.log("Staff member created successfully:", newStaff.id);
+    const staffId = newStaff.id;
+
+    // Assign locations if provided
+    if (location_ids && location_ids.length > 0) {
+      const { data: locs } = await supabase
+        .from("provider_locations")
+        .select("id")
+        .eq("provider_id", providerId)
+        .in("id", location_ids);
+      if (locs && locs.length > 0) {
+        const assignments = location_ids
+          .filter((id) => locs.some((l: { id: string }) => l.id === id))
+          .map((locId, i) => ({
+            staff_id: staffId,
+            location_id: locId,
+            is_primary: i === 0,
+          }));
+        if (assignments.length > 0) {
+          await supabase.from("provider_staff_locations").insert(assignments);
+        }
+      }
+    }
+
+    // Assign services if provided
+    if (service_ids && service_ids.length > 0) {
+      await supabase.from("staff_service_assignments").delete().eq("staff_id", staffId);
+      await supabase.from("staff_service_assignments").insert(
+        service_ids.map((sid: string) => ({ staff_id: staffId, service_id: sid }))
+      );
+      await supabase.from("provider_staff").update({ assigned_service_ids: service_ids }).eq("id", staffId);
+    }
+
+    // Set commission rate if provided
+    if (commission_rate != null && Number(commission_rate) >= 0) {
+      await supabase.from("provider_staff")
+        .update({ commission_rate: Number(commission_rate), commission_enabled: true })
+        .eq("id", staffId);
+    }
+
+    // Optionally send invite (push for existing user)
+    if (invite_email) {
+      try {
+        const { sendToUser } = await import("@/lib/notifications/onesignal");
+        const { data: provider } = await supabase.from("providers").select("business_name").eq("id", providerId).single();
+        const businessName = (provider as { business_name?: string } | null)?.business_name ?? "the team";
+        if (newStaff.user_id) {
+          await sendToUser(
+            newStaff.user_id,
+            {
+              title: `Invitation to join ${businessName}`,
+              message: `You've been invited to join ${businessName} as a team member.`,
+              data: { type: "staff_invitation", staff_id: staffId, provider_id: providerId },
+              url: "/provider/onboarding",
+            },
+            ["push"],
+            { appType: "provider" }
+          );
+        }
+      } catch (inviteErr) {
+        console.warn("Staff invite notification failed:", inviteErr);
+      }
+    }
 
     // Transform response
     // Map database role format back to API format
@@ -509,17 +607,18 @@ export async function POST(request: Request) {
                   : newStaff.role === "manager" ? "provider_manager"
                   : "provider_staff";
     
+    const userObj = Array.isArray(newStaff.users) ? newStaff.users[0] : newStaff.users;
     const transformedStaff = {
       id: newStaff.id,
-      name: newStaff.name || newStaff.users?.full_name || "Staff Member",
-      email: newStaff.email || newStaff.users?.email || "",
-      phone: newStaff.phone || newStaff.users?.phone || null,
+      name: (newStaff as { name?: string }).name || userObj?.full_name || "Staff Member",
+      email: (newStaff as { email?: string }).email || userObj?.email || "",
+      phone: (newStaff as { phone?: string }).phone || userObj?.phone || null,
       role: apiRole,
       is_active: newStaff.is_active ?? true,
     };
 
     return successResponse(transformedStaff as StaffMember);
-  } catch (error) {
+  } catch (error: unknown) {
     return handleApiError(error, "Failed to add staff member");
   }
 }

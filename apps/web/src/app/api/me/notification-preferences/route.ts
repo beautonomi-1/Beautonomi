@@ -10,7 +10,7 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Get notification preferences from user_profiles
     let profileData: any = null;
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     // Get existing preferences

@@ -10,12 +10,11 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
-    // Get tax info from user_profiles table
-    // Use a try-catch to handle cases where columns might not exist yet
-    let profileData: any = null;
-    let taxInfo: any = null;
+    type ProfileRow = { tax_info?: unknown; vat_id?: string | null } | null;
+    let profileData: ProfileRow = null;
+    let taxInfo: unknown = null;
     let vatId: string | null = null;
 
     try {
@@ -25,24 +24,23 @@ export async function GET(request: NextRequest) {
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
-        // If column doesn't exist, return null values instead of throwing
-        if (error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist')) {
-          console.warn('Tax columns may not exist in user_profiles table:', error.message);
+      if (error && error.code !== "PGRST116") {
+        if (error.code === "42703" || error.message?.includes("column") || error.message?.includes("does not exist")) {
+          console.warn("Tax columns may not exist in user_profiles table:", error.message);
           taxInfo = null;
           vatId = null;
         } else {
           throw error;
         }
       } else {
-        profileData = data;
-        taxInfo = profileData?.tax_info || null;
-        vatId = profileData?.vat_id || null;
+        profileData = data as ProfileRow;
+        taxInfo = profileData?.tax_info ?? null;
+        vatId = profileData?.vat_id ?? null;
       }
-    } catch (err: any) {
-      // Handle column not found errors gracefully
-      if (err.code === '42703' || err.message?.includes('column') || err.message?.includes('does not exist')) {
-        console.warn('Tax columns may not exist in user_profiles table:', err.message);
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      if (e.code === "42703" || e.message?.includes("column") || e.message?.includes("does not exist")) {
+        console.warn("Tax columns may not exist in user_profiles table:", e.message);
         taxInfo = null;
         vatId = null;
       } else {
@@ -67,7 +65,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const { country, tax_id, full_name, address } = body;
@@ -125,10 +123,10 @@ export async function POST(request: NextRequest) {
         }
         return successResponse(data?.tax_info || taxInfo);
       }
-    } catch (err: any) {
-      // Provide helpful error message for missing columns
-      if (err.code === '42703' || err.message?.includes('column') || err.message?.includes('does not exist')) {
-        throw new Error('Tax information columns not found. Please run database migration 105_add_tax_info_to_user_profiles.sql');
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      if (e.code === "42703" || e.message?.includes("column") || e.message?.includes("does not exist")) {
+        throw new Error("Tax information columns not found. Please run database migration 105_add_tax_info_to_user_profiles.sql");
       }
       throw err;
     }
@@ -145,7 +143,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     // Get existing tax info

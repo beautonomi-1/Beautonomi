@@ -11,7 +11,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface StaffHoursData {
   totalHours: number;
@@ -77,7 +77,7 @@ export default function StaffHoursReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data, "staff-hours");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "staff-hours");
     exportToCSV(exportData, "staff-hours-report");
   };
 

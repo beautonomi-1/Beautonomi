@@ -23,7 +23,7 @@ import { addBreadcrumb } from "@/lib/sentry";
 function handleNotificationRoute(data: Record<string, unknown>) {
   try {
     const type = String(data.type ?? data.notification_type ?? "");
-    const id = String(data.id ?? data.booking_id ?? data.chat_id ?? data.post_id ?? "");
+    const id = String(data.id ?? data.booking_id ?? data.chat_id ?? data.conversation_id ?? data.post_id ?? "");
 
     addBreadcrumb("Notification tapped", "notification", { type, id });
     trackNotificationOpened(type, data);
@@ -34,6 +34,7 @@ function handleNotificationRoute(data: Record<string, unknown>) {
       case "booking_cancelled":
       case "booking_updated":
       case "booking_completed":
+      case "provider_arrived":
         if (id) {
           router.push({ pathname: "/(app)/booking-detail", params: { id } });
         } else {

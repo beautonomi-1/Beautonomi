@@ -66,21 +66,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const updateSession = useCallback((newSession: Session | null) => {
-    const data = { hasSession: !!newSession, userId: newSession?.user?.id ?? null };
-    console.log("[AUTH] updateSession", data);
-    // #region agent log
-    fetch("http://127.0.0.1:7243/ingest/89f3cdbd-444d-401b-9bce-c59a37625210", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        location: "AuthProvider.tsx:updateSession",
-        message: "updateSession called",
-        data,
-        timestamp: Date.now(),
-        hypothesisId: "B",
-      }),
-    }).catch(() => {});
-    // #endregion
     setSession(newSession);
     setUser(newSession?.user ?? null);
   }, []);
@@ -103,21 +88,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearTimeout(timeoutId);
         timeoutId = null;
       }
-      const data = { hasSession: !!s, userId: s?.user?.id ?? null, mounted };
-      console.log("[AUTH] getSession resolved", data);
-      // #region agent log
-      fetch("http://127.0.0.1:7243/ingest/89f3cdbd-444d-401b-9bce-c59a37625210", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          location: "AuthProvider.tsx:getSession.then",
-          message: "getSession resolved",
-          data,
-          timestamp: Date.now(),
-          hypothesisId: "B",
-        }),
-      }).catch(() => {});
-      // #endregion
       updateSession(s);
       setLoading(false);
     }).catch((err) => {
@@ -131,22 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, newSession) => {
-      const data = { event, hasSession: !!newSession, userId: newSession?.user?.id ?? null };
-      console.log("[AUTH] onAuthStateChange", data);
-      // #region agent log
-      fetch("http://127.0.0.1:7243/ingest/89f3cdbd-444d-401b-9bce-c59a37625210", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          location: "AuthProvider.tsx:onAuthStateChange",
-          message: "auth state change",
-          data,
-          timestamp: Date.now(),
-          hypothesisId: "B",
-        }),
-      }).catch(() => {});
-      // #endregion
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
       updateSession(newSession);
     });
 
@@ -155,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (timeoutId) clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
-  }, [updateSession]);
+  }, [updateSession, AUTH_SESSION_TIMEOUT_MS]);
 
   // Keep session fresh when app comes to foreground (native only; web always "active")
   useEffect(() => {

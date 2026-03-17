@@ -107,7 +107,7 @@ export default function TeamScreen() {
             {staff.map((member) => (
               <TouchableOpacity
                 key={member.id}
-                onPress={() => router.push("/(app)/(tabs)/more/team-list" as never)}
+                onPress={() => router.push(`/(app)/(tabs)/more/team-member/${member.id}` as never)}
                 style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
                 activeOpacity={0.7}
               >

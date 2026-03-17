@@ -44,10 +44,11 @@ export async function POST(
     if (error) throw error;
 
     return NextResponse.json({ note: data });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error creating ticket note:", error);
+    const message = error instanceof Error ? error.message : "Failed to create note";
     return NextResponse.json(
-      { error: error.message || "Failed to create note" },
+      { error: message },
       { status: 500 }
     );
   }

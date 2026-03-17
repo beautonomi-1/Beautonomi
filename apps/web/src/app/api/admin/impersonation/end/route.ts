@@ -76,18 +76,20 @@ export async function POST(request: NextRequest) {
 
     // Extract the action link
     let actionLink: string | null = null;
+    type LinkDataShape = { properties?: { action_link?: string; actionLink?: string } | string; action_link?: string; actionLink?: string };
     if (linkData && typeof linkData === 'object') {
-      const data = linkData as any;
-      if (data.properties?.action_link) {
-        actionLink = data.properties.action_link;
-      } else if (data.properties?.actionLink) {
-        actionLink = data.properties.actionLink;
+      const data = linkData as LinkDataShape;
+      const props = data.properties;
+      if (props && typeof props === "object" && props.action_link) {
+        actionLink = props.action_link;
+      } else if (props && typeof props === "object" && props.actionLink) {
+        actionLink = props.actionLink;
       } else if (data.action_link) {
         actionLink = data.action_link;
       } else if (data.actionLink) {
         actionLink = data.actionLink;
-      } else if (typeof data.properties === 'string') {
-        actionLink = data.properties;
+      } else if (typeof props === 'string') {
+        actionLink = props;
       }
     } else if (typeof linkData === 'string') {
       actionLink = linkData;
@@ -154,10 +156,11 @@ export async function POST(request: NextRequest) {
       success: true,
       url: `/auth/callback?token_hash=${token}&type=recovery`,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error ending impersonation:", error);
+    const message = error instanceof Error ? error.message : "Failed to end impersonation";
     return NextResponse.json(
-      { error: "Failed to end impersonation" },
+      { error: message },
       { status: 500 }
     );
   }

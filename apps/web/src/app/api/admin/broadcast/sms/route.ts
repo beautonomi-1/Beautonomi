@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { sendToUsers } from "@/lib/notifications/onesignal";
 
 /**
@@ -10,8 +11,8 @@ import { sendToUsers } from "@/lib/notifications/onesignal";
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireRoleInApi(['superadmin'], request);
-    if (!auth) throw new Error("Authentication required");
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) throw new Error("Authentication required");
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
@@ -33,13 +34,13 @@ export async function POST(request: NextRequest) {
         .from("users")
         .select("id")
         .eq("role", "customer");
-      userIds = users?.map((u: any) => u.id) || [];
+      userIds = users?.map((u: { id: string }) => u.id) ?? [];
     } else if (recipient_type === "all_providers") {
       const { data: providers } = await supabase
         .from("providers")
         .select("user_id")
         .not("user_id", "is", null);
-      userIds = providers?.map((p: any) => p.user_id).filter(Boolean) || [];
+      userIds = providers?.map((p: { user_id?: string }) => p.user_id).filter(Boolean) ?? [];
     } else if (recipient_type === "custom" && user_ids && Array.isArray(user_ids)) {
       userIds = user_ids;
     } else {
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
       return errorResponse("No recipients found", "VALIDATION_ERROR", 400);
     }
 
-    // Send SMS broadcast
+    const appType = recipient_type === "all_users" ? "customer" : recipient_type === "all_providers" ? "provider" : undefined;
     const result = await sendToUsers(
       userIds,
       {
@@ -62,7 +63,8 @@ export async function POST(request: NextRequest) {
           recipient_type,
         },
       },
-      ["sms"]
+      ["sms"],
+      appType ? { appType } : undefined
     );
 
     if (!result.success) {
@@ -71,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     // Log broadcast
     const { error: logError } = await supabase.from("broadcast_logs").insert({
-      sent_by: auth.user.id,
+      sent_by: user.id,
       recipient_type,
       recipient_count: userIds.length,
       channel: "sms",

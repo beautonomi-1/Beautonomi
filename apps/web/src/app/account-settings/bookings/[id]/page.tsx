@@ -15,8 +15,20 @@ import {
   Mail,
   CheckCircle2,
   HelpCircle,
+  Plus,
+  Trophy,
 } from "lucide-react";
+import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
 import type { Booking } from "@/types/beautonomi";
+
+/** Booking as returned from GET /api/me/bookings/:id (includes expanded provider, location, etc.) */
+type BookingDetail = Booking & {
+  selected_datetime?: string;
+  location?: { name?: string; address?: string };
+  location_name?: string;
+  provider?: { business_name?: string; phone?: string; email?: string };
+  outstanding_balance?: number;
+};
 import { toast } from "sonner";
 import OrderDetailsDynamic from "@/app/checkout/components/order-details-dynamic";
 import Breadcrumb from "../../components/breadcrumb";
@@ -24,6 +36,16 @@ import BackButton from "../../components/back-button";
 import AuthGuard from "@/components/auth/auth-guard";
 import { SafetyPanicButton } from "@/components/safety/SafetyPanicButton";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+
+const COMPLETION_MODAL_STORAGE_KEY = "booking_completion_modal_seen_";
 
 export default function BookingDetailPage() {
   const params = useParams();
@@ -32,10 +54,11 @@ export default function BookingDetailPage() {
   const onDemandConfig = useModuleConfig("on_demand");
   const helpUrl = (onDemandConfig?.ui_copy as Record<string, string> | undefined)?.waiting_help_url?.trim();
 
-  const [booking, setBooking] = useState<Booking | null>(null);
+  const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   useEffect(() => {
     const loadBooking = async () => {
@@ -44,7 +67,7 @@ export default function BookingDetailPage() {
         setError(null);
 
         const response = await fetcher.get<{
-          data: Booking;
+          data: BookingDetail;
           error: null;
         }>(`/api/me/bookings/${bookingId}`, { cache: "no-store" });
 
@@ -68,6 +91,34 @@ export default function BookingDetailPage() {
     }
   }, [bookingId]);
 
+  // Show post-completion modal once per booking when opening a completed booking
+  useEffect(() => {
+    if (!bookingId || !booking || booking.status !== "completed") return;
+    if (typeof window === "undefined") return;
+    try {
+      const seen = window.localStorage.getItem(COMPLETION_MODAL_STORAGE_KEY + bookingId);
+      if (!seen) setShowCompletionModal(true);
+    } catch {
+      // ignore storage errors
+    }
+  }, [bookingId, booking]);
+
+  const dismissCompletionModal = (markSeen: boolean) => {
+    if (markSeen && bookingId && typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(COMPLETION_MODAL_STORAGE_KEY + bookingId, "1");
+      } catch {
+        // ignore
+      }
+    }
+    setShowCompletionModal(false);
+  };
+
+  const handleCompletionWriteReview = () => {
+    dismissCompletionModal(true);
+    router.push(`/account-settings/bookings/${bookingId}/review`);
+  };
+
   const handleCancel = async () => {
     if (!booking) return;
 
@@ -79,11 +130,11 @@ export default function BookingDetailPage() {
     try {
       setIsCancelling(true);
       const response = await fetcher.post<{
-        data: { booking: Booking };
+        data: { booking: BookingDetail };
         error: null;
       }>(`/api/me/bookings/${bookingId}/cancel`, {
         reason: "Customer request",
-        version: (booking as any).version, // Include version for conflict detection
+        version: booking.version, // Include version for conflict detection
       });
 
       setBooking(response.data.booking);
@@ -93,7 +144,7 @@ export default function BookingDetailPage() {
         toast.error("This booking was modified by another user. Please refresh and try again.");
         // Reload booking to get latest version
         const refreshResponse = await fetcher.get<{
-          data: Booking;
+          data: BookingDetail;
           error: null;
         }>(`/api/me/bookings/${bookingId}`, { cache: "no-store" });
         setBooking(refreshResponse.data);
@@ -153,7 +204,28 @@ export default function BookingDetailPage() {
     booking.status === "confirmed" || booking.status === "pending";
   const canReschedule = booking.status === "confirmed";
   const isActive = ["pending", "confirmed", "started", "in_progress"].includes(booking.status);
-  const providerName = (booking as Booking & { provider?: { business_name?: string } }).provider?.business_name ?? "your provider";
+  const providerName = booking.provider?.business_name ?? "your provider";
+
+  const scheduledAt = booking.selected_datetime ?? booking.scheduled_at;
+  const totalDurationMinutes = booking.services?.reduce((sum, s) => sum + (s.duration_minutes ?? 0), 0) ?? 0;
+  const calendarStart = scheduledAt ? new Date(scheduledAt) : null;
+  const calendarEnd = calendarStart ? new Date(calendarStart.getTime() + totalDurationMinutes * 60 * 1000) : null;
+  const calendarLocation =
+    booking.location_type === "at_salon"
+      ? booking.location?.name || booking.location?.address || "Salon"
+      : booking.address
+        ? `${booking.address.line1}, ${booking.address.city}`
+        : "Address TBD";
+  const calendarEvent =
+    calendarStart && calendarEnd
+      ? {
+          title: `Appointment with ${providerName}`,
+          description: `Booking #${booking.booking_number}\n${booking.services?.map((s) => `${s.offering_name || "Service"} (${s.duration_minutes ?? 0} min)`).join("\n") ?? ""}`,
+          location: calendarLocation,
+          start: calendarStart,
+          end: calendarEnd,
+        }
+      : null;
 
   return (
     <AuthGuard>
@@ -244,7 +316,7 @@ export default function BookingDetailPage() {
                 <p className="text-sm text-gray-600">Location</p>
                 <p className="font-medium">
                   {booking.location_type === "at_salon"
-                    ? (booking as any).location?.name || (booking as any).location_name || "At Salon"
+                    ? booking.location?.name || booking.location_name || "At Salon"
                     : booking.address
                     ? `${booking.address.line1}, ${booking.address.city}`
                     : "At your location"}
@@ -269,24 +341,58 @@ export default function BookingDetailPage() {
           <div className="space-y-4">
             <div>
               <p className="font-medium text-lg">
-                {(booking as any).provider?.business_name || "Provider"}
+                {booking.provider?.business_name || "Provider"}
               </p>
-              {(booking as any).provider?.phone && (
+              {booking.provider?.phone && (
                 <div className="flex items-center gap-2 mt-2 text-sm text-gray-600">
                   <Phone className="w-4 h-4" />
-                  <span>{(booking as any).provider.phone}</span>
+                  <span>{booking.provider.phone}</span>
                 </div>
               )}
-              {(booking as any).provider?.email && (
+              {booking.provider?.email && (
                 <div className="flex items-center gap-2 mt-1 text-sm text-gray-600">
                   <Mail className="w-4 h-4" />
-                  <span>{(booking as any).provider.email}</span>
+                  <span>{booking.provider.email}</span>
                 </div>
               )}
             </div>
           </div>
         </div>
       </div>
+
+      {calendarEvent && booking.status !== "cancelled" && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
+          <h2 className="text-lg md:text-xl font-semibold mb-3 text-gray-900">Add to your calendar</h2>
+          <p className="text-sm text-gray-600 mb-3">Save this appointment to Google Calendar, Outlook, or download an .ICS file.</p>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={getGoogleCalendarUrl(calendarEvent)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-lg font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Google Calendar
+            </a>
+            <a
+              href={getOutlookCalendarUrl(calendarEvent)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-lg font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
+            >
+              Outlook
+            </a>
+            <a
+              href={`/api/me/bookings/${bookingId}/calendar.ics`}
+              download
+              className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-lg font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
+            >
+              <Calendar className="w-4 h-4 mr-1" />
+              Download .ICS
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Services */}
       <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
@@ -313,11 +419,11 @@ export default function BookingDetailPage() {
       </div>
 
       {/* Products */}
-      {(booking as any).products && (booking as any).products.length > 0 && (
+      {booking.products && booking.products.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
           <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">Products</h2>
           <div className="space-y-3">
-            {(booking as any).products.map((product: any, index: number) => (
+            {booking.products.map((product, index: number) => (
               <div
                 key={product.id || index}
                 className="flex justify-between items-center py-3 border-b last:border-0"
@@ -336,11 +442,11 @@ export default function BookingDetailPage() {
       )}
 
       {/* Additional Charges */}
-      {(booking as any).additional_charges && (booking as any).additional_charges.length > 0 && (
+      {booking.additional_charges && booking.additional_charges.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
           <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">Additional Charges</h2>
           <div className="space-y-3">
-            {(booking as any).additional_charges.map((charge: any) => (
+            {booking.additional_charges.map((charge) => (
               <div
                 key={charge.id}
                 className={`p-4 border rounded-lg ${
@@ -409,12 +515,12 @@ export default function BookingDetailPage() {
               </span>
             </div>
           )}
-          {(booking as any).additional_charges && (booking as any).additional_charges.length > 0 && (
+          {booking.additional_charges && booking.additional_charges.length > 0 && (
             <div className="pt-2 border-t">
               <p className="text-sm font-medium text-gray-700 mb-2">Additional Charges</p>
-              {(booking as any).additional_charges
-                .filter((c: any) => c.status !== 'rejected')
-                .map((charge: any) => (
+              {booking.additional_charges
+                .filter((c) => c.status !== 'rejected')
+                .map((charge) => (
                   <div key={charge.id} className="flex justify-between text-sm mb-1">
                     <span className="text-gray-600">{charge.description}</span>
                     <span className={`font-medium ${
@@ -435,12 +541,12 @@ export default function BookingDetailPage() {
               </span>
             </div>
           </div>
-          {(booking as any).outstanding_balance !== undefined && (booking as any).outstanding_balance > 0 && (
+          {booking.outstanding_balance !== undefined && booking.outstanding_balance > 0 && (
             <div className="pt-2 border-t">
               <div className="flex justify-between">
                 <span className="font-semibold text-orange-600">Outstanding Balance</span>
                 <span className="font-semibold text-lg text-orange-600">
-                  {booking.currency} {(booking as any).outstanding_balance.toFixed(2)}
+                  {booking.currency} {booking.outstanding_balance.toFixed(2)}
                 </span>
               </div>
             </div>
@@ -520,6 +626,43 @@ export default function BookingDetailPage() {
         )}
       </div>
       </div>
+
+      {/* Post-completion modal: once per booking when opening a completed booking */}
+      <Dialog open={showCompletionModal} onOpenChange={(open) => !open && dismissCompletionModal(true)}>
+        <DialogContent className="sm:max-w-md" hideClose={false}>
+          <DialogHeader>
+            <div className="flex justify-center mb-3">
+              <div className="rounded-full bg-primary/10 p-4">
+                <Trophy className="h-10 w-10 text-primary" aria-hidden />
+              </div>
+            </div>
+            <DialogTitle className="text-center text-xl">Booking complete</DialogTitle>
+            <DialogDescription className="text-center">
+              You’re all set. Thanks for booking with us.
+              {(booking?.loyalty_points_earned ?? 0) > 0 && (
+                <span className="mt-2 block font-medium text-primary">
+                  You earned {booking.loyalty_points_earned} loyalty points. They’ve been added to your balance.
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-col">
+            <Button
+              onClick={handleCompletionWriteReview}
+              className="w-full"
+            >
+              Write a review
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => dismissCompletionModal(true)}
+              className="w-full"
+            >
+              Maybe later
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AuthGuard>
   );
 }

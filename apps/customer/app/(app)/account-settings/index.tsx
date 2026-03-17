@@ -1,12 +1,19 @@
-import { View, Text, ScrollView, TouchableOpacity, Share, Linking, Platform } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Share, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
+import { useApi } from "@/hooks/useApi";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
+
+interface ProfileCompletion {
+  percentage?: number;
+  completionPercentage?: number;
+  checklistItems?: { id: string; label: string; completed: boolean }[];
+}
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -28,6 +35,7 @@ const GROUPS: SettingsGroup[] = [
     heading: "Account",
     items: [
       { id: "personal-info", title: "Personal info", desc: "Name, photo, email and phone", route: "personal-info", icon: "person-outline" },
+      { id: "profile-details", title: "Profile details", desc: "Questions, interests and beauty preferences", route: "profile-details", icon: "sparkles-outline" },
       { id: "login-and-security", title: "Login & security", desc: "Password and account protection", route: "login-and-security", icon: "lock-closed-outline" },
       { id: "identity-verification", title: "Identity verification", desc: "Verify your identity with a document", route: "identity-verification", icon: "card-outline" },
       { id: "addresses", title: "Saved addresses", desc: "Home, work and other addresses", route: "addresses", icon: "location-outline" },
@@ -60,6 +68,7 @@ const GROUPS: SettingsGroup[] = [
     heading: "Preferences",
     items: [
       { id: "notifications", title: "Notifications", desc: "Email, SMS and push alerts", route: "notifications", icon: "notifications-outline" },
+      { id: "messages", title: "Messages", desc: "Conversations with providers", route: "messages", icon: "chatbubbles-outline" },
       { id: "preferences", title: "Language & region", desc: "Language, currency and timezone", route: "preferences", icon: "globe-outline" },
       { id: "wishlists", title: "Saved & wishlists", desc: "Saved providers and posts", route: "wishlists", icon: "heart-outline" },
     ],
@@ -68,7 +77,6 @@ const GROUPS: SettingsGroup[] = [
     heading: "Billing & Tax",
     items: [
       { id: "taxes", title: "Tax documents", desc: "Receipts and tax invoices", route: "taxes", icon: "document-text-outline" },
-      { id: "business", title: "Business account", desc: "Corporate bookings and invoicing", route: "business", icon: "briefcase-outline" },
     ],
   },
 ];
@@ -77,7 +85,10 @@ export default function AccountSettingsScreen() {
   useScreenTracking("Account Settings");
   const { user } = useAuth();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const { data: profileCompletion } = useApi<ProfileCompletion>("/api/me/profile-completion");
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
+  const completionPct = profileCompletion?.percentage ?? profileCompletion?.completionPercentage ?? 0;
+  const showCompletionBanner = profileCompletion && completionPct < 100;
 
   const handleShare = () => {
     getAnalyticsClient()?.track("share_app", { source: "account_settings" });
@@ -111,6 +122,33 @@ export default function AccountSettingsScreen() {
             {user.email || user.phone || ""}
           </Text>
         </View>
+      )}
+
+      {showCompletionBanner && (
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/account-settings/profile-details" as any)}
+          style={{
+            marginBottom: 20,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: Colors.primaryLight || "#fce7f3",
+            backgroundColor: Colors.primaryLight || "#fdf2f8",
+            padding: 16,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+          accessibilityLabel="Complete your profile"
+          accessibilityRole="button"
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Profile completion</Text>
+            <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 2 }}>
+              {completionPct}% complete – add details to get better recommendations
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.primary} />
+        </TouchableOpacity>
       )}
 
       {GROUPS.map((group) => (
@@ -205,7 +243,7 @@ export default function AccountSettingsScreen() {
 
       {user && (
         <TouchableOpacity
-          onPress={() => Linking.openURL(`${APP_URL}/provider/onboarding`)}
+          onPress={() => router.push({ pathname: "/(app)/in-app-browser", params: { url: encodeURIComponent(`${APP_URL}/provider/onboarding`), title: "Become a provider" } })}
           style={{ backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], paddingHorizontal: 16, paddingVertical: 16, flexDirection: "row", alignItems: "center", marginBottom: 16 }}
         >
           <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.primaryLight || "#fce7f3", alignItems: "center", justifyContent: "center", marginRight: 12 }}>

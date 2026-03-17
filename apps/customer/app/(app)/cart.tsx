@@ -7,7 +7,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
-  Linking,
   Platform,
 } from "react-native";
 import { Image } from "expo-image";
@@ -116,7 +115,10 @@ export default function CartScreen() {
   const openCheckout = useCallback(() => {
     haptic.medium();
     const url = `${APP_URL}/cart`;
-    Linking.openURL(url).catch(() => {});
+    router.push({
+      pathname: "/(app)/in-app-browser",
+      params: { url: encodeURIComponent(url), title: "Cart" },
+    });
   }, []);
 
   if (!user) {
@@ -266,6 +268,18 @@ export default function CartScreen() {
                 <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 6, textAlign: "right" }}>
                   Subtotal: R{g.subtotal.toFixed(2)}
                 </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    haptic.medium();
+                    router.push({
+                      pathname: "/(app)/product-checkout",
+                      params: { provider_id: g.provider.id },
+                    } as any);
+                  }}
+                  style={{ marginTop: 12, backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout — R{g.subtotal.toFixed(2)}</Text>
+                </TouchableOpacity>
               </View>
             ))}
 
@@ -283,14 +297,11 @@ export default function CartScreen() {
         <View style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: contentPadding, paddingBottom: 34, backgroundColor: "#fff", borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
           <TouchableOpacity
             onPress={openCheckout}
-            style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: "center", flexDirection: "row", justifyContent: "center", ...Shadows.cardSmall }}
+            style={{ paddingVertical: 10, alignItems: "center", flexDirection: "row", justifyContent: "center" }}
           >
-            <Ionicons name="open-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Checkout on web</Text>
+            <Ionicons name="open-outline" size={16} color={Colors.primary} style={{ marginRight: 6 }} />
+            <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "600" }}>Also checkout on web</Text>
           </TouchableOpacity>
-          <Text style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center", marginTop: 8 }}>
-            Complete payment and delivery on the website
-          </Text>
         </View>
       )}
     </>

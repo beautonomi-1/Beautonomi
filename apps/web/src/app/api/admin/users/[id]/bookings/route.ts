@@ -1,13 +1,14 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const supabase = await getSupabaseServer(request);
 
     if (!supabase) {
@@ -39,8 +40,9 @@ export async function GET(
     }
 
     // Fetch related data separately to avoid join issues
-    const providerIds = [...new Set((bookings || []).map((b: any) => b.provider_id).filter(Boolean))];
-    const serviceIds = [...new Set((bookings || []).map((b: any) => b.service_id).filter(Boolean))];
+    type BookingRow = { provider_id?: string; service_id?: string; id: string; status?: string; scheduled_at?: string; total_amount?: number; created_at?: string };
+    const providerIds = [...new Set((bookings || []).map((b: BookingRow) => b.provider_id).filter(Boolean))];
+    const serviceIds = [...new Set((bookings || []).map((b: BookingRow) => b.service_id).filter(Boolean))];
 
     const { data: providers } = providerIds.length > 0
       ? await supabase
@@ -56,13 +58,14 @@ export async function GET(
           .in("id", serviceIds)
       : { data: [] };
 
-    const providerMap = new Map((providers || []).map((p: any) => [p.id, p]));
-    const serviceMap = new Map((services || []).map((s: any) => [s.id, s]));
+    type ProviderRow = { id: string; business_name?: string; full_name?: string };
+    type ServiceRow = { id: string; name?: string };
+    const providerMap = new Map((providers || []).map((p: ProviderRow) => [p.id, p]));
+    const serviceMap = new Map((services || []).map((s: ServiceRow) => [s.id, s]));
 
-    // Transform the data to match expected format
-    const transformedBookings = (bookings || []).map((booking: any) => {
-      const provider = providerMap.get(booking.provider_id);
-      const service = serviceMap.get(booking.service_id);
+    const transformedBookings = (bookings || []).map((booking: BookingRow) => {
+      const provider = providerMap.get(booking.provider_id ?? "");
+      const service = serviceMap.get(booking.service_id ?? "");
       
       return {
         id: booking.id,

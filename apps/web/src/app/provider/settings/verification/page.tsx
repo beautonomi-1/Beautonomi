@@ -6,7 +6,7 @@ import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useModuleConfig, useFeatureFlag, useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { ShieldCheck, ShieldAlert, Loader2 } from "lucide-react";
@@ -15,6 +15,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 type VerificationStatus = "pending" | "in_progress" | "approved" | "rejected" | "reset";
 
 export default function VerificationPage() {
+  const { bundle } = useConfigBundle();
   const sumsubConfig = useModuleConfig("sumsub") as { enabled?: boolean } | undefined;
   const verificationEnabled = useFeatureFlag("verification.sumsub.enabled");
   const [status, setStatus] = useState<VerificationStatus | null>(null);
@@ -24,6 +25,7 @@ export default function VerificationPage() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const enabled = Boolean(sumsubConfig?.enabled) || verificationEnabled;
+  const env = bundle?.meta?.env ?? "production";
 
   const loadStatus = useCallback(async () => {
     try {
@@ -41,15 +43,15 @@ export default function VerificationPage() {
   }, [loadStatus]);
 
   const getNewToken = useCallback(async () => {
-    const res = await fetcher.get<{ data: { access_token: string } }>("/api/provider/verification/sumsub/token");
+    const res = await fetcher.get<{ data: { access_token: string } }>(`/api/provider/verification/sumsub/token?environment=${encodeURIComponent(env)}`);
     return res.data?.access_token ?? "";
-  }, []);
+  }, [env]);
 
   const launchVerification = async () => {
     if (!enabled || !containerRef.current) return;
     setLaunching(true);
     try {
-      const tokenRes = await fetcher.get<{ data: { access_token: string } }>("/api/provider/verification/sumsub/token");
+      const tokenRes = await fetcher.get<{ data: { access_token: string } }>(`/api/provider/verification/sumsub/token?environment=${encodeURIComponent(env)}`);
       const token = tokenRes.data?.access_token;
       if (!token) {
         toast.error("Could not start verification");

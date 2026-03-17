@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { arrayToCSV, generateCSVFilename } from "@/lib/utils/csv";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/export/bookings
@@ -11,12 +13,12 @@ import { checkRateLimit } from "@/lib/rate-limit";
  */
 export async function GET(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const { allowed, retryAfter } = checkRateLimit(auth.user.id, "export:bookings");
+    const { allowed, retryAfter } = checkRateLimit(user.id, "export:bookings");
     if (!allowed) {
       return NextResponse.json(
         {
@@ -81,21 +83,36 @@ export async function GET(request: Request) {
       );
     }
 
-    // Transform data for CSV
-    const csvData = (bookings || []).map((booking: any) => ({
-      "Booking ID": booking.id,
-      "Booking Number": booking.booking_number,
-      "Status": booking.status,
-      "Payment Status": booking.payment_status,
-      "Total Amount": booking.total_amount,
-      "Created At": booking.created_at,
-      "Scheduled At": booking.scheduled_at,
-      "Customer ID": booking.customer?.id || "",
-      "Customer Email": booking.customer?.email || "",
-      "Customer Name": booking.customer?.full_name || "",
-      "Provider ID": booking.provider?.id || "",
-      "Provider Name": booking.provider?.business_name || "",
-    }));
+    // Transform data for CSV (Supabase returns relations as arrays)
+    type BookingRow = {
+      id: string;
+      booking_number?: string;
+      status?: string;
+      payment_status?: string;
+      total_amount?: number;
+      created_at?: string;
+      scheduled_at?: string;
+      customer?: { id?: string; email?: string; full_name?: string }[] | { id?: string; email?: string; full_name?: string };
+      provider?: { id?: string; business_name?: string }[] | { id?: string; business_name?: string };
+    };
+    const csvData = (bookings || []).map((booking: BookingRow) => {
+      const c = Array.isArray(booking.customer) ? booking.customer[0] : booking.customer;
+      const p = Array.isArray(booking.provider) ? booking.provider[0] : booking.provider;
+      return {
+        "Booking ID": booking.id,
+        "Booking Number": booking.booking_number ?? "",
+        "Status": booking.status ?? "",
+        "Payment Status": booking.payment_status ?? "",
+        "Total Amount": booking.total_amount ?? "",
+        "Created At": booking.created_at ?? "",
+        "Scheduled At": booking.scheduled_at ?? "",
+        "Customer ID": c?.id ?? "",
+        "Customer Email": c?.email ?? "",
+        "Customer Name": c?.full_name ?? "",
+        "Provider ID": p?.id ?? "",
+        "Provider Name": p?.business_name ?? "",
+      };
+    });
 
     const csv = arrayToCSV(csvData);
     const filename = generateCSVFilename("bookings-export");

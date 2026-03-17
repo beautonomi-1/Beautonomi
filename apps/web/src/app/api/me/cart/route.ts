@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request,
     );
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: items, error } = await (supabase.from("cart_items") as any)
       .select(
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
     );
     const body = await request.json();
     const parsed = addSchema.parse(body);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Validate the product exists and is available
     const { data: product, error: prodErr } = await (supabase.from("products") as any)
@@ -182,7 +182,7 @@ export async function DELETE(request: NextRequest) {
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request,
     );
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { error } = await (supabase.from("cart_items") as any)
       .delete()

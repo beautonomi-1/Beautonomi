@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -53,23 +53,14 @@ export function EditWorkHoursDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Load existing time blocks for this staff member
-  useEffect(() => {
-    if (open && staffMember) {
-      loadWorkHours();
-    }
-  }, [open, staffMember]);
-
-  const loadWorkHours = async () => {
+  const loadWorkHours = useCallback(async () => {
     if (!staffMember) return;
 
     try {
       setIsLoading(true);
-      // Get time blocks for the next 7 days to see current schedule
       const today = new Date();
       const nextWeek = addDays(today, 7);
-      
-      const _response = await fetcher.get<{ data: any[] }>(
+      await fetcher.get<{ data: unknown[] }>(
         `/api/provider/time-blocks?staff_id=${staffMember.id}&date_from=${format(today, "yyyy-MM-dd")}&date_to=${format(nextWeek, "yyyy-MM-dd")}`
       );
 
@@ -99,7 +90,13 @@ export function EditWorkHoursDialog({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [staffMember]);
+
+  useEffect(() => {
+    if (open && staffMember) {
+      loadWorkHours();
+    }
+  }, [open, staffMember, loadWorkHours]);
 
   const handleDayToggle = (dayKey: string) => {
     setWorkHours((prev) => ({
@@ -155,8 +152,8 @@ export function EditWorkHoursDialog({
       const today = new Date();
       const weekStart = startOfWeek(today, { weekStartsOn: 1 });
       
-      // Create time blocks for each enabled day for the next 4 weeks
-      const timeBlocksToCreate: any[] = [];
+      type TimeBlockCreate = { staff_id: string; name: string; date: string; start_time: string; end_time: string; is_active: boolean };
+      const timeBlocksToCreate: TimeBlockCreate[] = [];
       
       for (let week = 0; week < 4; week++) {
         DAYS.forEach((day, dayIndex) => {
@@ -187,9 +184,9 @@ export function EditWorkHoursDialog({
       toast.success(`Work hours updated for ${staffMember.name}`);
       onOpenChange(false);
       onSuccess?.();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to save work hours:", error);
-      toast.error(error?.message || "Failed to save work hours");
+      toast.error(error instanceof Error ? error.message : "Failed to save work hours");
     } finally {
       setIsSaving(false);
     }

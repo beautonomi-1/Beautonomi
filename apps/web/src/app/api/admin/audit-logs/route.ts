@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   handleApiError,
   getPaginationParams,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/audit-logs
@@ -14,7 +14,7 @@ import {
  */
 export async function GET(request: Request) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const supabase = getSupabaseAdmin();
     
     // Validate request URL
@@ -78,8 +78,8 @@ export async function GET(request: Request) {
       return handleApiError(error, "Failed to fetch audit logs");
     }
 
-    // Transform logs to include actor information
-    const transformedLogs = (logs || []).map((log: any) => ({
+    type AuditLogRow = { actor?: { id?: string; full_name?: string; email?: string }; [key: string]: unknown };
+    const transformedLogs = (logs || []).map((log: AuditLogRow) => ({
       ...log,
       actor: log.actor ? {
         id: log.actor.id,

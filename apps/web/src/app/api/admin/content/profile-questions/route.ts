@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { z } from "zod";
 
 // Schema for validating profile question updates
@@ -24,7 +25,7 @@ const profileQuestionSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
 
     const { data: questions, error } = await supabase
@@ -47,7 +48,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['superadmin'], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const body = await request.json();
     const supabase = await getSupabaseServer(request);
 

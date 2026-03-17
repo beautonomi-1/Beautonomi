@@ -15,11 +15,18 @@ import {
 import { motion } from "framer-motion";
 import { fetcher } from "@/lib/http/fetcher";
 
+export type TaxInfoFormData = {
+  country: string;
+  tax_id: string;
+  full_name: string;
+  address: { line1: string; line2: string; city: string; state: string; postal_code: string; country: string };
+};
+
 interface TaxInfoModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: any) => Promise<void>;
-  initialData?: any;
+  onSave: (data: TaxInfoFormData) => Promise<void>;
+  initialData?: Partial<TaxInfoFormData> | null;
 }
 
 export default function TaxInfoModal({ isOpen, onClose, onSave, initialData }: TaxInfoModalProps) {

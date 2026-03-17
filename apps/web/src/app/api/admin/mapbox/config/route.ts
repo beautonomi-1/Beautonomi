@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidateTag } from "next/cache";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 
 const mapboxConfigSchema = z.object({
   // access_token is a secret and is stored in platform_secrets; only update when provided
@@ -28,8 +30,8 @@ function isMaskedOrEmptyToken(value: string | null | undefined): boolean {
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -56,11 +58,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Response contains only non-secret config; secret token lives in platform_secrets
+    type MapboxConfigRow = { public_access_token?: string; [key: string]: unknown };
     if (config) {
+      const cfg = config as MapboxConfigRow;
       const maskedConfig = {
-        ...(config as Record<string, any>),
-        public_access_token: (config as any).public_access_token
-          ? `${(config as any).public_access_token.substring(0, 8)}...`
+        ...(config as Record<string, unknown>),
+        public_access_token: cfg.public_access_token
+          ? `${cfg.public_access_token.substring(0, 8)}...`
           : null,
         access_token: "***",
       };
@@ -93,8 +97,8 @@ export async function GET(request: NextRequest) {
  */
 export async function PUT(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -124,19 +128,21 @@ export async function PUT(request: Request) {
     // If secret access_token provided (and not placeholder), store in platform_secrets
     const newAccessToken = validationResult.data.access_token?.trim();
     if (newAccessToken && newAccessToken !== "***") {
-      const { data: existingSecrets } = await (admin.from("platform_secrets") as any).select("id").limit(1).maybeSingle();
+      const { data: existingSecrets } = await admin.from("platform_secrets").select("id").limit(1).maybeSingle();
       if (existingSecrets?.id) {
-        await (admin.from("platform_secrets") as any)
+        await admin
+          .from("platform_secrets")
           .update({ mapbox_access_token: newAccessToken, updated_at: new Date().toISOString() })
           .eq("id", existingSecrets.id);
       } else {
-        await (admin.from("platform_secrets") as any).insert({ mapbox_access_token: newAccessToken });
+        await admin.from("platform_secrets").insert({ mapbox_access_token: newAccessToken });
       }
     }
 
     // Resolve effective public token: new value if provided and not masked, else existing from DB
     const { data: existingConfig } = await supabase.from("mapbox_config").select("id, public_access_token").single();
-    const existingPublicToken = (existingConfig as any)?.public_access_token as string | null | undefined;
+    type ConfigRow = { id?: string; public_access_token?: string };
+    const existingPublicToken = (existingConfig as ConfigRow | null)?.public_access_token ?? null;
     const sentPublicToken = validationResult.data.public_access_token?.trim();
     const useNewPublicToken = sentPublicToken && !isMaskedOrEmptyToken(sentPublicToken);
     const effectivePublicToken = useNewPublicToken ? sentPublicToken : (existingPublicToken || null);
@@ -154,17 +160,19 @@ export async function PUT(request: Request) {
       );
     }
 
-    let config: any;
+    type MapboxConfigResult = { id: string; public_access_token?: string; style_url?: string; is_enabled?: boolean; [key: string]: unknown };
+    let config: MapboxConfigResult | null = null;
     if (existingConfig) {
-      const { data, error } = await (supabase
-        .from("mapbox_config") as any)
+      const existingRow = existingConfig as ConfigRow & { id: string };
+      const { data, error } = await supabase
+        .from("mapbox_config")
         .update({
           ...(effectivePublicToken != null && { public_access_token: effectivePublicToken }),
           style_url: validationResult.data.style_url ?? null,
           is_enabled: validationResult.data.is_enabled,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", (existingConfig as any).id)
+        .eq("id", existingRow.id)
         .select()
         .single();
 
@@ -183,8 +191,8 @@ export async function PUT(request: Request) {
       }
       config = data;
     } else {
-      const { data, error } = await (supabase
-        .from("mapbox_config") as any)
+      const { data, error } = await supabase
+        .from("mapbox_config")
         .insert({
           public_access_token: effectivePublicToken!,
           style_url: validationResult.data.style_url || null,
@@ -214,18 +222,21 @@ export async function PUT(request: Request) {
     // Sync to platform_settings so web, customer, and provider apps get same config via third-party-config
     const publicTokenForClients = effectivePublicToken ?? (config?.public_access_token as string) ?? "";
     try {
-      const { data: psRow } = await (admin.from("platform_settings") as any).select("id, settings").single();
+      const { data: psRow } = await admin.from("platform_settings").select("id, settings").single();
       if (psRow?.settings) {
-        const settings = { ...(psRow.settings as Record<string, any>) };
-        const mapbox = (settings.mapbox as Record<string, any>) || {};
+        type SettingsRow = { id?: string; settings?: Record<string, unknown> };
+        const row = psRow as SettingsRow;
+        const settings = { ...(row.settings ?? {}) };
+        const mapbox = (settings.mapbox as Record<string, unknown>) ?? {};
         settings.mapbox = {
           ...mapbox,
           public_token: (publicTokenForClients || (mapbox.public_token as string)) ?? "",
           enabled: validationResult.data.is_enabled,
         };
-        await (admin.from("platform_settings") as any)
+        await admin
+          .from("platform_settings")
           .update({ settings, updated_at: new Date().toISOString() })
-          .eq("id", psRow.id);
+          .eq("id", row.id);
       }
     } catch (syncErr) {
       console.warn("Mapbox config sync to platform_settings failed (non-blocking):", syncErr);
@@ -242,11 +253,11 @@ export async function PUT(request: Request) {
     };
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.mapbox.config.update",
       entity_type: "mapbox_config",
-      entity_id: (config as any)?.id || null,
+      entity_id: config?.id ?? null,
       metadata: {
         is_enabled: validationResult.data.is_enabled,
         style_url: validationResult.data.style_url || null,

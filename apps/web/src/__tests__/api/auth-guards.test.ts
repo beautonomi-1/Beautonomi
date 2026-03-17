@@ -31,8 +31,13 @@ import {
 const mockRequireRoleInApi = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async () => {
+  const { ALL_ADMIN_ROLES: ROLES } = await import("@/lib/admin-sections");
   return {
     requireRoleInApi: (...args: any[]) => mockRequireRoleInApi(...args),
+    requireAdminSection: async (_section: unknown, request?: unknown) => {
+      const result = await mockRequireRoleInApi(ROLES, request);
+      return result;
+    },
     successResponse: (data: any, status = 200) => {
       return new Response(JSON.stringify({ data, error: null }), {
         status,

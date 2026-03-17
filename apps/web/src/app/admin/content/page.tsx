@@ -2048,7 +2048,7 @@ function PageContentModal({
                     <li><code>features_list</code> - Features list (JSON format - see example below)</li>
                     <li><code>cta_title</code> - Call-to-action section title</li>
                     <li><code>cta_description</code> - Call-to-action section description</li>
-                    <li><code>video_tour_url</code> - Video tour URL (YouTube or Vimeo). When set, &quot;Watch a video tour&quot; expands an inline video player on the page. Use content type <strong>text</strong> or <strong>video</strong>.</li>
+                    <li><code>video_tour_url</code> - Video tour URL (YouTube or Vimeo). When set, &quot;Watch a video tour&quot; opens an in-context popup modal with the video. Use content type <strong>text</strong> or <strong>video</strong>.</li>
                     <li><code>demo_booking_type</code> - Demo booking provider: <code>calendly</code> or <code>zoho</code>. Use content type <strong>text</strong>.</li>
                     <li><code>demo_booking_embed</code> - For Calendly: your Calendly scheduling URL (e.g. <code>https://calendly.com/yourname/demo</code>). For Zoho: same URL, or paste the full iframe HTML. Use content type <strong>text</strong> or <strong>html</strong>. When set, &quot;Book a demo&quot; opens an in-page embed modal.</li>
                     <li><code>top_banner_enabled</code> - Set to <code>true</code>, <code>1</code>, or <code>yes</code> to show the notification strip at the top of the page. Omit or set to anything else to hide it. Use content type <strong>text</strong>.</li>

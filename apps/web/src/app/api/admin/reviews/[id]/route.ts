@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
-import { successResponse, errorResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, errorResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 
@@ -22,8 +23,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -78,8 +79,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -108,7 +109,7 @@ export async function PATCH(
       return notFoundResponse("Review not found");
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (validationResult.data.is_visible !== undefined) {
       updateData.is_visible = validationResult.data.is_visible;
     }
@@ -118,7 +119,7 @@ export async function PATCH(
         updateData.flagged_reason = validationResult.data.flagged_reason;
       }
       if (validationResult.data.is_flagged) {
-        updateData.flagged_by = auth.user.id;
+        updateData.flagged_by = user.id;
       } else {
         updateData.flagged_reason = null;
         updateData.flagged_by = null;
@@ -140,8 +141,8 @@ export async function PATCH(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.review.update",
       entity_type: "review",
       entity_id: id,
@@ -164,8 +165,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -190,8 +191,8 @@ export async function DELETE(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.review.delete",
       entity_type: "review",
       entity_id: id,

@@ -20,6 +20,9 @@ interface ExplorePostCardProps {
   post: ExplorePost;
   onLikeChange?: (postId: string, liked: boolean) => void;
   onSaveChange?: (postId: string, saved: boolean) => void;
+  /** Whether the post's provider is in the user's wishlist; enables "Save provider" CTA */
+  isProviderInWishlist?: boolean;
+  onSaveProviderChange?: (providerId: string, inWishlist: boolean) => void;
   /** First few cards above the fold – use loading="eager" for LCP */
   priority?: boolean;
 }
@@ -28,16 +31,23 @@ export function ExplorePostCard({
   post,
   onLikeChange,
   onSaveChange,
+  isProviderInWishlist = false,
+  onSaveProviderChange,
   priority = false,
 }: ExplorePostCardProps) {
   const router = useRouter();
   const { user } = useAuth();
   const [isLiked, setIsLiked] = useState(post.is_liked ?? false);
   const [isSaved, setIsSaved] = useState(post.is_saved ?? false);
+  const [providerSaved, setProviderSaved] = useState(isProviderInWishlist);
   const [likeCount, setLikeCount] = useState(post.like_count);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const viewTrackedRef = useRef(false);
+
+  useEffect(() => {
+    setProviderSaved(isProviderInWishlist);
+  }, [isProviderInWishlist]);
 
   useEffect(() => {
     const el = document.getElementById(`explore-post-${post.id}`);
@@ -110,6 +120,30 @@ export function ExplorePostCard({
       onSaveChange?.(post.id, newSaved);
     } catch {
       toast.error("Could not update save");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleSaveProvider = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!user) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    if (isUpdating) return;
+    setIsUpdating(true);
+    const newVal = !providerSaved;
+    try {
+      await fetcher.post("/api/me/wishlists/toggle", {
+        item_type: "provider",
+        item_id: post.provider_id,
+      });
+      setProviderSaved(newVal);
+      onSaveProviderChange?.(post.provider_id, newVal);
+    } catch {
+      toast.error("Could not update saved provider");
     } finally {
       setIsUpdating(false);
     }
@@ -205,6 +239,40 @@ export function ExplorePostCard({
             )}
           </p>
         )}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {post.offering?.id && post.provider?.slug ? (
+            <Link
+              href={`/book/${encodeURIComponent(post.provider.slug)}?service=${encodeURIComponent(post.offering.id)}`}
+              onClick={(e) => e.stopPropagation()}
+              className="text-sm font-medium text-[#FF0077] hover:underline"
+            >
+              Book this look
+              {post.offering.name ? ` · ${post.offering.name}` : ""}
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                router.push(`/partner-profile?slug=${encodeURIComponent(post.provider.slug || "")}`);
+              }}
+              className="text-sm font-medium text-[#FF0077] hover:underline"
+            >
+              Book with {post.provider.business_name || "provider"}
+            </button>
+          )}
+          {post.provider_id && (
+            <button
+              type="button"
+              onClick={handleSaveProvider}
+              disabled={isUpdating}
+              className={`text-xs font-medium px-2 py-1 rounded-full border ${providerSaved ? "border-[#FF0077] text-[#FF0077] bg-pink-50" : "border-gray-300 text-gray-700 hover:border-[#FF0077] hover:text-[#FF0077]"}`}
+            >
+              {providerSaved ? "Saved" : "Save provider"}
+            </button>
+          )}
+        </div>
       </div>
 
       <LoginModal open={isLoginModalOpen} setOpen={setIsLoginModalOpen} />

@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useResponsive } from "@/hooks/useResponsive";
 import { supabase } from "@/lib/supabase/client";
+import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 
 export default function ForgotPasswordScreen() {
@@ -37,7 +38,7 @@ export default function ForgotPasswordScreen() {
     setLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-        redirectTo: `${process.env.EXPO_PUBLIC_APP_URL || "https://beautonomi.com"}/account-settings/login-and-security/reset-password`,
+        redirectTo: `${APP_URL?.trim() || "https://beautonomi.com"}/account-settings/login-and-security/reset-password`,
       });
 
       if (error) {

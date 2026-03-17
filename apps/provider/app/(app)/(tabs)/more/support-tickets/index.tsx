@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { View, Text, TouchableOpacity, ScrollView, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,6 +8,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
+import { trackSupportTicketsView } from "@/lib/analytics";
 
 type Ticket = {
   id: string;
@@ -49,6 +50,12 @@ export default function SupportTicketsListScreen() {
   }, [refresh]);
 
   const tickets: Ticket[] = data?.tickets ?? [];
+
+  useEffect(() => {
+    if (!loading && data !== undefined) {
+      trackSupportTicketsView();
+    }
+  }, [loading, data]);
 
   if (loading && !data) {
     return (

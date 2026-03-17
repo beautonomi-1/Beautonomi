@@ -16,6 +16,7 @@ const updateAccountSchema = z.object({
   description: z.string().optional(),
   email: z.string().email().optional(),
   active: z.boolean().optional(),
+  is_primary: z.boolean().optional(),
 });
 
 /**
@@ -124,6 +125,17 @@ export async function PATCH(
       };
     }
     if (validationResult.data.active !== undefined) updateData.active = validationResult.data.active;
+    if (validationResult.data.is_primary === true) {
+      // Clear primary from other accounts first (one primary per provider)
+      await supabase
+        .from("provider_payout_accounts")
+        .update({ is_primary: false })
+        .eq("provider_id", account.provider_id)
+        .neq("id", id);
+      updateData.is_primary = true;
+    } else if (validationResult.data.is_primary === false) {
+      updateData.is_primary = false;
+    }
 
     const { data: updatedAccount, error: updateError } = await supabase
       .from("provider_payout_accounts")

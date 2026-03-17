@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Calendar, Clock, User, CheckCircle2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +41,7 @@ interface WaitlistMatchesDashboardProps {
   providerId: string;
 }
 
-export default function WaitlistMatchesDashboard({ providerId }: WaitlistMatchesDashboardProps) {
+export default function WaitlistMatchesDashboard({ providerId: _providerId }: WaitlistMatchesDashboardProps) {
   const [matches, setMatches] = useState<WaitlistMatch[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string>("");
@@ -49,11 +49,7 @@ export default function WaitlistMatchesDashboard({ providerId }: WaitlistMatches
   const [selectedMatch, setSelectedMatch] = useState<WaitlistMatch | null>(null);
   const [isQuickBookingOpen, setIsQuickBookingOpen] = useState(false);
 
-  useEffect(() => {
-    loadMatches();
-  }, [providerId, selectedDate, selectedStaff]);
-
-  const loadMatches = async () => {
+  const loadMatches = useCallback(async () => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams();
@@ -64,12 +60,16 @@ export default function WaitlistMatchesDashboard({ providerId }: WaitlistMatches
         `/api/provider/waitlist/matches?${params.toString()}`
       );
       setMatches(response.matches || []);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to load waitlist matches");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to load waitlist matches");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedDate, selectedStaff]);
+
+  useEffect(() => {
+    loadMatches();
+  }, [loadMatches]);
 
   const handleQuickBook = (match: WaitlistMatch) => {
     setSelectedMatch(match);

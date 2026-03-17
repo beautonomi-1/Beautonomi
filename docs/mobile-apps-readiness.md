@@ -38,7 +38,7 @@
 
 ### Backend and behaviour
 
-- **One backend:** Web and mobile share the same Next.js API and Supabase. Location/branch logic (e.g. nearest branch, `location_id` filtering, addon/package/promo by branch) lives in the API, so **behaviour is consistent** for web and mobile as long as:
+- **One backend:** Web and mobile share the same Next.js API and Supabase. Authenticated routes support Bearer token auth so customer and provider mobile apps are not logged out when navigating; see [CUSTOMER_APP_MOBILE_AUTH.md](./CUSTOMER_APP_MOBILE_AUTH.md). Location/branch logic (e.g. nearest branch, `location_id` filtering, addon/package/promo by branch) lives in the API, so **behaviour is consistent** for web and mobile as long as:
   - Provider app keeps sending `location_id` where it already does (dashboard, calendar, sales, team, new booking, etc.) and, if you add addon/package lists by branch, passes `location_id` there too.
   - Customer app keeps sending `location_id` for at_salon and address/coords for at_home in the hold/booking flow (it already does).
 - So **logically**, everything that’s implemented **will work the same** on iOS, Android, and web for those flows.

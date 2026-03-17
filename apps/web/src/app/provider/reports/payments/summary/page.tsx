@@ -11,7 +11,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface PaymentSummaryData {
   totalPayments: number;
@@ -133,7 +133,7 @@ export default function PaymentSummaryReport() {
             variant="outline" 
             onClick={() => {
               if (!data) return;
-              const exportData = formatReportDataForExport(data, "payment-summary");
+              const exportData = formatReportDataForExport(data as unknown as ReportRow, "payment-summary");
               exportToCSV(exportData, "payment-summary-report");
             }} 
             className="gap-2 min-h-[44px] touch-manipulation"

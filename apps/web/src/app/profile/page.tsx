@@ -7,14 +7,40 @@ import type { ProfileUser, ProfileData, CompletionData } from "@/types/profile";
 import Breadcrumb from "@/components/ui/breadcrumb";
 import BottomNav from "@/components/layout/bottom-nav";
 import BackButton from "@/app/account-settings/components/back-button";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
+type UserCompletionRow = {
+  avatar_url?: string | null;
+  email_verified?: boolean;
+  preferred_name?: string | null;
+  phone?: string | null;
+  emergency_contact_name?: string | null;
+};
+type ProfileCompletionRow = {
+  about?: string | null;
+  interests?: unknown;
+  school?: string | null;
+  work?: string | null;
+  location?: string | null;
+  decade_born?: string | null;
+  favorite_song?: string | null;
+  obsessed_with?: string | null;
+  fun_fact?: string | null;
+  useless_skill?: string | null;
+  biography_title?: string | null;
+  spend_time?: string | null;
+  pets?: string | null;
+  beauty_preferences?: Record<string, unknown>;
+} | null;
+
 async function calculateCompletionData(
-  supabase: any,
+  supabase: SupabaseClient,
   userId: string,
-  userData: any,
-  profileData: any
+  userData: UserCompletionRow,
+  profileData: ProfileCompletionRow,
+  authPhone?: string | null
 ): Promise<CompletionData> {
   // Get verification status
   const { data: verification } = await supabase
@@ -66,7 +92,7 @@ async function calculateCompletionData(
       id: "phone",
       label: "Add phone",
       timeEstimate: "1 min",
-      completed: !!userData.phone,
+      completed: !!(userData.phone || authPhone),
       required: false,
     },
     {
@@ -94,7 +120,7 @@ async function calculateCompletionData(
       id: "interests",
       label: "Add interests",
       timeEstimate: "1 min",
-      completed: !!(profileData?.interests && profileData.interests.length > 0),
+      completed: !!(profileData?.interests && (Array.isArray(profileData.interests) ? profileData.interests.length > 0 : false)),
       required: false,
     },
     {
@@ -221,24 +247,35 @@ async function getProfileData(): Promise<{
       const first_name = nameParts[0] || "";
       const last_name = nameParts.slice(1).join(" ") || "";
 
-      // Only show pending if there's actually a submitted verification
-      // If no verification record exists or it hasn't been submitted, show as 'none'
-      let verificationStatus = 'none';
+      type UserDbRow = {
+        identity_verification_status?: string | null;
+        preferred_name?: string | null;
+        handle?: string | null;
+        email_verified?: boolean;
+        phone_verified?: boolean;
+        rating_average?: number | null;
+        review_count?: number | null;
+        emergency_contact_email?: string | null;
+        emergency_contact_country_code?: string | null;
+      };
+      const u = user as UserDbRow;
+      let verificationStatus = "none";
       if (verification?.submitted_at) {
-        verificationStatus = verification.status || 'none';
-      } else if ((user as any).identity_verification_status && (user as any).identity_verification_status !== 'none') {
-        // Fallback to user table status only if it's not 'none'
-        verificationStatus = (user as any).identity_verification_status;
+        verificationStatus = verification.status || "none";
+      } else if (u.identity_verification_status && u.identity_verification_status !== "none") {
+        verificationStatus = u.identity_verification_status;
       }
 
       userData = {
         ...user,
         first_name,
         last_name,
-        preferred_name: (user as any).preferred_name || null,
-        handle: (user as any).handle || null,
-        email_verified: (user as any).email_verified || false,
-        phone_verified: (user as any).phone_verified || false,
+        preferred_name: u.preferred_name ?? null,
+        handle: u.handle ?? null,
+        email_verified: u.email_verified ?? false,
+        phone_verified: u.phone_verified ?? false,
+        rating_average: u.rating_average ?? null,
+        review_count: u.review_count ?? null,
         address: address ? {
           country: address.country || "",
           line1: address.address_line1 || "",
@@ -251,8 +288,8 @@ async function getProfileData(): Promise<{
           name: user.emergency_contact_name || "",
           relationship: user.emergency_contact_relationship || "",
           language: user.preferred_language || "",
-          email: (user as any).emergency_contact_email || "",
-          country_code: (user as any).emergency_contact_country_code || "",
+          email: u.emergency_contact_email ?? "",
+          country_code: u.emergency_contact_country_code ?? "",
           phone: user.emergency_contact_phone || "",
         },
         identity_verified: verificationStatus === 'approved',
@@ -267,25 +304,27 @@ async function getProfileData(): Promise<{
       } as ProfileUser;
     }
 
-    // Process profile data
+    type FullProfileRow = { about?: string | null; interests?: string[] | null };
     let profileData: ProfileData | null = null;
-    let fullProfileData: any = null;
+    let fullProfileData: FullProfileRow | null = null;
     if (profileResult.status === "fulfilled" && profileResult.value.data) {
-      fullProfileData = profileResult.value.data;
+      fullProfileData = profileResult.value.data as FullProfileRow;
       profileData = {
-        about: fullProfileData.about || null,
-        interests: fullProfileData.interests || null,
+        about: fullProfileData.about ?? null,
+        interests: fullProfileData.interests ?? null,
       };
     }
 
-    // Calculate completion data
     let completionData: CompletionData | null = null;
     if (userResult.status === "fulfilled" && userResult.value.data) {
+      const authUser = user as { phone?: string; user_metadata?: { phone?: string } };
+      const authPhone = authUser?.phone ?? authUser?.user_metadata?.phone;
       completionData = await calculateCompletionData(
         supabase,
         user.id,
         userResult.value.data,
-        fullProfileData
+        fullProfileData,
+        authPhone
       );
     }
 

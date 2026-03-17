@@ -100,7 +100,6 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     items: [
       { title: "Payout accounts", description: "Bank accounts for payouts", href: "/provider/settings/payout-accounts", mobileRoute: "/(app)/(tabs)/more/settings/payout-accounts" },
       { title: "Yoco integration", description: "Yoco payment devices", href: "/provider/settings/sales/yoco-integration", mobileRoute: "/(app)/(tabs)/more/settings/yoco-devices" },
-      { title: "Yoco terminals", description: "Card terminals", href: "/provider/settings/yoco-terminals", mobileRoute: "/(app)/(tabs)/more/settings/yoco-devices" },
       { title: "Receipt sequencing", description: "Receipt numbering", href: "/provider/settings/sales/receipt-sequencing", mobileRoute: "/(app)/(tabs)/more/settings/receipt-template" },
       { title: "Receipt template", description: "Receipt design", href: "/provider/settings/sales/receipt-template", mobileRoute: "/(app)/(tabs)/more/settings/receipt-template" },
       { title: "Taxes", description: "Tax rates", href: "/provider/settings/sales/taxes", mobileRoute: "/(app)/(tabs)/more/settings/tax-configuration" },
@@ -129,7 +128,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     title: "Marketing",
     description: "Integrations and ads",
     items: [
-      { title: "Paid ads", description: "Boosted listings and campaigns", href: "/provider/settings/ads", mobileRoute: "/(app)/(tabs)/more/marketing" },
+      { title: "Paid ads", description: "Boosted listings and campaigns", href: "/provider/settings/ads", mobileRoute: "/(app)/(tabs)/more/settings/ads" },
       { title: "Email integration", description: "SendGrid, Mailchimp", href: "/provider/settings/integrations/email", mobileRoute: "/(app)/(tabs)/more/settings/email-integration" },
       { title: "Twilio integration", description: "SMS and WhatsApp", href: "/provider/settings/integrations/twilio", mobileRoute: "/(app)/(tabs)/more/settings/twilio-integration" },
     ],

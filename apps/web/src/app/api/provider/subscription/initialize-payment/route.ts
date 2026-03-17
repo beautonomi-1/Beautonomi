@@ -9,6 +9,7 @@ import { createCustomer, fetchCustomer } from '@/lib/payments/paystack-complete'
 const initializePaymentSchema = z.object({
   plan_id: z.string().uuid('Plan ID is required'),
   billing_period: z.enum(["monthly", "yearly"]).default("monthly"),
+  in_app: z.boolean().optional(),
 });
 
 /**
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabase);
     const body = await request.json();
 
-    const { plan_id, billing_period } = initializePaymentSchema.parse(body);
+    const { plan_id, billing_period, in_app } = initializePaymentSchema.parse(body);
 
     // Get subscription plan
     const { data: plan, error: planError } = await supabase
@@ -99,7 +100,8 @@ export async function POST(request: NextRequest) {
 
     // Initialize Paystack transaction
     const reference = generateTransactionReference("provider_subscription_auth", order.id);
-    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/provider/subscription?payment_success=true&order_id=${order.id}`;
+    const inAppParam = in_app ? "&in_app=1" : "";
+    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/provider/subscription?payment_success=true&order_id=${order.id}${inAppParam}`;
 
     const paystackData = await initializePaystackTransaction({
       email,

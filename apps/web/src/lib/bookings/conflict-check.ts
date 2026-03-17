@@ -16,14 +16,16 @@ export interface ConflictCheckResult {
 
 /**
  * Check if a booking time slot conflicts with existing bookings
- * Includes buffer time in the conflict check
+ * Includes buffer time in the conflict check.
+ * @param excludeBookingId - When set (e.g. for reschedule), ignore this booking's services so the same booking is not considered a conflict.
  */
 export async function checkBookingConflict(
   supabase: SupabaseClient,
   staffId: string,
   startAt: Date,
   endAt: Date,
-  bufferMinutes: number = 15
+  bufferMinutes: number = 15,
+  excludeBookingId?: string
 ): Promise<ConflictCheckResult> {
   // Calculate effective end time (including buffer)
   const effectiveEndAt = new Date(endAt.getTime() + bufferMinutes * 60000);
@@ -31,7 +33,7 @@ export async function checkBookingConflict(
   // Query for overlapping bookings
   // We check if the new booking overlaps with any existing booking
   // Overlap occurs if: new_start < existing_end AND new_end > existing_start
-  const { data: conflictingServices, error } = await supabase
+  let query = supabase
     .from('booking_services')
     .select(`
       booking_id,
@@ -49,6 +51,12 @@ export async function checkBookingConflict(
     .neq('bookings.status', 'cancelled')
     .lt('scheduled_start_at', effectiveEndAt.toISOString())
     .gt('scheduled_end_at', startAt.toISOString());
+
+  if (excludeBookingId) {
+    query = query.neq('booking_id', excludeBookingId);
+  }
+
+  const { data: conflictingServices, error } = await query;
 
   if (error) {
     console.error('Error checking booking conflict:', error);

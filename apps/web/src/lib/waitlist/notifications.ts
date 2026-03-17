@@ -153,7 +153,8 @@ Beautonomi Team
           slots_list: slotsList,
           booking_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://beautonomi.com'}${bookingUrl}`,
         },
-        ['email']
+        ['email'],
+        { appType: 'customer' }
       );
 
       if (result.success) {
@@ -220,7 +221,8 @@ async function sendWaitlistSMSNotification(
           more_text: moreText,
           booking_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://beautonomi.com'}${bookingUrl}`,
         },
-        ['sms']
+        ['sms'],
+        { appType: 'customer' }
       );
 
       if (result.success) {

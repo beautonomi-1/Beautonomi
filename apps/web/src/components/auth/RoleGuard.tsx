@@ -23,6 +23,7 @@ const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes (increased for better UX)
 // Persistent user session cache in localStorage (survives tab switches and refreshes)
 const SESSION_CACHE_KEY = 'beautonomi_session_cache';
 const SESSION_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+const SESSION_CACHE_DURATION_SUPERADMIN = 5 * 60 * 1000; // 5 minutes for admin (revocation takes effect sooner)
 
 // Use a hook to safely access localStorage only after mount (prevents hydration mismatch)
 function useSessionCache() {
@@ -35,7 +36,8 @@ function useSessionCache() {
       const cached = localStorage.getItem(SESSION_CACHE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (parsed.timestamp && Date.now() - parsed.timestamp < SESSION_CACHE_DURATION) {
+        const duration = parsed.role === 'superadmin' ? SESSION_CACHE_DURATION_SUPERADMIN : SESSION_CACHE_DURATION;
+        if (parsed.timestamp && Date.now() - parsed.timestamp < duration) {
           setCache(parsed);
         }
       }

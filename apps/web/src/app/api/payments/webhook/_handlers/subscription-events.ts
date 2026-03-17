@@ -111,13 +111,13 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
     .eq("id", plan.id)
     .single();
 
+  type PlanDetailsRow = { paystack_plan_code_monthly?: string | null; paystack_plan_code_yearly?: string | null };
   const billingPeriod =
-    (planDetails as any)?.paystack_plan_code_monthly === planCode ? "monthly" : "yearly";
+    (planDetails as PlanDetailsRow)?.paystack_plan_code_monthly === planCode ? "monthly" : "yearly";
 
   const dbStatus = mapPaystackStatusToDb(status || "active");
 
-  // Update or create subscription
-  await (supabase.from("provider_subscriptions") as any).upsert(
+  await supabase.from("provider_subscriptions").upsert(
     {
       provider_id: provider.id,
       plan_id: plan.id,
@@ -147,7 +147,7 @@ async function handleSubscriptionDisable(payload: any, supabase: SupabaseClient)
     return;
   }
 
-  await (supabase.from("provider_subscriptions") as any)
+  await supabase.from("provider_subscriptions")
     .update({
       status: "cancelled",
       auto_renew: false,
@@ -166,7 +166,7 @@ async function handleSubscriptionEnable(payload: any, supabase: SupabaseClient) 
     return;
   }
 
-  await (supabase.from("provider_subscriptions") as any)
+  await supabase.from("provider_subscriptions")
     .update({
       status: "active",
       auto_renew: true,
@@ -187,7 +187,7 @@ async function handleSubscriptionNotRenew(payload: any, supabase: SupabaseClient
     return;
   }
 
-  await (supabase.from("provider_subscriptions") as any)
+  await supabase.from("provider_subscriptions")
     .update({
       auto_renew: false,
       updated_at: new Date().toISOString(),
@@ -229,6 +229,7 @@ async function handleSubscriptionExpiringCards(payload: any, supabase: SupabaseC
             year: new Date().getFullYear().toString(),
           },
           ["push", "email"],
+          { appType: "provider" }
         );
       } catch (e) {
         console.error("Error sending expiring card notification:", e);
@@ -267,11 +268,12 @@ async function handleSubscriptionInvoice(
     return;
   }
 
-  const providerId = (subscription as any).provider_id;
+  type SubRow = { provider_id: string; plan_id?: string };
+  const providerId = (subscription as SubRow).provider_id;
 
   if (eventType === "invoice.create") {
     const dueDate = payload.due_date || payload.period_end;
-    await (supabase.from("provider_subscriptions") as any)
+    await supabase.from("provider_subscriptions")
       .update({
         next_payment_date: dueDate ? new Date(dueDate).toISOString() : null,
         updated_at: new Date().toISOString(),
@@ -290,18 +292,18 @@ async function handleSubscriptionInvoice(
       updatePayload.status = "active";
       updatePayload.last_payment_date = new Date(paidAt).toISOString();
     }
-    await (supabase.from("provider_subscriptions") as any)
+    await supabase.from("provider_subscriptions")
       .update(updatePayload)
       .eq("paystack_subscription_code", subscriptionCode);
   } else if (eventType === "invoice.payment_failed") {
-    await (supabase.from("provider_subscriptions") as any)
+    await supabase.from("provider_subscriptions")
       .update({
         status: "past_due",
         updated_at: new Date().toISOString(),
       })
       .eq("paystack_subscription_code", subscriptionCode);
 
-    await (supabase.from("payment_transactions") as any).insert({
+    await supabase.from("payment_transactions").insert({
       booking_id: null,
       reference: invoiceCode,
       amount: convertFromSmallestUnit(amount),
@@ -335,7 +337,7 @@ async function handleSubscriptionInvoice(
 
     const nextPaymentDate = payload.next_payment_date || expiresAt;
 
-    await (supabase.from("provider_subscriptions") as any)
+    await supabase.from("provider_subscriptions")
       .update({
         status: "active",
         last_payment_date: new Date(paidAt).toISOString(),
@@ -347,7 +349,7 @@ async function handleSubscriptionInvoice(
       })
       .eq("paystack_subscription_code", subscriptionCode);
 
-    await (supabase.from("payment_transactions") as any).insert({
+    await supabase.from("payment_transactions").insert({
       booking_id: null,
       reference: invoiceCode,
       amount: amountInCurrency,
@@ -364,7 +366,7 @@ async function handleSubscriptionInvoice(
       created_at: new Date().toISOString(),
     });
 
-    await (supabase.from("finance_transactions") as any).insert({
+    await supabase.from("finance_transactions").insert({
       booking_id: null,
       provider_id: providerId,
       transaction_type: "provider_subscription_payment",
@@ -380,8 +382,9 @@ async function handleSubscriptionInvoice(
     if (subscriptionDetails) {
       try {
         const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
-        const subDetails = subscriptionDetails as any;
-        const billingPeriod = subDetails.billing_period || "monthly";
+        type SubDetailsRow = { billing_period?: string | null; plan_id?: string; provider_id?: string };
+        const subDetails = subscriptionDetails as SubDetailsRow;
+        const billingPeriod = subDetails.billing_period ?? "monthly";
 
         const { data: plan } = await supabase
           .from("subscription_plans")
@@ -417,6 +420,7 @@ async function handleSubscriptionInvoice(
               year: new Date().getFullYear().toString(),
             },
             ["push", "email", "sms"],
+            { appType: "provider" }
           );
         }
       } catch (notifError) {

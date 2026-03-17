@@ -10,7 +10,7 @@ import { Download, Users, TrendingUp, Repeat } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface ClientRetentionData {
   totalClients: number;
@@ -57,7 +57,7 @@ export default function ClientRetentionReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data, "client-retention");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "client-retention");
     exportToCSV(exportData, "client-retention-report");
   };
 

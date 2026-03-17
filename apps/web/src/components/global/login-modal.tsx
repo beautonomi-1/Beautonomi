@@ -9,13 +9,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -25,8 +18,9 @@ import { X, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { signIn as signInAuth, signUp as signUpAuth, signInWithOAuth, resendVerificationEmail } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { normalizePhoneToE164 } from "@/lib/phone";
 import { toast } from "sonner";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { normalizeFullPhoneToE164 } from "@/lib/phone";
 
 
 interface LoginModalProps {
@@ -59,8 +53,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [countryCode, setCountryCode] = useState("+27");
+  const [phoneFull, setPhoneFull] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showPasswordField, setShowPasswordField] = useState(false);
   const [showResendVerification, setShowResendVerification] = useState(false);
@@ -83,7 +76,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
       setEmail("");
       setPassword("");
       setFullName("");
-      setPhone("");
+      setPhoneFull("");
       setShowResendVerification(false);
       setShowPassword(false);
       setOtpSent(false);
@@ -141,7 +134,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
           email: trimmedEmail,
           password: trimmedPassword,
           fullName: fullName?.trim(),
-          phone: phone ? `${countryCode}${phone}` : undefined,
+          phone: phoneFull ? (normalizeFullPhoneToE164(phoneFull) ?? phoneFull.replace(/\s/g, "").trim()) : undefined,
           role: userRole,
         });
 
@@ -209,7 +202,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
               // Login didn't create a session - email verification is required
               throw new Error("Email verification required");
             }
-          } catch (loginError: any) {
+          } catch (loginError: unknown) {
             // If login fails, email verification is required
             console.log("Auto-login after signup failed, email verification is required:", loginError);
             
@@ -292,23 +285,17 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
             }
           }
         } else {
-          // Role not loaded yet: if provider context, redirect to dashboard so RoleGuard can show loading
-          if (redirectContext === "provider") {
-            setError(null);
-            setOpen(false);
-            toast.success("Logged in successfully!");
-            router.replace("/provider/dashboard");
-          } else {
-            const errorMsg = "Login successful, but unable to load user profile. Please refresh the page.";
-            setError(errorMsg);
-            toast.error(errorMsg);
-          }
+          // Role not loaded yet: redirect to /portal so server can route by role (provider → dashboard, etc.)
+          setError(null);
+          setOpen(false);
+          toast.success("Logged in successfully!");
+          router.replace("/portal");
           setIsLoading(false);
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Auth error:", error);
-      const errorMessage = error.message || "Authentication failed. Please try again.";
+      const errorMessage = error instanceof Error ? error.message : "Authentication failed. Please try again.";
       
       // Check for specific error types
       const lowerErrorMessage = errorMessage.toLowerCase();
@@ -356,9 +343,9 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
       await resendVerificationEmail(email.trim());
       toast.success("Verification email sent! Please check your inbox and spam folder.");
       setShowResendVerification(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error resending verification email:", error);
-      const errorMessage = error.message || "Failed to send verification email.";
+      const errorMessage = error instanceof Error ? error.message : "Failed to send verification email.";
       
       // Check if the error indicates the email doesn't need verification or doesn't exist
       const lowerError = errorMessage.toLowerCase();
@@ -385,11 +372,12 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
     setError(null);
   };
 
-  const fullPhoneE164 = normalizePhoneToE164(phone, countryCode.replace(/^\+/, ""));
+  const fullPhoneE164 = normalizeFullPhoneToE164(phoneFull) ?? (phoneFull || "").replace(/\s/g, "").trim();
+  const isValidE164 = fullPhoneE164.startsWith("+") && fullPhoneE164.length >= 11;
 
   const handlePhoneSendOtp = async () => {
-    if (!fullPhoneE164) {
-      setError("Please enter a valid phone number");
+    if (!isValidE164) {
+      setError("Please enter a valid phone number with country code (e.g. +27 82 345 6789)");
       return;
     }
     setIsLoading(true);
@@ -456,10 +444,11 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
       await signInWithOAuth(provider, callbackUrl);
       // OAuth will redirect, so we don't need to do anything else here
       toast.info(`Redirecting to ${provider}...`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("OAuth error:", error);
-      setError(error.message || `Failed to sign in with ${provider}`);
-      toast.error(error.message || `Failed to sign in with ${provider}`);
+      const msg = error instanceof Error ? error.message : `Failed to sign in with ${provider}`;
+      setError(msg);
+      toast.error(msg);
       setIsLoading(false);
     }
   };
@@ -514,38 +503,14 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
           {/* Phone Input or OTP step (Default) */}
           {!showEmailForm && !otpSent && (
             <>
-              {/* Country Code and Phone Number - Integrated Design */}
               <div className="mb-5">
-                <div className="border border-gray-200 rounded-2xl overflow-hidden bg-gray-50/50">
-                  <div className="border-b border-gray-200/80 px-4 py-3 bg-gray-50/80">
-                    <Label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Country code</Label>
-                    <Select value={countryCode} onValueChange={setCountryCode}>
-                      <SelectTrigger className="w-full border-none px-0 pt-1.5 text-base font-semibold bg-transparent h-auto rounded-none focus:ring-0">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="rounded-2xl">
-                        <SelectItem value="+27">South Africa (+27)</SelectItem>
-                        <SelectItem value="+254">Kenya (+254)</SelectItem>
-                        <SelectItem value="+233">Ghana (+233)</SelectItem>
-                        <SelectItem value="+234">Nigeria (+234)</SelectItem>
-                        <SelectItem value="+20">Egypt (+20)</SelectItem>
-                        <SelectItem value="+1">USA (+1)</SelectItem>
-                        <SelectItem value="+44">UK (+44)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="px-4 py-3.5">
-                    <Input
-                      type="tel"
-                      className="text-base border-0 px-0 h-auto min-h-[44px] focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent placeholder:text-gray-400"
-                      placeholder="e.g. 82 123 4567"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      autoComplete="tel"
-                      inputMode="tel"
-                    />
-                  </div>
-                </div>
+                <PhoneInput
+                  label="Phone number"
+                  value={phoneFull}
+                  onChange={setPhoneFull}
+                  placeholder="e.g. 82 123 4567"
+                  defaultCountryCode="+27"
+                />
               </div>
               
               <p className="text-[13px] text-gray-500 mb-6 leading-relaxed">
@@ -558,7 +523,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
               <Button 
                 className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40"
                 onClick={handlePhoneSendOtp}
-                disabled={isLoading || !fullPhoneE164}
+                disabled={isLoading || !isValidE164}
               >
                 {isLoading ? "Sending code…" : "Continue"}
               </Button>
@@ -654,7 +619,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                     <Input
                       type="email"
                       className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 focus-visible:ring-2 focus-visible:ring-primary/20"
-                      placeholder="you@example.com"
+                      placeholder="Enter your email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       onKeyDown={(e) => {

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/promotions/[id]/redemptions
@@ -12,8 +14,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -57,7 +59,7 @@ export async function GET(
         created_at,
         customer:users!bookings_customer_id_fkey(id, full_name, email)
       `, { count: "exact" })
-      .eq("promotion_code", (promotion as any).code)
+      .eq("promotion_code", (promotion as { id: string; code: string }).code)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 

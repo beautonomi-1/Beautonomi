@@ -63,9 +63,10 @@ export async function GET(
       );
     }
 
-    const paymentData = payment as any;
+    type PaymentRow = { id: string; yoco_device_id?: string; yoco_payment_id?: string; status?: string; [key: string]: unknown };
+    type IntegrationRow = { secret_key?: string };
+    const paymentData = payment as PaymentRow;
 
-    // Optionally fetch latest status from Yoco API
     if (paymentData.yoco_device_id && paymentData.yoco_payment_id) {
       try {
         const { data: integration } = await supabase
@@ -74,7 +75,8 @@ export async function GET(
           .eq("provider_id", provider.id)
           .single();
 
-        if (integration && (integration as any).secret_key) {
+        const integrationRow = integration as IntegrationRow | null;
+        if (integrationRow?.secret_key) {
           const yocoResponse = await fetch(
             YOCO_ENDPOINTS.getWebPosPayment(
               paymentData.yoco_device_id,
@@ -82,17 +84,16 @@ export async function GET(
             ),
             {
               headers: {
-                Authorization: `Bearer ${(integration as any).secret_key}`,
+                Authorization: `Bearer ${integrationRow.secret_key}`,
               },
             }
           );
 
           if (yocoResponse.ok) {
-            const yocoPayment = await yocoResponse.json();
-            // Update local status if different
+            const yocoPayment = await yocoResponse.json() as { status?: string };
             if (yocoPayment.status !== paymentData.status) {
-              await (supabase
-                .from("provider_yoco_payments") as any)
+              await supabase
+                .from("provider_yoco_payments")
                 .update({
                   status: yocoPayment.status,
                   updated_at: new Date().toISOString(),
@@ -108,6 +109,10 @@ export async function GET(
       }
     }
 
+    const metadata = (paymentData.metadata ?? {}) as Record<string, unknown>;
+    const yocoResp = metadata.yoco_response as { receipt_url?: string; receiptUrl?: string } | undefined;
+    const receiptUrl = (metadata.receipt_url as string | undefined) ?? yocoResp?.receipt_url ?? yocoResp?.receiptUrl;
+
     return NextResponse.json({
       data: {
         id: paymentData.id,
@@ -122,6 +127,7 @@ export async function GET(
         sale_id: paymentData.sale_id,
         metadata: paymentData.metadata,
         error_message: paymentData.error_message,
+        receipt_url: receiptUrl ?? undefined,
       },
       error: null,
     });

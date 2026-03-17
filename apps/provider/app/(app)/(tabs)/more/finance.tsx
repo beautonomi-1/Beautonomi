@@ -28,6 +28,8 @@ interface FinanceEarnings {
   travel_fees_total: number;
   travel_fees_this_period: number;
   refunds_total: number;
+  walk_in_additional_charges_total?: number;
+  walk_in_additional_charges_this_period?: number;
 }
 
 interface FinanceTransaction {
@@ -66,6 +68,7 @@ function formatType(type: string): string {
     travel_fee: "Travel fee",
     membership_sale: "Membership",
     gift_card_sale: "Gift card",
+    walk_in_additional_charge: "Walk-in add-on",
   };
   return map[type] || type;
 }
@@ -168,6 +171,16 @@ export function FinanceOverviewContent() {
             </Text>
           </View>
         </View>
+
+        {((earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0) > 0) && (
+          <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-gray-50/80 p-3")}>
+            <Text style={twStyle("text-xs font-medium text-gray-600")}>Walk-in add-ons (this period)</Text>
+            <Text style={twStyle("mt-0.5 text-base font-semibold text-gray-800")}>
+              {formatCurrency(earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0)}
+            </Text>
+            <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Cash/card at salon — not in payout balance</Text>
+          </View>
+        )}
 
         <View style={twStyle("mb-2 flex-row items-center justify-between")}>
           <Text style={twStyle("text-sm font-semibold text-gray-700")}>Transactions</Text>

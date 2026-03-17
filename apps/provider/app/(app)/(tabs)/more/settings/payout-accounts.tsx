@@ -26,7 +26,7 @@ interface PayoutAccount {
   account_number_last4: string;
   currency: string;
   active: boolean;
-  is_primary: boolean;
+  is_primary?: boolean;
   created_at: string;
 }
 
@@ -65,7 +65,7 @@ export default function PayoutAccountsScreen() {
     banks: BankOption[];
     country: string;
     currency: string;
-  }>(`/api/provider/payout-accounts/banks?country=${form.country}`);
+  }>(`/api/provider/payout-accounts/banks?country=${form.country}`, { enabled: showAdd });
   const banks = banksData?.banks ?? [];
   const { execute: addAccount, loading: adding } = useApiPost<any, any>(
     "/api/provider/payout-accounts"
@@ -90,7 +90,7 @@ export default function PayoutAccountsScreen() {
     [accounts]
   );
   const primaryAccount = useMemo(
-    () => accounts?.find((a) => a.is_primary),
+    () => accounts?.find((a) => a.is_primary === true) ?? accounts?.[0],
     [accounts]
   );
 
@@ -165,7 +165,7 @@ export default function PayoutAccountsScreen() {
   }
 
   async function handleSetPrimary(account: PayoutAccount) {
-    if (account.is_primary) return;
+    if (primaryAccount?.id === account.id) return;
     const { error } = await updateAccount(
       `/api/provider/payout-accounts/${account.id}`,
       { is_primary: true }
@@ -187,7 +187,7 @@ export default function PayoutAccountsScreen() {
   }
 
   function handleDelete(account: PayoutAccount) {
-    if (account.is_primary) {
+    if (primaryAccount?.id === account.id) {
       Alert.alert(
         "Cannot Delete",
         "Set another account as primary before deleting this one"
@@ -319,12 +319,12 @@ onPress={() => {
           onRefresh={handleRefresh}
           contentContainerStyle={{ paddingBottom: 120 }}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          renderItem={({ item: account }: { item: PayoutAccount }) => (
+          renderItem={({ item: account }: { item: PayoutAccount }) => {
+            const isPrimary = primaryAccount?.id === account.id;
+            return (
             <TouchableOpacity
               style={twStyle(`rounded-xl border bg-white p-4 ${
-                account.is_primary
-                  ? "border-indigo-200"
-                  : "border-gray-100"
+                isPrimary ? "border-indigo-200" : "border-gray-100"
               }`)}
               onPress={() => handleSetPrimary(account)}
               onLongPress={() =>
@@ -350,13 +350,13 @@ onPress={() => {
               <View style={twStyle("flex-row items-center")}>
                 <View
                   style={twStyle(`h-10 w-10 items-center justify-center rounded-lg ${
-                    account.is_primary ? "bg-indigo-100" : "bg-gray-100"
+                    isPrimary ? "bg-indigo-100" : "bg-gray-100"
                   }`)}
                 >
                   <Ionicons
                     name="business-outline"
                     size={20}
-                    color={account.is_primary ? "#6366f1" : "#6b7280"}
+                    color={isPrimary ? "#6366f1" : "#6b7280"}
                   />
                 </View>
                 <View style={twStyle("ml-3 flex-1")}>
@@ -364,7 +364,7 @@ onPress={() => {
                     <Text style={[twStyle("text-sm font-semibold text-gray-900"), { marginRight: 8 }]}>
                       {account.account_name}
                     </Text>
-                    {account.is_primary && (
+                    {isPrimary && (
                       <View style={[twStyle("rounded-full bg-indigo-100 px-2 py-0.5"), { marginRight: 8 }]}>
                         <Text style={twStyle("text-[9px] font-bold text-indigo-700")}>
                           PRIMARY
@@ -401,7 +401,8 @@ onPress={() => {
                 </View>
               </View>
             </TouchableOpacity>
-          )}
+            );
+          }}
         />
       )}
 

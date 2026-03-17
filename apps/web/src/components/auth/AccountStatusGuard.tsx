@@ -6,7 +6,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 
 /** Routes that do not require auth; render children immediately without waiting for auth. */
-const PUBLIC_ROUTES_PREFIXES = ["/learn", "/help", "/login", "/signup", "/forgot-password", "/partner-profile", "/category", "/explore", "/gift-card", "/privacy-policy", "/terms-and-condition", "/accessibility", "/against-discrimination", "/BCover-for-partners", "/beautonomi-friendly", "/career", "/news", "/resources", "/become-a-partner"];
+const PUBLIC_ROUTES_PREFIXES = ["/learn", "/help", "/login", "/signup", "/forgot-password", "/partner-profile", "/category", "/explore", "/gift-card", "/privacy-policy", "/terms-and-condition", "/accessibility", "/against-discrimination", "/BCover-for-partners", "/beautonomi-friendly", "/career", "/resources", "/become-a-partner"];
 
 function isPublicRoute(pathname: string | null): boolean {
   if (!pathname) return false;

@@ -135,7 +135,8 @@ export async function sendAppointmentReminders(config: ReminderConfig = DEFAULT_
               booking_number: booking.booking_number || "",
               booking_id: booking.id,
             },
-            config.channels
+            config.channels,
+            { appType: "customer" }
           );
 
           remindersSent.push(booking.id);
@@ -240,7 +241,8 @@ export async function sendBookingReminder(bookingId: string, hoursBefore: number
         booking_number: booking.booking_number || "",
         booking_id: booking.id,
       },
-      ["push", "email"]
+      ["push", "email"],
+      { appType: "customer" }
     );
 
     return { success: true };

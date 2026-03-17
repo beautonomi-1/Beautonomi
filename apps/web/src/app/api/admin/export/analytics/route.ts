@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
@@ -10,8 +11,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRoleInApi(['superadmin'], request);
-    const { allowed, retryAfter } = checkRateLimit(auth.user.id, "export:analytics");
+    const { user } = await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
+    const { allowed, retryAfter } = checkRateLimit(user.id, "export:analytics");
     if (!allowed) {
       return errorResponse(
         `Rate limit exceeded. Try again in ${retryAfter} seconds.`,

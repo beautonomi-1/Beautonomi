@@ -16,6 +16,7 @@ import { compressImage } from "@/lib/utils/image-compression";
 import type { UserProfile } from "@/types/beautonomi";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
 import { Progress } from "@/components/ui/progress";
+import { ChipCombobox } from "@/components/ui/chip-combobox";
 
 interface CollectedProfileData {
   avatar_url: string | null;
@@ -42,8 +43,6 @@ export default function ProfileDataCollector() {
   const [location, setLocation] = useState<string>("");
   const [languages, setLanguages] = useState<string[]>([]);
   const [interests, setInterests] = useState<string[]>([]);
-  const [languageInput, setLanguageInput] = useState<string>("");
-  const [interestInput, setInterestInput] = useState<string>("");
 
   // Load existing profile data on mount
   useEffect(() => {
@@ -112,28 +111,6 @@ export default function ProfileDataCollector() {
         toast.error("Failed to process image. Please try again.");
       }
     }
-  };
-
-  const addLanguage = () => {
-    if (languageInput.trim() && !languages.includes(languageInput.trim())) {
-      setLanguages([...languages, languageInput.trim()]);
-      setLanguageInput("");
-    }
-  };
-
-  const removeLanguage = (lang: string) => {
-    setLanguages(languages.filter(l => l !== lang));
-  };
-
-  const addInterest = () => {
-    if (interestInput.trim() && !interests.includes(interestInput.trim())) {
-      setInterests([...interests, interestInput.trim()]);
-      setInterestInput("");
-    }
-  };
-
-  const removeInterest = (interest: string) => {
-    setInterests(interests.filter(i => i !== interest));
   };
 
   const handleSaveProfile = useCallback(async () => {
@@ -381,40 +358,17 @@ export default function ProfileDataCollector() {
           <CardDescription>Add languages you can communicate in</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-2 mb-4">
-            <Input
-              placeholder="e.g., English"
-              value={languageInput}
-              onChange={(e) => setLanguageInput(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addLanguage();
-                }
-              }}
-            />
-            <Button type="button" onClick={addLanguage} variant="outline">
-              Add
-            </Button>
-          </div>
-          {languages.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {languages.map((lang) => (
-                <div
-                  key={lang}
-                  className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-full"
-                >
-                  <span className="text-sm">{lang}</span>
-                  <button
-                    onClick={() => removeLanguage(lang)}
-                    className="text-gray-500 hover:text-gray-700"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          <ChipCombobox
+            singleSelect={false}
+            value={languages}
+            onChange={setLanguages}
+            staticSuggestions={[
+              "English", "Afrikaans", "Zulu", "Xhosa", "Sesotho", "Tswana", "Venda", "Tsonga", "Swati", "Ndebele", "French", "Portuguese", "Southern Sotho", "Northern Sotho",
+            ].map((l) => ({ value: l, label: l }))}
+            allowFreeForm
+            placeholder="Add language..."
+            aria-label="Languages you speak"
+          />
         </CardContent>
       </Card>
 
@@ -425,40 +379,17 @@ export default function ProfileDataCollector() {
           <CardDescription>What are you into? Add your interests</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-2 mb-4">
-            <Input
-              placeholder="e.g., Travel, Photography, Cooking"
-              value={interestInput}
-              onChange={(e) => setInterestInput(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addInterest();
-                }
-              }}
-            />
-            <Button type="button" onClick={addInterest} variant="outline">
-              Add
-            </Button>
-          </div>
-          {interests.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {interests.map((interest) => (
-                <div
-                  key={interest}
-                  className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-full"
-                >
-                  <span className="text-sm">{interest}</span>
-                  <button
-                    onClick={() => removeInterest(interest)}
-                    className="text-gray-500 hover:text-gray-700"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          <ChipCombobox
+            singleSelect={false}
+            value={interests}
+            onChange={setInterests}
+            staticSuggestions={[
+              "Hair", "Nails", "Skincare", "Makeup", "Pedicure", "Manicure", "Facial", "Massage", "Hair colour", "Braids", "Waxing", "Lashes", "Brows", "Travel", "Photography", "Cooking",
+            ].map((i) => ({ value: i, label: i }))}
+            allowFreeForm
+            placeholder="e.g. Hair, Nails, Skincare..."
+            aria-label="Your interests"
+          />
         </CardContent>
       </Card>
 

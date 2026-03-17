@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = redeemSchema.parse(body);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const adminSupabase = getSupabaseAdmin();
 
     // Get current points balance
@@ -66,17 +66,24 @@ export async function POST(request: NextRequest) {
       throw transactionError;
     }
 
-    // Add redemption value to user wallet
+    // Credit user wallet with redemption value (platform wallet_credit_admin RPC)
     try {
-      await adminSupabase.rpc("add_wallet_balance", {
+      await (adminSupabase.rpc as any)("wallet_credit_admin", {
         p_user_id: user.id,
         p_amount: redemptionValue,
         p_currency: currency,
         p_description: `Loyalty points redemption: ${validated.points} points`,
+        p_reference_id: (transaction as { id?: string })?.id ?? null,
+        p_reference_type: "loyalty_redeem",
       });
     } catch (walletError) {
-      // Wallet function might not exist, log but don't fail
-      console.warn("Failed to add to wallet:", walletError);
+      console.error("Failed to credit wallet on loyalty redeem:", walletError);
+      return handleApiError(
+        walletError instanceof Error ? walletError : new Error("Wallet credit failed"),
+        "Points were deducted but we could not add the amount to your wallet. Please contact support.",
+        "WALLET_CREDIT_FAILED",
+        500
+      );
     }
 
     return successResponse({

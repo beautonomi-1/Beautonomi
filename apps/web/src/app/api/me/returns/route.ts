@@ -33,9 +33,9 @@ const createReturnSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
-    const { data, error } = await (supabase.from("product_return_requests") as any)
+    const { data, error } = await supabase.from("product_return_requests")
       .select(
         `*, order:product_orders(order_number, total_amount, provider:providers(id, business_name))`,
       )
@@ -57,10 +57,10 @@ export async function POST(request: NextRequest) {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
     const body = await request.json();
     const parsed = createReturnSchema.parse(body);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Validate order belongs to customer and is delivered
-    const { data: order, error: orderErr } = await (supabase.from("product_orders") as any)
+    const { data: order, error: orderErr } = await supabase.from("product_orders")
       .select("id, customer_id, provider_id, status, delivered_at, created_at")
       .eq("id", parsed.order_id)
       .eq("customer_id", user.id)
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check for existing pending return on same order
-    const { data: existing } = await (supabase.from("product_return_requests") as any)
+    const { data: existing } = await supabase.from("product_return_requests")
       .select("id")
       .eq("order_id", parsed.order_id)
       .eq("customer_id", user.id)
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
     let qty = parsed.quantity ?? 1;
 
     if (parsed.order_item_id) {
-      const { data: item } = await (supabase.from("product_order_items") as any)
+      const { data: item } = await supabase.from("product_order_items")
         .select("product_name, quantity, unit_price, total_price")
         .eq("id", parsed.order_item_id)
         .eq("order_id", parsed.order_id)
@@ -123,16 +123,17 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // Full order return
-      const { data: items } = await (supabase.from("product_order_items") as any)
+      type ItemRow = { product_name?: string; total_price?: number };
+      const { data: items } = await supabase.from("product_order_items")
         .select("product_name, total_price")
         .eq("order_id", parsed.order_id);
-      productName = (items ?? []).map((i: any) => i.product_name).join(", ");
-      refundAmount = (items ?? []).reduce((s: number, i: any) => s + Number(i.total_price), 0);
+      const itemRows = (items ?? []) as ItemRow[];
+      productName = itemRows.map((i) => i.product_name ?? "").join(", ");
+      refundAmount = itemRows.reduce((s, i) => s + Number(i.total_price ?? 0), 0);
     }
 
-    const { data: returnReq, error: createErr } = await (
-      supabase.from("product_return_requests") as any
-    )
+    const { data: returnReq, error: createErr } = await supabase
+      .from("product_return_requests")
       .insert({
         order_id: parsed.order_id,
         order_item_id: parsed.order_item_id ?? null,
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
     if (createErr) throw createErr;
 
     // Notify provider of return request
-    const { data: provider } = await (supabase.from("providers") as any)
+    const { data: provider } = await supabase.from("providers")
       .select("owner_id")
       .eq("id", order.provider_id)
       .single();

@@ -22,6 +22,13 @@ export interface ExplorePost {
   is_saved?: boolean;
   is_liked?: boolean;
   tags?: string[];
+  primary_category_id?: string | null;
+  primary_category_slug?: string | null;
+  /** When set, "Book this look" links to this offering */
+  offering_id?: string | null;
+  offering?: { id: string; name: string; price?: number; duration_minutes?: number } | null;
+  /** Only present in GET /api/explore/saved: collection (board) IDs this saved post belongs to */
+  collection_ids?: string[];
 }
 
 export interface ExploreCommentAuthor {

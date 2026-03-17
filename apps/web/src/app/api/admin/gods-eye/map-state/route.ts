@@ -1,11 +1,19 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
   errorResponse,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+
+type PingRow = { provider_id: string };
+type BookingRow = { id: string; provider_id: string; location_type?: string; location_id?: string; address_latitude?: number | null; address_longitude?: number | null; status?: string; current_stage?: string };
+type ProviderRow = { id: string; business_name?: string; owner_name?: string };
+type EventRow = { provider_id: string; lat: number; lng: number; recorded_at: string; booking_id: string | null };
+type TrackingRow = { booking_id: string; provider_last_lat?: number | null; provider_last_lng?: number | null; provider_last_at?: string; arrived_at_target?: boolean; arrived_at?: string | null; arrived_distance_m?: number | null; last_distance_to_target_m?: number | null; status?: string };
+type LocRow = { id: string; latitude?: number | null; longitude?: number | null; name?: string };
+type AtHomeBookingOut = { booking_id: string; provider_id: string; customer_target_lat: number | null; customer_target_lng: number | null; status?: string; current_stage?: string; arrived_at_target: boolean; arrived_at: string | null; arrived_distance_m: number | null; last_distance_to_target_m: number | null; provider_last_lat: number | null; provider_last_lng: number | null; provider_last_at: string | null };
 
 /**
  * GET /api/admin/gods-eye/map-state
@@ -14,7 +22,7 @@ import {
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const admin = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
     const locationType = searchParams.get("location_type"); // at_home | at_salon
@@ -50,8 +58,8 @@ export async function GET(request: NextRequest) {
       .from("provider_location_events")
       .select("provider_id")
       .gte("recorded_at", cutoff);
-    const fromPings = [...new Set((recentProviderIds || []).map((r: any) => r.provider_id))];
-    const fromBookings = [...new Set(bookingList.map((b: any) => b.provider_id))];
+    const fromPings = [...new Set((recentProviderIds || []).map((r: PingRow) => r.provider_id))];
+    const fromBookings = [...new Set(bookingList.map((b: BookingRow) => b.provider_id))];
     const allProviderIds = [...new Set([...fromBookings, ...fromPings])];
 
     if (allProviderIds.length === 0) {
@@ -70,7 +78,7 @@ export async function GET(request: NextRequest) {
     const { data: providers, error: provErr } = await providerQuery;
     if (provErr) throw provErr;
     const providerList = providers || [];
-    const providerIdsFilter = providerList.map((p: any) => p.id);
+    const providerIdsFilter = providerList.map((p: ProviderRow) => p.id);
 
     const { data: latestEvents } = await admin
       .from("provider_location_events")
@@ -83,7 +91,7 @@ export async function GET(request: NextRequest) {
       string,
       { lat: number; lng: number; recorded_at: string; booking_id: string | null }
     > = {};
-    (latestEvents || []).forEach((e: any) => {
+    (latestEvents || []).forEach((e: EventRow) => {
       if (!latestByProvider[e.provider_id]) {
         latestByProvider[e.provider_id] = {
           lat: e.lat,
@@ -99,24 +107,24 @@ export async function GET(request: NextRequest) {
       .select("booking_id, provider_last_lat, provider_last_lng, provider_last_at, customer_target_lat, customer_target_lng, arrived_at_target, arrived_at, arrived_distance_m, last_distance_to_target_m, status")
       .in(
         "booking_id",
-        bookingList.map((b: any) => b.id)
+        bookingList.map((b: BookingRow) => b.id)
       );
 
-    const trackingByBooking: Record<string, any> = {};
-    (trackingStates || []).forEach((t: any) => {
+    const trackingByBooking: Record<string, TrackingRow> = {};
+    (trackingStates || []).forEach((t: TrackingRow) => {
       trackingByBooking[t.booking_id] = t;
     });
 
     const locationIds = bookingList
-      .filter((b: any) => b.location_type === "at_salon" && b.location_id)
-      .map((b: any) => b.location_id);
+      .filter((b: BookingRow) => b.location_type === "at_salon" && b.location_id)
+      .map((b: BookingRow) => b.location_id);
     let salonLocations: Record<string, { lat: number; lng: number; name?: string }> = {};
     if (locationIds.length > 0) {
       const { data: locs } = await admin
         .from("provider_locations")
         .select("id, latitude, longitude, name")
         .in("id", locationIds);
-      (locs || []).forEach((l: any) => {
+      (locs || []).forEach((l: LocRow) => {
         if (l.latitude != null && l.longitude != null) {
           salonLocations[l.id] = {
             lat: Number(l.latitude),
@@ -127,12 +135,14 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const providerMarkers = providerList.map((p: any) => {
-      const last = latestByProvider[p.id] || trackingByBooking[bookingList.find((b: any) => b.provider_id === p.id)?.id];
-      const lastLat = last?.provider_last_lat ?? last?.lat;
-      const lastLng = last?.provider_last_lng ?? last?.lng;
-      const lastAt = last?.provider_last_at ?? last?.recorded_at;
-      const activeBooking = bookingList.find((b: any) => b.provider_id === p.id);
+    type LastLocation = { provider_last_lat?: number; provider_last_lng?: number; provider_last_at?: string; lat?: number; lng?: number; recorded_at?: string };
+    const providerMarkers = providerList.map((p: ProviderRow) => {
+      const last = latestByProvider[p.id] || trackingByBooking[bookingList.find((b: BookingRow) => b.provider_id === p.id)?.id ?? ""] as LastLocation | undefined;
+      const L = last as LastLocation | undefined;
+      const lastLat = L?.provider_last_lat ?? L?.lat;
+      const lastLng = L?.provider_last_lng ?? L?.lng;
+      const lastAt = L?.provider_last_at ?? L?.recorded_at;
+      const activeBooking = bookingList.find((b: BookingRow) => b.provider_id === p.id);
       const ts = activeBooking ? trackingByBooking[activeBooking.id] : null;
       let status: "idle" | "en_route" | "in_service" = "idle";
       if (ts?.status === "en_route") status = "en_route";
@@ -148,10 +158,10 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const providerIdSet = new Set(providerList.map((p: any) => p.id));
+    const providerIdSet = new Set(providerList.map((p: ProviderRow) => p.id));
     const atHomeBookings = bookingList
-      .filter((b: any) => b.location_type === "at_home" && providerIdSet.has(b.provider_id))
-      .map((b: any) => {
+      .filter((b: BookingRow) => b.location_type === "at_home" && providerIdSet.has(b.provider_id))
+      .map((b: BookingRow) => {
         const ts = trackingByBooking[b.id];
         const targetLat = b.address_latitude != null ? Number(b.address_latitude) : null;
         const targetLng = b.address_longitude != null ? Number(b.address_longitude) : null;
@@ -171,11 +181,11 @@ export async function GET(request: NextRequest) {
           provider_last_at: ts?.provider_last_at ?? null,
         };
       })
-      .filter((b: any) => b.customer_target_lat != null && b.customer_target_lng != null);
+      .filter((b: AtHomeBookingOut) => b.customer_target_lat != null && b.customer_target_lng != null);
 
     const atSalonBookings = bookingList
-      .filter((b: any) => b.location_type === "at_salon" && b.location_id && providerIdSet.has(b.provider_id))
-      .map((b: any) => {
+      .filter((b: BookingRow) => b.location_type === "at_salon" && b.location_id && providerIdSet.has(b.provider_id))
+      .map((b: BookingRow) => {
         const salon = salonLocations[b.location_id];
         if (!salon) return null;
         return {
@@ -191,11 +201,11 @@ export async function GET(request: NextRequest) {
       .filter(Boolean);
 
     const summary = {
-      active_providers: providerMarkers.filter((p: any) => p.last_lat != null).length,
+      active_providers: providerMarkers.filter((p: { last_lat: number | null }) => p.last_lat != null).length,
       active_at_home: atHomeBookings.length,
       at_salon: atSalonBookings.length,
-      en_route: atHomeBookings.filter((b: any) => !b.arrived_at_target).length,
-      arrived: atHomeBookings.filter((b: any) => b.arrived_at_target).length,
+      en_route: atHomeBookings.filter((b: AtHomeBookingOut) => !b.arrived_at_target).length,
+      arrived: atHomeBookings.filter((b: AtHomeBookingOut) => b.arrived_at_target).length,
     };
 
     return successResponse({

@@ -8,6 +8,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getCancellationPolicy } from "@/lib/bookings/cancellation-policy";
 
 export async function GET(
   request: NextRequest,
@@ -67,6 +68,33 @@ export async function GET(
 
     const metadata = (hold.metadata as Record<string, any>) || {};
     const providerSlug = (hold.providers as { slug?: string } | null)?.slug ?? null;
+
+    const { data: obSettings } = await supabase
+      .from("provider_online_booking_settings")
+      .select("on_demand_accept_enabled")
+      .eq("provider_id", hold.provider_id)
+      .maybeSingle();
+    const provider_on_demand_accept_enabled = Boolean(obSettings?.on_demand_accept_enabled);
+
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("tips_enabled, tip_presets, currency")
+      .eq("id", hold.provider_id)
+      .maybeSingle();
+    const tips_enabled = Boolean((providerRow as any)?.tips_enabled ?? true);
+    const tip_presets = Array.isArray((providerRow as any)?.tip_presets)
+      ? (providerRow as any).tip_presets.map((p: unknown) => Number(p)).filter((n: number) => !Number.isNaN(n) && n >= 0)
+      : [10, 15, 20, 25];
+
+    const locationType = (hold.location_type === "at_home" ? "at_home" : "at_salon") as "at_salon" | "at_home";
+    const cancellationPolicyRow = await getCancellationPolicy(supabase, hold.provider_id, locationType);
+    const cancellation_policy = cancellationPolicyRow
+      ? {
+          cancellation_window_hours: cancellationPolicyRow.hours_before_cutoff,
+          currency: (providerRow as { currency?: string } | null)?.currency ?? "ZAR",
+        }
+      : undefined;
+
     return successResponse({
       hold_id: hold.id,
       provider_id: hold.provider_id,
@@ -83,6 +111,10 @@ export async function GET(
       metadata: hold.metadata,
       travel_fee: metadata.travel_fee != null ? Number(metadata.travel_fee) : undefined,
       travel_distance_km: metadata.travel_distance_km != null ? Number(metadata.travel_distance_km) : undefined,
+      provider_on_demand_accept_enabled,
+      tips_enabled,
+      tip_presets,
+      cancellation_policy,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch booking hold");

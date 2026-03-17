@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { fetcher } from "@/lib/http/fetcher";
 import { useAuth } from "@/providers/AuthProvider";
 
-interface SavedAddress {
+export interface SavedAddress {
   id: string;
   label: string;
   address_line1: string;

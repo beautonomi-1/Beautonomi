@@ -84,6 +84,10 @@ export default function TransactionsHubScreen() {
             {transactions.map((t) => {
               const net = t.net ?? t.amount ?? 0;
               const isNegative = net < 0;
+              const typeLabel =
+                t.transaction_type === "walk_in_additional_charge"
+                  ? "Walk-in add-on"
+                  : (t.transaction_type ?? "").replace(/_/g, " ");
               return (
                 <View
                   key={t.id}
@@ -91,7 +95,7 @@ export default function TransactionsHubScreen() {
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontWeight: "500", color: Colors.gray[900], textTransform: "capitalize" }}>
-                      {(t.transaction_type ?? "").replace(/_/g, " ")}
+                      {typeLabel}
                     </Text>
                     {t.description && (
                       <Text style={{ fontSize: 14, color: Colors.gray[500] }} numberOfLines={1}>

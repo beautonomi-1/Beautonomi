@@ -8,6 +8,7 @@ import {
   subscribeToBookings,
   subscribeToCustomerBookings,
   subscribeToWaitlist,
+  subscribeToWaitlistEntries,
   type RealtimeEventType,
   type RealtimeEventHandler,
 } from '@/lib/websocket/supabase-realtime';
@@ -56,4 +57,20 @@ export function useCustomerBookingsRealtime(
     const unsubscribe = subscribeToCustomerBookings(supabase, customerId, handler);
     return () => unsubscribe();
   }, [supabase, customerId, handler]);
+}
+
+/**
+ * Subscribe to waitlist_entries changes for a provider. Call onChanged when any entry is inserted, updated, or deleted.
+ */
+export function useWaitlistEntriesRealtime(
+  supabase: SupabaseClient | null,
+  providerId: string | undefined,
+  onChanged: () => void
+) {
+  useEffect(() => {
+    if (!supabase || !providerId) return;
+
+    const unsubscribe = subscribeToWaitlistEntries(supabase, providerId, onChanged);
+    return () => unsubscribe();
+  }, [supabase, providerId, onChanged]);
 }

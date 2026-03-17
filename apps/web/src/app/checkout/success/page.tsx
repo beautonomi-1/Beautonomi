@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Calendar, Plus, MapPin, Clock } from "lucide-react";
+import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
 
 /** Beautonomi primary (use CSS var in styles for single source) */
 const ACCENT = "var(--primary, #FF0077)";
@@ -61,6 +62,53 @@ function CheckoutSuccessContent() {
   const showBookingLink = !!(resolvedBookingId || bookingNumber);
   const paymentType = searchParams?.get("payment_type");
 
+  const [bookingForCalendar, setBookingForCalendar] = useState<{
+    selected_datetime: string;
+    booking_number: string;
+    services: Array<{ offering_name?: string; title?: string; duration_minutes?: number; duration?: number }>;
+    provider?: { business_name?: string };
+    location?: { address?: string; name?: string };
+    address?: { line1?: string; line2?: string; city?: string };
+    location_type?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!resolvedBookingId || isWaitlist) return;
+    fetch(`/api/me/bookings/${resolvedBookingId}`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => {
+        const data = json?.data;
+        if (data?.selected_datetime) setBookingForCalendar(data);
+      })
+      .catch(() => {});
+  }, [resolvedBookingId, isWaitlist]);
+
+  const totalDurationMinutes = bookingForCalendar?.services?.reduce(
+    (sum, s) => sum + (s.duration_minutes ?? s.duration ?? 0),
+    0
+  ) ?? 0;
+  const calendarStart = bookingForCalendar?.selected_datetime
+    ? new Date(bookingForCalendar.selected_datetime)
+    : null;
+  const calendarEnd = calendarStart
+    ? new Date(calendarStart.getTime() + totalDurationMinutes * 60 * 1000)
+    : null;
+  const locationStr = !bookingForCalendar
+    ? ""
+    : bookingForCalendar.location_type === "at_home" && bookingForCalendar.address
+      ? [bookingForCalendar.address.line1, bookingForCalendar.address.line2, bookingForCalendar.address.city].filter(Boolean).join(", ")
+      : bookingForCalendar.location?.address ?? bookingForCalendar.location?.name ?? "";
+  const calendarEvent =
+    calendarStart && calendarEnd
+      ? {
+          title: `Appointment with ${bookingForCalendar?.provider?.business_name ?? "Beautonomi"}`,
+          description: `Booking #${bookingForCalendar?.booking_number ?? ""}\n${(bookingForCalendar?.services ?? []).map((s) => `${s.offering_name ?? s.title ?? "Service"} (${s.duration_minutes ?? s.duration ?? 0} min)`).join("\n")}`,
+          location: locationStr || "Address TBD",
+          start: calendarStart,
+          end: calendarEnd,
+        }
+      : null;
+
   const openInAppUrl =
     resolvedBookingId
       ? appDeepLink("booking-detail", { id: resolvedBookingId })
@@ -69,6 +117,22 @@ function CheckoutSuccessContent() {
         : paymentType === "wallet_topup"
           ? appDeepLink("profile")
           : appDeepLink("bookings");
+
+  // When loaded in customer app WebView: tell the app to close WebView and navigate (automatic return)
+  useEffect(() => {
+    const win = typeof window !== "undefined" ? window as Window & { ReactNativeWebView?: { postMessage: (data: string) => void } } : null;
+    if (!win?.ReactNativeWebView?.postMessage) return;
+    const t = setTimeout(() => {
+      win.ReactNativeWebView?.postMessage(
+        JSON.stringify({
+          type: "checkout_success",
+          payment_type: paymentType ?? "",
+          booking_id: resolvedBookingId ?? undefined,
+        })
+      );
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [paymentType, resolvedBookingId]);
 
   return (
     <div
@@ -133,12 +197,94 @@ function CheckoutSuccessContent() {
                 Booking #{bookingNumber}
               </p>
             )}
-            <p className="text-sm mb-6" style={{ color: TEXT_SECONDARY }}>
+            <p className="text-sm mb-4" style={{ color: TEXT_SECONDARY }}>
               {showBookingLink
                 ? "Your appointment is confirmed. We'll send you a reminder before your visit."
                 : "Thanks—your payment is being confirmed. You can check your bookings or payments below."}
             </p>
+
+            {bookingForCalendar && !isWaitlist && (
+              <div
+                className="mb-6 rounded-xl border p-4 text-left"
+                style={{ borderColor: "rgba(0,0,0,0.08)", backgroundColor: "rgba(249,250,251,0.8)" }}
+              >
+                <p className="text-sm font-semibold mb-3" style={{ color: TEXT_PRIMARY }}>
+                  Booking summary
+                </p>
+                {bookingForCalendar.provider?.business_name && (
+                  <p className="text-sm mb-1" style={{ color: TEXT_PRIMARY }}>
+                    {bookingForCalendar.provider.business_name}
+                  </p>
+                )}
+                {calendarStart && (
+                  <p className="text-sm mb-2 flex items-center gap-2" style={{ color: TEXT_SECONDARY }}>
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    {calendarStart.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+                    {" · "}
+                    {calendarStart.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                    {totalDurationMinutes > 0 && ` (${totalDurationMinutes} min)`}
+                  </p>
+                )}
+                {(bookingForCalendar.services?.length ?? 0) > 0 && (
+                  <ul className="text-sm mb-2 list-disc list-inside" style={{ color: TEXT_SECONDARY }}>
+                    {(bookingForCalendar.services ?? []).map((s: { offering_name?: string; title?: string; duration_minutes?: number; duration?: number }, i: number) => (
+                      <li key={i}>
+                        {s.offering_name ?? s.title ?? "Service"}
+                        {(s.duration_minutes ?? s.duration) != null && ` (${s.duration_minutes ?? s.duration} min)`}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {locationStr && (
+                  <p className="text-sm flex items-start gap-2" style={{ color: TEXT_SECONDARY }}>
+                    <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>{locationStr}</span>
+                  </p>
+                )}
+              </div>
+            )}
           </>
+        )}
+
+        {calendarEvent && !isWaitlist && (
+          <div className="mb-6 text-left">
+            <p className="text-sm font-medium mb-2" style={{ color: TEXT_PRIMARY }}>
+              Add to calendar
+            </p>
+            <p className="text-xs mb-2" style={{ color: TEXT_SECONDARY }}>
+              Save the appointment to Google Calendar, Outlook, or download an .ics file for Apple Calendar or other apps.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <a
+                href={getGoogleCalendarUrl(calendarEvent)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-xl font-medium border transition-transform active:scale-[0.98]"
+                style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB" }}
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Google
+              </a>
+              <a
+                href={getOutlookCalendarUrl(calendarEvent)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-xl font-medium border transition-transform active:scale-[0.98]"
+                style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB" }}
+              >
+                Outlook
+              </a>
+              <a
+                href={`/api/me/bookings/${resolvedBookingId}/calendar.ics`}
+                download
+                className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-xl font-medium border transition-transform active:scale-[0.98]"
+                style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB" }}
+              >
+                <Calendar className="w-4 h-4 mr-1" />
+                .ICS file
+              </a>
+            </div>
+          </div>
         )}
 
         <div className="flex flex-col gap-3">

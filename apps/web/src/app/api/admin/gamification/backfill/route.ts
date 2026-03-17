@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
@@ -9,7 +10,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = getSupabaseAdmin();
 
     // Call the backfill function
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = getSupabaseAdmin();
 
     // Call the initialization function which now includes backfilling

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, handleApiError } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/search
@@ -9,7 +10,7 @@ import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const supabase = await getSupabaseServer(request);
 
     if (!supabase) {

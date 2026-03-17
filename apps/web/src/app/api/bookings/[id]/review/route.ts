@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/supabase/auth-server";
+import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { awardPointsForReview, checkProviderMilestones } from "@/lib/services/provider-gamification";
 
 export async function POST(
@@ -8,8 +8,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await getSupabaseServer();
-    const { user } = await requireRole(["customer", "provider_owner"]);
+    const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+    const supabase = await getSupabaseServer(request);
 
     const { id: bookingId } = await params;
     const body = await request.json();
@@ -86,15 +86,15 @@ export async function POST(
 
     // Notify provider that customer left a review
     try {
-      const supabase = await getSupabaseServer();
-      const { data: providerData } = await supabase
+      const supabaseNotify = await getSupabaseServer(request);
+      const { data: providerData } = await supabaseNotify
         .from("providers")
         .select("user_id")
         .eq("id", booking.provider_id)
         .single();
 
       if (providerData?.user_id) {
-        await supabase.from("notifications").insert({
+        await supabaseNotify.from("notifications").insert({
           user_id: providerData.user_id,
           type: "new_review",
           title: "New Review Received",
@@ -123,12 +123,10 @@ export async function POST(
     }
 
     return NextResponse.json({ review });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error creating review:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to create review" },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : "Failed to create review";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -137,8 +135,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await getSupabaseServer();
-    const { user } = await requireRole(["customer"]);
+    const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+    const supabase = await getSupabaseServer(request);
 
     const { id: bookingId } = await params;
     const body = await request.json();
@@ -159,8 +157,7 @@ export async function PATCH(
       );
     }
 
-    // Update review
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (rating !== undefined) {
       if (rating < 1 || rating > 5) {
         return NextResponse.json(
@@ -183,12 +180,10 @@ export async function PATCH(
     if (updateError) throw updateError;
 
     return NextResponse.json({ review: updatedReview });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error updating review:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to update review" },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : "Failed to update review";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -197,8 +192,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await getSupabaseServer();
-    const { user } = await requireRole(["customer", "superadmin"]);
+    const { user } = await requireRoleInApi(["customer", "superadmin", "provider_owner", "provider_staff"], request);
+    const supabase = await getSupabaseServer(request);
 
     const { id: bookingId } = await params;
 
@@ -233,11 +228,9 @@ export async function DELETE(
     if (deleteError) throw deleteError;
 
     return NextResponse.json({ message: "Review deleted successfully" });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error deleting review:", error);
-    return NextResponse.json(
-      { error: error.message || "Failed to delete review" },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : "Failed to delete review";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

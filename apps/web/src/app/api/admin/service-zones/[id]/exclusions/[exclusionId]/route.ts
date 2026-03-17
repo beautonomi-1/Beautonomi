@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
   notFoundResponse,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 
 /**
  * DELETE /api/admin/service-zones/[id]/exclusions/[exclusionId]
@@ -17,7 +17,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; exclusionId: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const { id: zone_id, exclusionId } = await params;
@@ -50,7 +50,7 @@ export async function DELETE(
 
     return successResponse({
       removed: true,
-      version: (updated as any)?.version,
+      version: (updated as { version?: number } | null)?.version,
     });
   } catch (error) {
     return handleApiError(error, "Failed to remove exclusion");

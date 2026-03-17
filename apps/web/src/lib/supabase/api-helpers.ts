@@ -9,8 +9,16 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { getSupabaseServer, createSupabaseClientFromToken } from "./server";
+import { getSupabaseAdmin } from "./admin";
 import { requireRole as requireRoleAuth } from '@/lib/auth/requireRole';
 import type { UserRole } from '@/types/beautonomi';
+import {
+  ALL_ADMIN_ROLES,
+  ADMIN_SECTION_ROLES,
+  ALL_SECTIONS,
+  canAccessSection,
+  type AdminSection,
+} from '@/lib/admin-sections';
 
 export interface ApiError {
   message: string;
@@ -87,13 +95,24 @@ export function badRequestResponse(message: string) {
 /**
  * Handle API route errors
  */
+function isClientDisconnectError(error: any): boolean {
+  if (!error) return false;
+  const msg = typeof error.message === "string" ? error.message.toLowerCase() : "";
+  const code = (error as NodeJS.ErrnoException).code ?? (error.cause as any)?.code;
+  if (msg.includes("aborted") || code === "ECONNRESET" || code === "EPIPE") return true;
+  if (error instanceof SyntaxError && msg.includes("json")) return true; // truncated/empty body when client aborted
+  return false;
+}
+
 export function handleApiError(
   error: any,
   defaultMessage = "Internal server error",
   _codeOrStatus?: string | number,
   _statusCode?: number
 ) {
-  console.error("API Error:", error);
+  if (!isClientDisconnectError(error)) {
+    console.error("API Error:", error);
+  }
 
   // Determine status code from arguments (backward compatibility)
   let status = typeof _codeOrStatus === "number" ? _codeOrStatus : (_statusCode ?? 500);
@@ -101,7 +120,10 @@ export function handleApiError(
 
   if (error instanceof Error) {
     const errorMessage = error.message.toLowerCase();
-    const errorCause = (error as any).cause;
+    const errorCause =
+      "cause" in error && error.cause && typeof error.cause === "object" && "code" in error.cause
+        ? (error.cause as { code?: string })
+        : undefined;
 
     // Check for network/timeout errors
     if (
@@ -256,6 +278,46 @@ export async function requireRoleInApi(
     // Re-throw other errors as-is
     throw error;
   }
+}
+
+/**
+ * Effective section -> roles (DB overrides merged with code defaults). Used for permission checks.
+ */
+export async function getEffectiveAdminSectionRoles(): Promise<Record<AdminSection, UserRole[]>> {
+  const supabase = getSupabaseAdmin();
+  const { data: row } = await supabase
+    .from("platform_settings")
+    .select("settings")
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  const settings = (row as { settings?: { admin_section_roles?: Partial<Record<AdminSection, UserRole[]>> } } | null)?.settings ?? {};
+  const stored = settings.admin_section_roles ?? {};
+
+  const result = {} as Record<AdminSection, UserRole[]>;
+  for (const s of ALL_SECTIONS) {
+    result[s] = Array.isArray(stored[s]) ? stored[s] as UserRole[] : ADMIN_SECTION_ROLES[s];
+  }
+  return result;
+}
+
+/**
+ * Require admin access for a specific section. Use in /api/admin/* routes.
+ * Superadmin can access all sections; other admin roles only their section(s).
+ * Uses effective section roles from DB (platform_settings.settings.admin_section_roles) when set.
+ */
+export async function requireAdminSection(
+  section: AdminSection,
+  request?: NextRequest | Request
+): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: any; full_name?: string | null } }> {
+  const { user } = await requireRoleInApi(ALL_ADMIN_ROLES, request);
+  if (!user) throw new Error('Authentication required');
+  const effectiveRoles = await getEffectiveAdminSectionRoles();
+  if (!canAccessSection(user.role as UserRole, section, effectiveRoles)) {
+    throw new Error(`Insufficient permissions: access to section '${section}' required`);
+  }
+  return { user };
 }
 
 /**

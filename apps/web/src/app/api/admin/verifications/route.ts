@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/verifications
@@ -8,7 +9,7 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status") || "pending"; // Filter by status
@@ -39,10 +40,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch related user data separately
-    const userIds = [...new Set(verifications.map((v: any) => v.user_id).filter(Boolean))];
-    const reviewerIds = [
-      ...new Set(verifications.map((v: any) => v.reviewed_by).filter(Boolean)),
-    ];
+    type VerificationRow = { user_id?: string; reviewed_by?: string };
+    const vList = verifications as VerificationRow[];
+    const userIds = [...new Set(vList.map((v) => v.user_id).filter(Boolean))];
+    const reviewerIds = [...new Set(vList.map((v) => v.reviewed_by).filter(Boolean))];
 
     const { data: users } = userIds.length > 0
       ? await supabase
@@ -58,19 +59,19 @@ export async function GET(request: NextRequest) {
           .in("id", reviewerIds)
       : { data: [] };
 
-    const userMap = new Map((users || []).map((u: any) => [u.id, u]));
-    const reviewerMap = new Map((reviewers || []).map((r: any) => [r.id, r]));
+    type UserRow = { id: string; full_name?: string; email?: string; phone?: string | null; avatar_url?: string | null };
+    const userMap = new Map((users || []).map((u: UserRow) => [u.id, u]));
+    const reviewerMap = new Map((reviewers || []).map((r: UserRow) => [r.id, r]));
 
-    // Combine data
-    const enrichedVerifications = verifications.map((v: any) => ({
+    const enrichedVerifications = vList.map((v) => ({
       ...v,
-      user: userMap.get(v.user_id) || {
+      user: userMap.get(v.user_id ?? "") ?? {
         id: v.user_id,
         full_name: "Unknown User",
         email: "N/A",
         phone: null,
       },
-      reviewer: v.reviewed_by ? reviewerMap.get(v.reviewed_by) || null : null,
+      reviewer: v.reviewed_by ? reviewerMap.get(v.reviewed_by) ?? null : null,
     }));
 
     return successResponse(enrichedVerifications);

@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { YOCO_WEBHOOK_EVENTS } from "@/lib/payments/yoco";
 
 /**
  * POST /api/provider/yoco/webhook
- * 
- * Yoco webhook handler for payment and refund notifications
- * 
+ *
+ * Yoco webhook handler for payment and refund notifications.
  * According to Yoco API: https://developer.yoco.com/api-reference/checkout-api/webhook-events
- * 
+ *
+ * Requires provider_yoco_webhooks and provider_yoco_webhook_events (migration 302).
+ *
  * Webhook events:
  * - payment.notification
  * - refund.notification.success.full
@@ -67,9 +69,10 @@ export async function POST(request: Request) {
         );
       }
     } else {
-      // Verify with provider-specific secret
+      type WebhookConfigRow = { webhook_secret?: string; provider_id?: string };
+      const secret = (webhookConfig as WebhookConfigRow).webhook_secret ?? "";
       const hash = crypto
-        .createHmac("sha256", (webhookConfig as any).webhook_secret)
+        .createHmac("sha256", secret)
         .update(body)
         .digest("hex");
 
@@ -82,9 +85,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // Log webhook event and capture id for later update
-    const { data: insertedEvent } = await (supabase
-      .from("provider_yoco_webhook_events") as any)
+    const { data: insertedEvent } = await supabase
+      .from("provider_yoco_webhook_events")
       .insert({
         webhook_id: webhookId,
         event_type: event.type,
@@ -121,10 +123,9 @@ export async function POST(request: Request) {
           console.log(`Unhandled Yoco webhook event type: ${type}`);
       }
 
-      // Mark webhook event as processed
       if (eventRowId) {
-        await (supabase
-          .from("provider_yoco_webhook_events") as any)
+        await supabase
+          .from("provider_yoco_webhook_events")
           .update({
             status: "processed",
             processed_at: new Date().toISOString(),
@@ -134,10 +135,9 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error("Error processing Yoco webhook:", error);
 
-      // Mark as failed
       if (eventRowId) {
-        await (supabase
-          .from("provider_yoco_webhook_events") as any)
+        await supabase
+          .from("provider_yoco_webhook_events")
           .update({
             status: "failed",
             error_message: error instanceof Error ? error.message : String(error),
@@ -163,17 +163,23 @@ export async function POST(request: Request) {
   }
 }
 
-async function handlePaymentNotification(data: any, supabase: any) {
-  const { id, amount, currency, status, metadata } = data;
+async function handlePaymentNotification(
+  data: Record<string, unknown>,
+  supabase: SupabaseClient
+) {
+  const id = data.id as string | undefined;
+  const amount = data.amount as number | undefined;
+  const currency = data.currency as string | undefined;
+  const status = data.status as string | undefined;
+  const metadata = (data.metadata ?? {}) as Record<string, unknown>;
 
   if (!id || !metadata?.provider_id) {
     console.error("Missing payment ID or provider ID in webhook data");
     return;
   }
 
-  // Update payment status
-  const { error } = await (supabase
-    .from("provider_yoco_payments") as any)
+  const { error } = await supabase
+    .from("provider_yoco_payments")
     .update({
       status: status === "successful" ? "successful" : status === "failed" ? "failed" : "pending",
       updated_at: new Date().toISOString(),
@@ -186,8 +192,8 @@ async function handlePaymentNotification(data: any, supabase: any) {
 
   // If payment successful, create booking_payment record
   // This will trigger automatic creation of finance_transactions via database trigger
-  if (status === "successful" && metadata.appointment_id) {
-    const bookingId = metadata.appointment_id;
+  const bookingId = metadata?.appointment_id as string | undefined;
+  if (status === "successful" && bookingId) {
     const amountInCurrency = amount / 100; // Yoco uses cents
     
     // Get booking details
@@ -261,8 +267,8 @@ async function handlePaymentNotification(data: any, supabase: any) {
       if (paymentError) {
         console.error("Error creating booking_payment:", paymentError);
         // Fallback: Update booking directly if booking_payment creation fails
-        await (supabase
-          .from("bookings") as any)
+        await supabase
+          .from("bookings")
           .update({
             payment_status: "paid",
             payment_date: new Date().toISOString(),
@@ -284,65 +290,133 @@ async function handlePaymentNotification(data: any, supabase: any) {
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
     if (metadata.processed_by) {
-      await sendToUser(metadata.processed_by, {
-        title: status === "successful" ? "Payment Successful" : "Payment Failed",
-        message: `Payment ${status === "successful" ? "completed" : "failed"} for amount ${(amount / 100).toFixed(2)} ${currency}`,
-        data: {
-          type: "yoco_payment",
-          payment_id: id,
-          status,
+      const failedMessage =
+        status === "failed"
+          ? "Card declined – ask customer to try another card."
+          : `Payment failed for amount ${(amount / 100).toFixed(2)} ${currency}`;
+      await sendToUser(
+        String(metadata.processed_by ?? ""),
+        {
+          title: status === "successful" ? "Payment Successful" : "Payment Failed",
+          message:
+            status === "successful"
+              ? `Payment completed for amount ${(amount / 100).toFixed(2)} ${currency}`
+              : failedMessage,
+          data: {
+            type: "yoco_payment",
+            payment_id: id,
+            status,
+          },
         },
-      });
+        ["push"],
+        { appType: "provider" }
+      );
     }
   } catch (notifError) {
     console.error("Error sending notification:", notifError);
   }
 }
 
-async function handleRefundSuccess(data: any, supabase: any) {
-  const { id, amount, currency, metadata } = data;
-  const yocoPaymentId = metadata?.payment_id;
+async function handleRefundSuccess(
+  data: Record<string, unknown>,
+  supabase: SupabaseClient
+) {
+  const id = data.id as string | undefined;
+  const amount = (data.amount as number) ?? 0;
+  const currency = (data.currency as string) ?? "ZAR";
+  const metadata = (data.metadata ?? {}) as Record<string, unknown>;
+  const originalAmount = data.original_amount as number | undefined;
+  const yocoPaymentId = metadata?.payment_id as string | undefined;
 
-  // Resolve provider_id from payment for RLS
+  // Resolve provider_id and appointment_id from payment for RLS and booking sync
   let providerId: string | null = null;
+  let bookingId: string | null = null;
   if (yocoPaymentId) {
     const { data: payment } = await supabase
       .from("provider_yoco_payments")
-      .select("provider_id")
+      .select("provider_id, appointment_id")
       .eq("yoco_payment_id", yocoPaymentId)
       .single();
-    providerId = (payment as { provider_id?: string } | null)?.provider_id ?? null;
+    const row = payment as { provider_id?: string; appointment_id?: string } | null;
+    providerId = row?.provider_id ?? null;
+    bookingId = row?.appointment_id ?? null;
   }
 
-  // Create refund record
-  await (supabase
-    .from("provider_yoco_refunds") as any)
+  await supabase
+    .from("provider_yoco_refunds")
     .insert({
       provider_id: providerId,
       yoco_refund_id: id,
       payment_id: yocoPaymentId,
-      amount: amount,
+      amount,
       currency: currency || "ZAR",
       status: "successful",
       created_at: new Date().toISOString(),
     });
 
-  // Update payment status
   if (yocoPaymentId) {
-    await (supabase
-      .from("provider_yoco_payments") as any)
+    await supabase
+      .from("provider_yoco_payments")
       .update({
-        refund_status: amount === data.original_amount ? "fully_refunded" : "partially_refunded",
+        refund_status: amount === originalAmount ? "fully_refunded" : "partially_refunded",
         refund_amount: amount,
         updated_at: new Date().toISOString(),
       })
       .eq("yoco_payment_id", yocoPaymentId);
   }
+
+  // Sync to booking: create booking_refund so booking total_refunded and payment_status stay in sync
+  if (bookingId && amount > 0) {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabaseAdmin = await getSupabaseAdmin();
+
+    // Idempotency: skip if we already recorded this Yoco refund as a booking_refund
+    const { data: existingRefund } = await supabaseAdmin
+      .from("booking_refunds")
+      .select("id")
+      .eq("refund_provider_id", id)
+      .maybeSingle();
+    if (existingRefund) {
+      return;
+    }
+
+    const amountInCurrency = amount / 100; // Yoco amounts are in cents
+
+    // Optionally link to the booking_payment that was created when the Yoco payment succeeded
+    const { data: bookingPayment } = await supabaseAdmin
+      .from("booking_payments")
+      .select("id")
+      .eq("booking_id", bookingId)
+      .eq("payment_provider_id", yocoPaymentId)
+      .maybeSingle();
+
+    const { error: refundError } = await supabaseAdmin.from("booking_refunds").insert({
+      booking_id: bookingId,
+      payment_id: (bookingPayment as { id?: string } | null)?.id ?? null,
+      amount: amountInCurrency,
+      reason: "Yoco card refund",
+      refund_method: "original",
+      refund_provider_id: id,
+      status: "completed",
+      notes: `Yoco refund ${id} (payment ${yocoPaymentId})`,
+    });
+
+    if (refundError) {
+      console.error("Yoco webhook: failed to create booking_refund:", refundError);
+    } else {
+      console.log(`Yoco refund ${id} synced to booking ${bookingId} (booking_refund created).`);
+    }
+  }
 }
 
-async function handleRefundFailure(data: any, supabase: any) {
-  const { id, error, metadata } = data;
-  const yocoPaymentId = metadata?.payment_id;
+async function handleRefundFailure(
+  data: Record<string, unknown>,
+  supabase: SupabaseClient
+) {
+  const id = data.id as string | undefined;
+  const err = data.error as { message?: string } | undefined;
+  const metadata = (data.metadata ?? {}) as Record<string, unknown>;
+  const yocoPaymentId = metadata?.payment_id as string | undefined;
 
   let providerId: string | null = null;
   if (yocoPaymentId) {
@@ -354,14 +428,14 @@ async function handleRefundFailure(data: any, supabase: any) {
     providerId = (payment as { provider_id?: string } | null)?.provider_id ?? null;
   }
 
-  await (supabase
-    .from("provider_yoco_refunds") as any)
+  await supabase
+    .from("provider_yoco_refunds")
     .insert({
       provider_id: providerId,
       yoco_refund_id: id,
       payment_id: yocoPaymentId,
       status: "failed",
-      error_message: error?.message || "Refund failed",
+      error_message: err?.message ?? "Refund failed",
       created_at: new Date().toISOString(),
     });
 }

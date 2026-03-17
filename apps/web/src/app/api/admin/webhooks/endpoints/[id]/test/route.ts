@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, notFoundResponse, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, notFoundResponse, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import crypto from "crypto";
 
 export async function POST(
@@ -8,7 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
 
     const supabase = await getSupabaseServer(request);
 
@@ -81,23 +82,22 @@ export async function POST(
         timestamp,
         signature,
       });
-    } catch (fetchError: any) {
+    } catch (fetchError: unknown) {
       clearTimeout(timeout);
 
-      // Log failed test
       await supabase.from("webhook_events").insert({
         endpoint_id: endpoint.id,
         event_type: "test",
         payload: test_payload || { test: true },
         status: "failed",
-        error_message: fetchError.message || "Request failed",
+        error_message: fetchError instanceof Error ? fetchError.message : "Request failed",
         attempt_count: 1,
         source: "admin_test",
       });
 
       throw fetchError;
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     return handleApiError(error, "Failed to test webhook");
   }
 }

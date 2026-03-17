@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requireAdminSection  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { createTransfer, convertToSmallestUnit } from "@/lib/payments/paystack-complete";
 import { writeAuditLog } from "@/lib/audit/audit";
 
@@ -19,7 +20,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
 
@@ -44,7 +45,8 @@ export async function POST(
       .single();
     if (payoutErr || !payout) throw payoutErr || new Error("Payout not found");
 
-    const p = payout as any;
+    type PayoutRow = { status: string; provider_id: string; amount?: number; payout_number?: string; id: string; currency?: string; payout_account_details?: { bank_account_id?: string } };
+    const p = payout as PayoutRow;
     if (p.status === "completed") {
       return NextResponse.json(
         { data: null, error: { message: "Payout already paid", code: "ALREADY_PAID" } },
@@ -53,11 +55,11 @@ export async function POST(
     }
 
     // Use bank account from payout request if stored, else primary (latest active)
-    const requestedAccountId = (p.payout_account_details as any)?.bank_account_id;
+    const requestedAccountId = p.payout_account_details?.bank_account_id;
     let acct: { recipient_code: string; currency?: string } | null = null;
 
     if (requestedAccountId) {
-      const { data: requestedAcct } = await (supabase.from("provider_payout_accounts") as any)
+      const { data: requestedAcct } = await supabase.from("provider_payout_accounts")
         .select("recipient_code, currency")
         .eq("id", requestedAccountId)
         .eq("provider_id", p.provider_id)
@@ -67,7 +69,7 @@ export async function POST(
       acct = requestedAcct;
     }
     if (!acct?.recipient_code) {
-      const { data: primaryAcct } = await (supabase.from("provider_payout_accounts") as any)
+      const { data: primaryAcct } = await supabase.from("provider_payout_accounts")
         .select("recipient_code, currency")
         .eq("provider_id", p.provider_id)
         .eq("active", true)
@@ -97,8 +99,8 @@ export async function POST(
     const paystack = await createTransfer(transferRequest);
 
     // Update payout to record transfer details + mark as processing
-    const { data: updatedPayout, error: updateErr } = await (supabase
-      .from("payouts") as any)
+    const { data: updatedPayout, error: updateErr } = await supabase
+      .from("payouts")
       .update({
         status: "processing",
         payout_provider: "paystack",
@@ -118,7 +120,7 @@ export async function POST(
 
     await writeAuditLog({
       actor_user_id: user.id,
-      actor_role: (user as any).role || "superadmin",
+      actor_role: user.role ?? "superadmin",
       action: "admin.payout.initiate_transfer",
       entity_type: "payout",
       entity_id: id,
@@ -131,10 +133,10 @@ export async function POST(
     });
 
     return NextResponse.json({ data: { payout: updatedPayout, transfer: paystack.data }, error: null });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error initiating payout transfer:", error);
     return NextResponse.json(
-      { data: null, error: { message: error.message || "Failed to initiate transfer", code: "INTERNAL_ERROR" } },
+      { data: null, error: { message: error instanceof Error ? error.message : "Failed to initiate transfer", code: "INTERNAL_ERROR" } },
       { status: 500 }
     );
   }

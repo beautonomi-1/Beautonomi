@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/finance/summary
@@ -10,8 +12,8 @@ import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
  */
 export async function GET(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -31,13 +33,14 @@ export async function GET(request: Request) {
     const { data: rows } = await ftQuery;
     const tx = rows || [];
 
+    type FinanceRow = { transaction_type: string; amount?: number; fees?: number; commission?: number; net?: number };
     const sum = (
       types: string[],
       field: "amount" | "fees" | "commission" | "net" = "amount"
     ) =>
       tx
-        .filter((r: any) => types.includes(r.transaction_type))
-        .reduce((s: number, r: any) => s + Number(r[field] || 0), 0);
+        .filter((r: FinanceRow) => types.includes(r.transaction_type))
+        .reduce((s: number, r: FinanceRow) => s + Number(r[field] ?? 0), 0);
 
     // Gateway fees (only on payment and additional_charge_payment)
     const gatewayFeesServices = sum(["payment", "additional_charge_payment"], "fees");
@@ -159,10 +162,11 @@ export async function GET(request: Request) {
         .lte("created_at", previousEnd);
       const { data: prevRows } = await prevQuery;
       const prev = prevRows || [];
+      type PrevRow = { transaction_type: string; amount?: number; fees?: number };
       const prevSum = (types: string[], field: "amount" | "fees") =>
         prev
-          .filter((r: any) => types.includes(r.transaction_type))
-          .reduce((s: number, r: any) => s + Number(r[field] || 0), 0);
+          .filter((r: PrevRow) => types.includes(r.transaction_type))
+          .reduce((s: number, r: PrevRow) => s + Number(r[field] ?? 0), 0);
       previousGmv =
         prevSum(["payment"], "amount") +
         prevSum(["provider_earnings"], "amount") +

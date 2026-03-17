@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, handleApiError, successResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
     
     if (!supabase) {
@@ -228,7 +229,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     return successResponse(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in preference-options PUT:", error);
     return handleApiError(error, "Failed to update preference option");
   }
@@ -236,7 +237,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 

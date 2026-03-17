@@ -65,7 +65,7 @@ export function ActionButton({
   return (
     <TouchableOpacity
       style={[
-        { flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12 },
+        { flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 16 },
         variantBg[variant],
         sizeStyles[size],
         fullWidth && { width: "100%" },

@@ -119,7 +119,8 @@ export async function matchWaitlistOnCancellation(supabase: any, cancelledBookin
             services: serviceId ? "Service" : "Services",
             provider_id: booking.provider_id,
           },
-          ["push", "email"]
+          ["push", "email"],
+          { appType: "customer" }
         );
       } catch (notifError) {
         console.error(`Error notifying waitlist entry ${entry.id}:`, notifError);
@@ -229,7 +230,8 @@ export async function checkWaitlistForAvailability(
             services: serviceId ? "Service" : "Services",
             provider_id: providerId,
           },
-          ["push", "email"]
+          ["push", "email"],
+          { appType: "customer" }
         );
 
         notified++;

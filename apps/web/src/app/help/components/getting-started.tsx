@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import Getting from "./../../../../public/images/getting-started-optimized.jpg";
 import Access from "./../../../../public/images/accessing-your-account-optimized.jpg";
 import Reservation from "./../../../../public/images/help-with-a-reservation-optimized.jpg";
@@ -15,21 +16,25 @@ const guides = [
     src: Getting,
     alt: "Access and manage your account",
     description: "Getting started on Beautonomi",
+    href: "/learn/article/getting-started-overview",
   },
   {
     src: Access,
     alt: "Getting paid",
     description: "Access and manage your account",
+    href: "/learn/account-profile",
   },
   {
     src: Reservation,
     alt: "Help with a booking",
     description: "Help with a booking",
+    href: "/learn/managing-bookings",
   },
   {
     src: Aircover,
     alt: "Getting protected through Beautonomi Coverage for Providers",
     description: "Beautonomi Coverage for customers",
+    href: "/learn/article/policies-overview",
   },
 ];
 
@@ -40,27 +45,27 @@ export default function GettingStartedGuides() {
         <h2 className="text-[26px] mb-1 font-normal  text-secondary">
           Guides for getting started
         </h2>
-        <a
-          href="#"
+        <Link
+          href="/learn"
           className="flex items-center font-normal  text-sm text-secondary"
         >
           Browse all topics <ArrowRightIcon className="ml-1 h-4 w-4" />
-        </a>
+        </Link>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 ">
         {guides.map((guide, index) => (
-          <div key={index} className="">
+          <Link key={index} href={guide.href} className="group">
             <Image
               src={guide.src}
               alt={guide.alt}
-              className="h-[255px] w-[255px] rounded-lg mb-3 object-cover"
+              className="h-[255px] w-[255px] rounded-lg mb-3 object-cover group-hover:opacity-90 transition-opacity"
               width={255}
               height={255}
             />
-            <p className=" text-lg  font-normal">
+            <p className=" text-lg  font-normal group-hover:underline">
               {guide.description}
             </p>
-          </div>
+          </Link>
         ))}
       </div>
     </div>

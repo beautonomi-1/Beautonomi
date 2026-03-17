@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
@@ -10,8 +11,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRoleInApi(['superadmin'], request);
-    const { allowed, retryAfter } = checkRateLimit(auth.user.id, "export:reviews");
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const { allowed, retryAfter } = checkRateLimit(user.id, "export:reviews");
     if (!allowed) {
       return errorResponse(
         `Rate limit exceeded. Try again in ${retryAfter} seconds.`,
@@ -73,7 +74,8 @@ export async function GET(request: NextRequest) {
       "Provider Response",
     ];
 
-    const rows = (reviews || []).map((review: any) => [
+    type ReviewRow = { id: string; rating?: number; comment?: string; status?: string; customer?: { full_name?: string; email?: string }; provider?: { business_name?: string }; created_at?: string; updated_at?: string; provider_response?: string };
+    const rows = (reviews || []).map((review: ReviewRow) => [
       review.id,
       review.rating,
       review.comment || "",

@@ -18,8 +18,8 @@ function escapeICS(str: string): string {
   return str.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,");
 }
 
-export function generateICSBlob(event: CalendarEvent): Blob {
-  const lines = [
+function buildICSLines(event: CalendarEvent): string[] {
+  return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     "PRODID:-//Beautonomi//Booking//EN",
@@ -32,8 +32,15 @@ export function generateICSBlob(event: CalendarEvent): Blob {
     "END:VEVENT",
     "END:VCALENDAR",
   ].filter(Boolean);
+}
 
-  return new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+/** Returns raw ICS string for use in API responses or server-side download */
+export function generateICSText(event: CalendarEvent): string {
+  return buildICSLines(event).join("\r\n");
+}
+
+export function generateICSBlob(event: CalendarEvent): Blob {
+  return new Blob([generateICSText(event)], { type: "text/calendar;charset=utf-8" });
 }
 
 export function getGoogleCalendarUrl(event: CalendarEvent): string {

@@ -1,13 +1,13 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
   errorResponse,
   notFoundResponse,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const bodySchema = z.discriminatedUnion("type", [
@@ -28,7 +28,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const { id: zone_id } = await params;
@@ -49,7 +49,9 @@ export async function POST(
       .single();
 
     if (!zone) return notFoundResponse("Zone not found");
-    if (parse.data.version != null && (zone as any).version !== parse.data.version) {
+    type ZoneRow = { version?: number; country_code?: string };
+    const zoneRow = zone as ZoneRow;
+    if (parse.data.version != null && zoneRow.version !== parse.data.version) {
       return errorResponse("Version conflict; refresh and retry", "CONFLICT", 409);
     }
 
@@ -63,7 +65,7 @@ export async function POST(
       const { data: area } = await admin
         .from("postal_areas")
         .select("geom, postal_code")
-        .eq("country_code", (zone as any).country_code)
+        .eq("country_code", zoneRow.country_code)
         .eq("postal_code", parse.data.postal_code)
         .not("geom", "is", null)
         .limit(1)
@@ -71,13 +73,15 @@ export async function POST(
       if (!area) {
         return errorResponse("Postal code not found in dataset", "NOT_FOUND", 404);
       }
+      type AreaRow = { geom?: unknown };
+      const areaRow = area as AreaRow;
       const { error: insertError } = await admin.from("platform_zone_exclusions").insert({
         zone_id,
         type: "postal_code",
         ref_code: parse.data.postal_code,
         ref_name: parse.data.postal_code,
-        geom: (area as any).geom,
-      } as any);
+        geom: areaRow.geom,
+      });
       if (insertError) throw insertError;
       const { error: rpcError } = await admin.rpc("update_platform_zone_geometry", { p_zone_id: zone_id });
       if (rpcError) throw rpcError;
@@ -89,10 +93,12 @@ export async function POST(
       .eq("id", zone_id)
       .single();
 
+    type UpdatedRow = { version?: number; geometry?: unknown };
+    const updatedRow = updated as UpdatedRow | null;
     return successResponse({
       excluded: true,
-      version: (updated as any)?.version,
-      has_geometry: !!(updated as any)?.geometry,
+      version: updatedRow?.version,
+      has_geometry: !!updatedRow?.geometry,
     });
   } catch (error) {
     return handleApiError(error, "Failed to add exclusion");

@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       return handleApiError(authError, "Authentication failed");
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get("status");

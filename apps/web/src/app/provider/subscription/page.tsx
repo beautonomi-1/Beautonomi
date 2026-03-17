@@ -42,19 +42,33 @@ export default function SubscriptionPage() {
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [showInAppReturnBanner, setShowInAppReturnBanner] = useState(false);
+
   useEffect(() => {
     loadData();
-    
-    // Check if returning from payment success
+
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get("payment_success") === "true") {
+    const isPaymentSuccess = urlParams.get("payment_success") === "true";
+    const inApp = urlParams.get("in_app") === "1";
+
+    if (isPaymentSuccess) {
       toast.success("Payment successful! Your subscription is being activated...");
-      // Reload after a short delay to allow webhook to process
-      setTimeout(() => {
-        loadData();
-      }, 2000);
-      // Clean up URL
-      window.history.replaceState({}, "", window.location.pathname);
+      if (inApp) setShowInAppReturnBanner(true);
+      setTimeout(() => loadData(), 2000);
+      const cleanSearch = inApp ? "?in_app=1" : "";
+      window.history.replaceState({}, "", window.location.pathname + cleanSearch);
+
+      // When loaded inside the provider app WebView: tell the app to close WebView and show native subscription (automatic return)
+      if (inApp && typeof window !== "undefined") {
+        const win = window as Window & { ReactNativeWebView?: { postMessage: (data: string) => void } };
+        if (win.ReactNativeWebView?.postMessage) {
+          const delay = 1500;
+          const t = setTimeout(() => {
+            win.ReactNativeWebView?.postMessage(JSON.stringify({ type: "subscription_success" }));
+          }, delay);
+          return () => clearTimeout(t);
+        }
+      }
     }
   }, []);
 
@@ -155,16 +169,17 @@ export default function SubscriptionPage() {
   };
 
   const handleCancel = async () => {
-    if (!confirm("Are you sure you want to cancel your subscription? You'll lose access at the end of your billing period.")) {
+    if (!confirm("Are you sure you want to cancel your subscription? You'll retain access until the end of your billing period.")) {
       return;
     }
 
     try {
       await fetcher.post("/api/provider/subscription/cancel");
       toast.success("Subscription cancelled. You'll retain access until the end of your billing period.");
-      loadData();
+      await loadData();
     } catch (error) {
-      toast.error("Failed to cancel subscription");
+      const msg = error instanceof FetchError ? error.message : "Failed to cancel subscription";
+      toast.error(msg);
       console.error("Error cancelling subscription:", error);
     }
   };
@@ -179,7 +194,7 @@ export default function SubscriptionPage() {
         window.location.href = url;
         return;
       }
-      toast.success("Subscription renewal started");
+      toast.error("No payment link received. Please try again or contact support.");
     } catch (error) {
       toast.error("Failed to renew subscription");
       console.error("Error renewing subscription:", error);
@@ -218,6 +233,19 @@ export default function SubscriptionPage() {
         title="Subscription Management"
         subtitle="Manage your Beautonomi subscription plan"
       />
+
+      {showInAppReturnBanner && (
+        <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-4 text-center text-sm text-green-800">
+          <p className="font-medium">Payment complete.</p>
+          <p className="mt-1">Tap the button below to return to the app.</p>
+          <a
+            href="provider://subscription/success"
+            className="mt-3 inline-block rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+          >
+            Return to app
+          </a>
+        </div>
+      )}
 
       {subscription ? (
         <div className="space-y-6">

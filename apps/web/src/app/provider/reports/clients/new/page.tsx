@@ -11,7 +11,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subMonths, format } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface NewClientsData {
   totalNewClients: number;
@@ -82,7 +82,7 @@ export default function NewClientsReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data, "new-clients");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "new-clients");
     exportToCSV(exportData, "new-clients-report");
   };
 

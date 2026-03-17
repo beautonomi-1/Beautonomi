@@ -5,8 +5,7 @@ On-demand UX covers ringtone and waiting screen behaviour for provider-side flow
 ## Storage
 
 - **Bucket**: `app-assets` (created in migration `255_storage_app_assets_bucket.sql`).
-- **Path convention**: `ux/ringtones/<environment>/default.mp3`  
-  Example: `ux/ringtones/production/default.mp3`, `ux/ringtones/staging/default.mp3`.
+- **Path convention**: `ux/ringtones/default.mp3` (single file; path is set per environment in `ringtone_asset_path` if you need different files).
 - **Access**: Bucket is private. Use a signed-URL API route to serve ringtone files to clients; do not expose the bucket publicly.
 
 ## Module config (env-scoped)
@@ -16,7 +15,7 @@ On-demand UX covers ringtone and waiting screen behaviour for provider-side flow
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | enabled | boolean | false | Master switch for on-demand UX |
-| ringtone_asset_path | text | null | Storage path, e.g. `ux/ringtones/production/default.mp3` |
+| ringtone_asset_path | text | null | Storage path, e.g. `ux/ringtones/default.mp3` |
 | ring_duration_seconds | int | 20 | How long to play the ringtone |
 | ring_repeat | boolean | true | Whether to loop the ringtone |
 | waiting_screen_timeout_seconds | int | 45 | Timeout for the waiting screen |
@@ -50,7 +49,7 @@ Gate the full on-demand flow (waiting screen + ringtone) with a feature flag so 
 
 ## Summary
 
-- **Storage path**: `app-assets` → `ux/ringtones/<environment>/default.mp3` (or path set in `ringtone_asset_path`).
+- **Storage path**: `app-assets` → `ux/ringtones/default.mp3` (or path set in `ringtone_asset_path`).
 - **Durations**: ring_duration_seconds, waiting_screen_timeout_seconds, provider_accept_window_seconds are all configurable per environment.
 - **UI copy**: Stored in `ui_copy` JSON; use for title, message, and any other copy on the waiting screen.
-- **Post-acceptance (customer)**: After provider accepts, customer sees booking detail with Booking #, acceptance strip, and (on customer app) Tracking | Receipt | Details tabs. For at-home bookings, ETA and “Provider en route” / “Provider arrived” are shown when the backend provides them (migration 290, start-journey/arrive/location). See `docs/ON_DEMAND_POST_ACCEPTANCE_UX.md`.
+- **Post-acceptance (customer)**: After provider accepts, customer sees booking detail with Booking #, acceptance strip, and (on customer app) Tracking | Receipt | Details tabs. For at-home bookings, ETA and “Provider en route” / “Provider arrived” are shown when the backend provides them (migration 290, start-journey/arrive/location). See `docs/ON_DEMAND_ACCEPTANCE.md` (Post-acceptance UX section).

@@ -86,19 +86,18 @@ export default function AddressAutocomplete({
 
     try {
       setIsLoading(true);
-      const payload: any = {
+      const payload: {
+        query: string;
+        limit: number;
+        country?: string;
+        proximity?: { longitude: number; latitude: number };
+      } = {
         query: searchQuery,
         limit: 5,
       };
-
-      // Use country code for Mapbox (e.g., "ZA" for South Africa)
-      // Mapbox expects ISO 3166-1 alpha-2 country codes
       if (country) {
-        // If it's already a 2-letter code, use it directly
-        // Otherwise, Mapbox will try to match by name
         payload.country = country.length === 2 ? country.toUpperCase() : country;
       }
-
       if (proximity) {
         payload.proximity = {
           longitude: proximity.longitude,
@@ -187,7 +186,16 @@ export default function AddressAutocomplete({
 
   const parseAddress = (suggestion: AddressSuggestion) => {
     const context = suggestion.context || [];
-    const addressParts: any = {
+    const addressParts: {
+      address_line1: string;
+      city: string;
+      state: string;
+      postal_code: string;
+      country: string;
+      latitude: number;
+      longitude: number;
+      place_name: string;
+    } = {
       address_line1: "",
       city: "",
       state: "",

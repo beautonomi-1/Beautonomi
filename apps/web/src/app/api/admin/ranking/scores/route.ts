@@ -5,7 +5,8 @@
  */
 
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 const ENVS = ["production", "staging", "development"];
@@ -17,7 +18,7 @@ function parseEnv(s: string | null | undefined): string {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const { searchParams } = new URL(request.url);
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") ?? "50", 10) || 50));
     const offset = Math.max(0, parseInt(searchParams.get("offset") ?? "0", 10) || 0);
@@ -32,19 +33,21 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    const providerIds = [...new Set((rows ?? []).map((r: any) => r.provider_id))];
+    type ScoreRow = { provider_id: string; computed_score?: number; components?: unknown; updated_at?: string };
+    type ProviderInfoRow = { id: string; business_name?: string | null; slug?: string | null };
+    const providerIds = [...new Set((rows ?? []).map((r: ScoreRow) => r.provider_id))];
     const providerMap = new Map<string, { business_name: string | null; slug: string | null }>();
     if (providerIds.length > 0) {
       const { data: providers } = await supabase
         .from("providers")
         .select("id, business_name, slug")
         .in("id", providerIds);
-      (providers ?? []).forEach((p: any) => {
+      (providers ?? []).forEach((p: ProviderInfoRow) => {
         providerMap.set(p.id, { business_name: p.business_name ?? null, slug: p.slug ?? null });
       });
     }
 
-    const scores = (rows ?? []).map((r: any) => {
+    const scores = (rows ?? []).map((r: ScoreRow) => {
       const info = providerMap.get(r.provider_id);
       return {
         provider_id: r.provider_id,

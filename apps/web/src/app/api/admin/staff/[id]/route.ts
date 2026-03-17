@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
-import { successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 const ALLOWED_UPDATE_FIELDS = [
@@ -23,8 +24,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) return unauthorizedResponse("Authentication required");
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, _request);
+    if (!user) return unauthorizedResponse("Authentication required");
 
     const supabase = getSupabaseAdmin();
     const { id } = await params;
@@ -51,8 +52,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) return unauthorizedResponse("Authentication required");
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) return unauthorizedResponse("Authentication required");
 
     const supabase = getSupabaseAdmin();
     const body = await request.json();
@@ -71,8 +72,8 @@ export async function PATCH(
     if (error) throw error;
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.staff.update",
       entity_type: "provider_staff",
       entity_id: id,
@@ -94,8 +95,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -110,8 +111,8 @@ export async function DELETE(
     if (error) throw error;
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.staff.delete",
       entity_type: "provider_staff",
       entity_id: id,

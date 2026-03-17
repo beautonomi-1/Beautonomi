@@ -33,9 +33,9 @@ export async function handleRefundEvent(
 
 // ─── Internal Handlers ───────────────────────────────────────────────────────
 
-async function handleRefundProcessed(data: any, supabase: SupabaseClient) {
+async function handleRefundProcessed(data: Record<string, unknown>, supabase: SupabaseClient) {
   const reference = data?.transaction_reference || data?.reference;
-  const refundAmount = data?.amount ? convertFromSmallestUnit(data.amount) : 0;
+  const refundAmount = data?.amount != null ? convertFromSmallestUnit(Number(data.amount)) : 0;
   const refundReference = data?.refund_reference || data?.id;
 
   if (!reference) {
@@ -44,14 +44,14 @@ async function handleRefundProcessed(data: any, supabase: SupabaseClient) {
   }
 
   // Find the original payment transaction
-  const { data: txn } = await (supabase.from("payment_transactions") as any)
+  const { data: txn } = await supabase.from("payment_transactions")
     .select("id, booking_id")
     .eq("reference", reference)
     .eq("status", "success")
     .maybeSingle();
 
   // Record refund transaction
-  await (supabase.from("payment_transactions") as any).insert({
+  await supabase.from("payment_transactions").insert({
     booking_id: txn?.booking_id || null,
     reference: String(refundReference || reference),
     amount: refundAmount,
@@ -70,7 +70,7 @@ async function handleRefundProcessed(data: any, supabase: SupabaseClient) {
 
   // If linked to a booking, update its payment status
   if (txn?.booking_id) {
-    await (supabase.from("bookings") as any)
+    await supabase.from("bookings")
       .update({
         payment_status: "refunded",
         updated_at: new Date().toISOString(),
@@ -78,7 +78,7 @@ async function handleRefundProcessed(data: any, supabase: SupabaseClient) {
       .eq("id", txn.booking_id);
 
     // Finance ledger entry
-    await (supabase.from("finance_transactions") as any).insert({
+    await supabase.from("finance_transactions").insert({
       booking_id: txn.booking_id,
       provider_id: null,
       transaction_type: "refund",
@@ -94,7 +94,7 @@ async function handleRefundProcessed(data: any, supabase: SupabaseClient) {
   console.log(`Refund processed for transaction ${reference} — ${refundAmount}`);
 }
 
-async function handleRefundFailed(data: any, supabase: SupabaseClient) {
+async function handleRefundFailed(data: Record<string, unknown>, supabase: SupabaseClient) {
   const reference = data?.transaction_reference || data?.reference;
   const refundReference = data?.refund_reference || data?.id;
   const reason = data?.message || data?.gateway_response || "Refund failed";
@@ -105,7 +105,7 @@ async function handleRefundFailed(data: any, supabase: SupabaseClient) {
   }
 
   // Record failed refund for audit
-  await (supabase.from("payment_transactions") as any).insert({
+  await supabase.from("payment_transactions").insert({
     booking_id: null,
     reference: String(refundReference || reference),
     amount: 0,

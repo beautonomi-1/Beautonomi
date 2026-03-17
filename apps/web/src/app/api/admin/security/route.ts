@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 const DEFAULTS = {
@@ -40,7 +40,7 @@ const DEFAULTS = {
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
     const supabase = await getSupabaseServer(request);
 
     const { data: row, error } = await supabase
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(req: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], req);
+    const { user } = await requireAdminSection(ADMIN_SECTION_OPERATIONS, req);
     const supabase = await getSupabaseServer(req);
     const body = await req.json();
 

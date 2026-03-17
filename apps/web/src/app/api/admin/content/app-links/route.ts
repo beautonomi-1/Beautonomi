@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { requireAdminSection  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const includeInactive = searchParams.get("include_inactive") === "true";
 
-    let query = (supabase.from("footer_app_links") as any)
+    let query = supabase
+      .from("footer_app_links")
       .select("*")
       .order("display_order", { ascending: true });
 
@@ -29,9 +31,11 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({ data, error: null });
-  } catch (error: any) {
-    if (error.status) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+  } catch (error: unknown) {
+    const status = error && typeof error === "object" && "status" in error ? (error as { status: number }).status : undefined;
+    if (typeof status === "number") {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return NextResponse.json({ error: message }, { status });
     }
     console.error("Error in GET /api/admin/content/app-links:", error);
     return NextResponse.json(
@@ -43,7 +47,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -57,7 +61,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data, error } = await (supabase.from("footer_app_links") as any)
+    const { data, error } = await supabase
+      .from("footer_app_links")
       .insert({
         platform,
         title,
@@ -77,9 +82,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ data, error: null }, { status: 201 });
-  } catch (error: any) {
-    if (error.status) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+  } catch (error: unknown) {
+    const status = error && typeof error === "object" && "status" in error ? (error as { status: number }).status : undefined;
+    if (typeof status === "number") {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return NextResponse.json({ error: message }, { status });
     }
     console.error("Error in POST /api/admin/content/app-links:", error);
     return NextResponse.json(

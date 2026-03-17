@@ -4,12 +4,15 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespon
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
+const resourceTypeEnum = z.enum(["room", "chair", "equipment", "other"]);
 const createResourceSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   group_id: z.string().uuid().nullable().optional(),
   capacity: z.number().optional(),
   is_active: z.boolean().optional(),
+  resource_type: resourceTypeEnum.optional(),
+  calendar_color: z.string().optional(),
 });
 
 /**
@@ -58,17 +61,17 @@ export async function GET(request: NextRequest) {
 
     // Transform data to match UI expectations
     const transformedResources = (resources || []).map((resource: any) => {
-      // Handle both array and object formats for resource_groups
-      const group = Array.isArray(resource.resource_groups) 
-        ? resource.resource_groups[0] 
+      const group = Array.isArray(resource.resource_groups)
+        ? resource.resource_groups[0]
         : resource.resource_groups;
-      
       return {
         id: resource.id,
         name: resource.name,
         description: resource.description || null,
         capacity: resource.capacity || null,
         is_active: resource.is_active ?? true,
+        resource_type: resource.resource_type || "room",
+        calendar_color: resource.calendar_color || null,
         group_name: group?.name || null,
         group_color: group?.color || null,
         group_id: resource.group_id || null,
@@ -135,6 +138,12 @@ export async function POST(request: NextRequest) {
     if (data.group_id !== undefined) {
       insertData.group_id = data.group_id || null;
     }
+    if (data.resource_type !== undefined) {
+      insertData.resource_type = data.resource_type || "room";
+    }
+    if (data.calendar_color !== undefined && data.calendar_color !== null) {
+      insertData.calendar_color = data.calendar_color.trim() || null;
+    }
 
     const { data: newResource, error: insertError } = await (supabase
       .from("resources") as any)
@@ -160,6 +169,8 @@ export async function POST(request: NextRequest) {
       description: newResource.description || null,
       capacity: newResource.capacity || null,
       is_active: newResource.is_active ?? true,
+      resource_type: (newResource as any).resource_type || "room",
+      calendar_color: (newResource as any).calendar_color || null,
       group_name: group?.name || null,
       group_color: group?.color || null,
       group_id: newResource.group_id || null,

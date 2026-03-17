@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, notFoundResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 const updateSchema = z.object({
@@ -18,12 +19,12 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = updateSchema.parse(await request.json());
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (body.question !== undefined) updateData.question = body.question;
     if (body.answer !== undefined) updateData.answer = body.answer;
     if (body.answer_type !== undefined) updateData.answer_type = body.answer_type;
@@ -32,7 +33,8 @@ export async function PUT(
     if (body.is_active !== undefined) updateData.is_active = body.is_active;
     updateData.updated_at = new Date().toISOString();
 
-    const { data: row, error } = await (supabase.from("referral_faqs") as any)
+    const { data: row, error } = await supabase
+      .from("referral_faqs")
       .update(updateData)
       .eq("id", id)
       .select()
@@ -73,7 +75,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
@@ -87,7 +89,7 @@ export async function DELETE(
       return notFoundResponse("FAQ not found");
     }
 
-    const { error } = await (supabase.from("referral_faqs") as any).delete().eq("id", id);
+    const { error } = await supabase.from("referral_faqs").delete().eq("id", id);
     if (error) throw error;
 
     await writeAuditLog({

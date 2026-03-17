@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 
 const updateTemplateSchema = z.object({
   key: z.string().min(1).optional(),
@@ -13,7 +15,7 @@ const updateTemplateSchema = z.object({
   email_subject: z.string().optional().nullable(),
   email_body: z.string().optional().nullable(),
   sms_body: z.string().optional().nullable(),
-  live_activities_config: z.record(z.string(), z.any()).optional().nullable(),
+  live_activities_config: z.record(z.string(), z.unknown()).optional().nullable(),
   // Template metadata
   variables: z.array(z.string()).optional(),
   url: z.string().url().optional().nullable(),
@@ -33,8 +35,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -102,8 +104,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -143,8 +145,8 @@ export async function PUT(
       );
     }
 
-    const { data: template, error } = await (supabase
-      .from("notification_templates") as any)
+    const { data: template, error } = await supabase
+      .from("notification_templates")
       .update(validationResult.data)
       .eq("id", id)
       .select()
@@ -165,8 +167,8 @@ export async function PUT(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.notifications.template.update",
       entity_type: "notification_template",
       entity_id: id,
@@ -202,8 +204,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -223,8 +225,8 @@ export async function DELETE(
       );
     }
 
-    const { data: template, error } = await (supabase
-      .from("notification_templates") as any)
+    const { data: template, error } = await supabase
+      .from("notification_templates")
       .update({ enabled: false })
       .eq("id", id)
       .select()
@@ -245,8 +247,8 @@ export async function DELETE(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.notifications.template.delete",
       entity_type: "notification_template",
       entity_id: id,

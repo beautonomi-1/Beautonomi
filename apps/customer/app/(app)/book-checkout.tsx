@@ -24,6 +24,7 @@ import { haptic } from "@/lib/haptics";
 import { Skeleton } from "@/components/Skeleton";
 import { useSavedCards } from "@/hooks/useSavedCards";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import type { SavedPaymentMethod } from "@/types/api";
 
@@ -61,6 +62,9 @@ interface HoldData {
   deposit_amount?: number;
   travel_fee?: number;
   travel_distance_km?: number;
+  provider_on_demand_accept_enabled?: boolean;
+  tips_enabled?: boolean;
+  tip_presets?: number[];
   cancellation_policy?: {
     cancellation_window_hours?: number;
     no_show_fee_enabled?: boolean;
@@ -370,12 +374,16 @@ export default function BookCheckoutScreen() {
     provider_name: routeProviderName,
     provider_thumbnail: routeProviderThumbnail,
     reschedule_booking_id: routeRescheduleBookingId,
+    campaign_id: routeCampaignId,
+    provider_id: routeProviderId,
   } = useLocalSearchParams<{
     hold_id: string;
     service_name?: string;
     provider_name?: string;
     provider_thumbnail?: string;
     reschedule_booking_id?: string;
+    campaign_id?: string;
+    provider_id?: string;
   }>();
   const { user } = useAuth();
   const [hold, setHold] = useState<HoldData | null>(null);
@@ -393,7 +401,7 @@ export default function BookCheckoutScreen() {
   const [walletBalance, setWalletBalance] = useState(0);
 
   const { cards: savedCards, loading: cardsLoading, defaultCard, refresh: refreshCards } = useSavedCards();
-  const { pay: paystackPay, payWithSavedCard, loading: payLoading, error: payError } = usePaystackPayment();
+  const { pay: paystackPay, loading: payLoading, error: payError } = usePaystackPayment();
 
   const [bookingCustomDefinitions, setBookingCustomDefinitions] = useState<CustomFieldDefinition[]>([]);
   const [bookingCustomValues, setBookingCustomValues] = useState<Record<string, string | number | boolean | null>>({});
@@ -401,6 +409,10 @@ export default function BookCheckoutScreen() {
   const [providerFormValues, setProviderFormValues] = useState<Record<string, Record<string, string | number | boolean | null>>>({});
   const [specialRequests, setSpecialRequests] = useState("");
   const [promotionCode, setPromotionCode] = useState("");
+  const [appliedPromoDiscount, setAppliedPromoDiscount] = useState(0);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [promoValidating, setPromoValidating] = useState(false);
+  const [tipAmount, setTipAmount] = useState(0);
   const [addonsList, setAddonsList] = useState<AddonOption[]>([]);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
 
@@ -432,6 +444,7 @@ export default function BookCheckoutScreen() {
 
         const holdData: HoldData = {
           hold_id: (data.hold_id ?? data.id ?? hold_id) as string,
+          provider_on_demand_accept_enabled: (data as { provider_on_demand_accept_enabled?: boolean }).provider_on_demand_accept_enabled,
           provider_id: data.provider_id as string,
           provider_name: (data.provider_name as string | undefined) ?? routeProviderName,
           provider_thumbnail: (data.provider_thumbnail ?? data.provider_avatar_url) as string | undefined ?? routeProviderThumbnail,
@@ -450,9 +463,24 @@ export default function BookCheckoutScreen() {
           deposit_amount: data.deposit_amount as number | undefined,
           travel_fee: data.travel_fee as number | undefined,
           travel_distance_km: data.travel_distance_km as number | undefined,
+          tips_enabled: (data as { tips_enabled?: boolean }).tips_enabled,
+          tip_presets: Array.isArray((data as { tip_presets?: number[] }).tip_presets)
+            ? (data as { tip_presets: number[] }).tip_presets
+            : undefined,
           cancellation_policy: data.cancellation_policy as HoldData["cancellation_policy"],
         };
         setHold(holdData);
+        try {
+          const saved = await AsyncStorage.getItem("beautonomi_booking_addons");
+          if (saved) {
+            const parsed = JSON.parse(saved) as unknown;
+            if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
+              setSelectedAddonIds(parsed);
+            }
+          }
+        } catch {
+          // ignore parse or get errors
+        }
       } catch (e) {
         if (!cancelled) setError(getApiErrorMessage(e, "Hold expired. Please select a new time."));
       } finally {
@@ -491,26 +519,54 @@ export default function BookCheckoutScreen() {
     if (!user) return;
     api.get<{ wallet?: { balance: number }; data?: { wallet?: { balance: number } } }>("/api/me/wallet")
       .then((res) => {
-        const w = (res.data as any)?.wallet ?? (res.data as any);
-        if (w?.balance != null) setWalletBalance(Number(w.balance) || 0);
+        if (res.error) return;
+        const raw = res.data as any;
+        const wallet = raw?.data?.wallet ?? raw?.wallet;
+        if (wallet?.balance != null) setWalletBalance(Number(wallet.balance) || 0);
       })
       .catch(() => {});
   }, [user]);
 
+  // Fetch addons for every service in the hold and merge (dedupe by id) for multi-service bookings
   useEffect(() => {
     if (!hold?.provider_id || !hold.booking_services_snapshot?.length) return;
-    const firstOfferingId = hold.booking_services_snapshot[0].offering_id ?? hold.booking_services_snapshot[0].id;
-    if (!firstOfferingId) return;
-    let url = `/api/public/addons?provider_id=${encodeURIComponent(hold.provider_id)}&service_id=${encodeURIComponent(firstOfferingId)}`;
-    if (hold.location_id) url += `&location_id=${encodeURIComponent(hold.location_id)}`;
-    api.get<AddonOption[] | { data?: AddonOption[] }>(url)
-      .then((res) => {
-        const raw = (res.data as { data?: AddonOption[] }) ?? res.data;
-        const list = Array.isArray(raw) ? raw : (raw as any)?.data ?? [];
-        setAddonsList(Array.isArray(list) ? list : []);
+    const offeringIds = hold.booking_services_snapshot
+      .map((s) => s.offering_id ?? (s as { id?: string }).id)
+      .filter(Boolean) as string[];
+    if (offeringIds.length === 0) return;
+    const baseUrl = "/api/public/addons";
+    Promise.all(
+      offeringIds.map((offeringId) => {
+        let url = `${baseUrl}?provider_id=${encodeURIComponent(hold!.provider_id)}&service_id=${encodeURIComponent(offeringId)}`;
+        if (hold!.location_id) url += `&location_id=${encodeURIComponent(hold!.location_id)}`;
+        return api
+          .get<AddonOption[] | { data?: AddonOption[] }>(url)
+          .then((res) => {
+            const raw = (res.data as { data?: AddonOption[] }) ?? res.data;
+            return Array.isArray(raw) ? raw : (raw as any)?.data ?? [];
+          })
+          .catch(() => [] as AddonOption[]);
       })
-      .catch(() => setAddonsList([]));
-  }, [hold?.provider_id, hold?.location_id, hold?.booking_services_snapshot]);
+    ).then((results) => {
+      const byId = new Map<string, AddonOption>();
+      for (const list of results) {
+        const arr = Array.isArray(list) ? list : [];
+        for (const a of arr) {
+          if (a?.id && !byId.has(a.id)) byId.set(a.id, a);
+        }
+      }
+      setAddonsList(Array.from(byId.values()));
+    });
+  }, [hold, hold?.provider_id, hold?.location_id, hold?.booking_services_snapshot]);
+
+  // Keep selected addon IDs in sync with loaded addons (e.g. after deep link, only keep ids that exist for this hold)
+  useEffect(() => {
+    if (addonsList.length === 0) return;
+    setSelectedAddonIds((prev) => {
+      const valid = prev.filter((id) => addonsList.some((a) => a.id === id));
+      return valid.length === prev.length ? prev : valid;
+    });
+  }, [addonsList]);
 
   const subtotal = hold ? hold.booking_services_snapshot.reduce((s, svc) => s + svc.price, 0) : 0;
   const currency = hold?.booking_services_snapshot[0]?.currency || "ZAR";
@@ -518,12 +574,67 @@ export default function BookCheckoutScreen() {
   const addonsSubtotal = addonsList
     .filter((a) => selectedAddonIds.includes(a.id))
     .reduce((s, a) => s + (Number(a.price) || 0), 0);
-  const total = subtotal + addonsSubtotal + travelFee;
+  const prePromoTotal = subtotal + addonsSubtotal + travelFee;
+  const total = Math.max(0, prePromoTotal - appliedPromoDiscount + tipAmount);
   const hasDeposit = !!(hold?.deposit_required && hold?.deposit_amount != null && hold.deposit_amount > 0);
   const depositAmount = hold?.deposit_amount ?? (hold?.deposit_percentage ? total * hold.deposit_percentage / 100 : 0);
 
+  const applyPromoCode = useCallback(async () => {
+    const code = promotionCode.trim().toUpperCase();
+    if (!code || !hold?.provider_id) return;
+    setPromoError(null);
+    setPromoValidating(true);
+    try {
+      const res = await api.post<{ data?: { valid?: boolean; discount?: { amount: number }; message?: string }; valid?: boolean; discount?: { amount: number }; message?: string }>(
+        "/api/public/promotions/validate",
+        {
+          code,
+          provider_id: hold.provider_id,
+          booking_amount: prePromoTotal,
+          location_type: hold.location_type,
+          location_id: hold.location_id ?? undefined,
+        }
+      );
+      if (res.error) {
+        setAppliedPromoDiscount(0);
+        setPromoError(getApiErrorMessage(res.error, "Invalid or expired promo code"));
+        return;
+      }
+      const data = res.data as any;
+      const payload = data?.data ?? data;
+      if (payload?.valid && payload?.discount?.amount != null) {
+        setAppliedPromoDiscount(Math.max(0, Math.min(Number(payload.discount.amount), prePromoTotal)));
+        setPromoError(null);
+        haptic.success();
+      } else {
+        setAppliedPromoDiscount(0);
+        setPromoError(payload?.message ?? "Invalid or expired promo code");
+      }
+    } catch (e) {
+      setAppliedPromoDiscount(0);
+      setPromoError(getApiErrorMessage(e, "Could not validate promo code"));
+    } finally {
+      setPromoValidating(false);
+    }
+  }, [promotionCode, hold?.provider_id, hold?.location_type, hold?.location_id, prePromoTotal]);
+
   const navigateToBooking = useCallback((bookingId?: string, previousBookingId?: string) => {
     haptic.success();
+    AsyncStorage.removeItem("beautonomi_booking_addons").catch(() => {});
+
+    // Ad attribution: record "book" event when user completed booking from a sponsored result (one event per booking)
+    if (routeCampaignId && routeProviderId) {
+      api
+        .post("/api/public/ads/event", {
+          event_type: "book",
+          campaign_id: routeCampaignId,
+          provider_id: routeProviderId,
+          idempotency_key: `book:${routeCampaignId}:${routeProviderId}:${bookingId ?? hold_id}`,
+          attribution: { booking_id: bookingId },
+        })
+        .catch(() => {});
+    }
+
     if (!bookingId) {
       router.replace({ pathname: "/(app)/(tabs)/bookings" });
       return;
@@ -552,7 +663,7 @@ export default function BookCheckoutScreen() {
     } else {
       router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
     }
-  }, []);
+  }, [routeCampaignId, routeProviderId, hold_id]);
 
   const handleRequestNow = useCallback(async () => {
     if (!hold_id || !hold || !user) return;
@@ -647,11 +758,16 @@ export default function BookCheckoutScreen() {
         use_wallet: paymentMethod === "card" ? useWallet : false,
         save_card: paymentMethod === "card" && (useNewCard || savedCards.length === 0) ? saveCard : false,
       };
+      if (paymentMethod === "card" && selectedCardId && !useNewCard && savedCards.length > 0) {
+        payload.payment_method_id = selectedCardId;
+      }
       if (Object.keys(bookingCustomValues).length > 0) payload.custom_field_values = bookingCustomValues;
       if (Object.keys(providerFormValues).length > 0) payload.provider_form_responses = providerFormValues;
       if (specialRequests.trim()) payload.special_requests = specialRequests.trim();
       if (promotionCode.trim()) payload.promotion_code = promotionCode.trim();
       if (selectedAddonIds.length > 0) payload.addons = selectedAddonIds;
+      if (routeRescheduleBookingId) payload.reschedule_booking_id = routeRescheduleBookingId;
+      if (tipAmount > 0) payload.tip_amount = tipAmount;
 
       const res = await api.post<ConsumeResponse>(`/api/public/booking-holds/${hold_id}/consume`, payload);
 
@@ -664,28 +780,7 @@ export default function BookCheckoutScreen() {
       const data = res.data;
       const bookingId = data?.booking_id;
 
-      /* ── Saved card flow: charge directly without redirect ── */
-      if (paymentMethod === "card" && selectedCardId && !useNewCard && savedCards.length > 0) {
-        const chargeAmount = paymentOption === "deposit" && hasDeposit ? depositAmount : total;
-        const result = await payWithSavedCard({
-          payment_method_id: selectedCardId,
-          amount: chargeAmount,
-          email: user.email || "",
-          currency,
-          metadata: { booking_id: bookingId },
-        });
-
-        if (result.success) {
-          refreshCards();
-          navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
-        } else {
-          haptic.error();
-          setError(payError || "Card payment failed. Please try another card.");
-        }
-        return;
-      }
-
-      /* ── New card / hosted checkout flow ── */
+      /* Server already charged saved card when payment_method_id was sent; it returns payment_url: null in that case. */
       const paymentUrl = data?.payment_url;
       if (paymentUrl && paymentMethod === "card") {
         const payResult = await paystackPay({
@@ -705,6 +800,7 @@ export default function BookCheckoutScreen() {
           setError("Payment was not completed. Please try again.");
         }
       } else {
+        if (selectedCardId && !useNewCard && savedCards.length > 0) refreshCards();
         navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
       }
     } catch (e) {
@@ -713,7 +809,7 @@ export default function BookCheckoutScreen() {
       setConsuming(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pay helpers and navigateToBooking are stable refs
-  }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, promotionCode, routeRescheduleBookingId]);
+  }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, promotionCode, tipAmount, routeRescheduleBookingId]);
 
   /* ─── Loading skeleton ─── */
   if (loading) {
@@ -986,7 +1082,7 @@ export default function BookCheckoutScreen() {
 
             {/* ═══ Total ═══ */}
             <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginBottom: 16 }}>
-              {(travelFee > 0 || addonsSubtotal > 0) && (
+              {(travelFee > 0 || addonsSubtotal > 0 || appliedPromoDiscount > 0 || tipAmount > 0) && (
                 <>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                     <Text style={{ fontSize: 13, color: "#6B7280" }}>Services</Text>
@@ -999,9 +1095,21 @@ export default function BookCheckoutScreen() {
                     </View>
                   )}
                   {travelFee > 0 && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderColor: "#E5E7EB" }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                       <Text style={{ fontSize: 13, color: "#6B7280" }}>Travel</Text>
                       <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(travelFee, currency)}</Text>
+                    </View>
+                  )}
+                  {appliedPromoDiscount > 0 && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                      <Text style={{ fontSize: 13, color: "#059669" }}>Promo</Text>
+                      <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(appliedPromoDiscount, currency)}</Text>
+                    </View>
+                  )}
+                  {tipAmount > 0 && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderColor: "#E5E7EB" }}>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>Tip</Text>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>+{formatCurrency(tipAmount, currency)}</Text>
                     </View>
                   )}
                 </>
@@ -1011,6 +1119,31 @@ export default function BookCheckoutScreen() {
                 <Text style={{ fontSize: 22, fontWeight: "800", color: "#111827" }}>{formatCurrency(total, currency)}</Text>
               </View>
             </View>
+
+            {/* ═══ Tip (optional) ═══ */}
+            {hold?.tips_enabled && (
+              <View style={{ marginBottom: 16 }}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Add a tip (optional)</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  {([0, ...(hold.tip_presets ?? [10, 15, 20, 25])].map((preset) => (
+                    <TouchableOpacity
+                      key={preset}
+                      onPress={() => setTipAmount(preset)}
+                      style={{
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                        borderRadius: 12,
+                        backgroundColor: tipAmount === preset ? Colors.primary : "#F3F4F6",
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: tipAmount === preset ? "#fff" : "#374151" }}>
+                        {preset === 0 ? "No tip" : formatCurrency(preset, currency)}
+                      </Text>
+                    </TouchableOpacity>
+                  )))}
+                </View>
+              </View>
+            )}
 
             {/* ═══ Special requests & promo code ═══ */}
             <View style={{ marginBottom: 16 }}>
@@ -1036,24 +1169,55 @@ export default function BookCheckoutScreen() {
                 placeholderTextColor="#9CA3AF"
               />
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginTop: 12, marginBottom: 10 }}>Promo code (optional)</Text>
-              <TextInput
-                value={promotionCode}
-                onChangeText={(t) => setPromotionCode(t.trim().toUpperCase())}
-                placeholder="Enter code"
-                autoCapitalize="characters"
-                autoCorrect={false}
-                style={{
-                  backgroundColor: "#F9FAFB",
-                  borderWidth: 1,
-                  borderColor: "#E5E7EB",
-                  borderRadius: 12,
-                  paddingHorizontal: 14,
-                  paddingVertical: 12,
-                  fontSize: 15,
-                  color: "#111827",
-                }}
-                placeholderTextColor="#9CA3AF"
-              />
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <TextInput
+                  value={promotionCode}
+                  onChangeText={(t) => {
+                    setPromotionCode(t.trim().toUpperCase());
+                    setAppliedPromoDiscount(0);
+                    setPromoError(null);
+                  }}
+                  placeholder="Enter code"
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  style={{
+                    flex: 1,
+                    backgroundColor: "#F9FAFB",
+                    borderWidth: 1,
+                    borderColor: promoError ? "#DC2626" : "#E5E7EB",
+                    borderRadius: 12,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    fontSize: 15,
+                    color: "#111827",
+                  }}
+                  placeholderTextColor="#9CA3AF"
+                />
+                <TouchableOpacity
+                  onPress={applyPromoCode}
+                  disabled={!promotionCode.trim() || promoValidating}
+                  style={{
+                    backgroundColor: promotionCode.trim() && !promoValidating ? Colors.primary : "#E5E7EB",
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    justifyContent: "center",
+                  }}
+                >
+                  {promoValidating ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Apply</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+              {promoError ? (
+                <Text style={{ fontSize: 12, color: "#DC2626", marginTop: 6 }}>{promoError}</Text>
+              ) : appliedPromoDiscount > 0 ? (
+                <Text style={{ fontSize: 12, color: "#059669", marginTop: 6 }}>
+                  Promo applied — {formatCurrency(appliedPromoDiscount, currency)} off
+                </Text>
+              ) : null}
             </View>
 
             {/* ═══ Additional details (platform custom fields) ═══ */}
@@ -1333,7 +1497,7 @@ export default function BookCheckoutScreen() {
                 {formatCurrency(paymentOption === "deposit" && hasDeposit ? depositAmount : total, currency)}
               </Text>
             </View>
-            {onDemandAcceptEnabled && user && (
+            {onDemandAcceptEnabled && user && hold?.provider_on_demand_accept_enabled && (
               <TouchableOpacity
                 onPress={() => { haptic.medium(); handleRequestNow(); }}
                 disabled={requestingNow || isExpired}

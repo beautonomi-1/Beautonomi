@@ -8,6 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 const createSubscriptionSchema = z.object({
   plan_id: z.string().uuid("Invalid plan ID"),
   billing_period: z.enum(["monthly", "yearly"]),
+  in_app: z.boolean().optional(),
 });
 
 /**
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { plan_id, billing_period } = validationResult.data;
+    const { plan_id, billing_period, in_app } = validationResult.data;
 
     // Use admin client to bypass RLS
     const supabaseAdmin = createClient(
@@ -130,7 +131,8 @@ export async function POST(request: NextRequest) {
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
-    const callbackUrl = `${baseUrl}/provider/subscription?payment_success=true&billing_period=${billing_period}`;
+    const inAppParam = in_app ? "&in_app=1" : "";
+    const callbackUrl = `${baseUrl}/provider/subscription?payment_success=true&billing_period=${billing_period}${inAppParam}`;
 
     const init = await initializePaystackTransactionWithPlan({
       email: customerEmail,

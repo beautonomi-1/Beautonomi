@@ -35,8 +35,23 @@ function handleNotificationRoute(data: Record<string, unknown>) {
     const genericId = String(
       data.id ?? data.booking_id ?? data.chat_id ?? data.conversation_id ?? data.client_id ?? "",
     );
+    const onDemandRequestId = String(
+      data.on_demand_request_id ?? data.id ?? "",
+    );
 
     switch (type) {
+      // Incoming on-demand request – open accept/decline screen (works when app was closed)
+      case "on_demand_incoming":
+        if (onDemandRequestId) {
+          router.push({
+            pathname: "/(app)/on-demand/incoming/[id]",
+            params: { id: onDemandRequestId },
+          });
+        } else {
+          router.push("/(app)/(tabs)/more/bookings");
+        }
+        break;
+
       // Booking notifications
       case "new_booking":
       case "booking_confirmed":

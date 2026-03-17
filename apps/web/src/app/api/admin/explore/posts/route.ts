@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 
 const _SORT_OPTIONS = ["published_at_desc", "published_at_asc", "like_count_desc", "comment_count_desc", "created_at_desc"] as const;
@@ -12,7 +13,7 @@ const _SORT_OPTIONS = ["published_at_desc", "published_at_asc", "like_count_desc
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user: _user } = await requireRoleInApi(["superadmin"], request);
+    const { user: _user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabaseAdmin = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
@@ -112,7 +113,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabaseAdmin = getSupabaseAdmin();
 
     const body = await request.json();
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
     }
 
     const isHidden = action === "hide";
-    const ids = post_ids.slice(0, 50).filter((id: any) => typeof id === "string");
+    const ids = post_ids.slice(0, 50).filter((id: unknown): id is string => typeof id === "string");
 
     const { data, error } = await supabaseAdmin
       .from("explore_posts")

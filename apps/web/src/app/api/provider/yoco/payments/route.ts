@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { checkYocoFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { z } from "zod";
 import { convertToCents, validateYocoAmount, YOCO_ENDPOINTS } from "@/lib/payments/yoco";
 
@@ -85,6 +86,21 @@ export async function POST(request: Request) {
       );
     }
 
+    // Subscription gate: Yoco is a paid feature (app shows upgrade message for SUBSCRIPTION_REQUIRED)
+    const yocoAccess = await checkYocoFeatureAccess(provider.id);
+    if (!yocoAccess.enabled) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "Upgrade your plan to use Yoco card payments.",
+            code: "SUBSCRIPTION_REQUIRED",
+          },
+        },
+        { status: 403 }
+      );
+    }
+
     // Get Yoco device
     const { data: device } = await supabase
       .from("provider_yoco_devices")
@@ -106,7 +122,10 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!(device as any).is_active) {
+    type DeviceRow = { id: string; name?: string; yoco_device_id?: string; is_active?: boolean; total_transactions?: number; total_amount?: number };
+    type IntegrationRow = { secret_key?: string; public_key?: string; is_enabled?: boolean };
+    const deviceRow = device as DeviceRow;
+    if (!deviceRow.is_active) {
       return NextResponse.json(
         {
           data: null,
@@ -119,14 +138,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get Yoco integration credentials
     const { data: integration } = await supabase
       .from("provider_yoco_integrations")
       .select("secret_key, public_key, is_enabled")
       .eq("provider_id", provider.id)
       .single();
 
-    if (!integration || !(integration as any).is_enabled) {
+    const integrationRow = integration as IntegrationRow | null;
+    if (!integrationRow || !integrationRow.is_enabled) {
       return NextResponse.json(
         {
           data: null,
@@ -139,8 +158,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const secretKey = (integration as any).secret_key;
-    const yocoDeviceId = (device as any).yoco_device_id;
+    const secretKey = integrationRow.secret_key;
+    const yocoDeviceId = deviceRow.yoco_device_id;
 
     // Validate amount
     const amountValidation = validateYocoAmount(amountInRands);
@@ -159,9 +178,107 @@ export async function POST(request: Request) {
 
     // Convert amount to cents
     const amountInCents = convertToCents(amountInRands);
+    const currency = validationResult.data.currency || "ZAR";
 
-    // Call Yoco Web POS API to create payment
-    // According to: https://developer.yoco.com/api-reference/yoco-api/web-pos/create-web-pos-payment-v-1-webpos-webpos-device-id-payments-post
+    // Reuse recent pending payment for same booking or sale to avoid double-send when app timed out after first create
+    const PENDING_WINDOW_MINUTES = 15;
+    const saleId = validationResult.data.sale_id ?? null;
+    if (appointmentId || saleId) {
+      let reuseQuery = supabase
+        .from("provider_yoco_payments")
+        .select("id, yoco_payment_id, yoco_device_id, amount, currency, status, created_at, device_id")
+        .eq("provider_id", provider.id)
+        .eq("status", "pending")
+        .gte("created_at", new Date(Date.now() - PENDING_WINDOW_MINUTES * 60 * 1000).toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (appointmentId) reuseQuery = reuseQuery.eq("appointment_id", appointmentId);
+      else reuseQuery = reuseQuery.eq("sale_id", saleId);
+      const { data: existingPending } = await reuseQuery.maybeSingle();
+
+      if (existingPending) {
+        const existing = existingPending as {
+          id: string;
+          yoco_payment_id: string;
+          yoco_device_id: string;
+          amount: number;
+          currency: string;
+          status: string;
+          created_at: string;
+          device_id: string;
+        };
+        try {
+          const statusRes = await fetch(
+            YOCO_ENDPOINTS.getWebPosPayment(existing.yoco_device_id, existing.yoco_payment_id),
+            {
+              headers: { Authorization: `Bearer ${secretKey}` },
+            }
+          );
+          if (statusRes.ok) {
+            const yocoPayment = await statusRes.json();
+            const latestStatus = yocoPayment.status || existing.status;
+            if (latestStatus !== existing.status) {
+              await supabase
+                .from("provider_yoco_payments")
+                .update({
+                  status: latestStatus,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", existing.id);
+            }
+            const { data: dev } = await supabase
+              .from("provider_yoco_devices")
+              .select("name")
+              .eq("id", existing.device_id)
+              .single();
+            const deviceName = (dev as { name?: string } | null)?.name ?? deviceRow.name;
+            return NextResponse.json({
+              data: {
+                id: existing.id,
+                yoco_payment_id: existing.yoco_payment_id,
+                reference: existing.yoco_payment_id,
+                device_id: existing.device_id,
+                device_name: deviceName,
+                amount: existing.amount,
+                amount_cents: existing.amount,
+                currency: existing.currency,
+                status: latestStatus,
+                payment_date: existing.created_at,
+                appointment_id: appointmentId,
+                sale_id: validationResult.data.sale_id,
+                metadata: validationResult.data.metadata,
+              },
+              error: null,
+            });
+          }
+        } catch (reuseErr) {
+          console.warn("Reuse pending: failed to sync status from Yoco", reuseErr);
+          // Fall through to create new payment
+        }
+      }
+    }
+
+    // client_reference is required by Yoco API; used for reconciliation and echoed back (https://developer.yoco.com/api-reference/yoco-api/web-pos/create-web-pos-payment-v-1-webpos-webpos-device-id-payments-post)
+    const clientReference =
+      appointmentId ||
+      (validationResult.data.sale_id ?? null) ||
+      crypto.randomUUID();
+
+    // Yoco expects amount as Money object and metadata values as strings (API reference)
+    const metadataRecord: Record<string, string> = {
+      provider_id: provider.id,
+      device_id: device.id,
+      processed_by: auth.user.id,
+      ...(appointmentId ? { appointment_id: appointmentId } : {}),
+      ...(validationResult.data.sale_id ? { sale_id: validationResult.data.sale_id } : {}),
+    };
+    if (validationResult.data.metadata) {
+      for (const [k, v] of Object.entries(validationResult.data.metadata)) {
+        metadataRecord[k] = v === null || v === undefined ? "" : String(v);
+      }
+    }
+
+    // Auth: Bearer token (Yoco API uses JWT; we store secret_key from Yoco dashboard as the Bearer token for api.yoco.com)
     const yocoResponse = await fetch(
       YOCO_ENDPOINTS.createWebPosPayment(yocoDeviceId),
       {
@@ -171,29 +288,33 @@ export async function POST(request: Request) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          amount: amountInCents,
-          currency: validationResult.data.currency || "ZAR",
-          metadata: {
-            provider_id: provider.id,
-            device_id: device.id,
-            appointment_id: appointmentId,
-            sale_id: validationResult.data.sale_id,
-            processed_by: auth.user.id,
-            ...validationResult.data.metadata,
-          },
+          amount: { amount: amountInCents, currency },
+          client_reference: String(clientReference),
+          metadata: metadataRecord,
         }),
       }
     );
 
     if (!yocoResponse.ok) {
-      const errorData = await yocoResponse.json().catch(() => ({ message: "Yoco API error" }));
+      const errorData = (await yocoResponse.json().catch(() => ({}))) as {
+        detail?: string;
+        code?: string;
+        message?: string;
+        errors?: Array<{ detail?: string }>;
+      };
       console.error("Yoco payment error:", errorData);
+      const message =
+        errorData.detail ??
+        errorData.errors?.[0]?.detail ??
+        errorData.message ??
+        "Failed to process payment";
+      const code = errorData.code ?? "YOCO_API_ERROR";
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: errorData.message || "Failed to process payment",
-            code: "YOCO_API_ERROR",
+            message,
+            code: code === "validation" ? "VALIDATION_ERROR" : code,
             details: errorData,
           },
         },
@@ -202,22 +323,26 @@ export async function POST(request: Request) {
     }
 
     const yocoPayment = await yocoResponse.json();
+    // Yoco Web POS API does not document receipt_url; we store/return it if present for future or other flows
+    const receiptUrl = (yocoPayment as { receipt_url?: string; receiptUrl?: string }).receipt_url
+      ?? (yocoPayment as { receipt_url?: string; receiptUrl?: string }).receiptUrl;
 
-    // Store payment in database
-    const { data: payment, error: insertError } = await (supabase
-      .from("provider_yoco_payments") as any)
+    const { data: payment, error: insertError } = await supabase
+      .from("provider_yoco_payments")
       .insert({
         provider_id: provider.id,
         device_id: device.id,
         yoco_payment_id: yocoPayment.id || yocoPayment.paymentId,
         yoco_device_id: yocoDeviceId,
         amount: amountInCents,
-        currency: validationResult.data.currency || "ZAR",
+        currency,
         status: yocoPayment.status || "pending",
         appointment_id: appointmentId,
         sale_id: validationResult.data.sale_id,
         metadata: {
+          client_reference: String(clientReference),
           yoco_response: yocoPayment,
+          ...(receiptUrl ? { receipt_url: receiptUrl } : {}),
           ...validationResult.data.metadata,
         },
         created_at: new Date().toISOString(),
@@ -230,13 +355,12 @@ export async function POST(request: Request) {
       // Payment was processed by Yoco but failed to store - log for manual reconciliation
     }
 
-    // Update device stats
-    await (supabase
-      .from("provider_yoco_devices") as any)
+    await supabase
+      .from("provider_yoco_devices")
       .update({
         last_used: new Date().toISOString(),
-        total_transactions: ((device as any).total_transactions || 0) + 1,
-        total_amount: ((device as any).total_amount || 0) + amountInCents,
+        total_transactions: (deviceRow.total_transactions ?? 0) + 1,
+        total_amount: (deviceRow.total_amount ?? 0) + amountInCents,
       })
       .eq("id", device.id);
 
@@ -250,12 +374,13 @@ export async function POST(request: Request) {
         device_name: device.name,
         amount: amountInCents,
         amount_cents: amountInCents,
-        currency: validationResult.data.currency || "ZAR",
+        currency,
         status: yocoPayment.status || "pending",
         payment_date: new Date().toISOString(),
         appointment_id: appointmentId,
         sale_id: validationResult.data.sale_id,
         metadata: validationResult.data.metadata,
+        receipt_url: receiptUrl ?? undefined,
       },
       error: null,
     });
@@ -355,8 +480,24 @@ export async function GET(request: Request) {
       );
     }
 
+    type PaymentListItem = {
+      id: string;
+      yoco_payment_id?: string;
+      device_id?: string;
+      amount?: number;
+      currency?: string;
+      status?: string;
+      refund_status?: string | null;
+      refund_amount?: number | null;
+      created_at?: string;
+      appointment_id?: string | null;
+      sale_id?: string | null;
+      metadata?: Record<string, unknown>;
+      error_message?: string | null;
+      provider_yoco_devices?: { name?: string } | null;
+    };
     return NextResponse.json({
-      data: (payments || []).map((p: any) => ({
+      data: (payments || []).map((p: PaymentListItem) => ({
         id: p.id,
         yoco_payment_id: p.yoco_payment_id,
         device_id: p.device_id,

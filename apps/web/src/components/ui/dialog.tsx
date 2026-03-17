@@ -29,15 +29,37 @@ const DialogOverlay = React.forwardRef<
 ))
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
+const FOCUSABLE =
+  "button, [href], input, select, textarea, [tabindex]:not([tabindex=\"-1\"])";
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { hideClose?: boolean }
->(({ className, children, hideClose, "aria-describedby": ariaDescribedby, ...props }, ref) => (
+>(({ className, children, hideClose, "aria-describedby": ariaDescribedby, onOpenAutoFocus, ...props }, ref) => {
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const mergedRef = (node: HTMLDivElement | null) => {
+    (contentRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+    if (typeof ref === "function") ref(node);
+    else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+  };
+  const handleOpenAutoFocus = (e: Event) => {
+    onOpenAutoFocus?.(e);
+    if (e.defaultPrevented) return;
+    // Move focus into dialog so the trigger (in aria-hidden root) doesn't retain focus
+    e.preventDefault();
+    requestAnimationFrame(() => {
+      const el = contentRef.current;
+      const first = el?.querySelector<HTMLElement>(FOCUSABLE);
+      first?.focus();
+    });
+  };
+  return (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
-      ref={ref}
+      ref={mergedRef}
       aria-describedby={ariaDescribedby ?? undefined}
+      onOpenAutoFocus={handleOpenAutoFocus}
       className={cn(
         "fixed z-[9999] left-[50%] top-[50%] grid w-full max-w-[95vw] sm:max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-white sm:bg-white p-4 sm:p-6 shadow-xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] rounded-none sm:rounded-xl m-0 sm:m-4 overflow-hidden max-h-[95vh] overflow-y-auto",
         className
@@ -54,7 +76,8 @@ const DialogContent = React.forwardRef<
       )}
     </DialogPrimitive.Content>
   </DialogPortal>
-))
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 const DialogHeader = ({

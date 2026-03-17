@@ -7,7 +7,7 @@ import { Plus, Edit, Trash2, MapPin, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/provider/PageHeader";
 import EmptyState from "@/components/ui/empty-state";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { useSearchParams } from "next/navigation";
@@ -48,6 +48,7 @@ interface Location {
 export default function LocationsSettings() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<"forbidden" | "other" | null>(null);
   const [showDialog, setShowDialog] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const searchParams = useSearchParams();
@@ -60,11 +61,18 @@ export default function LocationsSettings() {
   const loadLocations = async () => {
     try {
       setIsLoading(true);
+      setLoadError(null);
       const response = await fetcher.get<{ data: Location[] }>("/api/provider/locations");
       setLocations(response.data || []);
     } catch (error) {
       console.error("Error loading locations:", error);
-      toast.error("Failed to load locations");
+      if (error instanceof FetchError && error.status === 403) {
+        setLoadError("forbidden");
+        toast.error("You need provider access to view locations. Please sign in with a provider account.");
+      } else {
+        setLoadError("other");
+        toast.error("Failed to load locations");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -92,14 +100,14 @@ export default function LocationsSettings() {
     }
   };
 
-  const handleSave = async (locationData: any) => {
+  const handleSave = async (locationData: Record<string, unknown> & { label?: string }) => {
     try {
       if (editingLocation) {
         await fetcher.patch(`/api/provider/locations/${editingLocation.id}`, locationData);
         toast.success("Location updated");
       } else {
         await fetcher.post("/api/provider/locations", {
-          name: locationData.label || "Location",
+          name: (locationData.label as string) || "Location",
           ...locationData,
         });
         toast.success("Location created");
@@ -108,8 +116,9 @@ export default function LocationsSettings() {
       setEditingLocation(null);
       invalidateSetupStatusCache();
       loadLocations();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to save location");
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Failed to save location";
+      toast.error(msg);
     }
   };
 
@@ -159,7 +168,37 @@ export default function LocationsSettings() {
         </div>
       )}
 
-      {locations.length === 0 ? (
+      {/* Quick link: set service radius / distance for house calls */}
+      <div className="mb-6 rounded-lg border border-indigo-200 bg-indigo-50/50 px-4 py-3 flex items-center justify-between gap-4">
+        <p className="text-sm text-gray-700">
+          <span className="font-medium">House calls:</span> Set how far you&apos;re willing to travel (service radius).
+        </p>
+        <Link href="/provider/settings/distance">
+          <Button variant="outline" size="sm" className="border-indigo-300 text-indigo-700 hover:bg-indigo-100 shrink-0">
+            Distance & radius
+          </Button>
+        </Link>
+      </div>
+
+      {loadError === "forbidden" ? (
+        <SectionCard className="p-12">
+          <div className="text-center max-w-md mx-auto">
+            <p className="text-muted-foreground mb-2">
+              You need provider access to view and manage locations.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Please sign in with an account that has provider (owner or staff) access, or contact support if you believe you should have access.
+            </p>
+          </div>
+        </SectionCard>
+      ) : loadError === "other" ? (
+        <SectionCard className="p-12">
+          <div className="text-center max-w-md mx-auto">
+            <p className="text-muted-foreground mb-4">Couldn&apos;t load locations.</p>
+            <Button onClick={loadLocations} variant="outline">Try again</Button>
+          </div>
+        </SectionCard>
+      ) : locations.length === 0 ? (
         <SectionCard className="p-12">
           <EmptyState
             title="No locations yet"
@@ -262,7 +301,7 @@ function LocationDialog({
 }: {
   location: Location | null;
   onClose: () => void;
-  onSave: (data: any) => void;
+  onSave: (data: Record<string, unknown>) => void;
 }) {
   const defaultHours: OperatingHours = {
     monday: { open: "09:00", close: "18:00", closed: false },
@@ -275,20 +314,39 @@ function LocationDialog({
   };
 
   const [formData, setFormData] = useState({
-    label: location?.name || "",
-    address_line1: location?.address_line1 || "",
-    address_line2: location?.address_line2 || "",
-    city: location?.city || "",
-    state: location?.state || "",
-    postal_code: location?.postal_code || "",
-    country: location?.country || "",
-    phone: location?.phone || "",
-    description: location?.description || "",
-    latitude: location?.latitude || undefined,
-    longitude: location?.longitude || undefined,
-    operating_hours: location?.operating_hours || defaultHours,
+    label: location?.name ?? "",
+    address_line1: location?.address_line1 ?? "",
+    address_line2: location?.address_line2 ?? "",
+    city: location?.city ?? "",
+    state: location?.state ?? "",
+    postal_code: location?.postal_code ?? "",
+    country: location?.country ?? "ZA",
+    phone: location?.phone ?? "",
+    description: location?.description ?? "",
+    latitude: location?.latitude ?? undefined,
+    longitude: location?.longitude ?? undefined,
+    operating_hours: location?.operating_hours ?? defaultHours,
     location_type: (location?.location_type || "salon") as "salon" | "base",
   });
+
+  // Sync form when editing a different location
+  useEffect(() => {
+    setFormData({
+      label: location?.name ?? "",
+      address_line1: location?.address_line1 ?? "",
+      address_line2: location?.address_line2 ?? "",
+      city: location?.city ?? "",
+      state: location?.state ?? "",
+      postal_code: location?.postal_code ?? "",
+      country: location?.country ?? "ZA",
+      phone: location?.phone ?? "",
+      description: location?.description ?? "",
+      latitude: location?.latitude ?? undefined,
+      longitude: location?.longitude ?? undefined,
+      operating_hours: location?.operating_hours ?? defaultHours,
+      location_type: (location?.location_type || "salon") as "salon" | "base",
+    });
+  }, [location?.id]);
 
   const handleAddressSelect = (address: {
     address_line1: string;
@@ -422,6 +480,7 @@ function LocationDialog({
                 <AddressAutocomplete
                   value={formData.address_line1}
                   onChange={handleAddressSelect}
+                  onInputChange={(value) => setFormData((prev) => ({ ...prev, address_line1: value }))}
                   placeholder="Start typing an address..."
                   country={formData.country || "ZA"}
                   className="relative z-[1]"
@@ -508,7 +567,7 @@ function LocationDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={!formData.label || !formData.address_line1 || !formData.city}>
+            <Button type="submit" disabled={!formData.label?.trim() || !formData.address_line1?.trim() || !formData.city?.trim()}>
               {location ? "Update" : "Create"}
             </Button>
           </div>

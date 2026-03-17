@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { arrayToCSV, generateCSVFilename } from "@/lib/utils/csv";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/export/providers
@@ -11,12 +13,12 @@ import { checkRateLimit } from "@/lib/rate-limit";
  */
 export async function GET(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const { allowed, retryAfter } = checkRateLimit(auth.user.id, "export:providers");
+    const { allowed, retryAfter } = checkRateLimit(user.id, "export:providers");
     if (!allowed) {
       return NextResponse.json(
         {
@@ -74,17 +76,28 @@ export async function GET(request: Request) {
       );
     }
 
-    // Transform data for CSV
-    const csvData = (providers || []).map((provider: any) => ({
-      "Provider ID": provider.id,
-      "Business Name": provider.business_name,
-      "Status": provider.status,
-      "Is Verified": provider.is_verified ? "Yes" : "No",
-      "Created At": provider.created_at,
-      "Owner ID": provider.owner?.id || "",
-      "Owner Email": provider.owner?.email || "",
-      "Owner Name": provider.owner?.full_name || "",
-    }));
+    // Transform data for CSV (Supabase returns relations as arrays)
+    type ProviderRow = {
+      id: string;
+      business_name?: string;
+      status?: string;
+      is_verified?: boolean;
+      created_at?: string;
+      owner?: { id?: string; email?: string; full_name?: string }[] | { id?: string; email?: string; full_name?: string };
+    };
+    const csvData = (providers || []).map((provider: ProviderRow) => {
+      const o = Array.isArray(provider.owner) ? provider.owner[0] : provider.owner;
+      return {
+        "Provider ID": provider.id,
+        "Business Name": provider.business_name ?? "",
+        "Status": provider.status ?? "",
+        "Is Verified": provider.is_verified ? "Yes" : "No",
+        "Created At": provider.created_at ?? "",
+        "Owner ID": o?.id ?? "",
+        "Owner Email": o?.email ?? "",
+        "Owner Name": o?.full_name ?? "",
+      };
+    });
 
     const csv = arrayToCSV(csvData);
     const filename = generateCSVFilename("providers-export");

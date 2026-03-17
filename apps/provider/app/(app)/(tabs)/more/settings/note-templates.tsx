@@ -15,6 +15,7 @@ import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
@@ -439,32 +440,14 @@ export default function NoteTemplatesScreen() {
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
             Category
           </Text>
-          <TextInput
-            style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-            value={form.category}
-            onChangeText={(t) => setForm((p) => ({ ...p, category: t }))}
+          <ChipCombobox
+            singleSelect
+            value={form.category || null}
+            onChange={(v) => setForm((p) => ({ ...p, category: v ?? "" }))}
+            staticSuggestions={categories.map((c) => ({ value: c, label: c }))}
             placeholder="e.g. Aftercare, Booking notes"
-            placeholderTextColor="#9ca3af"
+            accessibilityLabel="Category"
           />
-          {categories.length > 0 && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={twStyle("mb-3 mt-1")}
-            >
-              <View style={twStyle("flex-row")}>
-                {categories.map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[twStyle("rounded-full bg-gray-100 px-2.5 py-1"), { marginRight: 4 }]}
-                    onPress={() => setForm((p) => ({ ...p, category: cat }))}
-                  >
-                    <Text style={twStyle("text-xs text-gray-600")}>{cat}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-          )}
           <View style={twStyle("mt-2")}>
             <ActionButton
               label={editing ? "Update" : "Create"}

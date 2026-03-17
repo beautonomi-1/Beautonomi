@@ -297,6 +297,7 @@ export async function POST(
           phone: customer.phone || "",
           email: customer.email || "",
           otp: otp,
+          bookingId: id,
           bookingNumber: bookingData.booking_number,
           providerName: providerData?.business_name || "Provider",
           customerName: customer.full_name || "Customer",
@@ -315,17 +316,17 @@ export async function POST(
       .eq("id", id)
       .single();
 
+    // Customer-holds-PIN: do not return otp to provider; customer shows code, provider enters it
     return successResponse({
       booking: updatedBooking as Booking,
-      otp: otp, // Return OTP for provider to manually share if needed (null if disabled)
-      qr_code: qrCodeData, // Return QR code data (null if disabled)
-      verification_code: qrVerificationCode, // QR code verification code (null if disabled)
+      qr_code: qrCodeData, // Return QR code data (null if disabled) for QR flow
+      verification_code: qrVerificationCode,
       message: !require_verification
         ? "Arrival confirmed (simple confirmation mode)"
         : otp_enabled && qr_code_enabled && otp && qrCodeData
-        ? "OTP and QR code generated. OTP sent to customer."
+        ? "Code sent to customer. Ask them for the code and enter it below."
         : otp_enabled && otp
-        ? "OTP generated and sent to customer."
+        ? "Code sent to customer. Ask them for the code and enter it below."
         : qr_code_enabled && qrCodeData
         ? "QR code generated for verification."
         : "Arrival marked. No verification required.",

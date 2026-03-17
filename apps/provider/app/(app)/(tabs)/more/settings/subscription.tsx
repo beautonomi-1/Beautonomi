@@ -2,14 +2,9 @@
  * Subscription screen – view plan, upgrade, cancel, renew.
  * Uses GET /api/provider/subscription, /subscription/plans, POST cancel, renew, initialize-payment, upgrade.
  */
-import { useState, useCallback } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Alert,
-  Linking,
-} from "react-native";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { View, Text, TouchableOpacity, Alert, AppState } from "react-native";
+import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -47,7 +42,9 @@ interface Subscription {
 }
 
 export default function SubscriptionScreen() {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const appState = useRef(AppState.currentState);
   const {
     data: subscription,
     loading,
@@ -56,6 +53,17 @@ export default function SubscriptionScreen() {
   } = useApi<Subscription | null>("/api/provider/subscription");
   const { data: plans } = useApi<Plan[]>("/api/provider/subscription/plans");
   const { execute: postAction } = useApiMutation("post");
+
+  // Refresh when app comes to foreground (e.g. after paying in WebView or returning from browser)
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (appState.current.match(/inactive|background/) && nextState === "active") {
+        refresh();
+      }
+      appState.current = nextState;
+    });
+    return () => sub.remove();
+  }, [refresh]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -92,7 +100,7 @@ export default function SubscriptionScreen() {
   async function handleRenew() {
     const { error: err, data } = await postAction(
       "/api/provider/subscription/renew",
-      {}
+      { in_app: true }
     );
     if (err) {
       Alert.alert("Error", err);
@@ -100,7 +108,12 @@ export default function SubscriptionScreen() {
     }
     const url = (data as { payment_url?: string })?.payment_url;
     if (url) {
-      await Linking.openURL(url);
+      router.push({
+        pathname: "/(app)/(tabs)/more/in-app-browser",
+        params: { url: encodeURIComponent(url), title: "Renew subscription" },
+      } as never);
+    } else {
+      Alert.alert("No payment link", "Unable to start renewal. Please try again or contact support.");
     }
     refresh();
   }
@@ -108,7 +121,7 @@ export default function SubscriptionScreen() {
   async function handleUpgrade(planId: string) {
     const { error: err, data } = await postAction(
       "/api/provider/subscription/initialize-payment",
-      { plan_id: planId, billing_period: "monthly" }
+      { plan_id: planId, billing_period: "monthly", in_app: true }
     );
     if (err) {
       Alert.alert("Error", err);
@@ -116,7 +129,12 @@ export default function SubscriptionScreen() {
     }
     const url = (data as { authorization_url?: string; payment_url?: string })?.authorization_url ?? (data as { payment_url?: string })?.payment_url;
     if (url) {
-      await Linking.openURL(url);
+      router.push({
+        pathname: "/(app)/(tabs)/more/in-app-browser",
+        params: { url: encodeURIComponent(url), title: "Upgrade subscription" },
+      } as never);
+    } else {
+      Alert.alert("No payment link", "Unable to start upgrade. Please try again or contact support.");
     }
     refresh();
   }

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   type ImageStyle,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -36,8 +37,15 @@ interface ExplorePost {
   like_count: number;
   comment_count?: number;
   view_count?: number;
+  primary_category_id?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface GlobalCategory {
+  id: string;
+  slug: string;
+  name: string;
 }
 
 interface ExploreComment {
@@ -53,17 +61,21 @@ type PickedAsset = { uri: string; mimeType?: string; fileName?: string };
 
 export default function ExplorePostsScreen() {
   const { screenPadding } = useResponsive();
+  const params = useLocalSearchParams<{ create?: string }>();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedAssets, setSelectedAssets] = useState<PickedAsset[]>([]);
   const [caption, setCaption] = useState("");
   const [publishNow, setPublishNow] = useState(true);
+  const [primaryCategorySlug, setPrimaryCategorySlug] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  const [categories, setCategories] = useState<GlobalCategory[]>([]);
   const [viewPost, setViewPost] = useState<ExplorePost | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [editCaption, setEditCaption] = useState("");
   const [editPublishNow, setEditPublishNow] = useState(true);
+  const [editPrimaryCategorySlug, setEditPrimaryCategorySlug] = useState<string | null>(null);
 
   const { data, loading, error, refresh } = useApi<ExplorePost[]>("/api/explore/posts/mine");
   const { execute: deletePost } = useApiMutation("delete");
@@ -87,12 +99,43 @@ export default function ExplorePostsScreen() {
     setRefreshing(false);
   }, [refresh]);
 
+  useEffect(() => {
+    api.get<GlobalCategory[] | { data: GlobalCategory[] }>("/api/public/categories/global").then((res) => {
+      const raw = (res as any)?.data ?? res;
+      setCategories(Array.isArray(raw) ? raw : raw?.data ?? []);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (params.create === "1") setCreateOpen(true);
+  }, [params.create]);
+
+  const diversityTip = useMemo(() => {
+    if (posts.length < 3 || categories.length < 2) return null;
+    const bySlug: Record<string, number> = {};
+    for (const p of posts) {
+      const slug = p.primary_category_id
+        ? (categories.find((c) => c.id === p.primary_category_id)?.slug ?? "_none")
+        : "_none";
+      bySlug[slug] = (bySlug[slug] ?? 0) + 1;
+    }
+    const entries = Object.entries(bySlug).filter(([k]) => k !== "_none").sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) return null;
+    const [topSlug, topCount] = entries[0];
+    if (topCount < posts.length * 0.5) return null;
+    const topName = categories.find((c) => c.slug === topSlug)?.name ?? topSlug;
+    const other = categories.find((c) => c.slug !== topSlug);
+    if (!other) return null;
+    return `You often post in ${topName}. Try adding a ${other.name} post to reach more customers.`;
+  }, [posts, categories]);
+
   const openView = useCallback((post: ExplorePost) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setViewPost(post);
     setEditMode(false);
     setEditCaption(post.caption ?? "");
     setEditPublishNow(post.status === "published");
+    setEditPrimaryCategorySlug(null);
   }, []);
 
   const handleDelete = useCallback(
@@ -125,10 +168,12 @@ export default function ExplorePostsScreen() {
   const handleSaveEdit = useCallback(async () => {
     if (!viewPost) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const { data: updated, error: err } = await updatePost(`/api/explore/posts/${viewPost.id}`, {
+    const payload: { caption: string | null; status: "draft" | "published"; primary_category_slug?: string } = {
       caption: editCaption.trim() || null,
       status: editPublishNow ? "published" : "draft",
-    });
+    };
+    if (editPrimaryCategorySlug !== undefined) payload.primary_category_slug = editPrimaryCategorySlug ?? undefined;
+    const { data: updated, error: err } = await updatePost(`/api/explore/posts/${viewPost.id}`, payload);
     if (err) {
       Alert.alert("Error", err);
       return;
@@ -144,6 +189,7 @@ export default function ExplorePostsScreen() {
     setSelectedAssets([]);
     setCaption("");
     setPublishNow(true);
+    setPrimaryCategorySlug(null);
     setCreateOpen(true);
   }, []);
 
@@ -203,6 +249,7 @@ export default function ExplorePostsScreen() {
         caption: caption.trim() || null,
         media_urls: paths,
         status: publishNow ? "published" : "draft",
+        ...(primaryCategorySlug ? { primary_category_slug: primaryCategorySlug } : {}),
       });
       setUploading(false);
       if (createErr) {
@@ -216,7 +263,7 @@ export default function ExplorePostsScreen() {
       setUploading(false);
       Alert.alert("Error", e instanceof Error ? e.message : "Something went wrong.");
     }
-  }, [selectedAssets, caption, publishNow, createPost, refresh]);
+  }, [selectedAssets, caption, publishNow, primaryCategorySlug, createPost, refresh]);
 
   if (loading && !data) {
     return (
@@ -273,7 +320,7 @@ export default function ExplorePostsScreen() {
           <EmptyState
             icon="camera-outline"
             title="No posts yet"
-            description="Create posts for the Explore feed and earn reward points."
+            description="Create your first post to appear in the Explore feed and earn reward points."
             actionLabel="Create post"
             onAction={openCreate}
           />
@@ -282,7 +329,7 @@ export default function ExplorePostsScreen() {
             <View style={twStyle("mb-3 mt-1 flex-row items-center rounded-xl bg-pink-50 p-3")}>
               <Ionicons name="gift-outline" size={20} color="#be185d" />
               <Text style={twStyle("ml-2 flex-1 text-sm text-pink-900")}>
-                Earn reward points when you post to Explore.
+                Earn reward points when you post to Explore. Share your work to grow visibility and unlock rewards.
               </Text>
             </View>
             <View>
@@ -394,6 +441,11 @@ export default function ExplorePostsScreen() {
             ))}
           </ScrollView>
         ) : null}
+        {diversityTip ? (
+          <View style={twStyle("mb-3 rounded-xl bg-amber-50 border border-amber-200 p-3")}>
+            <Text style={twStyle("text-sm text-amber-900")}>{diversityTip}</Text>
+          </View>
+        ) : null}
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Caption (optional)</Text>
         <TextInput
           style={twStyle("mb-4 min-h-[80px] rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -403,6 +455,28 @@ export default function ExplorePostsScreen() {
           onChangeText={setCaption}
           multiline
         />
+        {categories.length > 0 ? (
+          <>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Category (optional)</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4 -mx-1")}>
+              <TouchableOpacity
+                onPress={() => setPrimaryCategorySlug(null)}
+                style={[twStyle("rounded-full px-4 py-2 mr-2"), primaryCategorySlug === null ? twStyle("bg-indigo-600") : twStyle("bg-gray-100")]}
+              >
+                <Text style={twStyle(primaryCategorySlug === null ? "text-white text-sm font-medium" : "text-gray-600 text-sm")}>None</Text>
+              </TouchableOpacity>
+              {categories.map((c) => (
+                <TouchableOpacity
+                  key={c.id}
+                  onPress={() => setPrimaryCategorySlug(c.slug)}
+                  style={[twStyle("rounded-full px-4 py-2 mr-2"), primaryCategorySlug === c.slug ? twStyle("bg-indigo-600") : twStyle("bg-gray-100")]}
+                >
+                  <Text style={twStyle(primaryCategorySlug === c.slug ? "text-white text-sm font-medium" : "text-gray-600 text-sm")}>{c.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        ) : null}
         <View style={twStyle("mb-4 flex-row")}>
           <TouchableOpacity
             onPress={() => setPublishNow(true)}
@@ -461,6 +535,28 @@ export default function ExplorePostsScreen() {
                 onChangeText={setEditCaption}
                 multiline
               />
+              {categories.length > 0 ? (
+                <>
+                  <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Category</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("mb-4 -mx-1")}>
+                    <TouchableOpacity
+                      onPress={() => setEditPrimaryCategorySlug(null)}
+                      style={[twStyle("rounded-full px-4 py-2 mr-2"), editPrimaryCategorySlug === null ? twStyle("bg-indigo-600") : twStyle("bg-gray-100")]}
+                    >
+                      <Text style={twStyle(editPrimaryCategorySlug === null ? "text-white text-sm font-medium" : "text-gray-600 text-sm")}>None</Text>
+                    </TouchableOpacity>
+                    {categories.map((c) => (
+                      <TouchableOpacity
+                        key={c.id}
+                        onPress={() => setEditPrimaryCategorySlug(c.slug)}
+                        style={[twStyle("rounded-full px-4 py-2 mr-2"), editPrimaryCategorySlug === c.slug ? twStyle("bg-indigo-600") : twStyle("bg-gray-100")]}
+                      >
+                        <Text style={twStyle(editPrimaryCategorySlug === c.slug ? "text-white text-sm font-medium" : "text-gray-600 text-sm")}>{c.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              ) : null}
               <View style={twStyle("mb-4 flex-row")}>
                 <TouchableOpacity
                   onPress={() => setEditPublishNow(true)}
@@ -533,6 +629,10 @@ export default function ExplorePostsScreen() {
                   onPress={() => {
                     setEditCaption(viewPost.caption ?? "");
                     setEditPublishNow(viewPost.status === "published");
+                    const cat = viewPost.primary_category_id
+                      ? categories.find((c) => c.id === viewPost.primary_category_id)
+                      : null;
+                    setEditPrimaryCategorySlug(cat?.slug ?? null);
                     setEditMode(true);
                   }}
                   style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl border border-gray-200 bg-white py-3"), { marginRight: 12 }]}

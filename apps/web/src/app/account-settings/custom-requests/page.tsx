@@ -187,8 +187,8 @@ export default function CustomRequestsPage() {
         return;
       }
       toast.error("No payment URL returned");
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to start payment");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to start payment");
     }
   };
 
@@ -234,8 +234,8 @@ export default function CustomRequestsPage() {
         location_id: "",
       });
       load();
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to create custom offer");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to create custom offer");
     } finally {
       setIsSubmitting(false);
     }
@@ -289,8 +289,8 @@ export default function CustomRequestsPage() {
       setShowOfferModal(false);
       setSelectedRequestId(null);
       load();
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to create offer");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to create offer");
     } finally {
       setIsSubmitting(false);
     }

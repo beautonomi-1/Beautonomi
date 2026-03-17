@@ -4,10 +4,30 @@ import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } f
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { computeCustomOfferPricing } from "../../_helpers/custom-offer-pricing";
 
+interface OfferRow {
+  id: string;
+  status?: string;
+  payment_url?: string;
+  expiration_at?: string;
+  travel_fee?: number;
+  price?: number;
+  currency?: string;
+  request_id?: string;
+  location_id?: string | null;
+  request?: RequestRow | null;
+}
+interface RequestRow {
+  id: string;
+  customer_id?: string;
+  provider_id?: string;
+  preferred_start_at?: string;
+  location_type?: string;
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
     let body: { tip_amount?: number; promotion_code?: string } = {};
@@ -25,8 +45,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       .single();
     if (offerError || !offerRow) return notFoundResponse("Offer not found");
 
-    const offer = offerRow as any;
-    const req = offer.request as any;
+    const offer = offerRow as OfferRow;
+    const req = offer.request as RequestRow | undefined;
     if (req?.customer_id !== user.id) return notFoundResponse("Offer not found");
 
     if (offer.status === "paid" || offer.status === "accepted") {
@@ -35,7 +55,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Expiry check
     if (offer.expiration_at && new Date(offer.expiration_at).getTime() < Date.now()) {
-      await (supabase.from("custom_offers") as any).update({ status: "expired" }).eq("id", id);
+      await supabase.from("custom_offers").update({ status: "expired" }).eq("id", id);
       return handleApiError(new Error("Offer has expired"), "Offer expired");
     }
 
@@ -44,11 +64,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       offerPrice: Number(offer.price || 0),
       travelFee,
       currency: offer.currency || "ZAR",
-      providerId: req.provider_id,
-      customerId: req.customer_id,
+      providerId: req?.provider_id ?? "",
+      customerId: req?.customer_id ?? "",
       tipAmount: body.tip_amount,
       promotionCode: body.promotion_code ?? null,
-      locationType: req.location_type || "at_salon",
+      locationType: (req?.location_type === "at_home" ? "at_home" : "at_salon"),
       locationId: offer.location_id ?? null,
     });
 
@@ -61,7 +81,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const callbackUrl = `${appUrl}/checkout/success?payment_type=custom_offer&offer_id=${encodeURIComponent(id)}`;
 
-    const email = (user as any).email || "customer@example.com";
+    const email = (user as { email?: string }).email ?? "customer@example.com";
     const amountKobo = Math.round(result.totalAmount * 100);
 
     const init = await initializePaystackTransaction({
@@ -87,7 +107,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const paymentUrl = init.data.authorization_url;
 
-    await (supabase.from("custom_offers") as any)
+    await supabase.from("custom_offers")
       .update({
         status: "payment_pending",
         payment_reference: reference,

@@ -14,7 +14,7 @@ import {
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id);
 
     if (!providerId) {

@@ -78,30 +78,44 @@ export async function GET(
       return new Response('Error loading appointments', { status: 500 });
     }
 
-    // Transform to calendar events format
-    const calendarAppointments = (appointments || []).map((apt: any) => {
-      const booking = apt.bookings;
-      const customer = booking?.customers;
-      const provider = booking?.providers;
-      const location = booking?.locations;
+    type AptBooking = {
+      booking_number?: string;
+      guest_name?: string;
+      status?: string;
+      customers?: { name?: string; email?: string } | Array<{ name?: string; email?: string }>;
+      providers?: { name?: string } | Array<{ name?: string }>;
+      locations?: { name?: string; address?: string } | Array<{ name?: string; address?: string }>;
+    };
+    type AptRow = {
+      id: string;
+      scheduled_start_at?: string;
+      duration_minutes?: number;
+      offerings?: { title?: string } | Array<{ title?: string }>;
+      bookings?: AptBooking | Array<AptBooking>;
+    };
+    const calendarAppointments = (appointments ?? []).map((apt: AptRow) => {
+      const booking = apt.bookings != null ? (Array.isArray(apt.bookings) ? apt.bookings[0] : apt.bookings) : undefined;
+      const customer = booking?.customers != null ? (Array.isArray(booking.customers) ? booking.customers[0] : booking.customers) : undefined;
+      const provider = booking?.providers != null ? (Array.isArray(booking.providers) ? booking.providers[0] : booking.providers) : undefined;
+      const location = booking?.locations != null ? (Array.isArray(booking.locations) ? booking.locations[0] : booking.locations) : undefined;
+      const offering = apt.offerings != null ? (Array.isArray(apt.offerings) ? apt.offerings[0] : apt.offerings) : undefined;
 
       return {
         id: apt.id,
-        booking_number: booking?.booking_number || '',
+        booking_number: booking?.booking_number ?? "",
         scheduled_at: apt.scheduled_start_at,
         duration_minutes: apt.duration_minutes,
-        customer_name: booking?.guest_name || customer?.name,
+        customer_name: booking?.guest_name ?? customer?.name,
         customer_email: customer?.email,
-        service_title: apt.offerings?.title,
+        service_title: offering?.title,
         location_name: location?.name,
         location_address: location?.address,
         provider_name: provider?.name,
-        status: booking?.status || 'confirmed',
+        status: booking?.status ?? "confirmed",
       };
     });
 
-    // Generate iCal content
-    const staffEmail = (staff.users as any)?.email || staff.email || 'staff@beautonomi.com';
+    const staffEmail = (staff.users as { email?: string } | null)?.email ?? staff.email ?? "staff@beautonomi.com";
     const staffName = staff.name || 'Staff Member';
     const icalContent = generateStaffCalendar(calendarAppointments, staffName, staffEmail);
 

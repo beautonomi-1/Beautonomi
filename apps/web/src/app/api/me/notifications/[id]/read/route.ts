@@ -14,7 +14,7 @@ export async function POST(
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const { id } = await params;
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Verify notification belongs to user
     const { data: notification, error: fetchError } = await supabase

@@ -7,6 +7,7 @@ import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/providers/AuthProvider";
+import { NotificationsProvider } from "@/providers/NotificationsContext";
 import { SelectedAddressProvider } from "@/providers/SelectedAddressProvider";
 import { AnalyticsProvider } from "@/providers/AnalyticsProvider";
 import { ConfigBundleProvider } from "@/providers/ConfigBundleProvider";
@@ -87,6 +88,7 @@ function RootLayout() {
         <SafeAreaProvider>
           <ThemeProvider>
             <AuthProvider>
+              <NotificationsProvider>
               <SelectedAddressProvider>
                 <AnalyticsProvider>
                   <ConfigBundleProvider>
@@ -94,6 +96,7 @@ function RootLayout() {
                   </ConfigBundleProvider>
                 </AnalyticsProvider>
               </SelectedAddressProvider>
+              </NotificationsProvider>
             </AuthProvider>
           </ThemeProvider>
         </SafeAreaProvider>

@@ -39,6 +39,8 @@ interface EarningsData {
   travel_fees_total?: number;
   travel_fees_this_period?: number;
   refunds_total?: number;
+  walk_in_additional_charges_total?: number;
+  walk_in_additional_charges_this_period?: number;
 }
 
 interface Transaction {
@@ -439,7 +441,7 @@ export default function ProviderFinance() {
         </div>
 
         {/* Revenue Streams */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-8">
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Service Earnings</p>
             <p className="text-2xl font-semibold">
@@ -470,6 +472,13 @@ export default function ProviderFinance() {
             <p className="text-2xl font-semibold text-red-600">
               ZAR {(earnings.refunds_total || 0).toLocaleString()}
             </p>
+          </div>
+          <div className="bg-white border rounded-lg p-6">
+            <p className="text-sm text-gray-600 mb-2">Walk-in add-ons</p>
+            <p className="text-2xl font-semibold text-gray-700">
+              ZAR {(earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0).toLocaleString()}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">Cash/card at salon (not in payout balance)</p>
           </div>
         </div>
 

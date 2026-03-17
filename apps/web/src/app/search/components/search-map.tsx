@@ -1,19 +1,22 @@
-"use client"
-import React, { useState, useRef } from 'react';
-import Image from 'next/image';
-import { MapContainer, TileLayer, Marker } from 'react-leaflet';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+"use client";
 
-const createPriceIcon = (price: number) => {
-  return L.divIcon({
-    className: 'custom-price-marker',
-    html: `<div style="background-color: white; border-radius: 50%; padding: 5px 10px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">$${price}</div>`,
-    iconSize: [40, 40],
-    iconAnchor: [20, 20]
-  });
-};
+import React, { useState, useRef, useEffect } from "react";
+import Image from "next/image";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+
+function createPriceMarker(price: number): HTMLDivElement {
+  const el = document.createElement("div");
+  el.className = "custom-price-marker";
+  el.style.backgroundColor = "white";
+  el.style.borderRadius = "50%";
+  el.style.padding = "5px 10px";
+  el.style.fontWeight = "bold";
+  el.style.boxShadow = "0 2px 5px rgba(0,0,0,0.2)";
+  el.textContent = `$${price}`;
+  return el;
+}
 
 interface Listing {
   id: number;
@@ -27,62 +30,85 @@ interface Listing {
 }
 
 const listings: Listing[] = [
-  { id: 1, lat: 51.5074, lng: -0.1278, price: 82, title: "Room in London, UK", host: "Moza Mostafa", description: "Private room with Balcony & view", image: "/api/placeholder/400/300" },
-  // ... (rest of the listings array remains unchanged)
+  {
+    id: 1,
+    lat: 51.5074,
+    lng: -0.1278,
+    price: 82,
+    title: "Room in London, UK",
+    host: "Moza Mostafa",
+    description: "Private room with Balcony & view",
+    image: "/api/placeholder/400/300",
+  },
 ];
 
 const SearchMap: React.FC = () => {
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
 
-  const handleMarkerClick = (listing: Listing) => {
-    setSelectedListing(listing);
-    if (mapRef.current) {
-      mapRef.current.flyTo([listing.lat, listing.lng], 15, {
-        duration: 0.5,
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+
+    const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+    if (!token) return;
+
+    mapboxgl.accessToken = token;
+
+    const map = new mapboxgl.Map({
+      container: mapContainerRef.current,
+      style: "mapbox://styles/mapbox/light-v11",
+      center: [-0.1278, 51.5074],
+      zoom: 13,
+    });
+
+    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+    markersRef.current = listings.map((listing) => {
+      const el = createPriceMarker(listing.price);
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat([listing.lng, listing.lat])
+        .addTo(map);
+      el.addEventListener("click", () => {
+        setSelectedListing(listing);
+        map.flyTo({ center: [listing.lng, listing.lat], zoom: 15, duration: 500 });
       });
-    }
-  };
+      return marker;
+    });
+
+    mapRef.current = map;
+
+    return () => {
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
 
   return (
     <div className="relative h-screen w-full">
-      <MapContainer 
-        center={[51.5074, -0.1278]} 
-        zoom={13} 
-        style={{ height: '100%', width: '100%' }}
-        ref={mapRef}
-      >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        {listings.map((listing) => (
-          <Marker
-            key={listing.id}
-            position={[listing.lat, listing.lng]}
-            icon={createPriceIcon(listing.price)}
-            eventHandlers={{
-              click: () => handleMarkerClick(listing),
-            }}
-          />
-        ))}
-      </MapContainer>
+      <div ref={mapContainerRef} className="h-full w-full" />
       {selectedListing && (
-        <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 w-80 z-[1000]">
+        <div className="absolute bottom-10 left-1/2 z-[1000] w-80 -translate-x-1/2 transform">
           <Card className="bg-white shadow-lg">
             <CardHeader className="p-4">
               <h3 className="text-lg font-semibold">{selectedListing.title}</h3>
             </CardHeader>
             <CardContent className="p-4">
-              <div className="relative w-full h-40 mb-4">
-                <Image 
-                  src={selectedListing.image} 
-                  alt={selectedListing.title} 
+              <div className="relative mb-4 h-40 w-full">
+                <Image
+                  src={selectedListing.image}
+                  alt={selectedListing.title}
                   fill
                   sizes="320px"
                   className="rounded object-cover"
                 />
               </div>
-              <p className="text-sm mb-2">Stay with {selectedListing.host}</p>
-              <p className="text-sm mb-4">{selectedListing.description}</p>
-              <p className="font-bold text-lg">${selectedListing.price} / night</p>
+              <p className="mb-2 text-sm">Stay with {selectedListing.host}</p>
+              <p className="mb-4 text-sm">{selectedListing.description}</p>
+              <p className="text-lg font-bold">${selectedListing.price} / night</p>
             </CardContent>
           </Card>
         </div>

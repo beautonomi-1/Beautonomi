@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 
 interface Promotion {
   id: string;
@@ -26,7 +27,7 @@ interface Promotion {
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabase = await getSupabaseServer(request);
 
@@ -40,8 +41,8 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    // Transform database fields to frontend format
-    const transformedPromotions = (promotions || []).map((p: any) => ({
+    type PromotionRow = { type?: string; valid_from?: string; valid_until?: string; min_purchase_amount?: number; max_discount_amount?: number; usage_count?: number; applicable_categories?: unknown[]; applicable_providers?: unknown[]; [key: string]: unknown };
+    const transformedPromotions = (promotions || []).map((p: PromotionRow) => ({
       ...p,
       type: p.type === 'fixed' ? 'fixed_amount' : p.type, // Map 'fixed' to 'fixed_amount' for frontend
       start_date: p.valid_from,
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
         : "all",
     }));
 
-    return successResponse(transformedPromotions as Promotion[]);
+    return successResponse(transformedPromotions as unknown as Promotion[]);
   } catch (error) {
     return handleApiError(error, "Failed to fetch promotions");
   }
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();

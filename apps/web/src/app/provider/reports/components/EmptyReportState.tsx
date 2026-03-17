@@ -14,10 +14,10 @@ export function EmptyReportState({
   description = "There is no data to display for the selected date range.",
 }: EmptyReportStateProps) {
   return (
-    <Card className="border-gray-200">
+    <Card className="rounded-xl border-gray-200 shadow-sm">
       <CardContent className="p-12 text-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="p-4 bg-gray-50 rounded-full">
+          <div className="p-4 bg-gray-50 rounded-2xl">
             <FileText className="w-12 h-12 text-gray-400" />
           </div>
           <div>

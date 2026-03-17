@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ChipCombobox } from "@/components/ui/chip-combobox";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
@@ -851,41 +852,31 @@ export function ServiceCreateEditDialog({
                     Add Category
                   </Button>
                 </div>
-                {categories.length === 0 ? (
-                  <div className="border rounded-md p-3 sm:p-4 bg-yellow-50 mt-1.5">
-                    <p className="text-sm text-gray-700 mb-2">No categories available</p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full sm:w-auto"
-                      onClick={() => setShowCategoryDialog(true)}
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create your first category
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <Select 
-                      value={formData.categoryId} 
-                      onValueChange={(val) => setFormData({ ...formData, categoryId: val })}
-                      required
-                    >
-                      <SelectTrigger className="mt-1.5">
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            {cat.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-gray-500 mt-1.5">Group this service with similar offerings</p>
-                  </>
-                )}
+                <div className="mt-1.5">
+                  <ChipCombobox
+                    singleSelect
+                    value={formData.categoryId || null}
+                    onChange={(v) => setFormData((prev) => ({ ...prev, categoryId: v ?? "" }))}
+                    staticSuggestions={categories.map((cat) => ({ value: cat.id, label: cat.name }))}
+                    onCreateNew={async (name) => {
+                      try {
+                        const newCategory = await providerApi.createServiceCategory({
+                          name: name.trim(),
+                          color: "#FF0077",
+                          description: "",
+                        });
+                        if (onCategoriesChange) onCategoriesChange();
+                        return { value: newCategory.id, label: newCategory.name };
+                      } catch (err: any) {
+                        handleError(err, { action: "createCategory", resource: "service category" });
+                        return null;
+                      }
+                    }}
+                    placeholder="Select or type to add category"
+                    aria-label="Service category"
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1.5">Group this service with similar offerings</p>
               </div>
 
               <div>

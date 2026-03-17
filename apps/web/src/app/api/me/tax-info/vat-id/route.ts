@@ -10,7 +10,7 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 export async function PATCH(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const { vat_id } = body;

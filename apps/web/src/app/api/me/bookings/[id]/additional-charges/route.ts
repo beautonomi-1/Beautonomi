@@ -13,7 +13,7 @@ export async function GET(
 ) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
     // Verify booking belongs to customer (or user is provider/admin)

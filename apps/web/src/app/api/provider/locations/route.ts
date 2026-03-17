@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
       .from("provider_locations")
       .select("*")
       .eq("provider_id", providerId)
+      .eq("is_active", true)
       .order("name");
 
     if (error) {

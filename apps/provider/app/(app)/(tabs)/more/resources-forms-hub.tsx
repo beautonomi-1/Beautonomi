@@ -69,6 +69,24 @@ export default function ResourcesFormsHubScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(tabs)/more/resources" as never)}
+          style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16, marginHorizontal: 8, marginBottom: 16 }}
+          activeOpacity={0.8}
+          accessibilityLabel="Resources – rooms and equipment"
+          accessibilityRole="button"
+        >
+          <View style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#ccfbf1" }}>
+            <Ionicons name="construct-outline" size={22} color="#0d9488" />
+          </View>
+          <View style={{ marginLeft: 12, flex: 1 }}>
+            <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Rooms & equipment</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Manage resources and groups</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+        </TouchableOpacity>
+
+        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[700], marginHorizontal: 8, marginBottom: 8 }}>Forms</Text>
         {forms.length === 0 ? (
           <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="document-text-outline" size={48} color="#9ca3af" />

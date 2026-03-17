@@ -1,12 +1,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
   errorResponse,
   notFoundResponse,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const bodySchema = z.object({ version: z.number().int().optional() });
@@ -20,7 +20,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
@@ -34,7 +34,7 @@ export async function POST(
 
     if (fetchError || !zone) return notFoundResponse("Zone not found");
 
-    if (parse.data?.version != null && (zone as any).version !== parse.data.version) {
+    if (parse.data?.version != null && (zone as { version?: number }).version !== parse.data.version) {
       return errorResponse("Version conflict; refresh and retry", "CONFLICT", 409);
     }
 

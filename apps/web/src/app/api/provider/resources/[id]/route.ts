@@ -4,12 +4,15 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespon
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
+const resourceTypeEnum = z.enum(["room", "chair", "equipment", "other"]);
 const updateResourceSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   group_id: z.string().uuid().nullable().optional(),
   capacity: z.number().optional(),
   is_active: z.boolean().optional(),
+  resource_type: resourceTypeEnum.optional(),
+  calendar_color: z.string().optional(),
 });
 
 /**
@@ -73,6 +76,8 @@ export async function GET(
       description: resource.description || null,
       capacity: resource.capacity || null,
       is_active: resource.is_active ?? true,
+      resource_type: (resource as any).resource_type || "room",
+      calendar_color: (resource as any).calendar_color || null,
       group_name: group?.name || null,
       group_color: group?.color || null,
       group_id: resource.group_id || null,
@@ -168,6 +173,12 @@ export async function PATCH(
     if (validationResult.data.group_id !== undefined) {
       updateData.group_id = validationResult.data.group_id || null;
     }
+    if (validationResult.data.resource_type !== undefined) {
+      updateData.resource_type = validationResult.data.resource_type || "room";
+    }
+    if (validationResult.data.calendar_color !== undefined) {
+      updateData.calendar_color = validationResult.data.calendar_color?.trim() || null;
+    }
     updateData.updated_at = new Date().toISOString();
 
     // Update resource
@@ -196,6 +207,8 @@ export async function PATCH(
       description: updatedResource.description || null,
       capacity: updatedResource.capacity || null,
       is_active: updatedResource.is_active ?? true,
+      resource_type: (updatedResource as any).resource_type || "room",
+      calendar_color: (updatedResource as any).calendar_color || null,
       group_name: group?.name || null,
       group_color: group?.color || null,
       group_id: updatedResource.group_id || null,

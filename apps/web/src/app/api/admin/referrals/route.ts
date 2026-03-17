@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { z } from 'zod';
 
 const referralSettingsSchema = z.object({
@@ -24,7 +25,7 @@ const DEFAULT_REFERRAL_SETTINGS = {
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const supabase = await getSupabaseServer(request);
 
     const { data: referralSettings, error } = await supabase
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
@@ -84,7 +85,7 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(
-        new Error(error.issues.map((e: any) => e.message).join(', ')),
+        new Error(error.issues.map((e: { message: string }) => e.message).join(', ')),
         'Validation failed',
         'VALIDATION_ERROR',
         400

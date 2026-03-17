@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 const upsertSchema = z.object({
@@ -13,7 +14,7 @@ const upsertSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
 
     const { data, error } = await supabase
@@ -31,12 +32,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
 
     const body = upsertSchema.parse(await request.json());
 
-    const { data: row, error } = await (supabase.from("loyalty_rules") as any)
+    const { data: row, error } = await supabase
+      .from("loyalty_rules")
       .insert({
         points_per_currency_unit: body.points_per_currency_unit,
         currency: body.currency,

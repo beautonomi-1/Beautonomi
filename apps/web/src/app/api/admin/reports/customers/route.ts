@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
@@ -67,11 +68,12 @@ export async function GET(request: NextRequest) {
       if (b.total_amount) bookingsByCustomer[id].total_amount += Number(b.total_amount);
     });
 
-    const customersWithMetrics = (customers || []).map((c: any) => {
+    type CustomerRow = { id: string; full_name?: string | null; email?: string | null };
+    const customersWithMetrics = (customers || []).map((c: CustomerRow) => {
       const data = bookingsByCustomer[c.id] || { count: 0, total_amount: 0 };
       return {
         customer_id: c.id,
-        customer_name: c.full_name || c.email || 'Unknown',
+        customer_name: c.full_name ?? c.email ?? "Unknown",
         bookings_count: data.count,
         total_spent: data.total_amount,
       };

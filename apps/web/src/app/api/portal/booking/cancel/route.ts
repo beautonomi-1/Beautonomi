@@ -71,25 +71,25 @@ export async function POST(request: NextRequest) {
       booking.location_type as 'at_salon' | 'at_home'
     );
 
-    if (policy) {
-      const checkResult = canCancelBooking(
-        {
-          id: booking.id,
-          created_at: booking.created_at,
-          scheduled_at: booking.scheduled_at,
-          location_type: booking.location_type as 'at_salon' | 'at_home',
-        },
-        policy
-      );
+    const checkResult = policy
+      ? canCancelBooking(
+          {
+            id: booking.id,
+            created_at: booking.created_at,
+            scheduled_at: booking.scheduled_at,
+            location_type: booking.location_type as 'at_salon' | 'at_home',
+          },
+          policy
+        )
+      : { allowed: true as const };
 
-      if (!checkResult.allowed) {
-        return handleApiError(
-          new Error(checkResult.reason || "Cancellation not allowed"),
-          checkResult.reason || "Cancellation not allowed",
-          "CANCELLATION_BLOCKED",
-          403
-        );
-      }
+    if (!checkResult.allowed) {
+      return handleApiError(
+        new Error(checkResult.reason || "Cancellation not allowed"),
+        checkResult.reason || "Cancellation not allowed",
+        "CANCELLATION_BLOCKED",
+        403
+      );
     }
 
     // Cancel booking
@@ -118,14 +118,36 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Process refunds if applicable (same logic as /api/me/bookings/[id]/cancel)
+    if (policy && checkResult.allowed && policy.late_cancellation_type !== 'no_refund') {
+      try {
+        const { processBookingRefund } = await import('@/lib/bookings/refund-processing');
+        const { data: bookingForRefund } = await supabase
+          .from('bookings')
+          .select('total_amount, currency')
+          .eq('id', validation.bookingId)
+          .single();
+        if (bookingForRefund) {
+          await processBookingRefund(
+            validation.bookingId,
+            bookingForRefund.total_amount,
+            bookingForRefund.currency || 'ZAR',
+            policy
+          );
+        }
+      } catch (refundErr) {
+        console.error('Error processing refund during portal cancellation:', refundErr);
+      }
+    }
+
     // Send cancellation notification
     const { sendCancellationNotification } = await import('@/lib/bookings/notifications');
-    const refundInfo = policy?.late_cancellation_type === 'full_refund' 
+    const refundInfo = policy?.late_cancellation_type === 'full_refund'
       ? 'Full refund will be processed'
       : policy?.late_cancellation_type === 'partial_refund'
-      ? 'Partial refund will be processed'
-      : 'No refund applicable per cancellation policy';
-    
+        ? 'Partial refund will be processed'
+        : 'No refund applicable per cancellation policy';
+
     await sendCancellationNotification(validation.bookingId, {
       cancelledBy: 'customer',
       refundInfo,

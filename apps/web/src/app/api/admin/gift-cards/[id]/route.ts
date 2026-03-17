@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, errorResponse, notFoundResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { z } from "zod";
 
@@ -19,7 +20,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -68,7 +69,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -80,7 +81,7 @@ export async function PATCH(
       return errorResponse("Validation failed", "VALIDATION_ERROR", 400, validationResult.error.issues);
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (validationResult.data.balance !== undefined) {
       updateData.balance = validationResult.data.balance;
     }
@@ -125,7 +126,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
 

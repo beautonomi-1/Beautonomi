@@ -11,6 +11,27 @@ export function requireServerEnv(name: string): string {
   return v;
 }
 
+export type OneSignalAppType = "customer" | "provider";
+
+/** OneSignal config for a specific app (customer or provider). Falls back to legacy single-app env when per-app vars unset. */
+export function getOneSignalConfig(appType: OneSignalAppType): {
+  appId: string | null;
+  restApiKey: string | null;
+} {
+  const legacyAppId = process.env.ONESIGNAL_APP_ID ?? null;
+  const legacyKey = process.env.ONESIGNAL_REST_API_KEY ?? null;
+  if (appType === "provider") {
+    return {
+      appId: process.env.ONESIGNAL_APP_ID_PROVIDER ?? legacyAppId,
+      restApiKey: process.env.ONESIGNAL_REST_API_KEY_PROVIDER ?? legacyKey,
+    };
+  }
+  return {
+    appId: process.env.ONESIGNAL_APP_ID_CUSTOMER ?? legacyAppId,
+    restApiKey: process.env.ONESIGNAL_REST_API_KEY_CUSTOMER ?? legacyKey,
+  };
+}
+
 export function getOneSignalSecret(): { apiKey?: string; appId?: string } {
   return {
     apiKey: process.env.ONESIGNAL_REST_API_KEY ?? undefined,
@@ -36,6 +57,12 @@ export function getPaystackSecrets(): {
 
 export async function getOneSignalRestApiKey(): Promise<string | null> {
   return process.env.ONESIGNAL_REST_API_KEY ?? null;
+}
+
+export async function getOneSignalRestApiKeyForApp(
+  appType: OneSignalAppType
+): Promise<string | null> {
+  return getOneSignalConfig(appType).restApiKey;
 }
 
 export async function getMapboxAccessToken(): Promise<string | null> {

@@ -57,9 +57,9 @@ const LoginAccount = () => {
 
   useEffect(() => {
     fetcher.get<{ data: typeof securityCopy }>("/api/public/account-security-copy", { cache: "no-store" })
-      .then((res: any) => {
+      .then((res: { data?: typeof securityCopy }) => {
         const data = res?.data ?? res;
-        if (data && typeof data === "object" && data.title) setSecurityCopy(data);
+        if (data && typeof data === "object" && "title" in data && data.title) setSecurityCopy(data as typeof securityCopy);
       })
       .catch(() => {});
   }, []);
@@ -69,7 +69,7 @@ const LoginAccount = () => {
     try {
       const response = await fetcher.get<{ data: { password_changed_at?: string | null } }>("/api/me/profile", { cache: "no-store" });
       // Handle both response.data and direct response structure
-      const profileData = response.data || (response as any);
+      const profileData = response.data ?? (response as { password_changed_at?: string | null });
       const passwordChangedAt = profileData?.password_changed_at;
       if (passwordChangedAt) {
         setPasswordLastUpdated(passwordChangedAt);
@@ -144,8 +144,8 @@ const LoginAccount = () => {
         confirmPassword: "",
       });
       loadPasswordInfo();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to update password");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to update password");
     } finally {
       setIsUpdatingPassword(false);
     }
@@ -159,8 +159,8 @@ const LoginAccount = () => {
     try {
       await resetPassword(user.email);
       toast.success("Password reset email sent. Please check your inbox.");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to send password reset email");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to send password reset email");
     }
   };
 
@@ -177,10 +177,10 @@ const LoginAccount = () => {
         reason: deactivateData.reason || null,
       });
       toast.success("Account deactivated successfully");
-      // User will be signed out automatically
-      window.location.href = "/";
-    } catch (error: any) {
-      toast.error(error.message || "Failed to deactivate account");
+      // Redirect to home with deactivated flag so user sees reactivate banner
+      window.location.href = "/?deactivated=true";
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to deactivate account");
     } finally {
       setIsDeactivating(false);
     }
@@ -462,7 +462,8 @@ const LoginAccount = () => {
               Deactivate Your Account
             </DialogTitle>
             <DialogDescription className="text-sm text-gray-600 font-light">
-              This will deactivate your account. You can reactivate it later by logging in.
+              This will deactivate your account. You can reactivate later by{" "}
+              <a href="/reactivate" className="underline font-medium text-primary hover:no-underline">visiting the reactivate page</a> or logging in again.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -499,7 +500,8 @@ const LoginAccount = () => {
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
                 <p className="text-sm text-yellow-800">
-                  <strong>Note:</strong> Your account will be deactivated immediately. You can reactivate it by logging in again.
+                  <strong>Note:</strong> Your account will be deactivated immediately. To reactivate, go to the{" "}
+                  <a href="/reactivate" className="underline font-medium hover:no-underline">reactivate page</a> or log in again.
                 </p>
               </div>
             </div>

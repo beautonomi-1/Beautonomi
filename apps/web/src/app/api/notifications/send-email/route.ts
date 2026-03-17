@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   try {
     await requireRoleInApi(["superadmin", "provider_owner"], request);
     const body = await request.json();
-    const { to, subject, body: emailBody, type, templateKey, variables, userId } = body;
+    const { to, subject, body: emailBody, type, templateKey, variables, userId, app_type: appType } = body;
 
     // Validate required fields
     if (!to && !userId) {
@@ -55,7 +55,8 @@ export async function POST(request: NextRequest) {
         templateKey,
         [targetUserId],
         variables || {},
-        ["email"]
+        ["email"],
+        appType ? { appType } : undefined
       );
 
       if (!result.success) {
@@ -109,7 +110,8 @@ export async function POST(request: NextRequest) {
             message: emailBody,
             type: type || "email",
           },
-          ["email"]
+          ["email"],
+          appType ? { appType } : undefined
         )
       : {
           success: false,

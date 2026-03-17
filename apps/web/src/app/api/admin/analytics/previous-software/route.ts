@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/analytics/previous-software
@@ -14,7 +14,7 @@ import {
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = await getSupabaseServer(request);
     if (!supabase) {
       return handleApiError(new Error("Server error"), "Database connection failed");
@@ -32,27 +32,27 @@ export async function GET(request: NextRequest) {
     }
 
     // Aggregate data
+    type ProviderRow = { id: string; previous_software?: string; previous_software_other?: string; business_name?: string; created_at?: string; status?: string };
+    type SoftwareEntry = { id: string; business_name?: string; created_at?: string; status?: string; custom_name: string | null };
     const softwareCounts: Record<string, number> = {};
-    const softwareDetails: Record<string, any[]> = {};
+    const softwareDetails: Record<string, SoftwareEntry[]> = {};
     const totalWithSoftware = providers?.length || 0;
 
-    (providers as any[])?.forEach((provider: any) => {
-      const software = provider.previous_software === "other" 
-        ? provider.previous_software_other || "Other"
-        : provider.previous_software;
-      
+    (providers as ProviderRow[] | null)?.forEach((provider) => {
+      const software = provider.previous_software === "other"
+        ? (provider.previous_software_other ?? "Other")
+        : (provider.previous_software ?? "Unknown");
       if (!softwareCounts[software]) {
         softwareCounts[software] = 0;
         softwareDetails[software] = [];
       }
-      
       softwareCounts[software]++;
       softwareDetails[software].push({
         id: provider.id,
         business_name: provider.business_name,
         created_at: provider.created_at,
         status: provider.status,
-        custom_name: provider.previous_software === "other" ? provider.previous_software_other : null,
+        custom_name: provider.previous_software === "other" ? provider.previous_software_other ?? null : null,
       });
     });
 

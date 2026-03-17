@@ -8,6 +8,8 @@ const validateBodySchema = z.object({
   code: z.string().min(1, "Promo code is required"),
   provider_id: z.string().uuid("Invalid provider ID"),
   booking_amount: z.number().min(0, "Booking amount must be non-negative"),
+  location_type: z.string().optional(),
+  location_id: z.string().uuid().optional().nullable(),
 });
 
 /**
@@ -34,12 +36,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { code, provider_id, booking_amount } = parsed.data;
+    const { code, provider_id, booking_amount, location_type, location_id } = parsed.data;
 
     const result = await validatePromoCode(supabase, {
       code,
       amount: booking_amount,
       providerId: provider_id,
+      locationType: location_type,
+      locationId: location_id ?? undefined,
     });
 
     if (!result.valid) {

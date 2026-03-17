@@ -9,7 +9,9 @@ import Link from "next/link";
 import { fetcher } from "@/lib/http/fetcher";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-const settingsCategories = [
+type SettingsItem = { title: string; description: string; href: string; isUpgrade?: boolean };
+
+const settingsCategories: { id: string; title: string; description: string; items: SettingsItem[] }[] = [
   {
     id: "appointment-activity",
     title: "Appointment Activity",
@@ -65,7 +67,6 @@ const settingsCategories = [
       { title: "Payout center", description: "Balance, schedule, statements, and payout history", href: "/provider/payouts" },
       { title: "Payout Accounts", description: "Manage bank accounts for receiving payouts", href: "/provider/settings/payout-accounts" },
       { title: "Yoco Integration", description: "Connect and manage Yoco payment devices", href: "/provider/settings/sales/yoco-integration" },
-      { title: "Yoco Terminals", description: "Manage Yoco card terminals and devices", href: "/provider/settings/yoco-terminals" },
       { title: "Receipt Sequencing", description: "Configure receipt numbering", href: "/provider/settings/sales/receipt-sequencing" },
       { title: "Receipt Template", description: "Customize receipt design", href: "/provider/settings/sales/receipt-template" },
       { title: "Taxes", description: "Set up tax rates", href: "/provider/settings/sales/taxes" },
@@ -242,13 +243,13 @@ export default function ProviderSettings() {
                 {category.items
                   .filter((item) => {
                     // Only show upgrade option for freelancers
-                    if ((item as any).isUpgrade) {
+                    if (item.isUpgrade) {
                       return businessType === "freelancer";
                     }
                     return true;
                   })
                   .map((item, index) => {
-                    const isUpgrade = (item as any).isUpgrade;
+                    const isUpgrade = item.isUpgrade;
                     return (
                       <Link
                         key={index}

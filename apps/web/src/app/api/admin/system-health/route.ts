@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OPERATIONS } from "@/lib/admin-sections";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
 
     const supabase = await getSupabaseServer(request);
 
@@ -88,14 +89,14 @@ export async function GET(request: NextRequest) {
       stats,
       timestamp: new Date().toISOString(),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return handleApiError(error, "Failed to fetch system health");
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -126,7 +127,7 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     return successResponse({ metric: data }, 201);
-  } catch (error: any) {
+  } catch (error: unknown) {
     return handleApiError(error, "Failed to record system health metric");
   }
 }

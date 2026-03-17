@@ -95,6 +95,16 @@ const notificationSections = [
   },
 ];
 
+interface NotificationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  description: string;
+  preferences?: { email?: boolean; sms?: boolean; push?: boolean };
+  sectionId: string;
+  onUpdate: (sectionId: string, prefs: { email: boolean; sms: boolean; push: boolean }) => Promise<void>;
+}
+
 const NotificationModal = ({
   isOpen,
   onClose,
@@ -103,13 +113,19 @@ const NotificationModal = ({
   preferences,
   sectionId,
   onUpdate,
-}: any) => {
-  const [localPrefs, setLocalPrefs] = useState(preferences || { email: true, sms: true, push: false });
+}: NotificationModalProps) => {
+  const [localPrefs, setLocalPrefs] = useState<{ email: boolean; sms: boolean; push: boolean }>(
+    preferences ? { email: preferences.email ?? true, sms: preferences.sms ?? true, push: preferences.push ?? false } : { email: true, sms: true, push: false }
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (preferences) {
-      setLocalPrefs(preferences);
+      setLocalPrefs({
+        email: preferences.email ?? true,
+        sms: preferences.sms ?? true,
+        push: preferences.push ?? false,
+      });
     }
   }, [preferences]);
 
@@ -119,8 +135,8 @@ const NotificationModal = ({
       await onUpdate(sectionId, localPrefs);
       toast.success("Notification preferences updated");
       onClose();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to update preferences");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to update preferences");
     } finally {
       setIsSaving(false);
     }
@@ -244,7 +260,7 @@ const Page = () => {
         [sectionId]: prefs,
       });
       setPreferences((prev) => ({ ...prev, [sectionId]: prefs }));
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw error;
     }
   };
@@ -257,9 +273,9 @@ const Page = () => {
         unsubscribe_marketing: checked,
       });
       toast.success(checked ? "Unsubscribed from marketing emails" : "Subscribed to marketing emails");
-    } catch (error: any) {
+    } catch (error: unknown) {
       setUnsubscribeMarketing(previousValue);
-      toast.error(error.message || "Failed to update preference");
+      toast.error(error instanceof Error ? error.message : "Failed to update preference");
     }
   };
 

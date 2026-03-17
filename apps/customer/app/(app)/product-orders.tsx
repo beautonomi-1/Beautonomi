@@ -223,10 +223,10 @@ export default function ProductOrdersScreen() {
             Your product orders will appear here
           </Text>
           <TouchableOpacity
-            onPress={() => router.push("/shop" as any)}
+            onPress={() => router.push("/(app)/(tabs)/explore" as any)}
             style={{ marginTop: 24, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, backgroundColor: PRIMARY }}
           >
-            <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Shop Now</Text>
+            <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Find a provider</Text>
           </TouchableOpacity>
         </View>
       ) : (

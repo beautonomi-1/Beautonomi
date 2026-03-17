@@ -37,6 +37,20 @@ export async function POST(request: NextRequest) {
     const { provider_id, request_payload, idempotency_key } = parsed.data;
 
     const admin = getSupabaseAdmin();
+
+    const { data: obSettings } = await admin
+      .from("provider_online_booking_settings")
+      .select("on_demand_accept_enabled")
+      .eq("provider_id", provider_id)
+      .maybeSingle();
+    if (!obSettings?.on_demand_accept_enabled) {
+      return errorResponse(
+        "This provider does not accept on-demand requests.",
+        "PROVIDER_ON_DEMAND_DISABLED",
+        400
+      );
+    }
+
     const { data: config } = await admin
       .from("on_demand_module_config")
       .select("provider_accept_window_seconds")
@@ -86,6 +100,47 @@ export async function POST(request: NextRequest) {
       }
       throw error;
     }
+
+    // Notify provider app (owner + staff) so they get a push when app is closed/background
+    try {
+      const { data: providerRow } = await admin
+        .from("providers")
+        .select("user_id")
+        .eq("id", provider_id)
+        .single();
+      const { data: staffRows } = await admin
+        .from("provider_staff")
+        .select("user_id")
+        .eq("provider_id", provider_id)
+        .eq("is_active", true);
+      const userIds = new Set<string>();
+      if (providerRow?.user_id) userIds.add(providerRow.user_id);
+      (staffRows || []).forEach((s: { user_id: string }) => {
+        if (s.user_id) userIds.add(s.user_id);
+      });
+      if (userIds.size > 0) {
+        const { sendToUsers } = await import("@/lib/notifications/onesignal");
+        await sendToUsers(
+          Array.from(userIds),
+          {
+            title: "Incoming booking request",
+            message: "A client is requesting a booking now. Open to accept or decline.",
+            data: {
+              type: "on_demand_incoming",
+              id: row.id,
+              on_demand_request_id: row.id,
+            },
+            priority: 10,
+            ios_interruption_level: "time_sensitive",
+          },
+          ["push"],
+          { appType: "provider", supabaseClient: admin }
+        );
+      }
+    } catch (pushErr) {
+      console.error("Failed to send on-demand incoming push to provider:", pushErr);
+    }
+
     return successResponse(row);
   } catch (error) {
     return handleApiError(error as Error, "Failed to create on-demand request");

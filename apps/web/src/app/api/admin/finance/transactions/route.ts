@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, handleApiError, getPaginationParams } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, handleApiError, getPaginationParams  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/finance/transactions
@@ -9,7 +10,7 @@ import { requireRoleInApi, handleApiError, getPaginationParams } from "@/lib/sup
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = await getSupabaseServer(request);
 
     if (!supabase) {
@@ -69,34 +70,32 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch related booking data separately if needed
+    type TxRow = { id: string; booking_id?: string; transaction_type?: string; amount?: number; fees?: number; commission?: number; net?: number; created_at?: string };
+    type BookingRef = { id: string; booking_number?: string };
     const bookingIds = [
       ...new Set(
-        (transactions || [])
-          .map((t: any) => t.booking_id)
-          .filter(Boolean)
+        (transactions || []).map((t: TxRow) => t.booking_id).filter(Boolean)
       ),
     ];
 
-    let bookingMap = new Map();
+    let bookingMap = new Map<string, BookingRef>();
     if (bookingIds.length > 0) {
       const { data: bookings } = await supabase
         .from("bookings")
         .select("id, booking_number")
         .in("id", bookingIds);
-
       if (bookings) {
-        bookingMap = new Map(bookings.map((b: any) => [b.id, b]));
+        bookingMap = new Map(bookings.map((b: BookingRef) => [b.id, b]));
       }
     }
 
-    // Transform transactions to match frontend expectations
-    const transformedTransactions = (transactions || []).map((tx: any) => ({
+    const transformedTransactions = (transactions || []).map((tx: TxRow) => ({
       id: tx.id,
       transaction_type: tx.transaction_type || "unknown",
-      amount: parseFloat(tx.amount || 0),
-      fees: parseFloat(tx.fees || 0),
-      commission: parseFloat(tx.commission || 0),
-      net: parseFloat(tx.net || tx.amount || 0),
+      amount: Number(tx.amount ?? 0),
+      fees: Number(tx.fees ?? 0),
+      commission: Number(tx.commission ?? 0),
+      net: Number(tx.net ?? tx.amount ?? 0),
       created_at: tx.created_at,
       booking: tx.booking_id
         ? bookingMap.get(tx.booking_id) || null

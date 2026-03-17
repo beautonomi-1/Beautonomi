@@ -28,7 +28,7 @@ export async function PATCH(
     );
     const body = await request.json();
     const parsed = updateSchema.parse(body);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Get the cart item + product/variant stock
     const { data: cartItem, error: cartErr } = await (supabase.from("cart_items") as any)
@@ -93,7 +93,7 @@ export async function DELETE(
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request,
     );
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { error } = await (supabase.from("cart_items") as any)
       .delete()

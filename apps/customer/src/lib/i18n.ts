@@ -13,6 +13,6 @@ AsyncStorage.getItem("beautonomi_locale").then((saved) => {
 
 export async function changeLanguage(code: string) {
   const { i18n } = await import("@beautonomi/i18n");
-  i18n.changeLanguage(code);
+  await i18n.changeLanguage(code);
   await AsyncStorage.setItem("beautonomi_locale", code);
 }

@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import type { PublicProviderCard } from "@/types/api";
 import { Colors, Shadows } from "@/constants/colors";
+import { api } from "@/lib/api-client";
 
 interface ProviderCardProps {
   provider: PublicProviderCard;
@@ -36,6 +37,23 @@ export function ProviderCard({
   };
   const providerInitial = provider.business_name.charAt(0).toUpperCase();
 
+  const handlePress = () => {
+    if (provider.is_sponsored && provider.campaign_id && provider.id) {
+      api.post("/api/public/ads/event", {
+        event_type: "click",
+        campaign_id: provider.campaign_id,
+        provider_id: provider.id,
+        idempotency_key: `click:${provider.campaign_id}:${provider.id}:${Date.now()}`,
+      }).catch(() => {});
+    }
+    const params: { slug: string; campaign_id?: string; provider_id?: string } = { slug: provider.slug };
+    if (provider.is_sponsored && provider.campaign_id && provider.id) {
+      params.campaign_id = provider.campaign_id;
+      params.provider_id = provider.id;
+    }
+    router.push({ pathname: "/(app)/partner-profile", params });
+  };
+
   const badgeStyle = { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9999, marginTop: 4 };
   const badgeStyleFirst = { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9999 };
   const badgeTextStyle = { color: Colors.white, fontSize: 10, fontWeight: "500" as const };
@@ -43,7 +61,7 @@ export function ProviderCard({
   return (
     <AnimatedPressable
       scaleValue={0.97}
-      onPress={() => router.push({ pathname: "/(app)/partner-profile", params: { slug: provider.slug } })}
+      onPress={handlePress}
       style={[{ borderRadius: 24, overflow: "hidden", backgroundColor: Colors.white }, Shadows.card]}
       accessibilityRole="button"
       accessibilityLabel={`${provider.business_name}, rated ${provider.rating > 0 ? provider.rating.toFixed(1) : "0.0"} stars, ${provider.review_count || 0} reviews`}

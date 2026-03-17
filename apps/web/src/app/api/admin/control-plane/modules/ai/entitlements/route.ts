@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
@@ -8,7 +9,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const { searchParams } = new URL(request.url);
     const planId = searchParams.get("plan_id") ?? undefined;
 
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const body = await request.json();
     const { plan_id, feature_key, enabled = true, calls_per_day = 0, max_tokens = 600, model_tier = "cheap" } = body;
 

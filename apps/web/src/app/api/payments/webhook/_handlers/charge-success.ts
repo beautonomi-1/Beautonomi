@@ -18,6 +18,37 @@ import { EVENT_PAYMENT_SUCCESS, EVENT_PAYMENT_FAILED } from "@/lib/analytics/amp
 import type { PaystackEvent, SupabaseClient } from "./shared";
 import { savePaystackAuthorization, generateGiftCardCode } from "./shared";
 
+/** Paystack charge webhook payload (reference, metadata, amount, etc.) */
+type PaystackChargeData = {
+  reference?: string;
+  metadata?: Record<string, unknown> & { booking_id?: string; customer_id?: string; [k: string]: unknown };
+  amount?: number;
+  fees?: number;
+  customer?: { email?: string; customer_code?: string };
+  authorization?: { authorization_code?: string; reusable?: boolean; last4?: string; exp_month?: string; exp_year?: string; brand?: string; card_type?: string };
+  message?: string;
+  gateway_response?: string;
+};
+
+/** Booking row fields used in charge handlers */
+type ChargeBookingRow = Record<string, unknown> & {
+  payment_status?: string;
+  payment_reference?: string;
+  provider_id?: string;
+  customer_id?: string;
+  booking_number?: string;
+  total_amount?: number;
+  tip_amount?: number;
+  tax_amount?: number;
+  travel_fee?: number;
+  service_fee_amount?: number;
+  platform_service_fee?: number;
+  loyalty_points_used?: number;
+  currency?: string;
+  promotion_id?: string;
+  promotion_discount_amount?: number;
+};
+
 // ─── Exported Handlers ───────────────────────────────────────────────────────
 
 /**
@@ -44,7 +75,7 @@ export async function handleChargeFailed(
 
 // ─── charge.success internals ────────────────────────────────────────────────
 
-async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
+async function processSuccessfulPayment(data: PaystackChargeData, supabase: SupabaseClient) {
   const { reference, metadata, amount, fees, customer, authorization } = data;
 
   if (!reference || !metadata?.booking_id) {
@@ -106,9 +137,8 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
     return;
   }
 
-  const bookingData = booking as any;
+  const bookingData = booking as ChargeBookingRow;
 
-  // Check if already processed
   if (bookingData.payment_status === "paid" && bookingData.payment_reference === reference) {
     console.log(`Payment ${reference} already processed`);
     return;
@@ -135,14 +165,15 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
   );
 
   // Get platform commission settings
-  const { data: settingsRow } = await (supabase.from("platform_settings") as any)
+  const { data: settingsRow } = await supabase
+    .from("platform_settings")
     .select("settings")
     .eq("is_active", true)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  const payoutSettings = (settingsRow as any)?.settings?.payouts || {};
+  const payoutSettings = (settingsRow as { settings?: { payouts?: { commission_enabled?: boolean; platform_commission_percentage?: number } } } | null)?.settings?.payouts ?? {};
   const commissionEnabled = payoutSettings.commission_enabled !== false;
   const commissionRate = commissionEnabled
     ? (payoutSettings.platform_commission_percentage ?? 0)
@@ -154,7 +185,8 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
   const providerEarnings = commissionBase - platformCommission + travelFee + tipAmount;
 
   // Update booking payment status
-  const { error: updateError } = await (supabase.from("bookings") as any)
+  const { error: updateError } = await supabase
+    .from("bookings")
     .update({
       payment_status: "paid",
       payment_reference: reference,
@@ -171,7 +203,7 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
 
   // Gift cards: capture reserved redemption
   try {
-    const captureResult = await (supabase.rpc as any)("capture_gift_card_redemption", {
+    const { data: captureResult } = await supabase.rpc("capture_gift_card_redemption", {
       p_booking_id: metadata.booking_id,
     });
 
@@ -180,8 +212,8 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
         `Gift card redemption capture failed for booking ${metadata.booking_id}. Check if gift card expired.`,
       );
     }
-  } catch (gcError: any) {
-    const errorMessage = gcError?.message || String(gcError);
+  } catch (gcError: unknown) {
+    const errorMessage = gcError instanceof Error ? gcError.message : String(gcError);
 
     if (errorMessage.includes("expired") || errorMessage.includes("no longer active")) {
       console.warn(
@@ -189,7 +221,8 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
         errorMessage,
       );
 
-      await (supabase.from("bookings") as any)
+      await supabase
+        .from("bookings")
         .update({
           gift_card_id: null,
           gift_card_amount: 0,
@@ -207,7 +240,8 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
   if (loyaltyPointsUsed > 0 && (metadata?.customer_id || bookingData?.customer_id)) {
     const customerId = metadata?.customer_id || bookingData?.customer_id;
     try {
-      const { data: existingRedeem } = await (supabase.from("loyalty_point_transactions") as any)
+      const { data: existingRedeem } = await supabase
+        .from("loyalty_point_transactions")
         .select("id")
         .eq("user_id", customerId)
         .eq("reference_id", metadata.booking_id)
@@ -215,20 +249,22 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
         .eq("transaction_type", "redeemed")
         .maybeSingle();
       if (!existingRedeem) {
-        await (supabase.from("loyalty_point_transactions") as any).insert({
+        await supabase.from("loyalty_point_transactions").insert({
           user_id: customerId,
           points: loyaltyPointsUsed,
           transaction_type: "redeemed",
-          description: `Redeemed for booking ${bookingData?.booking_number || metadata.booking_id}`,
+          description: `Redeemed for booking ${bookingData?.booking_number ?? metadata.booking_id}`,
           reference_id: metadata.booking_id,
           reference_type: "booking",
         });
-        await (supabase.from("bookings") as any)
+        await supabase
+          .from("bookings")
           .update({ loyalty_points_used: loyaltyPointsUsed })
           .eq("id", metadata.booking_id);
       }
-    } catch (loyaltyErr: any) {
-      console.error("Loyalty points deduction failed:", loyaltyErr?.message || loyaltyErr);
+    } catch (loyaltyErr: unknown) {
+      const msg = loyaltyErr instanceof Error ? loyaltyErr.message : String(loyaltyErr);
+      console.error("Loyalty points deduction failed:", msg);
     }
   }
 
@@ -258,7 +294,7 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
   }
 
   // Create payment transaction record
-  await (supabase.from("payment_transactions") as any).insert({
+  await supabase.from("payment_transactions").insert({
     booking_id: metadata.booking_id,
     reference,
     amount: amountInCurrency,
@@ -274,8 +310,8 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
     created_at: new Date().toISOString(),
   });
 
-  // Update primary payments table
-  await (supabase.from("payments") as any)
+  await supabase
+    .from("payments")
     .update({
       status: "paid",
       payment_provider: "paystack",
@@ -286,8 +322,7 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
     .eq("booking_id", metadata.booking_id)
     .eq("payment_provider", "paystack");
 
-  // Create finance ledger entries — platform fee
-  await (supabase.from("finance_transactions") as any).insert({
+  await supabase.from("finance_transactions").insert({
     booking_id: metadata.booking_id,
     provider_id: bookingData.provider_id || null,
     transaction_type: "payment",
@@ -299,8 +334,7 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
     created_at: new Date().toISOString(),
   });
 
-  // Provider earnings entry
-  await (supabase.from("finance_transactions") as any).insert({
+  await supabase.from("finance_transactions").insert({
     booking_id: metadata.booking_id,
     provider_id: bookingData.provider_id || null,
     transaction_type: "provider_earnings",
@@ -314,7 +348,7 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
 
   // Platform service fee entry
   if (serviceFeeAmount > 0) {
-    await (supabase.from("finance_transactions") as any).insert({
+    await supabase.from("finance_transactions").insert({
       booking_id: metadata.booking_id,
       provider_id: bookingData.provider_id || null,
       transaction_type: "service_fee",
@@ -327,8 +361,7 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
     });
   }
 
-  // Tip / Tax / Travel fee reporting rows
-  await (supabase.from("finance_transactions") as any).insert([
+  await supabase.from("finance_transactions").insert([
     {
       booking_id: metadata.booking_id,
       provider_id: bookingData.provider_id || null,
@@ -373,9 +406,8 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
     const promoId = bookingData.promotion_id;
     const promoDiscount = Number(bookingData.promotion_discount_amount || 0);
     if (promoId && promoDiscount > 0) {
-      const { data: usageRow, error: usageError } = await (
-        supabase.from("promotion_usage") as any
-      )
+      const { data: usageRow, error: usageError } = await supabase
+        .from("promotion_usage")
         .insert({
           promotion_id: promoId,
           user_id: bookingData.customer_id,
@@ -387,12 +419,14 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
         .single();
 
       if (!usageError && usageRow?.id) {
-        const { data: promoRow } = await (supabase.from("promotions") as any)
+        const { data: promoRow } = await supabase
+          .from("promotions")
           .select("usage_count")
           .eq("id", promoId)
           .single();
-        const nextCount = Number(promoRow?.usage_count || 0) + 1;
-        await (supabase.from("promotions") as any)
+        const nextCount = Number((promoRow as { usage_count?: number } | null)?.usage_count ?? 0) + 1;
+        await supabase
+          .from("promotions")
           .update({ usage_count: nextCount })
           .eq("id", promoId);
       }
@@ -408,15 +442,20 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
 
-    await sendToUser(bookingData.customer_id, {
-      title: "Payment Confirmed",
-      message: `Your payment for booking ${bookingData.booking_number} has been confirmed.`,
-      data: {
-        type: "payment_success",
-        booking_id: metadata.booking_id,
+    await sendToUser(
+      bookingData.customer_id,
+      {
+        title: "Payment Confirmed",
+        message: `Your payment for booking ${bookingData.booking_number} has been confirmed.`,
+        data: {
+          type: "payment_success",
+          booking_id: metadata.booking_id,
+        },
+        url: `/account-settings/bookings`,
       },
-      url: `/account-settings/bookings`,
-    });
+      ["push"],
+      { appType: "customer" }
+    );
 
     const { data: providerRow } = await supabase
       .from("providers")
@@ -424,17 +463,22 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
       .eq("id", bookingData.provider_id)
       .single();
 
-    const providerUserId = (providerRow as any)?.user_id;
+    const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
     if (providerUserId) {
-      await sendToUser(providerUserId, {
-        title: "New Booking Payment",
-        message: `Payment received for booking ${bookingData.booking_number}.`,
-        data: {
-          type: "booking_payment",
-          booking_id: metadata.booking_id,
+      await sendToUser(
+        providerUserId,
+        {
+          title: "New Booking Payment",
+          message: `Payment received for booking ${bookingData.booking_number}.`,
+          data: {
+            type: "booking_payment",
+            booking_id: metadata.booking_id,
+          },
+          url: `/provider/bookings/${metadata.booking_id}`,
         },
-        url: `/provider/bookings/${metadata.booking_id}`,
-      });
+        ["push"],
+        { appType: "provider" }
+      );
     }
   } catch (notifError) {
     console.error("Error sending notifications:", notifError);
@@ -464,7 +508,7 @@ async function processSuccessfulPayment(data: any, supabase: SupabaseClient) {
 
 // ─── charge.failed internals ─────────────────────────────────────────────────
 
-async function processFailedPayment(data: any, supabase: SupabaseClient) {
+async function processFailedPayment(data: PaystackChargeData, supabase: SupabaseClient) {
   const { reference, metadata, message, gateway_response } = data;
 
   if (!reference || !metadata?.booking_id) {
@@ -489,7 +533,7 @@ async function processFailedPayment(data: any, supabase: SupabaseClient) {
       return;
     }
     if (metadata?.ads_budget_order_id) {
-      await (supabase.from("ads_budget_orders") as any)
+      await supabase.from("ads_budget_orders")
         .update({ status: "failed", updated_at: new Date().toISOString() })
         .eq("id", metadata.ads_budget_order_id);
       return;
@@ -520,13 +564,13 @@ async function processFailedPayment(data: any, supabase: SupabaseClient) {
     return;
   }
 
-  const bookingData = booking as any;
+  const bookingData = booking as ChargeBookingRow;
 
   // If wallet was used as partial payment, refund it immediately
   const walletAmountApplied = Number(metadata?.wallet_amount_applied ?? 0);
   if (walletAmountApplied > 0) {
     try {
-      await (supabase.rpc as any)("wallet_credit_admin", {
+      await supabase.rpc("wallet_credit_admin", {
         p_user_id: bookingData.customer_id,
         p_amount: walletAmountApplied,
         p_currency: metadata?.currency || "ZAR",
@@ -535,7 +579,7 @@ async function processFailedPayment(data: any, supabase: SupabaseClient) {
         p_reference_type: "booking_payment_failed",
       });
 
-      await (supabase.from("bookings") as any)
+      await supabase.from("bookings")
         .update({ wallet_amount: 0 })
         .eq("id", metadata.booking_id);
     } catch (e) {
@@ -544,7 +588,7 @@ async function processFailedPayment(data: any, supabase: SupabaseClient) {
   }
 
   // Update booking payment status
-  const { error: updateError } = await (supabase.from("bookings") as any)
+  const { error: updateError } = await supabase.from("bookings")
     .update({
       payment_status: "failed",
       payment_reference: reference,
@@ -559,7 +603,7 @@ async function processFailedPayment(data: any, supabase: SupabaseClient) {
 
   // Gift cards: void reserved redemption and restore balance
   try {
-    await (supabase.rpc as any)("void_gift_card_redemption", {
+    await supabase.rpc("void_gift_card_redemption", {
       p_booking_id: metadata.booking_id,
     });
   } catch (gcError) {
@@ -567,7 +611,7 @@ async function processFailedPayment(data: any, supabase: SupabaseClient) {
   }
 
   // Create payment transaction record
-  await (supabase.from("payment_transactions") as any).insert({
+  await supabase.from("payment_transactions").insert({
     booking_id: metadata.booking_id,
     reference,
     amount: 0,
@@ -582,7 +626,7 @@ async function processFailedPayment(data: any, supabase: SupabaseClient) {
     created_at: new Date().toISOString(),
   });
 
-  await (supabase.from("payments") as any)
+  await supabase.from("payments")
     .update({
       status: "failed",
       payment_provider: "paystack",
@@ -598,15 +642,20 @@ async function processFailedPayment(data: any, supabase: SupabaseClient) {
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
 
-    await sendToUser(bookingData.customer_id, {
-      title: "Payment Failed",
-      message: `Your payment for booking ${bookingData.booking_number} could not be processed. Please try again.`,
-      data: {
-        type: "payment_failed",
-        booking_id: metadata.booking_id,
+    await sendToUser(
+      bookingData.customer_id,
+      {
+        title: "Payment Failed",
+        message: `Your payment for booking ${bookingData.booking_number} could not be processed. Please try again.`,
+        data: {
+          type: "payment_failed",
+          booking_id: metadata.booking_id,
+        },
+        url: `/checkout`,
       },
-      url: `/checkout`,
-    });
+      ["push"],
+      { appType: "customer" }
+    );
   } catch (notifError) {
     console.error("Error sending notification:", notifError);
   }
@@ -652,8 +701,11 @@ async function handleCustomOfferSuccess(
     .eq("id", offerId)
     .single();
   if (!offerRow) return;
-  const offer = offerRow as any;
-  const req = offer.request as any;
+  type OfferRow = { status?: string; booking_id?: string; duration_minutes?: number; price?: number; currency?: string; scheduled_at?: string; location_id?: string | null; staff_id?: string | null; request?: CustomRequestRow; travel_fee?: number };
+  type CustomRequestRow = { provider_id?: string; customer_id?: string; service_name?: string; description?: string; location_type?: string; preferred_start_at?: string; address_line1?: string; address_line2?: string; address_city?: string; address_state?: string; address_country?: string; address_postal_code?: string; service_category_id?: string; id?: string };
+  const offer = offerRow as OfferRow;
+  const req = offer.request as CustomRequestRow | undefined;
+  if (!req) return;
 
   // Idempotency: if booking already created, just ensure status is paid
   if (offer.status === "paid" && offer.booking_id) return;
@@ -802,7 +854,7 @@ async function handleCustomOfferSuccess(
     .eq("id", offerId);
 
   // Create payments row so booking has a consistent payment record (reports, portal)
-  await (adminSupabase.from("payments") as any).insert({
+  await adminSupabase.from("payments").insert({
     booking_id: booking.id,
     user_id: req.customer_id,
     provider_id: req.provider_id,
@@ -830,7 +882,7 @@ async function handleCustomOfferSuccess(
     .maybeSingle();
 
   const commissionRate =
-    (settingsRow as any)?.settings?.payouts?.platform_commission_percentage ?? 15;
+    (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 15;
   const commissionBase = Number(meta.commission_base) > 0 ? Number(meta.commission_base) : Math.max(0, bookingSubtotal + travelFee - promotionDiscountAmount);
   const platformCommission = (commissionBase * commissionRate) / 100;
   const providerEarnings = commissionBase - platformCommission;
@@ -931,7 +983,8 @@ async function handleCustomOfferSuccess(
   // Record promotion usage (idempotent)
   if (promotionId && promotionDiscountAmount > 0) {
     try {
-      await (adminSupabase.from("promotion_usage") as any)
+      await adminSupabase
+        .from("promotion_usage")
         .insert({
           promotion_id: promotionId,
           user_id: req.customer_id,
@@ -941,16 +994,18 @@ async function handleCustomOfferSuccess(
         })
         .select("id")
         .single();
-      const { data: promoRow } = await (adminSupabase.from("promotions") as any)
+      const { data: promoRow } = await adminSupabase
+        .from("promotions")
         .select("usage_count")
         .eq("id", promotionId)
         .single();
       const nextCount = Number(promoRow?.usage_count || 0) + 1;
-      await (adminSupabase.from("promotions") as any)
+      await adminSupabase
+        .from("promotions")
         .update({ usage_count: nextCount })
         .eq("id", promotionId);
-    } catch (promoErr: any) {
-      const msg = promoErr?.message || String(promoErr);
+    } catch (promoErr: unknown) {
+      const msg = promoErr instanceof Error ? promoErr.message : String(promoErr);
       if (!msg.toLowerCase().includes("duplicate") && !msg.toLowerCase().includes("unique")) {
         console.error("Error recording custom offer promotion usage:", promoErr);
       }
@@ -971,7 +1026,7 @@ async function handleCustomOfferSuccess(
         .select("user_id")
         .eq("id", req.provider_id)
         .single();
-      const providerUserId = (providerRow as any)?.user_id as string | undefined;
+      const providerUserId = (providerRow as { user_id?: string } | null)?.user_id as string | undefined;
 
       const { data: conv } = await adminSupabase
         .from("conversations")
@@ -982,9 +1037,9 @@ async function handleCustomOfferSuccess(
         .limit(1)
         .maybeSingle();
 
-      const convId = (conv as any)?.id as string | undefined;
+      const convId = (conv as { id?: string } | null)?.id;
       if (convId) {
-        if (!(conv as any)?.booking_id) {
+        if (!(conv as { booking_id?: string } | null)?.booking_id) {
           await adminSupabase
             .from("conversations")
             .update({ booking_id: booking.id, updated_at: new Date().toISOString() })
@@ -1017,25 +1072,28 @@ async function handleCustomOfferSuccess(
 
   // Notify both parties (best-effort)
   try {
-    const { sendToUsers } = await import("@/lib/notifications/onesignal");
+    const { sendToUser } = await import("@/lib/notifications/onesignal");
     const { data: providerRow } = await supabase
       .from("providers")
       .select("user_id")
       .eq("id", req.provider_id)
       .single();
-    const providerUserId = (providerRow as any)?.user_id;
-    const recipients = [req.customer_id, providerUserId].filter(Boolean);
-    if (recipients.length > 0) {
-      await sendToUsers(recipients, {
-        title: "Custom Order Paid",
-        message: "Your custom order has been paid and a booking has been created.",
-        data: {
-          type: "custom_order_paid",
-          custom_offer_id: offerId,
-          booking_id: (booking as any)?.id,
-        },
-        url: "/account-settings/bookings",
-      });
+    const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
+    const payload = {
+      title: "Custom Order Paid",
+      message: "Your custom order has been paid and a booking has been created.",
+      data: {
+        type: "custom_order_paid",
+        custom_offer_id: offerId,
+        booking_id: (booking as { id?: string })?.id,
+      },
+      url: "/account-settings/bookings",
+    };
+    if (req.customer_id) {
+      await sendToUser(req.customer_id, payload, ["push"], { appType: "customer" });
+    }
+    if (providerUserId) {
+      await sendToUser(providerUserId, payload, ["push"], { appType: "provider" });
     }
   } catch {
     // ignore
@@ -1049,7 +1107,7 @@ async function handleCustomOfferFailed(
   const offerId = payload.metadata.custom_offer_id as string;
   if (!offerId) return;
 
-  await (supabase.from("custom_offers") as any)
+  await supabase.from("custom_offers")
     .update({
       status: "pending",
       payment_url: null,
@@ -1067,19 +1125,22 @@ async function handleWalletTopupSuccess(
   const topupId = payload.metadata.wallet_topup_id as string;
   if (!topupId) return;
 
-  const { data: topup } = await (supabase.from("wallet_topups") as any)
+  const { data: topup } = await supabase
+    .from("wallet_topups")
     .select("*")
     .eq("id", topupId)
     .single();
   if (!topup) return;
 
-  if ((topup as any).status === "paid") return;
+  type TopupRow = { status?: string; currency?: string; user_id?: string };
+  const topupRow = topup as TopupRow;
+  if (topupRow.status === "paid") return;
 
   const amountInCurrency = convertFromSmallestUnit(payload.amount || 0);
-  const currency = (topup as any).currency || "ZAR";
+  const currency = topupRow.currency ?? "ZAR";
 
-  await (supabase.rpc as any)("wallet_credit_admin", {
-    p_user_id: (topup as any).user_id,
+  await supabase.rpc("wallet_credit_admin", {
+    p_user_id: topupRow.user_id,
     p_amount: amountInCurrency,
     p_currency: currency,
     p_description: `Wallet top up (${currency} ${amountInCurrency})`,
@@ -1087,7 +1148,7 @@ async function handleWalletTopupSuccess(
     p_reference_type: "wallet_topup",
   });
 
-  await (supabase.from("wallet_topups") as any)
+  await supabase.from("wallet_topups")
     .update({
       status: "paid",
       paid_at: new Date().toISOString(),
@@ -1104,7 +1165,7 @@ async function handleWalletTopupFailed(
   const topupId = payload.metadata.wallet_topup_id as string;
   if (!topupId) return;
 
-  await (supabase.from("wallet_topups") as any)
+  await supabase.from("wallet_topups")
     .update({
       status: "failed",
       failed_at: new Date().toISOString(),
@@ -1124,15 +1185,15 @@ async function handleGiftCardOrderSuccess(
   const { reference, metadata, amount: _amount } = payload;
   const orderId = metadata.gift_card_order_id as string;
 
-  const { data: order } = await (supabase.from("gift_card_orders") as any)
+  const { data: order } = await supabase.from("gift_card_orders")
     .select("*")
     .eq("id", orderId)
     .single();
   if (!order) return;
 
-  if ((order as any).status === "paid" && (order as any).gift_card_id) return;
-
-  const orderData = order as any;
+  type GiftOrderRow = { status?: string; gift_card_id?: string; currency?: string; amount?: number; quantity?: number; total_amount?: number; purchaser_user_id?: string; recipient_email?: string };
+  const orderData = order as GiftOrderRow;
+  if (orderData.status === "paid" && orderData.gift_card_id) return;
   const currency = orderData.currency || "ZAR";
   const value = Number(orderData.amount || 0);
   const quantity = Number(orderData.quantity || metadata.quantity || 1);
@@ -1144,7 +1205,7 @@ async function handleGiftCardOrderSuccess(
   for (let i = 0; i < quantity; i++) {
     let code = generateGiftCardCode();
     for (let j = 0; j < 5; j++) {
-      const { data: existing } = await (supabase.from("gift_cards") as any)
+      const { data: existing } = await supabase.from("gift_cards")
         .select("id")
         .eq("code", code)
         .maybeSingle();
@@ -1152,7 +1213,7 @@ async function handleGiftCardOrderSuccess(
       code = generateGiftCardCode();
     }
 
-    const { data: card, error: cardError } = await (supabase.from("gift_cards") as any)
+    const { data: card, error: cardError } = await supabase.from("gift_cards")
       .insert({
         code,
         currency,
@@ -1177,7 +1238,7 @@ async function handleGiftCardOrderSuccess(
       continue;
     }
 
-    giftCardIds.push((card as any).id);
+    giftCardIds.push((card as { id: string }).id);
     giftCardCodes.push(code);
   }
 
@@ -1185,7 +1246,7 @@ async function handleGiftCardOrderSuccess(
     throw new Error("Failed to issue any gift cards");
   }
 
-  await (supabase.from("gift_card_orders") as any)
+  await supabase.from("gift_card_orders")
     .update({
       status: "paid",
       gift_card_id: giftCardIds[0],
@@ -1193,7 +1254,7 @@ async function handleGiftCardOrderSuccess(
     })
     .eq("id", orderId);
 
-  await (supabase.from("payment_transactions") as any).insert({
+  await supabase.from("payment_transactions").insert({
     booking_id: null,
     reference,
     amount: totalAmount,
@@ -1211,7 +1272,7 @@ async function handleGiftCardOrderSuccess(
     created_at: new Date().toISOString(),
   });
 
-  await (supabase.from("finance_transactions") as any).insert({
+  await supabase.from("finance_transactions").insert({
     booking_id: null,
     provider_id: null,
     transaction_type: "gift_card_sale",
@@ -1232,17 +1293,22 @@ async function handleGiftCardOrderSuccess(
           ? `Your gift card code is ${giftCardCodes[0]}.`
           : `You purchased ${quantity} gift cards. Codes: ${giftCardCodes.join(", ")}`;
 
-      await sendToUser(orderData.purchaser_user_id, {
-        title: quantity === 1 ? "Gift Card Purchased" : `${quantity} Gift Cards Purchased`,
-        message: notifMessage,
-        data: {
-          type: "gift_card_issued",
-          gift_card_ids: giftCardIds,
-          codes: giftCardCodes,
-          quantity: quantity,
+      await sendToUser(
+        orderData.purchaser_user_id,
+        {
+          title: quantity === 1 ? "Gift Card Purchased" : `${quantity} Gift Cards Purchased`,
+          message: notifMessage,
+          data: {
+            type: "gift_card_issued",
+            gift_card_ids: giftCardIds,
+            codes: giftCardCodes,
+            quantity: quantity,
+          },
+          url: `/account-settings/payments`,
         },
-        url: `/account-settings/payments`,
-      });
+        ["push"],
+        { appType: "customer" }
+      );
     }
   } catch (e) {
     console.error("Error notifying gift card purchaser:", e);
@@ -1254,7 +1320,7 @@ async function handleGiftCardOrderFailed(
   supabase: SupabaseClient,
 ) {
   const orderId = payload.metadata.gift_card_order_id as string;
-  await (supabase.from("gift_card_orders") as any)
+  await supabase.from("gift_card_orders")
     .update({ status: "failed", updated_at: new Date().toISOString() })
     .eq("id", orderId);
 }
@@ -1268,20 +1334,22 @@ async function handleMembershipOrderSuccess(
   const { metadata } = payload;
   const orderId = metadata.membership_order_id as string;
 
-  const { data: order } = await (supabase.from("membership_orders") as any)
+  const { data: order } = await supabase
+    .from("membership_orders")
     .select("*")
     .eq("id", orderId)
     .single();
   if (!order) return;
-  if ((order as any).status === "paid") return;
+  type MembershipOrderRow = { status?: string; provider_id?: string; user_id?: string; plan_id?: string; amount?: number };
+  const orderData = order as MembershipOrderRow;
+  if (orderData.status === "paid") return;
 
-  const orderData = order as any;
-  const providerId = orderData.provider_id || null;
+  const providerId = orderData.provider_id ?? null;
 
   const expiresAt = new Date();
   expiresAt.setMonth(expiresAt.getMonth() + 1);
 
-  await (supabase.from("user_memberships") as any).upsert(
+  await supabase.from("user_memberships").upsert(
     {
       user_id: orderData.user_id,
       provider_id: orderData.provider_id,
@@ -1295,11 +1363,12 @@ async function handleMembershipOrderSuccess(
     { onConflict: "user_id,provider_id" },
   );
 
-  await (supabase.from("membership_orders") as any)
+  await supabase
+    .from("membership_orders")
     .update({ status: "paid", updated_at: new Date().toISOString() })
     .eq("id", orderId);
 
-  await (supabase.from("payment_transactions") as any).insert({
+  await supabase.from("payment_transactions").insert({
     booking_id: null,
     reference: payload.reference,
     amount: Number(orderData.amount || 0),
@@ -1317,7 +1386,7 @@ async function handleMembershipOrderSuccess(
     created_at: new Date().toISOString(),
   });
 
-  await (supabase.from("finance_transactions") as any).insert({
+  await supabase.from("finance_transactions").insert({
     booking_id: null,
     provider_id: providerId,
     transaction_type: "membership_sale",
@@ -1330,7 +1399,7 @@ async function handleMembershipOrderSuccess(
   });
 
   if (providerId) {
-    await (supabase.from("finance_transactions") as any).insert({
+    await supabase.from("finance_transactions").insert({
       booking_id: null,
       provider_id: providerId,
       transaction_type: "provider_earnings",
@@ -1345,16 +1414,21 @@ async function handleMembershipOrderSuccess(
 
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
-    await sendToUser(orderData.user_id, {
-      title: "Membership Activated",
-      message: "Your membership has been activated.",
-      data: {
-        type: "membership_activated",
-        provider_id: orderData.provider_id,
-        plan_id: orderData.plan_id,
+    await sendToUser(
+      orderData.user_id,
+      {
+        title: "Membership Activated",
+        message: "Your membership has been activated.",
+        data: {
+          type: "membership_activated",
+          provider_id: orderData.provider_id,
+          plan_id: orderData.plan_id,
+        },
+        url: `/account-settings`,
       },
-      url: `/account-settings`,
-    });
+      ["push"],
+      { appType: "customer" }
+    );
   } catch (e) {
     console.error("Membership activation notification failed:", e);
   }
@@ -1365,7 +1439,7 @@ async function handleMembershipOrderFailed(
   supabase: SupabaseClient,
 ) {
   const orderId = payload.metadata.membership_order_id as string;
-  await (supabase.from("membership_orders") as any)
+  await supabase.from("membership_orders")
     .update({ status: "failed", updated_at: new Date().toISOString() })
     .eq("id", orderId);
 }
@@ -1379,24 +1453,25 @@ async function handleProviderSubscriptionOrderSuccess(
   const { reference, metadata, amount, fees } = payload;
   const orderId = metadata.provider_subscription_order_id as string;
 
-  const { data: order } = await (supabase.from("provider_subscription_orders") as any)
+  const { data: order } = await supabase.from("provider_subscription_orders")
     .select("*")
     .eq("id", orderId)
     .single();
 
   if (!order) return;
-  if ((order as any).status === "paid") return;
+  type SubOrderRow = { status?: string; provider_id?: string; plan_id?: string; billing_period?: string };
+  const orderData = order as SubOrderRow;
+  if (orderData.status === "paid") return;
 
-  const orderData = order as any;
   const providerId = orderData.provider_id as string;
   const planId = orderData.plan_id as string;
-  const billingPeriod = (orderData.billing_period || "monthly") as "monthly" | "yearly";
+  const billingPeriod = (orderData.billing_period ?? "monthly") as "monthly" | "yearly";
 
   const amountInCurrency = convertFromSmallestUnit(amount || 0);
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
-  await (supabase.from("provider_subscription_orders") as any)
+  await supabase.from("provider_subscription_orders")
     .update({
       status: "paid",
       paystack_reference: reference,
@@ -1410,7 +1485,7 @@ async function handleProviderSubscriptionOrderSuccess(
   if (billingPeriod === "yearly") expiresAt.setFullYear(expiresAt.getFullYear() + 1);
   else expiresAt.setMonth(expiresAt.getMonth() + 1);
 
-  await (supabase.from("provider_subscriptions") as any).upsert(
+  await supabase.from("provider_subscriptions").upsert(
     {
       provider_id: providerId,
       plan_id: planId,
@@ -1425,7 +1500,7 @@ async function handleProviderSubscriptionOrderSuccess(
     { onConflict: "provider_id" },
   );
 
-  await (supabase.from("payment_transactions") as any).insert({
+  await supabase.from("payment_transactions").insert({
     booking_id: null,
     reference,
     amount: amountInCurrency,
@@ -1443,7 +1518,7 @@ async function handleProviderSubscriptionOrderSuccess(
     created_at: new Date().toISOString(),
   });
 
-  await (supabase.from("finance_transactions") as any).insert([
+  await supabase.from("finance_transactions").insert([
     {
       booking_id: null,
       provider_id: providerId,
@@ -1474,7 +1549,7 @@ async function handleProviderSubscriptionOrderFailed(
   supabase: SupabaseClient,
 ) {
   const orderId = payload.metadata.provider_subscription_order_id as string;
-  await (supabase.from("provider_subscription_orders") as any)
+  await supabase.from("provider_subscription_orders")
     .update({ status: "failed", updated_at: new Date().toISOString() })
     .eq("id", orderId);
 }
@@ -1499,7 +1574,7 @@ async function handleAdsBudgetOrderSuccess(
     .eq("id", orderId)
     .single();
 
-  if (!order || (order as any).status === "paid") {
+  if (!order || (order as { status?: string }).status === "paid") {
     return;
   }
 
@@ -1507,7 +1582,7 @@ async function handleAdsBudgetOrderSuccess(
   const feesInCurrency = convertFromSmallestUnit(payload.fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
-  await (supabase.from("ads_budget_orders") as any)
+  await supabase.from("ads_budget_orders")
     .update({
       status: "paid",
       paystack_reference: payload.reference,
@@ -1516,7 +1591,7 @@ async function handleAdsBudgetOrderSuccess(
     })
     .eq("id", orderId);
 
-  await (supabase.from("ads_campaigns") as any)
+  await supabase.from("ads_campaigns")
     .update({
       budget: amountInCurrency,
       updated_at: new Date().toISOString(),
@@ -1524,7 +1599,7 @@ async function handleAdsBudgetOrderSuccess(
     .eq("id", campaignId)
     .eq("provider_id", providerId);
 
-  await (supabase.from("payment_transactions") as any).insert({
+  await supabase.from("payment_transactions").insert({
     booking_id: null,
     reference: payload.reference,
     amount: amountInCurrency,
@@ -1542,7 +1617,7 @@ async function handleAdsBudgetOrderSuccess(
     created_at: new Date().toISOString(),
   });
 
-  await (supabase.from("finance_transactions") as any).insert({
+  await supabase.from("finance_transactions").insert({
     booking_id: null,
     provider_id: providerId,
     transaction_type: "provider_ads_payment",
@@ -1590,7 +1665,7 @@ async function handleSubscriptionAuthorizationSuccess(
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
-  await (supabase.from("provider_subscription_orders") as any)
+  await supabase.from("provider_subscription_orders")
     .update({
       status: "paid",
       paystack_reference: reference,
@@ -1606,15 +1681,15 @@ async function handleSubscriptionAuthorizationSuccess(
     .single();
 
   if (existingSub) {
-    await (supabase.from("provider_subscriptions") as any)
+    await supabase.from("provider_subscriptions")
       .update({
         paystack_authorization_code: authCode,
         paystack_customer_code: customerCode,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", (existingSub as any).id);
+      .eq("id", (existingSub as { id: string }).id);
   } else {
-    await (supabase.from("provider_subscriptions") as any).insert({
+    await supabase.from("provider_subscriptions").insert({
       provider_id: providerId,
       plan_id: planId,
       status: "pending",
@@ -1626,7 +1701,7 @@ async function handleSubscriptionAuthorizationSuccess(
     });
   }
 
-  await (supabase.from("payment_transactions") as any).insert({
+  await supabase.from("payment_transactions").insert({
     booking_id: null,
     reference,
     amount: amountInCurrency,
@@ -1674,7 +1749,7 @@ async function handleSubscriptionAuthorizationSuccess(
 
       const paystackSubscription = subscriptionResponse.data;
 
-      await (supabase.from("provider_subscriptions") as any)
+      await supabase.from("provider_subscriptions")
         .update({
           status: "active",
           paystack_subscription_code: paystackSubscription?.subscription_code,
@@ -1687,7 +1762,7 @@ async function handleSubscriptionAuthorizationSuccess(
         })
         .eq("provider_id", providerId);
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Failed to create Paystack subscription after authorization:", err);
   }
 }
@@ -1709,24 +1784,26 @@ async function handleAdditionalChargeSuccess(
     .eq("id", bookingId)
     .single();
   if (!booking) return;
-  const bookingData = booking as any;
-  const providerId = bookingData.provider_id || null;
+  const bookingData = booking as ChargeBookingRow;
+  const providerId = bookingData.provider_id ?? null;
 
-  const { data: charge } = await (supabase.from("additional_charges") as any)
+  const { data: charge } = await supabase
+    .from("additional_charges")
     .select("*")
     .eq("id", chargeId)
     .eq("booking_id", bookingId)
     .single();
 
   if (!charge) return;
-  if ((charge as any).status === "paid") return;
+  if ((charge as { status?: string }).status === "paid") return;
 
   const amountInCurrency = convertFromSmallestUnit(amount || 0);
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
   // Commission
-  const { data: settingsRow } = await (supabase.from("platform_settings") as any)
+  const { data: settingsRow } = await supabase
+    .from("platform_settings")
     .select("settings")
     .eq("is_active", true)
     .order("created_at", { ascending: false })
@@ -1734,11 +1811,11 @@ async function handleAdditionalChargeSuccess(
     .maybeSingle();
 
   const commissionRate =
-    (settingsRow as any)?.settings?.payouts?.platform_commission_percentage ?? 15;
+    (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 15;
   const platformCommission = (netAmount * commissionRate) / 100;
   const providerEarnings = netAmount - platformCommission;
 
-  await (supabase.from("additional_charges") as any)
+  await supabase.from("additional_charges")
     .update({
       status: "paid",
       paid_at: new Date().toISOString(),
@@ -1746,14 +1823,14 @@ async function handleAdditionalChargeSuccess(
     .eq("id", chargeId)
     .eq("booking_id", bookingId);
 
-  await (supabase.from("bookings") as any)
+  await supabase.from("bookings")
     .update({
-      total_amount: Number(bookingData.total_amount || 0) + Number((charge as any).amount || 0),
+      total_amount: Number(bookingData.total_amount ?? 0) + Number((charge as { amount?: number }).amount ?? 0),
       updated_at: new Date().toISOString(),
     })
     .eq("id", bookingId);
 
-  await (supabase.from("payment_transactions") as any).insert({
+  await supabase.from("payment_transactions").insert({
     booking_id: bookingId,
     reference,
     amount: amountInCurrency,
@@ -1769,7 +1846,7 @@ async function handleAdditionalChargeSuccess(
     created_at: new Date().toISOString(),
   });
 
-  await (supabase.from("finance_transactions") as any).insert({
+  await supabase.from("finance_transactions").insert({
     booking_id: bookingId,
     provider_id: providerId,
     transaction_type: "additional_charge_payment",
@@ -1781,7 +1858,7 @@ async function handleAdditionalChargeSuccess(
     created_at: new Date().toISOString(),
   });
 
-  await (supabase.from("finance_transactions") as any).insert({
+  await supabase.from("finance_transactions").insert({
     booking_id: bookingId,
     provider_id: providerId,
     transaction_type: "provider_earnings",
@@ -1793,7 +1870,7 @@ async function handleAdditionalChargeSuccess(
     created_at: new Date().toISOString(),
   });
 
-  await (supabase.from("payments") as any)
+  await supabase.from("payments")
     .update({
       status: "paid",
       payment_provider: "paystack",
@@ -1805,7 +1882,7 @@ async function handleAdditionalChargeSuccess(
     .eq("payment_provider", "paystack")
     .eq("payment_provider_transaction_id", reference);
 
-  await (supabase.from("booking_events") as any).insert({
+  await supabase.from("booking_events").insert({
     booking_id: bookingId,
     event_type: "additional_payment_paid",
     event_data: { charge_id: chargeId, reference, amount: amountInCurrency },
@@ -1815,34 +1892,44 @@ async function handleAdditionalChargeSuccess(
   // Notify customer + provider
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
-    await sendToUser(bookingData.customer_id, {
-      title: "Additional Payment Confirmed",
-      message: `Your additional payment of ${bookingData.currency || "ZAR"} ${amountInCurrency.toFixed(2)} was successful.`,
-      data: {
-        type: "additional_payment_paid",
-        booking_id: bookingId,
-        charge_id: chargeId,
+    await sendToUser(
+      bookingData.customer_id,
+      {
+        title: "Additional Payment Confirmed",
+        message: `Your additional payment of ${bookingData.currency || "ZAR"} ${amountInCurrency.toFixed(2)} was successful.`,
+        data: {
+          type: "additional_payment_paid",
+          booking_id: bookingId,
+          charge_id: chargeId,
+        },
+        url: `/account-settings/bookings/${bookingId}`,
       },
-      url: `/account-settings/bookings/${bookingId}`,
-    });
+      ["push"],
+      { appType: "customer" }
+    );
 
     const { data: providerRow } = await supabase
       .from("providers")
       .select("user_id")
       .eq("id", bookingData.provider_id)
       .single();
-    const providerUserId = (providerRow as any)?.user_id;
+    const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
     if (providerUserId) {
-      await sendToUser(providerUserId, {
-        title: "Additional Payment Received",
-        message: `Additional payment received for booking ${bookingData.booking_number}.`,
-        data: {
-          type: "additional_payment_paid_provider",
-          booking_id: bookingId,
-          charge_id: chargeId,
+      await sendToUser(
+        providerUserId,
+        {
+          title: "Additional Payment Received",
+          message: `Additional payment received for booking ${bookingData.booking_number}.`,
+          data: {
+            type: "additional_payment_paid_provider",
+            booking_id: bookingId,
+            charge_id: chargeId,
+          },
+          url: `/provider/bookings/${bookingId}`,
         },
-        url: `/provider/bookings/${bookingId}`,
-      });
+        ["push"],
+        { appType: "provider" }
+      );
     }
   } catch (notifError) {
     console.error("Error sending additional charge success notifications:", notifError);
@@ -1863,9 +1950,9 @@ async function handleAdditionalChargeFailed(
     .eq("id", bookingId)
     .single();
   if (!booking) return;
-  const bookingData = booking as any;
+  const bookingData = booking as ChargeBookingRow;
 
-  await (supabase.from("payment_transactions") as any).insert({
+  await supabase.from("payment_transactions").insert({
     booking_id: bookingId,
     reference,
     amount: 0,
@@ -1881,7 +1968,7 @@ async function handleAdditionalChargeFailed(
     created_at: new Date().toISOString(),
   });
 
-  await (supabase.from("payments") as any)
+  await supabase.from("payments")
     .update({
       status: "failed",
       payment_provider: "paystack",
@@ -1894,7 +1981,7 @@ async function handleAdditionalChargeFailed(
     .eq("payment_provider", "paystack")
     .eq("payment_provider_transaction_id", reference);
 
-  await (supabase.from("booking_events") as any).insert({
+  await supabase.from("booking_events").insert({
     booking_id: bookingId,
     event_type: "additional_payment_failed",
     event_data: { charge_id: chargeId, reference },
@@ -1903,16 +1990,21 @@ async function handleAdditionalChargeFailed(
 
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
-    await sendToUser(bookingData.customer_id, {
-      title: "Additional Payment Failed",
-      message: `Your additional payment could not be processed. Please try again.`,
-      data: {
-        type: "additional_payment_failed",
-        booking_id: bookingId,
-        charge_id: chargeId,
+    await sendToUser(
+      bookingData.customer_id,
+      {
+        title: "Additional Payment Failed",
+        message: `Your additional payment could not be processed. Please try again.`,
+        data: {
+          type: "additional_payment_failed",
+          booking_id: bookingId,
+          charge_id: chargeId,
+        },
+        url: `/account-settings/bookings/${bookingId}`,
       },
-      url: `/account-settings/bookings/${bookingId}`,
-    });
+      ["push"],
+      { appType: "customer" }
+    );
   } catch (notifError) {
     console.error("Error sending additional charge failure notification:", notifError);
   }

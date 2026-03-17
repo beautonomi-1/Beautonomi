@@ -639,7 +639,6 @@ const Navbar: React.FC = () => {
         pathname !== "/help/articles" &&
         pathname !== "/help" &&
         pathname !== "/hostpage" &&
-        pathname !== "/news" &&
         pathname !== "/reservation" &&
         pathname !== "/resources" &&
         pathname !== "/resources/pricing-place" &&

@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     // Build response object with all requested keys
     const result: Record<string, boolean> = {};
     keys.forEach((key: string) => {
-      const flag = featureFlags?.find((f: any) => f.feature_key === key);
+      const flag = featureFlags?.find((f: { feature_key?: string; enabled?: boolean }) => f.feature_key === key);
       result[key] = flag?.enabled ?? false;
     });
 

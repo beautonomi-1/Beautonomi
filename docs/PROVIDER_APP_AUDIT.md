@@ -51,7 +51,7 @@
 
 **More – hubs / info**  
 - index, schedule-hub, finance-hub, products-hub, team-hub, marketing-hub, rewards-hub, settings-hub, settings-account-hub  
-- profile, contact-support, portal, in-app-browser, [slug] (catch-all “manage on web”)
+- profile, contact-support, **finance-billing-hub** (VAT reports, team totals, my earnings native); **reports** (native entry points); **settings** (calendar links, receipt sequencing, ads, marketing-integrations native); **Forms create** and **Automations create** native. **Settings-account-hub** “Paid ads” → native `(app)/(tabs)/more/settings/ads` (not marketing). **Safety panic:** SafetyPanicButton on booking detail (web and mobile; `bookings/[id]`). Portal (in-app browser) only for package create/edit, subscription payment, onboarding, setup links, invoices, express-booking. **Verification (Sumsub):** app gets token via Bearer, then opens token-only embed (`/provider/verification/embed#token=...&refresh_token=...`) in WebView—no web login required.
 
 ---
 
@@ -139,6 +139,8 @@ All provider API calls go through `api` from `@/lib/api-client` (baseUrl = APP_U
 | `GET/POST /api/provider/staff/[id]/days-off` | days-off | Days off |
 | `GET/POST /api/provider/staff/[id]/time-clock/*` | time-clock | Clock in/out |
 | `GET/PATCH /api/provider/staff/[id]/permissions` | staff-permissions/[id] | Permissions |
+| `GET /api/provider/staff/totals` | team-totals | Staff totals (daily/weekly) |
+| `GET /api/provider/staff/[id]/totals` | team-totals | Single staff totals |
 
 ### 2.7 Settings (representative)
 
@@ -167,6 +169,7 @@ All provider API calls go through `api` from `@/lib/api-client` (baseUrl = APP_U
 | `GET/PUT /api/provider/shipping-config` | settings/shipping-config | Shipping |
 | `GET /api/provider/forms` | settings/forms, resources-forms-hub | Forms list |
 | `GET/PATCH /api/provider/settings/appointments` | settings-appointment-defaults | Appointment defaults |
+| `GET/PATCH /api/provider/settings/sales/receipt` | receipt-sequencing | Receipt sequencing |
 
 ### 2.8 Reports, finance, sales
 
@@ -178,6 +181,9 @@ All provider API calls go through `api` from `@/lib/api-client` (baseUrl = APP_U
 | `GET /api/provider/invoices` | invoices, settings/billing | Invoices |
 | `PATCH /api/provider/invoices/[id]`, send | invoices | Update/send invoice |
 | `GET /api/provider/pay-runs`, POST approve, mark-paid, create | payroll | Pay runs |
+| `GET /api/provider/pay-runs/my-earnings` | my-earnings | My pay stubs |
+| `GET /api/provider/finance/vat-reports` | vat-reports | VAT reports by year |
+| `PATCH /api/provider/finance/vat-reports/[id]/mark-remitted` | vat-reports | Mark period remitted |
 
 ### 2.9 Other
 
@@ -194,6 +200,7 @@ All provider API calls go through `api` from `@/lib/api-client` (baseUrl = APP_U
 | `GET /api/provider/time-blocks` + POST/DELETE | time-blocks | Time blocks |
 | `GET /api/provider/analytics` | analytics | Analytics |
 | `GET /api/provider/campaigns` | marketing | Campaigns |
+| `GET/POST /api/provider/automations` | settings/automations, settings/automations-create | Automations list, create |
 | `GET /api/provider/subscription` | subscription | Subscription |
 | `GET /api/provider/gamification` + recalculate | gamification | Gamification |
 | `GET /api/provider/booking-link` + express links | express-booking | Express booking |
@@ -292,10 +299,11 @@ All provider API calls go through `api` from `@/lib/api-client` (baseUrl = APP_U
 
 - **[slug].tsx:** Catch-all; message “Manage this in the provider dashboard on the web.” **By design.**
 - **Search (app):** Message to use provider dashboard on web. **By design.**
-- **Reports (more):** “For full reports … use the provider dashboard on the web.” **By design.**
-- **Packages-list:** Create package opens web URL. **By design.**
-- **Marketing:** “Use the provider portal to build and send campaigns.” **By design.**
-- **Automations, forms, recurring-appointments, delete-account-info, etc.:** Similar “use web” where mobile doesn’t implement full flow. **By design.**
+- **Reports (more):** Entry points are native (categories → native report screens). **OK.**
+- **Packages-list:** Create/edit package opens web URL. **By design.**
+- **Marketing:** Campaign creation may direct to portal. **By design.**
+- **Forms create, Automations create:** Native screens (form modal; settings/automations-create). **OK.**
+- **Recurring-appointments, delete-account-info, etc.:** “Use web” where mobile doesn't implement full flow. **By design.**
 
 ### 4.12 Onboarding
 
@@ -303,7 +311,7 @@ All provider API calls go through `api` from `@/lib/api-client` (baseUrl = APP_U
 
 ### 4.13 Billing / invoice download
 
-- **settings/billing.tsx:** “Download” now uses absolute URL (`APP_URL + /api/provider/invoices/[id]/download`) so native opens the correct host. **Note:** The download route requires provider auth; opening in the system browser may show 401 unless the user has an active web session. For a fully native experience, consider an authenticated download (e.g. fetch with Bearer and share the blob via expo-sharing) or open the URL in an in-app WebView that injects session.
+- **settings/billing.tsx:** “Download” now uses absolute URL (`APP_URL + /api/provider/invoices/[id]/download`) so native opens the correct host. **Note:** The download route requires provider auth; opening in a browser without auth may show 401 unless the user has an active web session. For a fully native experience, consider an authenticated download (e.g. fetch with Bearer and share the blob via expo-sharing). On native, download uses authenticated fetch + Share; other web flows use in-app WebView.
 
 ---
 
@@ -313,7 +321,7 @@ All provider API calls go through `api` from `@/lib/api-client` (baseUrl = APP_U
 
 | Item | Location | Fix applied |
 |------|----------|-------------|
-| Invoice download on native | `more/settings/billing.tsx` | Download button now uses absolute URL (`APP_URL + path`). If the user gets 401 when the link opens in the system browser, consider authenticated fetch + share or in-app WebView with session. |
+| Invoice download on native | `more/settings/billing.tsx` | Download button now uses absolute URL (`APP_URL + path`). On native, billing download already uses authenticated fetch + share. Other web flows use in-app WebView. |
 
 ### 5.2 Data/API checks (verified)
 
@@ -336,6 +344,6 @@ All provider API calls go through `api` from `@/lib/api-client` (baseUrl = APP_U
 - **APIs:** All provider screens use `api` from `@/lib/api-client`; endpoints align with web API (provider and me). No stray or duplicate base URLs.
 - **Data:** Response handling is mostly consistent (array vs `data` unwrap). Only team/reference-data shapes worth confirming.
 - **Functionality:** Core flows (auth, dashboard, bookings, clients, messaging, custom requests, locations, catalogue, products, settings) are wired and correct except invoice download on native.
-- **By design:** Several features intentionally “use web” (search, full reports, packages creation, marketing, automations, delete account, etc.); no change needed unless product adds mobile flows.
+- **By design:** Some features intentionally “use web” (search, packages create/edit, marketing campaigns, delete account, etc.). Reports entry points, Forms create, Automations create, VAT reports, team totals, my earnings, and settings sub-pages are native.
 
 **Next step:** Fix billing invoice download URL for native (absolute URL + auth if required), then optionally verify team and reference-data response shapes with backend.

@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
@@ -86,12 +87,13 @@ export async function GET(request: NextRequest) {
       revenueByProvider[id] += Number(t.net ?? t.amount ?? 0);
     });
 
-    const providersWithMetrics = (providers || []).map((p: any) => {
+    type ProviderReportRow = { id: string; business_name?: string; owner_name?: string; status?: string; rating_average?: number };
+    const providersWithMetrics = (providers || []).map((p: ProviderReportRow) => {
       const bookingsData = bookingsByProvider[p.id] || { count: 0, revenue: 0 };
       const txRevenue = revenueByProvider[p.id] ?? 0;
       return {
         provider_id: p.id,
-        provider_name: p.business_name || p.owner_name || 'Unknown',
+        provider_name: p.business_name || p.owner_name || "Unknown",
         status: p.status,
         rating_average: Number(p.rating_average) || 0,
         bookings_count: bookingsData.count,

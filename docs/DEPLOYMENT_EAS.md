@@ -12,11 +12,11 @@ Use this to continue from where you left off.
 | Apple: App ID com.beautonomi.partner | Done | Identifiers → App ID exists |
 | Apple: App Group | Done | `group.com.beautonomi.partner.onesignal` created and linked to App ID |
 | OneSignal: APNs + App ID | Done | .p8 key uploaded; App ID `2a9cb375-343c-43d7-83ab-955654811406`; superadmin must return this via `/api/public/third-party-config?service=onesignal` |
-| **Provider: EAS iOS credentials** | **Next** | From `apps/provider`: `eas credentials --platform ios` → production → Build Credentials → finish provisioning profile |
+| **Provider: EAS iOS credentials** | **Next** | From `apps/provider`: `eas credentials --platform ios` → production → Build Credentials → finish provisioning profile. Step-by-step: `apps/provider/IOS_CREDENTIALS_SETUP.md` |
 | Customer: Apple App ID + credentials | Pending | Register `com.beautonomi.customer` (or existing ID), then `eas credentials --platform ios` in `apps/customer` |
 | Google Play key (if submitting) | Optional | `apps/provider/google-services-key.json`, `apps/customer/google-services-key.json` |
 | Build | After credentials | Push to dev → merge to main, or run `eas build --profile production --platform all` |
-| Submit to TestFlight / stores | After build | `eas submit --profile production --platform ios --latest` (and Android if key in place) |
+| Submit to TestFlight / stores | After build | `eas submit --profile production --platform ios --latest` (and Android if key in place). **Step-by-step when builds run on push to main:** [IOS_RELEASE_SUBMIT.md](./IOS_RELEASE_SUBMIT.md) |
 
 ## Prerequisites
 

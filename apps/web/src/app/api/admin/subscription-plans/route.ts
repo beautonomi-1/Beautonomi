@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { z } from 'zod';
 import { createPlan, updatePlan } from '@/lib/payments/paystack-complete';
 import { convertToSmallestUnit } from '@/lib/payments/paystack';
@@ -92,7 +93,7 @@ const updatePlanSchema = createPlanSchema.partial().extend({
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = await getSupabaseServer(request);
 
     const { data: plans, error } = await supabase
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const data = createPlanSchema.parse(body);
@@ -136,9 +137,10 @@ export async function POST(request: NextRequest) {
             currency: data.currency,
           });
           paystackPlanCodeMonthly = monthlyPlan.data?.plan_code || null;
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error('Failed to create Paystack monthly plan:', err);
-          throw new Error(`Failed to create Paystack monthly plan: ${err.message}`);
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          throw new Error(`Failed to create Paystack monthly plan: ${msg}`);
         }
       }
 
@@ -152,16 +154,16 @@ export async function POST(request: NextRequest) {
             currency: data.currency,
           });
           paystackPlanCodeYearly = yearlyPlan.data?.plan_code || null;
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error('Failed to create Paystack yearly plan:', err);
-          // If monthly was created, try to clean it up
-          throw new Error(`Failed to create Paystack yearly plan: ${err.message}`);
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          throw new Error(`Failed to create Paystack yearly plan: ${msg}`);
         }
       }
     }
 
     // Normalize features to JSONB object format
-    let featuresJsonb: any = data.features || {};
+    let featuresJsonb: Record<string, unknown> = (data.features as Record<string, unknown>) ?? {};
     
     // If features is an array (legacy format), convert to empty object
     // The complex structure should be provided from the frontend
@@ -198,7 +200,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(
-        new Error(error.issues.map((e: any) => e.message).join(', ')),
+        new Error(error.issues.map((e: { message: string }) => e.message).join(', ')),
         'Validation failed',
         'VALIDATION_ERROR',
         400
@@ -214,7 +216,7 @@ export async function POST(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const { id, ...updates } = body;
@@ -257,12 +259,11 @@ export async function PUT(request: NextRequest) {
               ...commonOpts,
             }
           );
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error('Failed to update Paystack monthly plan:', err);
         }
       }
 
-      // Update yearly plan
       if (data.price_yearly !== undefined && existingPlan.paystack_plan_code_yearly) {
         try {
           await updatePlan(
@@ -273,14 +274,14 @@ export async function PUT(request: NextRequest) {
               ...commonOpts,
             }
           );
-        } catch (err: any) {
+        } catch (err: unknown) {
           console.error('Failed to update Paystack yearly plan:', err);
         }
       }
     }
 
     // Normalize features to JSONB object format if provided
-    const updateData: any = { ...data };
+    const updateData: Record<string, unknown> = { ...data };
     delete updateData.update_existing_subscriptions;
     if (updateData.features !== undefined) {
       // If features is an array (legacy format), preserve existing structure
@@ -289,8 +290,8 @@ export async function PUT(request: NextRequest) {
         delete updateData.features;
       } else {
         // Merge with existing features to preserve other feature categories
-        if (existingPlan.features && typeof existingPlan.features === 'object' && !Array.isArray(existingPlan.features)) {
-          updateData.features = { ...existingPlan.features, ...updateData.features };
+        if (existingPlan.features && typeof existingPlan.features === 'object' && !Array.isArray(existingPlan.features) && updateData.features && typeof updateData.features === 'object' && !Array.isArray(updateData.features)) {
+          updateData.features = { ...(existingPlan.features as Record<string, unknown>), ...(updateData.features as Record<string, unknown>) };
         }
       }
     }
@@ -312,7 +313,7 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleApiError(
-        new Error(error.issues.map((e: any) => e.message).join(', ')),
+        new Error(error.issues.map((e: { message: string }) => e.message).join(', ')),
         'Validation failed',
         'VALIDATION_ERROR',
         400

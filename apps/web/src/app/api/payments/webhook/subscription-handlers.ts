@@ -10,14 +10,17 @@
  */
 
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Handle subscription.create event
  */
-export async function handleSubscriptionCreate(payload: any, supabase: any) {
-  const subscriptionCode = payload.subscription_code;
-  const customerCode = payload.customer?.customer_code || payload.customer_code;
-  const planCode = payload.plan?.plan_code || payload.plan_code;
+export async function handleSubscriptionCreate(payload: Record<string, unknown>, supabase: SupabaseClient) {
+  const subscriptionCode = payload.subscription_code as string | undefined;
+  const customer = payload.customer as Record<string, unknown> | undefined;
+  const plan = payload.plan as Record<string, unknown> | undefined;
+  const customerCode = (customer?.customer_code ?? payload.customer_code) as string | undefined;
+  const planCode = (plan?.plan_code ?? payload.plan_code) as string | undefined;
   const status = payload.status;
   const nextPaymentDate = payload.next_payment_date;
 
@@ -27,13 +30,14 @@ export async function handleSubscriptionCreate(payload: any, supabase: any) {
   }
 
   // Find provider by customer code or email
-  const { data: customer } = await supabase
+  const customerEmail = (payload.customer as Record<string, unknown> | undefined)?.email as string | undefined;
+  const { data: customerRow } = await supabase
     .from("users")
     .select("id, email")
-    .eq("email", payload.customer?.email || "")
+    .eq("email", customerEmail ?? "")
     .single();
 
-  if (!customer) {
+  if (!customerRow) {
     console.error("Customer not found for subscription:", customerCode);
     return;
   }
@@ -42,22 +46,22 @@ export async function handleSubscriptionCreate(payload: any, supabase: any) {
   const { data: provider } = await supabase
     .from("providers")
     .select("id")
-    .eq("user_id", customer.id)
+    .eq("user_id", customerRow.id)
     .single();
 
   if (!provider) {
-    console.error("Provider not found for user:", customer.id);
+    console.error("Provider not found for user:", customerRow.id);
     return;
   }
 
   // Find plan by Paystack plan code
-  const { data: plan } = await supabase
+  const { data: planRow } = await supabase
     .from("subscription_plans")
     .select("id")
     .or(`paystack_plan_code_monthly.eq.${planCode},paystack_plan_code_yearly.eq.${planCode}`)
     .single();
 
-  if (!plan) {
+  if (!planRow) {
     console.error("Plan not found for Paystack plan code:", planCode);
     return;
   }
@@ -66,24 +70,27 @@ export async function handleSubscriptionCreate(payload: any, supabase: any) {
   const { data: planDetails } = await supabase
     .from("subscription_plans")
     .select("paystack_plan_code_monthly, paystack_plan_code_yearly")
-    .eq("id", plan.id)
+    .eq("id", planRow.id)
     .single();
 
-  const billingPeriod = 
-    (planDetails as any)?.paystack_plan_code_monthly === planCode ? "monthly" : "yearly";
+  type PlanDetailsRow = { paystack_plan_code_monthly?: string; paystack_plan_code_yearly?: string };
+  const billingPeriod =
+    (planDetails as PlanDetailsRow | null)?.paystack_plan_code_monthly === planCode ? "monthly" : "yearly";
 
-  // Update or create subscription
-  await (supabase.from("provider_subscriptions") as any).upsert({
+  const auth = payload.authorization as Record<string, unknown> | undefined;
+  const authCode = auth?.authorization_code as string | undefined;
+  const createdAt = payload.createdAt as string | number | Date | undefined;
+  await supabase.from("provider_subscriptions").upsert({
     provider_id: provider.id,
-    plan_id: plan.id,
+    plan_id: planRow.id,
     status: status === "active" ? "active" : "inactive",
     paystack_subscription_code: subscriptionCode,
     paystack_customer_code: customerCode,
-    paystack_authorization_code: payload.authorization?.authorization_code,
+    paystack_authorization_code: authCode,
     billing_period: billingPeriod,
     auto_renew: true,
-    next_payment_date: nextPaymentDate ? new Date(nextPaymentDate).toISOString() : null,
-    started_at: payload.createdAt ? new Date(payload.createdAt).toISOString() : new Date().toISOString(),
+    next_payment_date: nextPaymentDate ? new Date(nextPaymentDate as string | number | Date).toISOString() : null,
+    started_at: createdAt ? new Date(createdAt).toISOString() : new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }, { onConflict: "provider_id" });
 }
@@ -91,16 +98,15 @@ export async function handleSubscriptionCreate(payload: any, supabase: any) {
 /**
  * Handle subscription.disable event
  */
-export async function handleSubscriptionDisable(payload: any, supabase: any) {
-  const subscriptionCode = payload.subscription_code;
+export async function handleSubscriptionDisable(payload: Record<string, unknown>, supabase: SupabaseClient) {
+  const subscriptionCode = payload.subscription_code as string | undefined;
 
   if (!subscriptionCode) {
     console.error("Missing subscription_code in subscription.disable event");
     return;
   }
 
-  // Update subscription status
-  await (supabase.from("provider_subscriptions") as any)
+  await supabase.from("provider_subscriptions")
     .update({
       status: "cancelled",
       auto_renew: false,
@@ -113,7 +119,7 @@ export async function handleSubscriptionDisable(payload: any, supabase: any) {
 /**
  * Handle subscription.enable event
  */
-export async function handleSubscriptionEnable(payload: any, supabase: any) {
+export async function handleSubscriptionEnable(payload: Record<string, unknown>, supabase: SupabaseClient) {
   const subscriptionCode = payload.subscription_code;
   const nextPaymentDate = payload.next_payment_date;
 
@@ -122,30 +128,30 @@ export async function handleSubscriptionEnable(payload: any, supabase: any) {
     return;
   }
 
-  // Update subscription status
-  await (supabase.from("provider_subscriptions") as any)
+  await supabase.from("provider_subscriptions")
     .update({
       status: "active",
       auto_renew: true,
-      next_payment_date: nextPaymentDate ? new Date(nextPaymentDate).toISOString() : null,
+      next_payment_date: nextPaymentDate ? new Date(nextPaymentDate as string).toISOString() : null,
       cancelled_at: null,
       updated_at: new Date().toISOString(),
     })
-    .eq("paystack_subscription_code", subscriptionCode);
+    .eq("paystack_subscription_code", subscriptionCode as string);
 }
 
 /**
  * Handle subscription invoice events (renewals)
  */
 export async function handleSubscriptionInvoice(
-  payload: any,
+  payload: Record<string, unknown>,
   eventType: string,
-  supabase: any
+  supabase: SupabaseClient
 ) {
-  const subscriptionCode = payload.subscription?.subscription_code || payload.subscription_code;
-  const invoiceCode = payload.invoice_code || payload.code;
-  const amount = payload.amount || 0;
-  const fees = payload.fees || 0;
+  const subPayload = payload.subscription as Record<string, unknown> | undefined;
+  const subscriptionCode = (subPayload?.subscription_code ?? payload.subscription_code) as string | undefined;
+  const invoiceCode = (payload.invoice_code ?? payload.code) as string | undefined;
+  const amount = Number(payload.amount ?? 0);
+  const fees = Number(payload.fees ?? 0);
   const status = payload.status;
   const paidAt = payload.paid_at;
 
@@ -166,35 +172,33 @@ export async function handleSubscriptionInvoice(
     return;
   }
 
-  const providerId = (subscription as any).provider_id;
-  const _planId = (subscription as any).plan_id;
+  type SubRow = { provider_id?: string; plan_id?: string };
+  const sub = subscription as SubRow;
+  const providerId = sub.provider_id;
+  const _planId = sub.plan_id;
 
   if (eventType === "invoice.create") {
-    // New invoice created (upcoming renewal)
-    // Update next payment date
-    const dueDate = payload.due_date;
-    await (supabase.from("provider_subscriptions") as any)
+    const dueDate = payload.due_date as string | number | Date | undefined;
+    await supabase.from("provider_subscriptions")
       .update({
         next_payment_date: dueDate ? new Date(dueDate).toISOString() : null,
         updated_at: new Date().toISOString(),
       })
       .eq("paystack_subscription_code", subscriptionCode);
   } else if (eventType === "invoice.payment_failed") {
-    // Payment failed - mark subscription as past_due
-    await (supabase.from("provider_subscriptions") as any)
+    await supabase.from("provider_subscriptions")
       .update({
         status: "past_due",
         updated_at: new Date().toISOString(),
       })
       .eq("paystack_subscription_code", subscriptionCode);
 
-    // Record failed transaction
-    await (supabase.from("payment_transactions") as any).insert({
+    await supabase.from("payment_transactions").insert({
       booking_id: null,
       reference: invoiceCode,
       amount: convertFromSmallestUnit(amount),
       fees: convertFromSmallestUnit(fees),
-      net_amount: convertFromSmallestUnit(amount - fees),
+      net_amount: convertFromSmallestUnit(amount - fees as number),
       status: "failed",
       provider: "paystack",
       transaction_type: "provider_subscription_payment",
@@ -223,20 +227,19 @@ export async function handleSubscriptionInvoice(
     const expiresAt = new Date(now);
     expiresAt.setMonth(expiresAt.getMonth() + 1); // Add 1 month for renewal
 
-    const nextPaymentDate = payload.next_payment_date || expiresAt;
+    const nextPaymentDate = (payload.next_payment_date ?? expiresAt) as string | number | Date | undefined;
 
-    await (supabase.from("provider_subscriptions") as any)
+    await supabase.from("provider_subscriptions")
       .update({
         status: "active",
-        last_payment_date: new Date(paidAt).toISOString(),
+        last_payment_date: new Date(paidAt as string | number | Date).toISOString(),
         expires_at: expiresAt.toISOString(),
         next_payment_date: nextPaymentDate ? new Date(nextPaymentDate).toISOString() : null,
         updated_at: new Date().toISOString(),
       })
       .eq("paystack_subscription_code", subscriptionCode);
 
-    // Record successful transaction
-    await (supabase.from("payment_transactions") as any).insert({
+    await supabase.from("payment_transactions").insert({
       booking_id: null,
       reference: invoiceCode,
       amount: amountInCurrency,
@@ -253,8 +256,7 @@ export async function handleSubscriptionInvoice(
       created_at: new Date().toISOString(),
     });
 
-    // Record finance transaction
-    await (supabase.from("finance_transactions") as any).insert({
+    await supabase.from("finance_transactions").insert({
       booking_id: null,
       provider_id: providerId,
       transaction_type: "provider_subscription_payment",
@@ -305,7 +307,8 @@ export async function handleSubscriptionInvoice(
               app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
               year: new Date().getFullYear().toString(),
             },
-            ["push", "email", "sms"]
+            ["push", "email", "sms"],
+            { appType: "provider" }
           );
         }
       } catch (notifError) {

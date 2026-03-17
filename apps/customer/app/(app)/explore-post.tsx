@@ -225,6 +225,15 @@ export default function ExplorePostScreen() {
     }
   }, [post, router]);
 
+  const goToBookThisLook = useCallback(() => {
+    if (post?.provider?.slug && post?.offering?.id) {
+      router.push({
+        pathname: "/(app)/book",
+        params: { slug: post.provider.slug, service_id: post.offering.id },
+      });
+    }
+  }, [post?.provider?.slug, post?.offering?.id]);
+
   if (loading && !post) {
     return (
       <>
@@ -404,18 +413,37 @@ export default function ExplorePostScreen() {
                 ) : null}
               </View>
               {post.provider?.slug ? (
-                <TouchableOpacity
-                  onPress={goToProvider}
-                  style={{
-                    borderWidth: 1.5,
-                    borderColor: Colors.primary,
-                    borderRadius: 10,
-                    paddingHorizontal: 14,
-                    paddingVertical: 7,
-                  }}
-                >
-                  <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 13 }}>View Profile</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  {post.offering?.id ? (
+                    <TouchableOpacity
+                      onPress={goToBookThisLook}
+                      style={{
+                        borderWidth: 1.5,
+                        borderColor: Colors.primary,
+                        borderRadius: 10,
+                        paddingHorizontal: 14,
+                        paddingVertical: 7,
+                        backgroundColor: Colors.primary,
+                      }}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "600", fontSize: 13 }}>
+                        Book this look{post.offering.name ? ` · ${post.offering.name}` : ""}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity
+                    onPress={goToProvider}
+                    style={{
+                      borderWidth: 1.5,
+                      borderColor: Colors.primary,
+                      borderRadius: 10,
+                      paddingHorizontal: 14,
+                      paddingVertical: 7,
+                    }}
+                  >
+                    <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 13 }}>View Profile</Text>
+                  </TouchableOpacity>
+                </View>
               ) : null}
             </Pressable>
 

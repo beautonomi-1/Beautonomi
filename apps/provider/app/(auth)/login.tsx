@@ -89,7 +89,7 @@ export default function LoginScreen() {
     params.suspended === "1"
       ? "Your account has been suspended. Contact support if you believe this is an error."
       : params.deactivated === "1"
-        ? "Your account has been deactivated. Contact support to reactivate."
+        ? "You deactivated your account. Log in again to reactivate."
         : null;
   const [countryCode, setCountryCode] = useState("+27");
   const [showCountryPicker, setShowCountryPicker] = useState(false);
@@ -164,19 +164,6 @@ export default function LoginScreen() {
         setFormError(error.message);
         return;
       }
-      // #region agent log
-      fetch("http://127.0.0.1:7243/ingest/89f3cdbd-444d-401b-9bce-c59a37625210", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          location: "login.tsx:handleVerifyOtp",
-          message: "verifyOtp success, navigating",
-          data: {},
-          timestamp: Date.now(),
-          hypothesisId: "D",
-        }),
-      }).catch(() => {});
-      // #endregion
       router.replace("/");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Verification failed. Please try again.");
@@ -199,19 +186,6 @@ export default function LoginScreen() {
         );
         return;
       }
-      // #region agent log
-      fetch("http://127.0.0.1:7243/ingest/89f3cdbd-444d-401b-9bce-c59a37625210", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          location: "login.tsx:handleOAuth",
-          message: "OAuth success, navigating",
-          data: {},
-          timestamp: Date.now(),
-          hypothesisId: "D",
-        }),
-      }).catch(() => {});
-      // #endregion
       router.replace("/");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "OAuth sign-in failed. Please try again.");
@@ -237,19 +211,6 @@ export default function LoginScreen() {
         setFormError(error.message);
         return;
       }
-      // #region agent log
-      fetch("http://127.0.0.1:7243/ingest/89f3cdbd-444d-401b-9bce-c59a37625210", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          location: "login.tsx:handleEmailLogin",
-          message: "email login success, navigating",
-          data: {},
-          timestamp: Date.now(),
-          hypothesisId: "D",
-        }),
-      }).catch(() => {});
-      // #endregion
       router.replace("/");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Login failed. Please try again.");
@@ -685,26 +646,28 @@ export default function LoginScreen() {
           <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Google</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() => handleOAuth("apple")}
-          disabled={loading}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            borderWidth: 1.5,
-            borderColor: "#E5E7EB",
-            borderRadius: 12,
-            paddingVertical: 14,
-            marginBottom: 12,
-            backgroundColor: "#fff",
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Continue with Apple"
-        >
-          <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
-          <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
-        </TouchableOpacity>
+        {Platform.OS === "ios" && (
+          <TouchableOpacity
+            onPress={() => handleOAuth("apple")}
+            disabled={loading}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1.5,
+              borderColor: "#E5E7EB",
+              borderRadius: 12,
+              paddingVertical: 14,
+              marginBottom: 12,
+              backgroundColor: "#fff",
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Continue with Apple"
+          >
+            <Ionicons name="logo-apple" size={20} color="#000" style={{ marginRight: 10 }} />
+            <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>Continue with Apple</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Sign up link */}
         <View style={{ marginTop: 20 }}>

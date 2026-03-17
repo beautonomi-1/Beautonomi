@@ -7,9 +7,12 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import ProviderCard from "@/app/home/components/provider-card-dynamic";
+import type { PublicProviderCard } from "@/types/beautonomi";
+
+type RecentlyViewedProvider = { id: string; slug?: string; business_name?: string; [key: string]: unknown };
 
 export default function RecentlyViewedPage() {
-  const [providers, setProviders] = useState<any[]>([]);
+  const [providers, setProviders] = useState<RecentlyViewedProvider[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,7 +21,7 @@ export default function RecentlyViewedPage() {
       try {
         setIsLoading(true);
         setError(null);
-        const response = await fetcher.get<{ data: any[] }>("/api/me/recently-viewed", { cache: "no-store" });
+        const response = await fetcher.get<{ data: RecentlyViewedProvider[] }>("/api/me/recently-viewed", { cache: "no-store" });
         setProviders(response.data || []);
       } catch (err) {
         const errorMessage =
@@ -90,7 +93,7 @@ export default function RecentlyViewedPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 justify-start gap-6 gap-y-10">
             {providers.map((provider, index) => (
-              <ProviderCard key={provider.id || index} provider={provider} />
+              <ProviderCard key={provider.id || index} provider={provider as unknown as PublicProviderCard} />
             ))}
           </div>
         )}

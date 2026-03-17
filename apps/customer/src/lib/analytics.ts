@@ -159,7 +159,7 @@ export function trackExplorePostLiked(postId: string) {
 }
 
 export function trackExploreSaved(postId: string) {
-  track("explore_save", { post_id: postId });
+  track("explore_post_save", { post_id: postId });
 }
 
 // ── Payment Events ───────────────────────────────────────────────────────────

@@ -40,7 +40,7 @@ export default function SettingsDeactivateAccountScreen() {
     }
     Alert.alert(
       "Deactivate account",
-      "Your account will be disabled. You can reactivate it by logging in again. Continue?",
+      "Your account will be disabled. You can reactivate anytime by logging in again or opening the reactivate page in the web app. Continue?",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -59,7 +59,7 @@ export default function SettingsDeactivateAccountScreen() {
                 return;
               }
               await signOut();
-              router.replace("/(auth)/login" as never);
+              router.replace("/(auth)/login?deactivated=1" as never);
             } catch (e) {
               const msg = e instanceof Error ? e.message : "Deactivation failed. Please try again.";
               Alert.alert("Error", msg);
@@ -91,7 +91,7 @@ export default function SettingsDeactivateAccountScreen() {
           <View style={{ paddingHorizontal: 8, paddingTop: 8 }}>
             <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: "#fcd34d", backgroundColor: "rgba(254,243,199,0.8)", padding: 12 }}>
               <Text style={{ fontSize: 14, color: "#92400e" }}>
-                Deactivating disables your account. Your data is kept. You can log in again anytime to reactivate.
+                Deactivating disables your account. Your data is kept. You can reactivate anytime by logging in again or opening the reactivate page in the web app.
               </Text>
             </View>
             <View style={{ marginBottom: 12 }}>

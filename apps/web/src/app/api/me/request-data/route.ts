@@ -11,7 +11,7 @@ import { requireRoleInApi, handleApiError, successResponse } from "@/lib/supabas
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Check if there's already a pending request
     const { data: existingUser } = await supabase
@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: userData, error } = await supabase
       .from("users")

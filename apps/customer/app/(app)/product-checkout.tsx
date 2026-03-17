@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -96,22 +95,26 @@ export default function ProductCheckoutScreen() {
       const defaultAddr = addrList.find((a) => a.is_default);
       if (defaultAddr) setSelectedAddress(defaultAddr.id);
 
-      // Fetch provider locations
-      const locRes = await api.get<{ locations: Location[] } | Location[]>(
-        `/api/public/providers/${provider_id}/locations`,
+      // Fetch provider locations (public API by provider_id)
+      const locRes = await api.get<{ data?: { locations?: Location[] }; locations?: Location[] }>(
+        `/api/public/provider-locations?provider_id=${provider_id}`,
       );
       const locData = locRes.data;
-      const locList = Array.isArray(locData) ? locData : (locData as any)?.locations ?? [];
+      const locList = Array.isArray(locData)
+        ? locData
+        : (locData as any)?.locations ?? (locData as any)?.data?.locations ?? [];
       setLocations(locList);
       if (locList.length > 0) setSelectedLocation(locList[0].id);
 
-      // Fetch shipping config
-      const shipRes = await api.get<{ shipping: ShippingConfig } | ShippingConfig>(
+      // Fetch shipping config (API returns { data: { shipping: config } })
+      const shipRes = await api.get<{ data?: { shipping?: ShippingConfig }; shipping?: ShippingConfig }>(
         `/api/public/products/shipping-config?provider_id=${provider_id}`,
       );
       if (shipRes.data) {
-        const sc = (shipRes.data as any)?.shipping ?? (shipRes.data as any)?.config ?? shipRes.data;
-        setShippingConfig(sc);
+        const raw = shipRes.data as any;
+        const sc = raw?.shipping ?? raw?.data?.shipping ?? raw?.config ?? raw;
+        if (sc && typeof sc === "object" && ("offers_delivery" in sc || "offers_collection" in sc))
+          setShippingConfig(sc as ShippingConfig);
         if (!sc.offers_collection && sc.offers_delivery) setFulfillment("delivery");
       }
 
@@ -262,16 +265,15 @@ export default function ProductCheckoutScreen() {
       return;
     }
 
-    // 3. Open Paystack payment page
+    // 3. Open Paystack payment page (in-app browser on native so user stays in app)
     const url = paystackRes.data.authorization_url;
     if (Platform.OS === "web") {
       window.location.href = url;
     } else {
-      const canOpen = await Linking.canOpenURL(url);
-      if (canOpen) {
-        await Linking.openURL(url);
-      }
-      router.replace("/product-orders" as any);
+      router.push({
+        pathname: "/(app)/in-app-browser",
+        params: { url: encodeURIComponent(url), title: "Complete payment" },
+      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- orders/paymentMethod from context
   }, [provider_id, fulfillment, selectedAddress, selectedLocation, orders.createOrder, router, user, total, useWallet]);

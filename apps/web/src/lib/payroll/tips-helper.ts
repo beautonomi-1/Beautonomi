@@ -16,9 +16,12 @@ export async function getTipsByStaff(
     .from("booking_tip_allocations")
     .select("booking_id, staff_id, amount");
 
+  type AllocationRow = { booking_id: string; staff_id: string; amount?: number };
+  type BookingRow = { id: string };
   if (!allAllocations?.length) return result;
 
-  const bookingIds = [...new Set(allAllocations.map((a: any) => a.booking_id))];
+  const allocationRows = allAllocations as AllocationRow[];
+  const bookingIds = [...new Set(allocationRows.map((a) => a.booking_id))];
   const { data: bookings } = await supabaseAdmin
     .from("bookings")
     .select("id, scheduled_at, provider_id")
@@ -27,11 +30,11 @@ export async function getTipsByStaff(
     .gte("scheduled_at", periodStart.toISOString())
     .lte("scheduled_at", periodEnd.toISOString());
 
-  const bookingIdSet = new Set((bookings || []).map((b: any) => b.id));
+  const bookingIdSet = new Set(((bookings ?? []) as BookingRow[]).map((b) => b.id));
 
-  for (const a of allAllocations as any[]) {
+  for (const a of allocationRows) {
     if (!bookingIdSet.has(a.booking_id)) continue;
-    const amt = Number(a.amount || 0);
+    const amt = Number(a.amount ?? 0);
     if (amt > 0) {
       result.set(a.staff_id, (result.get(a.staff_id) || 0) + amt);
     }

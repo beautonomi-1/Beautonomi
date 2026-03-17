@@ -12,7 +12,7 @@ import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
-import { exportToCSV, exportToPDF, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface StaffPerformanceData {
   staffMembers: Array<{
@@ -108,7 +108,7 @@ export default function StaffPerformanceReport() {
   const handleExport = (format: "csv" | "pdf" = "csv") => {
     if (!data) return;
     if (format === "csv") {
-      const exportData = formatReportDataForExport(data, "staff-performance");
+      const exportData = formatReportDataForExport(data as unknown as ReportRow, "staff-performance");
       exportToCSV(exportData, "staff-performance-report");
     } else {
       exportToPDF("staff-performance-report", "staff-performance-report", "Staff Performance Report");

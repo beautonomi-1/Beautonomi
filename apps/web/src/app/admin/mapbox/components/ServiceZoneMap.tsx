@@ -4,11 +4,16 @@ import React, { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
+export type MapCoordinate = { longitude: number; latitude: number };
+export type MapCoordinates =
+  | MapCoordinate
+  | MapCoordinate[];
+
 interface ServiceZoneMapProps {
   type: "radius" | "polygon";
-  coordinates: any;
+  coordinates: MapCoordinates | null | undefined;
   radiusKm?: number;
-  onCoordinatesChange: (coordinates: any) => void;
+  onCoordinatesChange: (coordinates: MapCoordinate | MapCoordinate[]) => void;
 }
 
 export default function ServiceZoneMap({
@@ -22,24 +27,21 @@ export default function ServiceZoneMap({
   const [mapLoaded, setMapLoaded] = useState(false);
   const [publicToken, setPublicToken] = useState<string>("");
   const markerRef = useRef<mapboxgl.Marker | null>(null);
-  const circleRef = useRef<any>(null);
-  const polygonRef = useRef<any>(null);
-
-  const loadMapboxToken = async () => {
-    try {
-      const envToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
-      if (envToken) {
-        setPublicToken(envToken);
-        return;
-      }
-      console.warn("NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN not set. Please configure it in your .env file.");
-    } catch {
-      console.error("Error loading Mapbox token");
-    }
-  };
+  const circleRef = useRef<boolean>(false);
+  const polygonRef = useRef<boolean>(false);
 
   useEffect(() => {
-    loadMapboxToken();
+    let cancelled = false;
+    (async () => {
+      try {
+        const envToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+        if (envToken && !cancelled) setPublicToken(envToken);
+        else if (!envToken) console.warn("NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN not set. Please configure it in your .env file.");
+      } catch {
+        console.error("Error loading Mapbox token");
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -61,7 +63,7 @@ export default function ServiceZoneMap({
       container: mapContainer.current,
       accessToken: publicToken,
       style: "mapbox://styles/mapbox/streets-v12",
-      center: coordinates && type === "radius" && coordinates.longitude
+      center: coordinates && type === "radius" && !Array.isArray(coordinates) && coordinates.longitude != null
         ? [coordinates.longitude, coordinates.latitude]
         : [28.0473, -26.2041], // Default to Johannesburg
       zoom: 12,
@@ -92,23 +94,24 @@ export default function ServiceZoneMap({
       markerRef.current = null;
     }
 
-    if (type === "radius" && coordinates && coordinates.longitude && coordinates.latitude) {
+    const center = type === "radius" && coordinates && !Array.isArray(coordinates) ? coordinates : null;
+    if (center && center.longitude != null && center.latitude != null) {
       // Add marker
       markerRef.current = new mapboxgl.Marker()
-        .setLngLat([coordinates.longitude, coordinates.latitude])
+        .setLngLat([center.longitude, center.latitude])
         .addTo(map.current);
 
-      // Add circle (approximate)
       if (circleRef.current) {
-        map.current.getSource("circle") && (map.current.getSource("circle") as any).setData({
+        const source = map.current.getSource("circle") as mapboxgl.GeoJSONSource | undefined;
+        source?.setData({
           type: "Feature",
           properties: {},
           geometry: {
             type: "Polygon",
             coordinates: [
               generateCircle(
-                coordinates.longitude,
-                coordinates.latitude,
+                center.longitude,
+                center.latitude,
                 (radiusKm || 5) * 1000 // Convert km to meters
               ),
             ],
@@ -124,8 +127,8 @@ export default function ServiceZoneMap({
               type: "Polygon",
               coordinates: [
                 generateCircle(
-                  coordinates.longitude,
-                  coordinates.latitude,
+                  center.longitude,
+                  center.latitude,
                   (radiusKm || 5) * 1000
                 ),
               ],
@@ -152,19 +155,20 @@ export default function ServiceZoneMap({
             "line-width": 2,
           },
         });
+        circleRef.current = true;
       }
 
       map.current.flyTo({
-        center: [coordinates.longitude, coordinates.latitude],
+        center: [center.longitude, center.latitude],
         zoom: Math.max(10, 15 - Math.log10(radiusKm || 5)),
       });
     } else if (type === "polygon" && Array.isArray(coordinates) && coordinates.length > 0) {
-      const polygonCoords = coordinates.map((c: any) => [c.longitude, c.latitude]);
-      polygonCoords.push(polygonCoords[0]); // Close the polygon
+      const polygonCoords = coordinates.map((c: MapCoordinate) => [c.longitude, c.latitude]);
+      polygonCoords.push(polygonCoords[0]);
 
       if (polygonRef.current) {
-        map.current.getSource("polygon") &&
-          (map.current.getSource("polygon") as any).setData({
+        const source = map.current.getSource("polygon") as mapboxgl.GeoJSONSource | undefined;
+        source?.setData({
             type: "Feature",
             properties: {},
             geometry: {
@@ -204,20 +208,19 @@ export default function ServiceZoneMap({
             "line-width": 2,
           },
         });
+        polygonRef.current = true;
       }
 
-      // Add markers for each point
-      coordinates.forEach((coord: any, index: number) => {
+      coordinates.forEach((coord: MapCoordinate, index: number) => {
         new mapboxgl.Marker({ color: "#3b82f6" })
           .setLngLat([coord.longitude, coord.latitude])
           .setPopup(new mapboxgl.Popup().setText(`Point ${index + 1}`))
           .addTo(map.current!);
       });
 
-      // Fit bounds
       if (coordinates.length >= 3) {
         const bounds = new mapboxgl.LngLatBounds();
-        coordinates.forEach((coord: any) => {
+        coordinates.forEach((coord: MapCoordinate) => {
           bounds.extend([coord.longitude, coord.latitude]);
         });
         map.current.fitBounds(bounds, { padding: 50 });

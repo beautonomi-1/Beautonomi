@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -15,7 +16,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
 
     const { id: idOrSlug } = await params;
     const supabase = getSupabaseAdmin();
@@ -68,11 +69,11 @@ export async function GET(
 
     const avgRating =
       reviews && reviews.length > 0
-        ? reviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reviews.length
+        ? reviews.reduce((sum: number, r: { rating?: number }) => sum + (r.rating ?? 0), 0) / reviews.length
         : 0;
 
     return successResponse({
-      ...(provider as Record<string, any>),
+      ...(provider as Record<string, unknown>),
       owner: owner ?? null,
       stats: {
         booking_count: bookingCount || 0,
@@ -95,7 +96,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const { id: idOrSlug } = await params;
     const supabase = getSupabaseAdmin();
     const body = await request.json();
@@ -114,8 +115,7 @@ export async function PATCH(
 
     const providerId = (provider as { id: string }).id;
 
-    // Prepare update data (only allow specific fields)
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
 

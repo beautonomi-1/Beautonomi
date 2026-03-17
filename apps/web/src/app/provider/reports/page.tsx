@@ -54,6 +54,7 @@ const reportCategories = [
     reports: [
       { id: "booking-summary", name: "Booking Summary", href: "/provider/reports/bookings/summary" },
       { id: "booking-status", name: "Booking Status", href: "/provider/reports/bookings/status" },
+      { id: "occupancy", name: "Occupancy", href: "/provider/reports/occupancy" },
       { id: "cancellations", name: "Cancellations", href: "/provider/reports/bookings/cancellations" },
       { id: "no-shows", name: "No-Shows", href: "/provider/reports/bookings/no-shows" },
     ],
@@ -79,9 +80,11 @@ const reportCategories = [
     color: "text-orange-600 bg-orange-50",
     reports: [
       { id: "payment-summary", name: "Payment Summary", href: "/provider/reports/payments/summary" },
+      { id: "end-of-day", name: "End of day", href: "/provider/reports/end-of-day" },
       { id: "refunds", name: "Refunds", href: "/provider/reports/payments/refunds" },
       { id: "payment-methods", name: "Payment Methods", href: "/provider/reports/payments/methods" },
       { id: "payouts", name: "Payouts", href: "/provider/reports/payments/payouts" },
+      { id: "yoco-reconciliation", name: "Yoco reconciliation", href: "/provider/reports/payments/yoco-reconciliation" },
     ],
   },
   {
@@ -151,20 +154,20 @@ export default function ReportsPage() {
     try {
       setIsLoadingStats(true);
       // Get stats from business overview endpoint (more accurate than dashboard)
-      const response = await fetcher.get<{ data: any }>("/api/provider/reports/business/overview?period=month");
-      const overviewData = response.data;
-      
+      type BusinessOverviewData = { totalRevenue?: number; totalBookings?: number; uniqueClients?: number; revenueGrowth?: number };
+      const response = await fetcher.get<{ data: BusinessOverviewData }>("/api/provider/reports/business/overview?period=month");
+      const overviewData = response.data ?? {};
       setQuickStats({
-        totalRevenue: overviewData.totalRevenue || 0,
-        totalBookings: overviewData.totalBookings || 0,
-        activeClients: overviewData.uniqueClients || 0,
-        growthRate: overviewData.revenueGrowth || 0,
+        totalRevenue: overviewData.totalRevenue ?? 0,
+        totalBookings: overviewData.totalBookings ?? 0,
+        activeClients: overviewData.uniqueClients ?? 0,
+        growthRate: overviewData.revenueGrowth ?? 0,
       });
     } catch (err) {
       console.error("Error loading quick stats:", err);
-      // Fallback to finance API if business overview fails
       try {
-        const financeResponse = await fetcher.get<{ data: any }>("/api/provider/finance?range=month");
+        type FinanceData = { earnings?: { total_earnings?: number; growth_percentage?: number } };
+        const financeResponse = await fetcher.get<{ data?: FinanceData }>("/api/provider/finance?range=month");
         const financeData = financeResponse.data?.earnings;
         setQuickStats({
           totalRevenue: financeData?.total_earnings || 0,

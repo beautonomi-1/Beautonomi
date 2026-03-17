@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { handleApiError, successResponse } from "@/lib/supabase/api-helpers";
+import { handleApiError, successResponse, requireRoleInApi } from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/me/loyalty-points
@@ -8,13 +8,8 @@ import { handleApiError, successResponse } from "@/lib/supabase/api-helpers";
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServer();
-    
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
+    const supabase = await getSupabaseServer(request);
 
     const url = new URL(request.url);
     const limit = parseInt(url.searchParams.get("limit") || "20");

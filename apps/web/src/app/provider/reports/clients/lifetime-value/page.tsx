@@ -9,7 +9,7 @@ import { Download, DollarSign, Users, TrendingUp } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface LifetimeValueData {
   totalClients: number;
@@ -65,7 +65,7 @@ export default function LifetimeValueReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data, "lifetime-value");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "lifetime-value");
     exportToCSV(exportData, "lifetime-value-report");
   };
 

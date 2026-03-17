@@ -27,7 +27,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CreditCard, Plus, MoreVertical, CheckCircle2, XCircle, MapPin } from "lucide-react";
+import { CreditCard, Plus, MoreVertical, CheckCircle2, XCircle, MapPin, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Money } from "@/components/provider-portal/Money";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -219,6 +219,24 @@ export default function YocoDevicesPage() {
           </Dialog>
         }
       />
+
+      <SectionCard className="mb-6 bg-amber-50/50 border-amber-200">
+        <div className="flex items-start gap-2">
+          <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-800">
+            <strong>Refunds:</strong> Card refunds for Yoco payments are processed in your{" "}
+            <a
+              href="https://dashboard.yoco.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-medium"
+            >
+              Yoco dashboard
+            </a>
+            . When you refund a payment there, we sync the refund to the booking automatically.
+          </div>
+        </div>
+      </SectionCard>
 
       {devices.length === 0 ? (
         <SectionCard className="p-12 text-center">

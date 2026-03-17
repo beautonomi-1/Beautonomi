@@ -1,11 +1,11 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   handleApiError,
   successResponse,
   notFoundResponse,
   errorResponse,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 
@@ -24,8 +24,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRoleInApi(["superadmin"], request);
-    if (!auth) throw new Error("Authentication required");
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    if (!user) throw new Error("Authentication required");
     const supabase = getSupabaseAdmin();
     const { id } = await params;
     const body = await request.json();
@@ -54,8 +54,7 @@ export async function PATCH(
       return notFoundResponse("Provider not found");
     }
 
-    // Update provider status
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       status,
       updated_at: new Date().toISOString(),
     };
@@ -64,8 +63,8 @@ export async function PATCH(
       updateData.status_reason = reason;
     }
 
-    const { data: updatedProvider, error: updateError } = await (supabase
-      .from("providers") as any)
+    const { data: updatedProvider, error: updateError } = await supabase
+      .from("providers")
       .update(updateData)
       .eq("id", id)
       .select()
@@ -76,8 +75,8 @@ export async function PATCH(
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.provider.status",
       entity_type: "provider",
       entity_id: id,
@@ -96,8 +95,9 @@ export async function PATCH(
         .single();
 
       if (providerWithOwner) {
-        const ownerId = (providerWithOwner as any).user_id;
-        const businessName = (providerWithOwner as any).business_name;
+        const ownerRow = providerWithOwner as { user_id?: string; business_name?: string };
+        const ownerId = ownerRow.user_id;
+        const businessName = ownerRow.business_name;
 
         let templateKey: string | null = null;
         const variables: Record<string, string> = {
@@ -127,7 +127,8 @@ export async function PATCH(
             templateKey,
             [ownerId],
             variables,
-            ["push", "email", "sms"]
+            ["push", "email", "sms"],
+            { appType: "provider" }
           );
         }
       }

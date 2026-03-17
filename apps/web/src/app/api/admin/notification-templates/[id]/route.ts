@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
-import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 /**
@@ -14,8 +15,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -46,8 +47,8 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -55,7 +56,7 @@ export async function PATCH(
     const { id } = params;
     const body = await request.json();
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (body.title !== undefined) updateData.title = body.title;
     if (body.body !== undefined) updateData.body = body.body;
     if (body.channels !== undefined) updateData.channels = body.channels;
@@ -77,8 +78,8 @@ export async function PATCH(
     if (error) throw error;
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.notification_templates.update",
       entity_type: "notification_template",
       entity_id: id,
@@ -101,8 +102,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -117,8 +118,8 @@ export async function DELETE(
     if (error) throw error;
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.notification_templates.delete",
       entity_type: "notification_template",
       entity_id: id,

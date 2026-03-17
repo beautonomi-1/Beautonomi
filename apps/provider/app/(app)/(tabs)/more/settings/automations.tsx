@@ -1,9 +1,11 @@
 /**
  * Automations – list and manage marketing automations.
  * GET /api/provider/automations, PATCH/DELETE /api/provider/automations/[id]
+ * Create new automations in the provider portal.
  */
 import { useState, useCallback } from "react";
 import { View, Text, TouchableOpacity, FlatList, Alert, Switch } from "react-native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -26,6 +28,7 @@ interface Automation {
 }
 
 export default function AutomationsScreen() {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const { data: automations, loading, error, refresh } = useApi<Automation[]>(
     "/api/provider/automations"
@@ -99,6 +102,18 @@ export default function AutomationsScreen() {
         title="Automations"
         showBack
         subtitle="Marketing & follow-ups"
+        rightAction={
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/(app)/(tabs)/more/settings/automations-create" as never);
+            }}
+            style={twStyle("flex-row items-center rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2")}
+          >
+            <Ionicons name="add" size={16} color="#4338ca" style={{ marginRight: 6 }} />
+            <Text style={twStyle("text-sm font-semibold text-indigo-800")}>Create</Text>
+          </TouchableOpacity>
+        }
       />
       <SectionHeader title="Your automations" />
       {list.length === 0 ? (
@@ -114,7 +129,7 @@ export default function AutomationsScreen() {
           scrollEnabled={false}
           contentContainerStyle={{ paddingBottom: 120 }}
           renderItem={({ item }: { item: Automation }) => (
-            <View style={twStyle("mb-2 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4")}>
+            <View style={twStyle("mb-2 flex-row items-center justify-between rounded-2xl border border-gray-100 bg-white p-4")}>
               <View style={twStyle("flex-1")}>
                 <Text style={twStyle("font-medium text-gray-900")}>{item.name}</Text>
                 <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>

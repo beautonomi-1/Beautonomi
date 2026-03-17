@@ -117,13 +117,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve payout account: use bank_account_id from body if valid, else primary (latest active)
+    // Resolve payout account: use bank_account_id from body if valid, else primary (is_primary then latest)
     const { data: accounts } = await supabase
       .from("provider_payout_accounts")
       .select("id, recipient_code, account_name, account_number_last4, bank_name")
       .eq("provider_id", providerId)
       .eq("active", true)
       .is("deleted_at", null)
+      .order("is_primary", { ascending: false })
       .order("created_at", { ascending: false });
 
     const accountList = accounts || [];
@@ -185,10 +186,11 @@ export async function POST(request: NextRequest) {
     try {
       await supabaseAdmin.from("notifications").insert({
         user_id: user.id,
-        type: "payout_requested",
+        type: "system",
         title: "Payout Requested",
         message: `Payout request of ${amount} ZAR has been submitted`,
-        metadata: { payout_id: payout.id, amount },
+        data: { payout_id: payout.id, amount },
+        action_url: "/provider/payouts",
       });
     } catch {
       // Ignore notification errors

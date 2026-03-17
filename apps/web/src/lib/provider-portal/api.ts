@@ -3146,10 +3146,11 @@ export class MockProviderApi implements ProviderApi {
         id: r.id,
         name: r.name,
         description: r.description,
-        type: r.group_name || "other",
+        type: r.resource_type || "other",
         group_id: r.group_id,
         capacity: r.capacity,
         is_active: r.is_active,
+        color: r.calendar_color,
       }));
     } catch (error) {
       console.warn("Failed to fetch resources via API, using mock:", error);
@@ -3173,6 +3174,8 @@ export class MockProviderApi implements ProviderApi {
         group_id: data.group_id || null,
         capacity: data.capacity || 1,
         is_active: data.is_active ?? true,
+        resource_type: data.type || "other",
+        calendar_color: data.color || undefined,
       });
       
       const r = response.data;
@@ -3180,10 +3183,11 @@ export class MockProviderApi implements ProviderApi {
         id: r.id,
         name: r.name,
         description: r.description,
-        type: data.type || "other",
+        type: r.resource_type || data.type || "other",
         group_id: r.group_id,
         capacity: r.capacity,
         is_active: r.is_active,
+        color: r.calendar_color,
       };
     } catch (error) {
       console.warn("Failed to create resource via API, using mock:", error);
@@ -3210,6 +3214,8 @@ export class MockProviderApi implements ProviderApi {
         group_id: data.group_id,
         capacity: data.capacity,
         is_active: data.is_active,
+        resource_type: data.type,
+        calendar_color: data.color,
       });
       
       const r = response.data;
@@ -3217,10 +3223,11 @@ export class MockProviderApi implements ProviderApi {
         id: r.id,
         name: r.name,
         description: r.description,
-        type: data.type || "other",
+        type: r.resource_type || data.type || "other",
         group_id: r.group_id,
         capacity: r.capacity,
         is_active: r.is_active,
+        color: r.calendar_color,
       };
     } catch (error) {
       console.warn("Failed to update resource via API, using mock:", error);
@@ -3254,7 +3261,7 @@ export class MockProviderApi implements ProviderApi {
         description: g.description,
         color: g.color,
         is_active: g.is_active,
-        resource_ids: [], // Resource IDs are fetched separately
+        resource_ids: g.resource_ids ?? [],
       }));
     } catch (error) {
       console.warn("Failed to fetch resource groups via API, using mock:", error);
@@ -3305,6 +3312,7 @@ export class MockProviderApi implements ProviderApi {
         description: data.description,
         color: data.color,
         is_active: data.is_active,
+        resource_ids: data.resource_ids,
       });
       
       const g = response.data;
@@ -3314,7 +3322,7 @@ export class MockProviderApi implements ProviderApi {
         description: g.description,
         color: g.color,
         is_active: g.is_active,
-        resource_ids: data.resource_ids || [],
+        resource_ids: data.resource_ids ?? [],
       };
     } catch (error) {
       console.warn("Failed to update resource group via API, using mock:", error);
@@ -3345,8 +3353,11 @@ export class MockProviderApi implements ProviderApi {
     slug: string;
     service_ids?: string[] | null;
     staff_ids?: string[] | null;
+    location_id?: string | null;
+    location_type?: string | null;
     is_active?: boolean;
     expires_at?: string | null;
+    max_uses?: number | null;
     use_count?: number | null;
     created_at?: string;
   }): ExpressBookingLink {
@@ -3357,9 +3368,13 @@ export class MockProviderApi implements ProviderApi {
       short_code: row.slug,
       full_url: `${origin}/book/l/${encodeURIComponent(row.slug)}`,
       service_id: row.service_ids?.[0],
+      service_ids: row.service_ids ?? undefined,
       team_member_id: row.staff_ids?.[0],
+      location_id: row.location_id ?? undefined,
+      location_type: (row.location_type === "at_salon" || row.location_type === "at_home" ? row.location_type : null) as "at_salon" | "at_home" | null | undefined,
       is_active: row.is_active ?? true,
       expires_at: row.expires_at ?? undefined,
+      max_uses: row.max_uses ?? undefined,
       usage_count: row.use_count ?? 0,
       created_date: row.created_at ?? new Date().toISOString(),
     };
@@ -3384,13 +3399,17 @@ export class MockProviderApi implements ProviderApi {
     const slug = (data.short_code ?? Math.random().toString(36).substring(2, 8))
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "") || "link";
+    const serviceIds = (data.service_ids?.length ? data.service_ids : data.service_id ? [data.service_id] : []) as string[];
     const body = {
       name: data.name || "New Booking Link",
       slug,
-      service_ids: data.service_id ? [data.service_id] : [],
+      service_ids: serviceIds,
       staff_ids: data.team_member_id ? [data.team_member_id] : [],
+      location_id: data.location_type === "at_home" ? null : (data.location_id ?? null),
+      location_type: data.location_type ?? null,
       is_active: data.is_active ?? true,
       expires_at: data.expires_at ?? null,
+      max_uses: data.max_uses ?? undefined,
     };
     const res = await fetcher.post<{ data: any }>("/api/provider/express-booking", body);
     if (!res.data) throw new Error("Failed to create link");
@@ -3407,10 +3426,16 @@ export class MockProviderApi implements ProviderApi {
     if (data.short_code !== undefined) {
       body.slug = data.short_code.toLowerCase().replace(/[^a-z0-9-]/g, "") || "link";
     }
-    if (data.service_id !== undefined) body.service_ids = data.service_id ? [data.service_id] : [];
+    if (data.service_ids !== undefined) body.service_ids = data.service_ids ?? [];
+    else if (data.service_id !== undefined) body.service_ids = data.service_id ? [data.service_id] : [];
     if (data.team_member_id !== undefined) body.staff_ids = data.team_member_id ? [data.team_member_id] : [];
     if (data.is_active !== undefined) body.is_active = data.is_active;
     if (data.expires_at !== undefined) body.expires_at = data.expires_at || null;
+    if (data.max_uses !== undefined) body.max_uses = data.max_uses ?? null;
+    if (data.location_type !== undefined) {
+      body.location_type = data.location_type ?? null;
+      body.location_id = data.location_type === "at_home" ? null : (data.location_id ?? null);
+    } else if (data.location_id !== undefined) body.location_id = data.location_id ?? null;
     const res = await fetcher.patch<{ data: any }>(`/api/provider/express-booking/${id}`, body);
     if (!res.data) throw new Error("Failed to update link");
     return this.mapExpressLinkFromApi(res.data);

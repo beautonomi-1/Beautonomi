@@ -50,7 +50,7 @@ export async function GET(
 
     let canAccess = isPostPublic(post);
     if (!canAccess) {
-      const supabase = await getSupabaseServer();
+      const supabase = await getSupabaseServer(request);
       const { data: { user } } = await supabase.auth.getUser();
       canAccess = !!(user && (await userCanAccessPostAsProvider(user.id, post.provider_id)));
     }
@@ -79,22 +79,30 @@ export async function GET(
 
     if (error) return handleApiError(error, "Failed to fetch comments");
 
-    const comments: ExploreComment[] = (rows || []).map((r: any) => ({
-      id: r.id,
-      post_id: r.post_id,
-      user_id: r.user_id,
-      author: r.users
-        ? {
-            id: r.users.id,
-            full_name: r.users.full_name ?? null,
-            avatar_url: r.users.avatar_url ?? null,
-          }
-        : { id: r.user_id, full_name: null, avatar_url: null },
-      body: r.body,
-      mentioned_user_ids: r.mentioned_user_ids ?? [],
-      created_at: r.created_at,
-      updated_at: r.updated_at,
-    }));
+    type CommentRow = {
+      id: string;
+      post_id: string;
+      user_id: string;
+      body?: string;
+      mentioned_user_ids?: string[];
+      created_at?: string;
+      updated_at?: string;
+      users?: { id: string; full_name?: string | null; avatar_url?: string | null } | { id: string; full_name?: string | null; avatar_url?: string | null }[];
+    };
+    const comments: ExploreComment[] = (rows ?? []).map((r: unknown) => {
+      const row = r as CommentRow;
+      const u = Array.isArray(row.users) ? row.users[0] : row.users;
+      return {
+        id: row.id,
+        post_id: row.post_id,
+        user_id: row.user_id,
+        author: u ? { id: u.id, full_name: u.full_name ?? null, avatar_url: u.avatar_url ?? null } : { id: row.user_id, full_name: null, avatar_url: null },
+        body: row.body ?? "",
+        mentioned_user_ids: row.mentioned_user_ids ?? [],
+        created_at: row.created_at ?? "",
+        updated_at: row.updated_at ?? "",
+      };
+    });
 
     const next_offset = comments.length === limit ? offset + limit : undefined;
 
@@ -136,7 +144,7 @@ export async function POST(
     }
 
     const mentionUserIds: string[] = Array.isArray(body.mention_user_ids)
-      ? body.mention_user_ids.filter((id: any) => typeof id === "string")
+      ? body.mention_user_ids.filter((id: unknown): id is string => typeof id === "string")
       : [];
 
     const supabaseAdmin = await getSupabaseAdmin();
@@ -187,7 +195,8 @@ export async function POST(
       user_id: row.user_id,
       author: row.users
         ? (() => {
-            const u = Array.isArray(row.users) ? (row.users as any)[0] : (row.users as any);
+            type UserRow = { id?: string; full_name?: string | null; avatar_url?: string | null };
+            const u = Array.isArray(row.users) ? (row.users as UserRow[])[0] : (row.users as UserRow);
             return {
               id: u?.id ?? row.user_id,
               full_name: u?.full_name ?? null,

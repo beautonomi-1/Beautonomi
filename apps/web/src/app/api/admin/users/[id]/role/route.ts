@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, notFoundResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { z } from "zod";
 import type { UserRole } from "@/types/beautonomi";
 import { writeAuditLog } from "@/lib/audit/audit";
@@ -19,7 +20,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['superadmin'], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
@@ -48,16 +49,15 @@ export async function PUT(
     }
 
     const newRole = validationResult.data.role as UserRole;
-    const oldRole = (currentUser as any).role as UserRole;
+    const currentRow = currentUser as { role?: UserRole };
+    const oldRole = currentRow.role as UserRole;
 
-    // Prevent changing own role from superadmin
     if (id === user.id && oldRole === "superadmin" && newRole !== "superadmin") {
       return errorResponse("Cannot change your own role from superadmin", "SELF_ROLE_CHANGE", 400);
     }
 
-    // Update user role
-    const { data: updatedUser, error } = await (supabase
-      .from("users") as any)
+    const { data: updatedUser, error } = await supabase
+      .from("users")
       .update({ role: newRole })
       .eq("id", id)
       .select()
@@ -69,7 +69,7 @@ export async function PUT(
 
     await writeAuditLog({
       actor_user_id: user.id,
-      actor_role: (user as any).role || "superadmin",
+      actor_role: user.role ?? "superadmin",
       action: "admin.user.role.update",
       entity_type: "user",
       entity_id: id,

@@ -19,6 +19,7 @@ import { api } from "@/lib/api-client";
 import { useLocation } from "@/hooks/useLocation";
 import { useAddresses, type SavedAddress } from "@/hooks/useAddresses";
 import { AddressPicker } from "@/components/AddressPicker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
@@ -35,7 +36,7 @@ import type {
   AvailabilitySlot,
 } from "@/types/api";
 
-type Step = "service" | "venue" | "staff" | "date" | "time";
+type Step = "service" | "venue" | "staff" | "date" | "time" | "addons";
 
 const STEP_LABELS: Record<Step, string> = {
   service: "Service",
@@ -43,6 +44,7 @@ const STEP_LABELS: Record<Step, string> = {
   staff: "Staff",
   date: "Date",
   time: "Time",
+  addons: "Extras",
 };
 
 function addDays(d: Date, n: number) {
@@ -166,11 +168,13 @@ export default function BookScreen() {
   useScreenTracking("Book");
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
-  const { slug, service_id, duration_minutes, reschedule_booking_id } = useLocalSearchParams<{
+  const { slug, service_id, duration_minutes, reschedule_booking_id, campaign_id, provider_id } = useLocalSearchParams<{
     slug: string;
     service_id?: string;
     duration_minutes?: string;
     reschedule_booking_id?: string;
+    campaign_id?: string;
+    provider_id?: string;
   }>();
   const { user } = useAuth();
   const { coords } = useLocation();
@@ -199,6 +203,8 @@ export default function BookScreen() {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
   const [creatingHold, setCreatingHold] = useState(false);
+  const [addonsList, setAddonsList] = useState<{ id: string; title?: string; name?: string; price: number; duration_minutes?: number; currency?: string; is_recommended?: boolean }[]>([]);
+  const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
 
   // Week navigation for date picker
   const [weekOffset, setWeekOffset] = useState(0);
@@ -206,7 +212,7 @@ export default function BookScreen() {
   const visibleSteps = useMemo(() => {
     const steps: Step[] = ["service", "venue"];
     if (staff.length > 0) steps.push("staff");
-    steps.push("date", "time");
+    steps.push("date", "time", "addons");
     return steps;
   }, [staff.length]);
 
@@ -293,6 +299,25 @@ export default function BookScreen() {
     if (step === "time" && selectedDate && selectedStaff) loadSlots();
   }, [step, selectedDate, selectedStaff, loadSlots]);
 
+  // Fetch addons for the selected service when on addons step (so user can add extras before checkout)
+  useEffect(() => {
+    if (step !== "addons" || !slug || !effectiveOfferingId) {
+      setAddonsList([]);
+      return;
+    }
+    api
+      .get<{ data?: { all_addons?: { id: string; title?: string; name?: string; price: number; duration_minutes?: number; currency?: string; is_recommended?: boolean }[] }; all_addons?: unknown[] }>(
+        `/api/public/providers/${encodeURIComponent(slug)}/services/${effectiveOfferingId}/addons`
+      )
+      .then((res) => {
+        const data = (res.data ?? res) as any;
+        const raw = data?.data?.all_addons ?? data?.all_addons ?? [];
+        const list = Array.isArray(raw) ? raw : [];
+        setAddonsList(list);
+      })
+      .catch(() => setAddonsList([]));
+  }, [step, slug, effectiveOfferingId]);
+
   const createHold = useCallback(async () => {
     if (!provider || !selectedService || !selectedStaff || !selectedSlot) return;
     setCreatingHold(true);
@@ -328,13 +353,16 @@ export default function BookScreen() {
         provider_thumbnail: provider.thumbnail_url ?? "",
       };
       if (reschedule_booking_id) params.reschedule_booking_id = reschedule_booking_id;
+      if (campaign_id) params.campaign_id = campaign_id;
+      if (provider_id) params.provider_id = provider_id;
+      await AsyncStorage.setItem("beautonomi_booking_addons", JSON.stringify(selectedAddonIds));
       router.replace({ pathname: "/(app)/book-checkout", params });
     } catch (e) {
       setError(getApiErrorMessage(e as Error, "Failed to create booking"));
     } finally {
       setCreatingHold(false);
     }
-  }, [provider, selectedService, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, coords, effectiveOfferingId, selectedLocation, selectedVariant, reschedule_booking_id]);
+  }, [provider, selectedService, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, coords, effectiveOfferingId, selectedLocation, selectedVariant, reschedule_booking_id, campaign_id, provider_id, selectedAddonIds]);
 
   const goBack = useCallback(() => {
     haptic.light();
@@ -342,6 +370,7 @@ export default function BookScreen() {
     else if (step === "staff") setStep("venue");
     else if (step === "date") setStep(staff.length ? "staff" : "venue");
     else if (step === "time") setStep("date");
+    else if (step === "addons") setStep("time");
     else router.back();
   }, [step, staff.length]);
 
@@ -974,8 +1003,78 @@ export default function BookScreen() {
             )}
           </ScrollView>
 
+          {/* ═══ Step: Add-ons (optional extras before checkout) ═══ */}
+          {step === "addons" && (
+            <View>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 4 }}>Add extras (optional)</Text>
+              <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>
+                Optional add-ons to enhance your visit
+              </Text>
+              {addonsList.length === 0 ? (
+                <View style={{ paddingVertical: 16, paddingHorizontal: 14, borderRadius: 12, backgroundColor: "#F9FAFB", marginBottom: 12 }}>
+                  <Text style={{ fontSize: 14, color: "#6B7280" }}>No add-ons available for this service.</Text>
+                </View>
+              ) : (
+                addonsList.map((addon) => {
+                  const isSelected = selectedAddonIds.includes(addon.id);
+                  const label = addon.title ?? addon.name ?? "Add-on";
+                  const price = Number(addon.price) || 0;
+                  const currency = provider?.currency ?? "ZAR";
+                  return (
+                    <Pressable
+                      key={addon.id}
+                      onPress={() => {
+                        haptic.selection();
+                        setSelectedAddonIds((prev) =>
+                          prev.includes(addon.id) ? prev.filter((id) => id !== addon.id) : [...prev, addon.id]
+                        );
+                      }}
+                      style={{
+                        flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+                        padding: 14, borderRadius: 12, marginBottom: 8,
+                        borderWidth: 1.5, borderColor: isSelected ? Colors.primary : "#E5E7EB",
+                        backgroundColor: isSelected ? Colors.primaryLight : "#fff",
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${label} ${currency} ${price.toFixed(2)}`}
+                      accessibilityState={{ selected: isSelected }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827" }}>{label}</Text>
+                        <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                          {addon.duration_minutes ? `+${addon.duration_minutes} min • ` : ""}
+                          {currency} {price.toFixed(2)}
+                        </Text>
+                      </View>
+                      {isSelected && <Ionicons name="checkmark-circle" size={24} color={Colors.primary} />}
+                    </Pressable>
+                  );
+                })
+              )}
+            </View>
+          )}
+
           {/* ═══ Sticky Bottom CTA ═══ */}
           {step === "time" && selectedSlot && (
+            <View style={{
+              paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
+              borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
+            }}>
+              <TouchableOpacity
+                onPress={() => { haptic.medium(); setStep("addons"); }}
+                style={{
+                  backgroundColor: Colors.primary, borderRadius: 14, paddingVertical: 16,
+                  alignItems: "center", flexDirection: "row", justifyContent: "center",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Next: Add extras"
+              >
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Next: Add extras</Text>
+                <Ionicons name="chevron-forward" size={20} color="#fff" style={{ marginLeft: 6 }} />
+              </TouchableOpacity>
+            </View>
+          )}
+          {step === "addons" && (
             <View style={{
               paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
               borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",

@@ -19,6 +19,30 @@ import { useAuth } from "@/providers/AuthProvider";
 import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
 
+/** Parse "Gate: 1234, Buzzer: Apt 5" into { gate: "1234", buzzer: "Apt 5" } */
+function parseAccessCodesText(text: string): Record<string, string> | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const out: Record<string, string> = {};
+  const pairs = trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+  for (const pair of pairs) {
+    const idx = pair.search(/[:=]/);
+    if (idx === -1) continue;
+    const key = pair.slice(0, idx).trim().toLowerCase().replace(/\s+/g, "_") || "code";
+    const value = pair.slice(idx + 1).trim();
+    if (value) out[key] = value;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/** Format access_codes object for display in text input */
+function formatAccessCodesForDisplay(access_codes: Record<string, string> | null | undefined): string {
+  if (!access_codes || typeof access_codes !== "object") return "";
+  return Object.entries(access_codes)
+    .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`)
+    .join(", ");
+}
+
 interface SavedAddress {
   id: string;
   label: string;
@@ -31,6 +55,12 @@ interface SavedAddress {
   latitude?: number | null;
   longitude?: number | null;
   is_default: boolean;
+  apartment_unit?: string | null;
+  building_name?: string | null;
+  floor_number?: string | null;
+  access_codes?: Record<string, string> | null;
+  parking_instructions?: string | null;
+  location_landmarks?: string | null;
 }
 
 export default function AddressesScreen() {
@@ -41,10 +71,28 @@ export default function AddressesScreen() {
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [addLabel, setAddLabel] = useState("Home");
+  const [addApartmentUnit, setAddApartmentUnit] = useState("");
+  const [addBuildingName, setAddBuildingName] = useState("");
+  const [addFloorNumber, setAddFloorNumber] = useState("");
+  const [addAccessCodesText, setAddAccessCodesText] = useState("");
+  const [addParkingInstructions, setAddParkingInstructions] = useState("");
+  const [addLocationLandmarks, setAddLocationLandmarks] = useState("");
   const [pendingAddress, setPendingAddress] = useState<AddressPickerSelection | null>(null);
   const [saving, setSaving] = useState(false);
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingAddress, setEditingAddress] = useState<SavedAddress | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [editApartmentUnit, setEditApartmentUnit] = useState("");
+  const [editBuildingName, setEditBuildingName] = useState("");
+  const [editFloorNumber, setEditFloorNumber] = useState("");
+  const [editAccessCodesText, setEditAccessCodesText] = useState("");
+  const [editParkingInstructions, setEditParkingInstructions] = useState("");
+  const [editLocationLandmarks, setEditLocationLandmarks] = useState("");
+  const [editPendingAddress, setEditPendingAddress] = useState<AddressPickerSelection | null>(null);
+  const [editPickerVisible, setEditPickerVisible] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -85,7 +133,7 @@ export default function AddressesScreen() {
     }
     setSaving(true);
     try {
-      const res = await api.post<SavedAddress>("/api/me/addresses", {
+      const payload: Record<string, unknown> = {
         label,
         address_line1: pendingAddress.structured.address_line1,
         address_line2: pendingAddress.structured.address_line2 ?? null,
@@ -96,13 +144,27 @@ export default function AddressesScreen() {
         latitude: pendingAddress.latitude,
         longitude: pendingAddress.longitude,
         is_default: addresses.length === 0,
-      });
+      };
+      if (addApartmentUnit.trim()) payload.apartment_unit = addApartmentUnit.trim();
+      if (addBuildingName.trim()) payload.building_name = addBuildingName.trim();
+      if (addFloorNumber.trim()) payload.floor_number = addFloorNumber.trim();
+      const parsedAccess = parseAccessCodesText(addAccessCodesText);
+      if (parsedAccess) payload.access_codes = parsedAccess;
+      if (addParkingInstructions.trim()) payload.parking_instructions = addParkingInstructions.trim();
+      if (addLocationLandmarks.trim()) payload.location_landmarks = addLocationLandmarks.trim();
+      const res = await api.post<SavedAddress>("/api/me/addresses", payload);
       if (res.error) {
         Alert.alert("Error", getApiErrorMessage(res.error, "Failed to save address"));
       } else {
         setAddModalVisible(false);
         setPendingAddress(null);
         setAddLabel("Home");
+        setAddApartmentUnit("");
+        setAddBuildingName("");
+        setAddFloorNumber("");
+        setAddAccessCodesText("");
+        setAddParkingInstructions("");
+        setAddLocationLandmarks("");
         await load();
       }
     } catch (e) {
@@ -159,6 +221,80 @@ export default function AddressesScreen() {
     );
   };
 
+  const openEditModal = (addr: SavedAddress) => {
+    setEditingAddress(addr);
+    setEditLabel(addr.label || "");
+    setEditApartmentUnit(addr.apartment_unit ?? "");
+    setEditBuildingName(addr.building_name ?? "");
+    setEditFloorNumber(addr.floor_number ?? "");
+    setEditAccessCodesText(formatAccessCodesForDisplay(addr.access_codes));
+    setEditParkingInstructions(addr.parking_instructions ?? "");
+    setEditLocationLandmarks(addr.location_landmarks ?? "");
+    setEditPendingAddress(null);
+    setEditModalVisible(true);
+  };
+
+  const handleEditAddressSelect = (selection: AddressPickerSelection) => {
+    setEditPendingAddress(selection);
+    setEditPickerVisible(false);
+  };
+
+  const handleUpdateAddress = async () => {
+    if (!user || !editingAddress) return;
+    const label = (editLabel || "Address").trim();
+    if (!label) {
+      Alert.alert("Required", "Please enter a label (e.g. Home, Work)");
+      return;
+    }
+    setUpdatingId(editingAddress.id);
+    try {
+      const payload: Record<string, unknown> = {
+        label,
+        is_default: editingAddress.is_default,
+      };
+      if (editPendingAddress?.structured) {
+        payload.address_line1 = editPendingAddress.structured.address_line1;
+        payload.address_line2 = editPendingAddress.structured.address_line2 ?? null;
+        payload.city = editPendingAddress.structured.city;
+        payload.state = editPendingAddress.structured.state ?? null;
+        payload.postal_code = editPendingAddress.structured.postal_code ?? null;
+        payload.country = editPendingAddress.structured.country;
+        payload.latitude = editPendingAddress.latitude;
+        payload.longitude = editPendingAddress.longitude;
+      } else {
+        payload.address_line1 = editingAddress.address_line1;
+        payload.address_line2 = editingAddress.address_line2 ?? null;
+        payload.city = editingAddress.city;
+        payload.state = editingAddress.state ?? null;
+        payload.postal_code = editingAddress.postal_code ?? null;
+        payload.country = editingAddress.country;
+        if (editingAddress.latitude != null) payload.latitude = editingAddress.latitude;
+        if (editingAddress.longitude != null) payload.longitude = editingAddress.longitude;
+      }
+      if (editApartmentUnit.trim()) payload.apartment_unit = editApartmentUnit.trim(); else payload.apartment_unit = null;
+      if (editBuildingName.trim()) payload.building_name = editBuildingName.trim(); else payload.building_name = null;
+      if (editFloorNumber.trim()) payload.floor_number = editFloorNumber.trim(); else payload.floor_number = null;
+      const parsedAccess = parseAccessCodesText(editAccessCodesText);
+      payload.access_codes = parsedAccess ?? null;
+      if (editParkingInstructions.trim()) payload.parking_instructions = editParkingInstructions.trim(); else payload.parking_instructions = null;
+      if (editLocationLandmarks.trim()) payload.location_landmarks = editLocationLandmarks.trim(); else payload.location_landmarks = null;
+      const res = await api.put<SavedAddress>(`/api/me/addresses/${editingAddress.id}`, payload);
+      if (res.error) {
+        Alert.alert("Error", getApiErrorMessage(res.error, "Failed to update address"));
+      } else {
+        setEditModalVisible(false);
+        setEditingAddress(null);
+        setEditLabel("");
+        setEditPendingAddress(null);
+        await load();
+      }
+    } catch (e) {
+      Alert.alert("Error", getApiErrorMessage(e, "Failed to update address"));
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   return (
     <ScreenFrame
       loading={loading}
@@ -198,6 +334,14 @@ export default function AddressesScreen() {
                   )}
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <TouchableOpacity
+                    onPress={() => openEditModal(a)}
+                    style={{ marginRight: 8, borderRadius: 8, backgroundColor: Colors.gray[100], paddingHorizontal: 12, paddingVertical: 8 }}
+                    accessibilityLabel="Edit address"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="pencil-outline" size={18} color={Colors.gray[600]} />
+                  </TouchableOpacity>
                   {!a.is_default && (
                     <View style={{ marginRight: 8 }}>
                     <TouchableOpacity
@@ -324,6 +468,194 @@ export default function AddressesScreen() {
                   {pendingAddress.structured.country}
                 </Text>
               </View>
+            )}
+            <Text style={{ marginTop: 24, marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>House call details (optional)</Text>
+            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Apartment / Unit</Text>
+            <TextInput
+              style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+              value={addApartmentUnit}
+              onChangeText={setAddApartmentUnit}
+              placeholder="e.g. 5B"
+              placeholderTextColor={Colors.gray[400]}
+            />
+            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Building name</Text>
+            <TextInput
+              style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+              value={addBuildingName}
+              onChangeText={setAddBuildingName}
+              placeholder="e.g. Sunset Towers"
+              placeholderTextColor={Colors.gray[400]}
+            />
+            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Floor</Text>
+            <TextInput
+              style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+              value={addFloorNumber}
+              onChangeText={setAddFloorNumber}
+              placeholder="e.g. 3"
+              placeholderTextColor={Colors.gray[400]}
+            />
+            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Access codes</Text>
+            <TextInput
+              style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+              value={addAccessCodesText}
+              onChangeText={setAddAccessCodesText}
+              placeholder="Gate: 1234, Buzzer: Apt 5"
+              placeholderTextColor={Colors.gray[400]}
+            />
+            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Parking instructions</Text>
+            <TextInput
+              style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+              value={addParkingInstructions}
+              onChangeText={setAddParkingInstructions}
+              placeholder="e.g. Visitor bay 12"
+              placeholderTextColor={Colors.gray[400]}
+            />
+            <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Landmarks</Text>
+            <TextInput
+              style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+              value={addLocationLandmarks}
+              onChangeText={setAddLocationLandmarks}
+              placeholder="e.g. Next to blue pharmacy"
+              placeholderTextColor={Colors.gray[400]}
+            />
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Edit address modal */}
+      <Modal
+        visible={editModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1, backgroundColor: Colors.white }}
+          behavior={Platform.OS === "ios" ? "padding" : "padding"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: Colors.gray[200], paddingHorizontal: 16, paddingVertical: 12 }}>
+            <TouchableOpacity
+              onPress={() => {
+                setEditModalVisible(false);
+                setEditingAddress(null);
+                setEditPendingAddress(null);
+              }}
+              accessibilityLabel="Cancel"
+              accessibilityRole="button"
+            >
+              <Text style={{ color: Colors.primary, fontWeight: "500" }}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>Edit address</Text>
+            <TouchableOpacity
+              onPress={handleUpdateAddress}
+              disabled={!!updatingId}
+              accessibilityLabel="Save changes"
+              accessibilityRole="button"
+            >
+              {updatingId ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <Text style={{ fontWeight: "500", color: Colors.primary }}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16, paddingBottom: 220 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+          >
+            {editingAddress && (
+              <>
+                <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Label (e.g. Home, Work)</Text>
+                <TextInput
+                  style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  value={editLabel}
+                  onChangeText={setEditLabel}
+                  placeholder="Home"
+                  placeholderTextColor={Colors.gray[400]}
+                />
+                <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address</Text>
+                <TouchableOpacity
+                  onPress={() => setEditPickerVisible(true)}
+                  style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12 }}
+                  accessibilityLabel="Change address"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="search-outline" size={20} color={Colors.gray[400]} />
+                  <Text style={{ color: editPendingAddress ? Colors.gray[900] : Colors.gray[500], marginLeft: 10 }}>
+                    {editPendingAddress?.structured
+                      ? `${editPendingAddress.structured.address_line1}, ${editPendingAddress.structured.city}`
+                      : `${editingAddress.address_line1}, ${editingAddress.city}`}
+                  </Text>
+                </TouchableOpacity>
+                <AddressPicker
+                  visible={editPickerVisible}
+                  onClose={() => setEditPickerVisible(false)}
+                  onSelect={handleEditAddressSelect}
+                  onUseCurrentLocation={() => setEditPickerVisible(false)}
+                />
+                {editPendingAddress?.structured && (
+                  <View style={{ marginTop: 16, borderRadius: 12, backgroundColor: "#F0FDF4", padding: 12 }}>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: "#166534" }}>Selected</Text>
+                    <Text style={{ marginTop: 4, fontSize: 14, color: "#15803d" }}>
+                      {editPendingAddress.structured.address_line1}, {editPendingAddress.structured.city},{" "}
+                      {editPendingAddress.structured.country}
+                    </Text>
+                  </View>
+                )}
+                <Text style={{ marginTop: 24, marginBottom: 8, fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>House call details (optional)</Text>
+                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Apartment / Unit</Text>
+                <TextInput
+                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  value={editApartmentUnit}
+                  onChangeText={setEditApartmentUnit}
+                  placeholder="e.g. 5B"
+                  placeholderTextColor={Colors.gray[400]}
+                />
+                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Building name</Text>
+                <TextInput
+                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  value={editBuildingName}
+                  onChangeText={setEditBuildingName}
+                  placeholder="e.g. Sunset Towers"
+                  placeholderTextColor={Colors.gray[400]}
+                />
+                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Floor</Text>
+                <TextInput
+                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  value={editFloorNumber}
+                  onChangeText={setEditFloorNumber}
+                  placeholder="e.g. 3"
+                  placeholderTextColor={Colors.gray[400]}
+                />
+                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Access codes</Text>
+                <TextInput
+                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  value={editAccessCodesText}
+                  onChangeText={setEditAccessCodesText}
+                  placeholder="Gate: 1234, Buzzer: Apt 5"
+                  placeholderTextColor={Colors.gray[400]}
+                />
+                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Parking instructions</Text>
+                <TextInput
+                  style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  value={editParkingInstructions}
+                  onChangeText={setEditParkingInstructions}
+                  placeholder="e.g. Visitor bay 12"
+                  placeholderTextColor={Colors.gray[400]}
+                />
+                <Text style={{ marginBottom: 6, fontSize: 13, color: Colors.gray[500] }}>Landmarks</Text>
+                <TextInput
+                  style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, color: Colors.gray[900] }}
+                  value={editLocationLandmarks}
+                  onChangeText={setEditLocationLandmarks}
+                  placeholder="e.g. Next to blue pharmacy"
+                  placeholderTextColor={Colors.gray[400]}
+                />
+              </>
             )}
           </ScrollView>
         </KeyboardAvoidingView>

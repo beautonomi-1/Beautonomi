@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 
 // ISO 639-1 + ISO 3166-1 Locale Code validation (e.g., en-US, en-ZA)
 const localeSchema = z.object({
@@ -21,8 +23,8 @@ const localeSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -73,8 +75,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -133,14 +135,14 @@ export async function POST(request: Request) {
 
     // If setting as default, unset other defaults
     if (validationResult.data.is_default) {
-      await (supabase as any)
+      await supabase
         .from("iso_locales")
         .update({ is_default: false })
         .neq("code", validationResult.data.code);
     }
 
-    const { data: locale, error } = await (supabase
-      .from("iso_locales") as any)
+    const { data: locale, error } = await supabase
+      .from("iso_locales")
       .insert({
         ...validationResult.data,
         created_at: new Date().toISOString(),
@@ -164,11 +166,11 @@ export async function POST(request: Request) {
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.iso_locales.create",
       entity_type: "iso_locale",
-      entity_id: (locale as any).id || (locale as any).code,
+      entity_id: (locale as { id?: string; code?: string }).id ?? (locale as { id?: string; code?: string }).code,
       metadata: validationResult.data,
     });
 

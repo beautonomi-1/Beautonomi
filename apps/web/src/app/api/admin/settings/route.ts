@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { revalidateTag } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 interface PlatformSettings {
@@ -62,6 +63,7 @@ interface PlatformSettings {
   };
   onesignal: {
     app_id: string;
+    app_id_provider?: string;
     rest_api_key: string;
     safari_web_id?: string;
     enabled: boolean;
@@ -204,6 +206,7 @@ function getDefaultPlatformSettings(): PlatformSettings {
       },
       onesignal: {
         app_id: process.env.ONESIGNAL_APP_ID || "",
+        app_id_provider: process.env.ONESIGNAL_APP_ID_PROVIDER || undefined,
         rest_api_key: "",
         safari_web_id: process.env.ONESIGNAL_SAFARI_WEB_ID || undefined,
         enabled: true,
@@ -297,15 +300,15 @@ function getDefaultPlatformSettings(): PlatformSettings {
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
 
     const supabase = getSupabaseAdmin();
     const defaultSettings = getDefaultPlatformSettings();
 
     // Get latest platform_settings row (table has id, settings, is_active; no key/value)
     try {
-      const { data: settings, error: settingsError } = await (supabase
-        .from("platform_settings") as any)
+      const { data: settings, error: settingsError } = await supabase
+        .from("platform_settings")
         .select("*")
         .order("updated_at", { ascending: false })
         .limit(1)
@@ -315,21 +318,22 @@ export async function GET(request: NextRequest) {
         return successResponse(defaultSettings, 200);
       }
 
-      if (settings && (settings as any).settings) {
-        // Merge secret "configured" markers for superadmin UI
-        const merged = { ...(settings as any).settings } as PlatformSettings;
+      type SettingsRow = { id?: string; settings?: Record<string, unknown> };
+      const settingsRow = settings as SettingsRow | null;
+      if (settingsRow?.settings) {
+        const merged = { ...settingsRow.settings } as unknown as PlatformSettings;
         try {
-          const { data: secretRow } = await (supabase.from("platform_secrets") as any)
+          const { data: secretRow } = await supabase.from("platform_secrets")
             .select("paystack_secret_key, paystack_public_key, paystack_webhook_secret, onesignal_rest_api_key, mapbox_access_token, amplitude_secret_key, google_calendar_client_id, google_calendar_client_secret, outlook_client_id, outlook_client_secret")
             .limit(1)
             .maybeSingle();
 
           if (secretRow?.paystack_secret_key) merged.paystack.secret_key = "***";
           if (secretRow?.paystack_public_key) merged.paystack.public_key = "***";
-          if (secretRow?.paystack_webhook_secret) merged.paystack.webhook_secret = "***" as any;
+          if (secretRow?.paystack_webhook_secret) merged.paystack.webhook_secret = "***";
           if (secretRow?.onesignal_rest_api_key) merged.onesignal.rest_api_key = "***";
           if (secretRow?.mapbox_access_token) merged.mapbox.access_token = "***";
-          if (secretRow?.amplitude_secret_key) merged.amplitude.secret_key = "***" as any;
+          if (secretRow?.amplitude_secret_key) merged.amplitude.secret_key = "***";
           if (secretRow?.google_calendar_client_id) merged.calendar_integrations.google.client_id = "***";
           if (secretRow?.google_calendar_client_secret) merged.calendar_integrations.google.client_secret = "***";
           if (secretRow?.outlook_client_id) merged.calendar_integrations.outlook.client_id = "***";
@@ -358,21 +362,22 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['superadmin'], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
 
     const supabase = getSupabaseAdmin();
     const body = (await request.json()) as Partial<PlatformSettings>;
 
     // Load existing settings and merge with defaults + body so partial payloads always validate
-    const { data: existingRow } = await (supabase
-      .from("platform_settings") as any)
+    type SettingsRow = { id?: string; settings?: Record<string, unknown> };
+    const { data: existingRow } = await supabase
+      .from("platform_settings")
       .select("id, settings")
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     const defaults = getDefaultPlatformSettings();
-    const existing = (existingRow as any)?.settings || {};
+    const existing = (existingRow as SettingsRow | null)?.settings ?? {};
     const settings: PlatformSettings = { ...defaults, ...existing, ...body } as PlatformSettings;
 
     // Validate required top-level sections after merge
@@ -396,12 +401,12 @@ export async function PATCH(request: NextRequest) {
 
     if (hasAnySecrets) {
       // Upsert singleton row
-      const { data: existingSecretRow } = await (supabase.from("platform_secrets") as any)
+      const { data: existingSecretRow } = await supabase.from("platform_secrets")
         .select("id")
         .limit(1)
         .maybeSingle();
 
-      const secretPayload: Record<string, any> = {
+      const secretPayload: Record<string, unknown> = {
         paystack_secret_key: settings.paystack.secret_key || null,
         paystack_public_key: settings.paystack.public_key || null,
         paystack_webhook_secret: settings.paystack.webhook_secret || null,
@@ -416,9 +421,9 @@ export async function PATCH(request: NextRequest) {
       };
 
       if (existingSecretRow?.id) {
-        await (supabase.from("platform_secrets") as any).update(secretPayload).eq("id", existingSecretRow.id);
+        await supabase.from("platform_secrets").update(secretPayload).eq("id", existingSecretRow.id);
       } else {
-        await (supabase.from("platform_secrets") as any).insert(secretPayload);
+        await supabase.from("platform_secrets").insert(secretPayload);
       }
     }
     // NOTE: process.env mutations do not persist reliably in serverless deployments.
@@ -438,15 +443,15 @@ export async function PATCH(request: NextRequest) {
 
     const existingSettings = existingRow;
 
-    if (existingSettings && (existingSettings as any).id) {
-      // Update
-      const { data: updatedSettings, error: updateError } = await (supabase
-        .from("platform_settings") as any)
+    const existingSettingsRow = existingSettings as SettingsRow | null;
+    if (existingSettingsRow?.id) {
+      const { data: updatedSettings, error: updateError } = await supabase
+        .from("platform_settings")
         .update({
           settings,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", (existingSettings as any).id)
+        .eq("id", existingSettingsRow.id)
         .select()
         .single();
 
@@ -456,10 +461,10 @@ export async function PATCH(request: NextRequest) {
 
       await writeAuditLog({
         actor_user_id: user.id,
-        actor_role: (user as any).role || "superadmin",
+        actor_role: user.role ?? "superadmin",
         action: "admin.settings.update",
         entity_type: "platform_settings",
-        entity_id: (existingSettings as any).id,
+        entity_id: existingSettingsRow.id,
         metadata: {
           updated_at: new Date().toISOString(),
           has_secrets_update: hasAnySecrets,
@@ -467,12 +472,11 @@ export async function PATCH(request: NextRequest) {
       });
 
       revalidateTag("platform-settings", "max");
-      const updatedPayload = (updatedSettings as any).settings as PlatformSettings;
+      const updatedPayload = (updatedSettings as SettingsRow).settings as unknown as PlatformSettings;
       return successResponse(updatedPayload, 200);
     } else {
-      // Create
-      const { data: newSettings, error: createError } = await (supabase
-        .from("platform_settings") as any)
+      const { data: newSettings, error: createError } = await supabase
+        .from("platform_settings")
         .insert({
           settings,
         })
@@ -485,10 +489,10 @@ export async function PATCH(request: NextRequest) {
 
       await writeAuditLog({
         actor_user_id: user.id,
-        actor_role: (user as any).role || "superadmin",
+        actor_role: user.role ?? "superadmin",
         action: "admin.settings.create",
         entity_type: "platform_settings",
-        entity_id: (newSettings as any).id,
+        entity_id: (newSettings as SettingsRow).id,
         metadata: {
           created_at: new Date().toISOString(),
           has_secrets_update: hasAnySecrets,
@@ -496,7 +500,7 @@ export async function PATCH(request: NextRequest) {
       });
 
       revalidateTag("platform-settings", "max");
-      const newPayload = (newSettings as any).settings as PlatformSettings;
+      const newPayload = (newSettings as SettingsRow).settings as unknown as PlatformSettings;
       return successResponse(newPayload, 200);
     }
   } catch (error) {

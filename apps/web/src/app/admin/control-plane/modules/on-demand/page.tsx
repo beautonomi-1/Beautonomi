@@ -111,7 +111,7 @@ export default function OnDemandModulePage() {
           <CardHeader>
             <CardTitle>Config</CardTitle>
             <CardDescription>
-              Storage path for ringtone: app-assets bucket, ux/ringtones/&lt;env&gt;/default.mp3.
+              Storage path for ringtone: app-assets bucket, e.g. ux/ringtones/default.mp3.
               For the &quot;Request now / Accept&quot; flow, enable feature flags: on_demand_accept_enabled, on_demand_accept_customer_enabled, on_demand_accept_provider_enabled in <Link href="/admin/settings/feature-flags" className="text-primary underline">Feature flags</Link>.
             </CardDescription>
           </CardHeader>
@@ -125,7 +125,7 @@ export default function OnDemandModulePage() {
               <Input
                 value={form.ringtone_asset_path}
                 onChange={(e) => setForm((p) => ({ ...p, ringtone_asset_path: e.target.value }))}
-                placeholder="ux/ringtones/production/default.mp3"
+                placeholder="ux/ringtones/default.mp3"
               />
             </div>
             <div className="grid gap-4 md:grid-cols-2">

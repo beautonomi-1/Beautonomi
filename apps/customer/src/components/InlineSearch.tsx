@@ -26,6 +26,7 @@ interface Suggestion {
   name: string;
   url?: string;
   category?: string;
+  slug?: string;
 }
 
 interface InlineSearchProps {
@@ -116,7 +117,7 @@ export function InlineSearch({ onSearch }: InlineSearchProps) {
       if (s.type === "provider") {
         router.push({ pathname: "/(app)/(tabs)/search", params: { q: s.name } });
       } else if (s.type === "category") {
-        router.push({ pathname: "/(app)/(tabs)/search", params: { category: s.name.toLowerCase() } });
+        router.push({ pathname: "/(app)/(tabs)/search", params: { category: s.slug ?? s.name?.toLowerCase() ?? "" } });
       } else {
         router.push({ pathname: "/(app)/(tabs)/search", params: { q: s.name } });
       }

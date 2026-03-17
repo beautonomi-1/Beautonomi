@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: null, error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Check if user is deactivated
     const { data: userData } = await supabase

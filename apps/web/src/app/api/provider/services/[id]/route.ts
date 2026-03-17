@@ -61,8 +61,7 @@ export async function PATCH(
 
     if (!existingService) return notFoundResponse("Service not found");
 
-    // Update service
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (body.title !== undefined) updateData.title = body.title;
     if (body.name !== undefined) updateData.title = body.name; // Support both title and name
     if (body.service_type !== undefined) updateData.service_type = body.service_type;
@@ -106,8 +105,8 @@ export async function PATCH(
     if (body.advanced_pricing_rules !== undefined) updateData.advanced_pricing_rules = Array.isArray(body.advanced_pricing_rules) ? body.advanced_pricing_rules : [];
     if (body.image_url !== undefined) updateData.image_url = body.image_url;
 
-    const { data: updatedService, error: updateError } = await (supabase
-      .from("offerings") as any)
+    const { data: updatedService, error: updateError } = await supabase
+      .from("offerings")
       .update(updateData)
       .eq("id", id)
       .select()

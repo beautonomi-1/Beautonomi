@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = await getSupabaseServer(request);
     
     const { searchParams } = new URL(request.url);
@@ -51,10 +52,10 @@ export async function GET(request: NextRequest) {
         return [];
       }
 
-      // Group by date
       const grouped: Record<string, number> = {};
-      (data || []).forEach((item: any) => {
-        const date = new Date(item[dateField]).toISOString().split('T')[0];
+      type RowWithDate = Record<string, unknown>;
+      ((data || []) as unknown as RowWithDate[]).forEach((item: RowWithDate) => {
+        const date = new Date(String(item[dateField] ?? "")).toISOString().split('T')[0];
         grouped[date] = (grouped[date] || 0) + 1;
       });
 
@@ -88,9 +89,10 @@ export async function GET(request: NextRequest) {
       }
 
       const grouped: Record<string, number> = {};
-      (data || []).forEach((item: any) => {
-        const date = new Date(item.created_at).toISOString().split('T')[0];
-        const amount = item.transaction_type === 'refund' ? -Math.abs(item.net || 0) : Math.abs(item.net || 0);
+      type RevenueRow = { created_at?: string; net?: number; transaction_type?: string };
+      (data || []).forEach((item: RevenueRow) => {
+        const date = new Date(item.created_at ?? "").toISOString().split('T')[0];
+        const amount = item.transaction_type === 'refund' ? -Math.abs(item.net ?? 0) : Math.abs(item.net ?? 0);
         grouped[date] = (grouped[date] || 0) + amount;
       });
 
@@ -126,7 +128,8 @@ export async function GET(request: NextRequest) {
         rejected: 0,
       };
 
-      (data || []).forEach((p: any) => {
+      type ProviderStatusRow = { status?: string };
+      (data || []).forEach((p: ProviderStatusRow) => {
         if (p.status === 'active') breakdown.active++;
         else if (p.status === 'pending_approval') breakdown.pending++;
         else if (p.status === 'suspended') breakdown.suspended++;
@@ -155,7 +158,8 @@ export async function GET(request: NextRequest) {
         no_show: 0,
       };
 
-      (data || []).forEach((b: any) => {
+      type BookingStatusRow = { status?: string };
+      (data || []).forEach((b: BookingStatusRow) => {
         if (b.status === 'confirmed') breakdown.confirmed++;
         else if (b.status === 'completed') breakdown.completed++;
         else if (b.status === 'cancelled') breakdown.cancelled++;
@@ -179,7 +183,8 @@ export async function GET(request: NextRequest) {
       }
 
       const providerRevenue: Record<string, number> = {};
-      (data || []).forEach((t: any) => {
+      type TxRow = { provider_id?: string; net?: number; amount?: number };
+      (data || []).forEach((t: TxRow) => {
         if (t.provider_id) {
           const amt = Number(t.net ?? t.amount ?? 0);
           providerRevenue[t.provider_id] = (providerRevenue[t.provider_id] || 0) + amt;
@@ -199,7 +204,7 @@ export async function GET(request: NextRequest) {
           .select('id, business_name')
           .in('id', providerIds);
 
-        const providerMap = new Map((providers || []).map((p: any) => [p.id, p.business_name]));
+        const providerMap = new Map((providers || []).map((p: { id: string; business_name?: string }) => [p.id, p.business_name]));
 
         return topProviders.map(p => ({
           provider_id: p.provider_id,

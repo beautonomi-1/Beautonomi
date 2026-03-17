@@ -18,9 +18,10 @@ export default function ProviderLayout({ children }: { children: React.ReactNode
   const pathname = usePathname();
   const isOnboardingPage = pathname === "/provider/onboarding";
   const isEmbedPage = pathname === "/provider/embed";
+  const isSubscriptionCheckout = pathname === "/provider/subscription-checkout";
 
-  // Onboarding page allows customers; embed is used by provider app WebView to set session then redirect
-  if (isOnboardingPage || isEmbedPage) {
+  // Onboarding allows customers; embed is for WebView; subscription-checkout is minimal layout (no shell)
+  if (isOnboardingPage || isEmbedPage || isSubscriptionCheckout) {
     return <>{children}</>;
   }
 

@@ -35,6 +35,8 @@ export interface PublicProviderCard {
   current_badge?: ProviderBadge | null;
   /** True when provider is in a sponsored slot (aligned with web). */
   is_sponsored?: boolean;
+  /** Campaign id for ad attribution (click/book events). */
+  campaign_id?: string | null;
 }
 
 export interface ProviderLocation {
@@ -148,6 +150,9 @@ export interface ExplorePost {
   is_saved?: boolean;
   is_liked?: boolean;
   tags?: string[];
+  /** When set, "Book this look" links to this offering */
+  offering_id?: string | null;
+  offering?: { id: string; name: string; price?: number; duration_minutes?: number } | null;
 }
 
 export interface ExploreComment {

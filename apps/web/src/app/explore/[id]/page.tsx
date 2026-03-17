@@ -27,23 +27,30 @@ export default function ExplorePostPage() {
       setLoading(true);
       setShow404(false);
     });
-    Promise.all([
-      fetcher.get<ExplorePost>(`/api/explore/posts/${id}`),
-      fetcher.get<{ data: ExplorePost[] }>(`/api/explore/posts?limit=13`),
-    ])
-      .then(([postRes, listRes]) => {
+    fetcher
+      .get<ExplorePost>(`/api/explore/posts/${id}`)
+      .then((postRes) => {
         if (cancelled) return;
         const p = (postRes as any)?.data ?? postRes;
-        const list = (listRes as any)?.data ?? listRes;
-        const items = Array.isArray(list) ? list : list?.data ?? [];
         if (!p || !p.id) {
           setShow404(true);
           setPost(null);
           setRelatedPosts([]);
-        } else {
-          setPost(p);
-          setRelatedPosts(items.filter((x: ExplorePost) => x.id !== id).slice(0, 12));
+          return;
         }
+        setPost(p);
+        // Fetch related posts for "More like this"; failure is non-fatal (show post with empty related)
+        fetcher
+          .get<{ data: ExplorePost[] }>(`/api/explore/posts?limit=13`)
+          .then((listRes) => {
+            if (cancelled) return;
+            const list = (listRes as any)?.data ?? listRes;
+            const items = Array.isArray(list) ? list : list?.data ?? [];
+            setRelatedPosts(items.filter((x: ExplorePost) => x.id !== id).slice(0, 12));
+          })
+          .catch(() => {
+            // Ignore: post is already shown, related stays []
+          });
       })
       .catch(() => {
         if (!cancelled) setShow404(true);

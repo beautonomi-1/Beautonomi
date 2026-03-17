@@ -7,11 +7,48 @@ const SLOT_START_H = 6;
 const SLOT_END_H = 22;
 const SLOT_INTERVAL_MIN = 15;
 
+const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+function dayKeyFromDate(dateStr: string): (typeof DAY_KEYS)[number] {
+  const d = new Date(dateStr + "T12:00:00").getDay();
+  return DAY_KEYS[d];
+}
+
+type WorkingHoursDay = {
+  is_open?: boolean;
+  open_time?: string;
+  close_time?: string;
+  breaks?: { start: string; end: string }[];
+};
+
+function parseTimeToMinutes(time: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(time);
+  if (!m) return null;
+  const hh = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  if (Number.isNaN(hh) || Number.isNaN(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return hh * 60 + mm;
+}
+
 function getSlotTimes(): string[] {
   const slots: string[] = [];
   for (let h = SLOT_START_H; h <= SLOT_END_H; h++) {
     for (let m = 0; m < 60; m += SLOT_INTERVAL_MIN) {
       if (h === SLOT_END_H && m > 0) break;
+      slots.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+    }
+  }
+  return slots;
+}
+
+/** Generate HH:mm slot times between openMin and closeMin (step 15), excluding break ranges. */
+function getSlotTimesInRange(openMin: number, closeMin: number, breakRanges: Array<{ start: number; end: number }>): string[] {
+  const slots: string[] = [];
+  for (let startMin = openMin; startMin + 15 <= closeMin; startMin += SLOT_INTERVAL_MIN) {
+    const slotEndMin = startMin + 15;
+    const inBreak = breakRanges.some((br) => startMin < br.end && slotEndMin > br.start);
+    if (!inBreak) {
+      const h = Math.floor(startMin / 60);
+      const m = startMin % 60;
       slots.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
     }
   }
@@ -48,7 +85,60 @@ export async function GET(request: NextRequest) {
     }
 
     const staffIds = staffIdsParam ? staffIdsParam.split(",").filter(Boolean) : [];
-    const slotTimes = getSlotTimes();
+    const dayKey = dayKeyFromDate(dateStr);
+
+    // Working hours: when single staff or location provided, restrict slots to open/close and exclude breaks
+    let openMin = SLOT_START_H * 60;
+    let closeMin = (SLOT_END_H + 1) * 60 - 1;
+    const breakRanges: Array<{ start: number; end: number }> = [];
+    if (staffIds.length === 1) {
+      const { data: staff } = await supabaseAdmin
+        .from("provider_staff")
+        .select("id, working_hours")
+        .eq("id", staffIds[0])
+        .eq("provider_id", providerId)
+        .single();
+      const wh = (staff?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKey];
+      if (wh && wh.is_open !== false && wh.open_time && wh.close_time) {
+        const o = parseTimeToMinutes(wh.open_time);
+        const c = parseTimeToMinutes(wh.close_time);
+        if (o !== null && c !== null && c > o) {
+          openMin = o;
+          closeMin = c;
+        }
+        for (const br of wh.breaks ?? []) {
+          const bs = parseTimeToMinutes(br.start);
+          const be = parseTimeToMinutes(br.end);
+          if (bs !== null && be !== null && be > bs) breakRanges.push({ start: bs, end: be });
+        }
+      }
+    } else if (locationId) {
+      const { data: loc } = await supabaseAdmin
+        .from("provider_locations")
+        .select("id, working_hours")
+        .eq("id", locationId)
+        .eq("provider_id", providerId)
+        .single();
+      const wh = (loc?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKey];
+      if (wh && wh.is_open !== false && wh.open_time && wh.close_time) {
+        const o = parseTimeToMinutes(wh.open_time);
+        const c = parseTimeToMinutes(wh.close_time);
+        if (o !== null && c !== null && c > o) {
+          openMin = o;
+          closeMin = c;
+        }
+        for (const br of wh.breaks ?? []) {
+          const bs = parseTimeToMinutes(br.start);
+          const be = parseTimeToMinutes(br.end);
+          if (bs !== null && be !== null && be > bs) breakRanges.push({ start: bs, end: be });
+        }
+      }
+    }
+
+    const slotTimes =
+      openMin !== SLOT_START_H * 60 || closeMin < (SLOT_END_H + 1) * 60 - 1 || breakRanges.length > 0
+        ? getSlotTimesInRange(openMin, closeMin, breakRanges)
+        : getSlotTimes();
     const available: string[] = [];
 
     // Fetch all bookings for that day
@@ -69,6 +159,22 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .eq("date", dateStr)
       .eq("is_active", true);
+
+    // Fetch availability_blocks overlapping this day (provider-level breaks/unavailable)
+    const startOfDayIso = `${dateStr}T00:00:00`;
+    const endOfDayIso = `${dateStr}T23:59:59`;
+    const { data: availabilityBlocksRaw } = await supabaseAdmin
+      .from("availability_blocks")
+      .select("start_at, end_at, staff_id, location_id")
+      .eq("provider_id", providerId)
+      .gt("end_at", startOfDayIso)
+      .lt("start_at", endOfDayIso);
+
+    const availabilityBlocks = (availabilityBlocksRaw ?? []).filter((ab: { staff_id?: string | null; location_id?: string | null }) => {
+      const staffOk = ab.staff_id == null || staffIds.length !== 1 || ab.staff_id === staffIds[0];
+      const locOk = ab.location_id == null || !locationId || ab.location_id === locationId;
+      return staffOk && locOk;
+    });
 
     for (const slot of slotTimes) {
       const startTime = new Date(`${dateStr}T${slot}:00`);
@@ -104,6 +210,16 @@ export async function GET(request: NextRequest) {
             blocked = true;
             break;
           }
+        }
+      }
+      if (blocked) continue;
+
+      for (const ab of availabilityBlocks) {
+        const abStart = new Date(ab.start_at);
+        const abEnd = new Date(ab.end_at);
+        if (startTime < abEnd && endTime > abStart) {
+          blocked = true;
+          break;
         }
       }
       if (!blocked) available.push(slot);

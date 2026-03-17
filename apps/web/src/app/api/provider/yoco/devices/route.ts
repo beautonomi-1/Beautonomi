@@ -70,12 +70,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Map database fields to API response format (provider app expects serial_number)
+    // Map database fields to API response format (provider app expects serial_number, device_type)
     const mappedDevices = (devices || []).map((device: any) => ({
       id: device.id,
       name: device.name,
       device_id: device.yoco_device_id,
       serial_number: device.yoco_device_id, // App display; same as device_id
+      device_type: "web_pos" as const,
       location_id: device.location_id,
       location_name: device.location_name,
       is_active: device.is_active,
@@ -83,6 +84,7 @@ export async function GET(request: NextRequest) {
       total_amount: device.total_amount || 0,
       last_used: device.last_used,
       created_date: device.created_at,
+      created_at: device.created_at,
     }));
 
     return NextResponse.json({

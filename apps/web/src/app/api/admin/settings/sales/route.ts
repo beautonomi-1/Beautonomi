@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 import type { PlatformSalesDefaults, PlatformSalesConstraints } from "@/lib/platform-sales-settings";
@@ -32,6 +33,8 @@ const updateSalesSettingsSchema = z.object({
   constraints: salesConstraintsSchema.optional(),
 });
 
+type SalesShape = { defaults?: Record<string, unknown>; constraints?: Record<string, unknown> };
+
 /**
  * GET /api/admin/settings/sales
  * 
@@ -39,7 +42,7 @@ const updateSalesSettingsSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
 
     const supabase = await getSupabaseServer(request);
 
@@ -75,8 +78,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const platformSettings = (settings as any).settings || {};
-    const salesSettings = platformSettings.sales || {};
+    type SettingsRow = { settings?: Record<string, unknown> };
+    const platformSettings = (settings as SettingsRow)?.settings ?? {};
+    const salesSettings = (platformSettings.sales ?? {}) as unknown as SalesShape;
 
     // Merge with defaults
     const defaults: PlatformSalesDefaults = {
@@ -90,7 +94,7 @@ export async function GET(request: NextRequest) {
       service_charge_name: "Service Charge",
       service_charge_rate: 0,
       upselling_enabled: false,
-      ...salesSettings.defaults,
+      ...(salesSettings.defaults ?? {}),
     };
 
     const constraints: PlatformSalesConstraints = {
@@ -100,7 +104,7 @@ export async function GET(request: NextRequest) {
       min_receipt_next_number: 1,
       max_receipt_header_length: 2000,
       max_receipt_footer_length: 2000,
-      ...salesSettings.constraints,
+      ...(salesSettings.constraints ?? {}),
     };
 
     return successResponse({ defaults, constraints });
@@ -116,7 +120,7 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(['superadmin'], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -129,29 +133,33 @@ export async function PATCH(request: NextRequest) {
       .eq("is_active", true)
       .single();
 
-    let platformSettings: any = {};
+    type SettingsRow = { id?: string; settings?: Record<string, unknown> };
+    let platformSettings: Record<string, unknown> = {};
     let settingsId: string | null = null;
 
     if (existingSettings && !fetchError) {
-      platformSettings = (existingSettings as any).settings || {};
-      settingsId = (existingSettings as any).id;
+      const row = existingSettings as SettingsRow;
+      platformSettings = row.settings ?? {};
+      settingsId = row.id ?? null;
     }
 
     // Update sales settings
+    const salesShape = (platformSettings.sales ?? {}) as unknown as SalesShape;
     if (!platformSettings.sales) {
       platformSettings.sales = {};
     }
+    const sales = platformSettings.sales as unknown as SalesShape;
 
     if (validated.defaults) {
-      platformSettings.sales.defaults = {
-        ...platformSettings.sales.defaults,
+      sales.defaults = {
+        ...(salesShape.defaults ?? {}),
         ...validated.defaults,
       };
     }
 
     if (validated.constraints) {
-      platformSettings.sales.constraints = {
-        ...platformSettings.sales.constraints,
+      sales.constraints = {
+        ...(salesShape.constraints ?? {}),
         ...validated.constraints,
       };
     }
@@ -174,8 +182,8 @@ export async function PATCH(request: NextRequest) {
 
       await writeAuditLog({
         actor_user_id: user.id,
-        actor_role: (user as any).role || "superadmin",
-        action: "admin.settings.sales.update",
+      actor_role: user.role ?? "superadmin",
+      action: "admin.settings.sales.update",
         entity_type: "platform_settings",
         entity_id: settingsId,
         metadata: {
@@ -184,10 +192,10 @@ export async function PATCH(request: NextRequest) {
         },
       });
 
-      const salesSettings = (updatedSettings as any).settings?.sales || {};
+      const salesSettings = ((updatedSettings as SettingsRow).settings?.sales ?? {}) as unknown as SalesShape;
       return successResponse({
-        defaults: salesSettings.defaults || {},
-        constraints: salesSettings.constraints || {},
+        defaults: salesSettings.defaults ?? {},
+        constraints: salesSettings.constraints ?? {},
       });
     } else {
       // Create new settings
@@ -205,19 +213,20 @@ export async function PATCH(request: NextRequest) {
 
       await writeAuditLog({
         actor_user_id: user.id,
-        actor_role: (user as any).role || "superadmin",
-        action: "admin.settings.sales.create",
-        entity_type: "platform_settings",
-        entity_id: (newSettings as any).id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.settings.sales.create",
+      entity_type: "platform_settings",
+      entity_id: (newSettings as SettingsRow).id,
         metadata: {
           created_at: new Date().toISOString(),
         },
       });
 
-      const salesSettings = (newSettings as any).settings?.sales || {};
+      const rowSettings = (newSettings as SettingsRow).settings as Record<string, unknown> | undefined;
+      const salesSettings = (rowSettings?.sales ?? {}) as unknown as SalesShape;
       return successResponse({
-        defaults: salesSettings.defaults || {},
-        constraints: salesSettings.constraints || {},
+        defaults: salesSettings.defaults ?? {},
+        constraints: salesSettings.constraints ?? {},
       });
     }
   } catch (error) {

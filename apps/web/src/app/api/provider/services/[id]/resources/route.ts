@@ -47,7 +47,7 @@ export async function GET(
         required: r.required,
       })),
     });
-  } catch (error) {
+  } catch (error: unknown) {
     return handleApiError(error, "Failed to fetch service resources");
   }
 }
@@ -81,13 +81,16 @@ export async function PUT(
 
     const body = await request.json();
     const raw = body?.resources;
-    const resources = Array.isArray(raw)
+    interface ResourceItem { resource_id: string; required: boolean }
+    const resources: ResourceItem[] = Array.isArray(raw)
       ? raw
           .filter(
-            (r: any) =>
-              r && typeof r.resource_id === "string" && typeof r.required === "boolean"
+            (r: unknown): r is ResourceItem =>
+              r != null &&
+              typeof (r as ResourceItem).resource_id === "string" &&
+              typeof (r as ResourceItem).required === "boolean"
           )
-          .map((r: any) => ({ resource_id: r.resource_id, required: r.required }))
+          .map((r) => ({ resource_id: r.resource_id, required: r.required }))
       : [];
 
     const { error: deleteError } = await supabase
@@ -114,7 +117,7 @@ export async function PUT(
         required: r.required,
       })),
     });
-  } catch (error) {
+  } catch (error: unknown) {
     return handleApiError(error, "Failed to update service resources");
   }
 }

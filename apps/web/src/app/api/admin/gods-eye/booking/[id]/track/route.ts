@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import {
-  requireRoleInApi,
+import { requireAdminSection,
   successResponse,
   handleApiError,
   notFoundResponse,
-} from "@/lib/supabase/api-helpers";
+ } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 
 const MAX_EVENTS = 200;
 
@@ -18,7 +18,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const admin = getSupabaseAdmin();
     const { id: bookingId } = await params;
 
@@ -47,13 +47,16 @@ export async function GET(
 
     if (eventsErr) throw eventsErr;
 
-    const b = booking as any;
+    type BookingRow = { address_latitude?: number | null; address_longitude?: number | null };
+    type TrackingRow = { provider_last_lat?: number | null; provider_last_lng?: number | null };
+    const b = booking as BookingRow;
+    const t = trackingState as TrackingRow | null;
     const routeLine =
-      b.address_latitude != null && b.address_longitude != null && (trackingState as any)?.provider_last_lat != null
+      b.address_latitude != null && b.address_longitude != null && t?.provider_last_lat != null
         ? {
             from: {
-              lat: (trackingState as any).provider_last_lat,
-              lng: (trackingState as any).provider_last_lng,
+              lat: t.provider_last_lat,
+              lng: t.provider_last_lng ?? 0,
             },
             to: {
               lat: Number(b.address_latitude),

@@ -77,8 +77,8 @@ export function ExploreModerationTable() {
         const res = await fetcher.get<{ data: { posts: AdminPost[]; total: number; limit: number; offset: number } }>(
           `/api/admin/explore/posts?${params}`
         );
-        const payload = (res as any)?.data;
-        const list = Array.isArray(payload?.posts) ? payload.posts : Array.isArray((res as any)?.data) ? (res as any).data : [];
+        const payload = res?.data;
+        const list = Array.isArray(payload?.posts) ? payload.posts : [];
         const tot = typeof payload?.total === "number" ? payload.total : list.length;
         if (resetOffset || off === 0) {
           setPosts(list);
@@ -101,7 +101,7 @@ export function ExploreModerationTable() {
 
   useEffect(() => {
     loadPosts(true);
-  }, [status, hidden, sort, dateFrom, dateTo]);
+  }, [status, hidden, sort, dateFrom, dateTo, loadPosts]);
 
   const runSearch = () => {
     setOffset(0);
@@ -365,6 +365,7 @@ export function ExploreModerationTable() {
                     </td>
                     <td className="px-4 py-2">
                       {post.media_urls?.[0] ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- dynamic storage URLs, not app assets
                         <img
                           src={getMediaUrl(post.media_urls[0])}
                           alt=""

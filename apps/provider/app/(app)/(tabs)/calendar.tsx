@@ -49,6 +49,7 @@ import {
   formatCurrency,
   capitalizeFirst,
 } from "@/lib/format";
+import { trackCalendarView } from "@/lib/analytics";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
 import { Colors } from "@/constants/colors";
@@ -461,6 +462,11 @@ export default function CalendarScreen() {
   useEffect(() => {
     if (globalLocationId) setLocationFilter(globalLocationId);
   }, [globalLocationId]);
+
+  useEffect(() => {
+    trackCalendarView();
+  }, []);
+
   const [refreshing, setRefreshing] = useState(false);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [prefsVisible, setPrefsVisible] = useState(false);

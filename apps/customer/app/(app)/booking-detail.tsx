@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
+  TextInput,
   Linking,
   TouchableOpacity,
   ScrollView,
@@ -10,7 +11,9 @@ import {
   Alert,
   Share,
   Platform,
+  Modal,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
@@ -26,6 +29,7 @@ import { SafetyPanicButton } from "@/components/SafetyPanicButton";
 import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
+import * as FileSystem from "expo-file-system/legacy";
 
 function formatDate(s: string) {
   return new Date(s).toLocaleDateString("en-US", {
@@ -43,6 +47,38 @@ function formatTime(s: string) {
   });
 }
 
+function formatDateForCalendar(d: Date): string {
+  return d.toISOString().replace(/[-:]/g, "").split(".")[0];
+}
+
+function getGoogleCalendarUrl(params: { title: string; description: string; location: string; start: Date; end: Date }): string {
+  const startStr = formatDateForCalendar(params.start) + "Z";
+  const endStr = formatDateForCalendar(params.end) + "Z";
+  const q = new URLSearchParams({
+    action: "TEMPLATE",
+    text: params.title,
+    dates: `${startStr.replace("Z", "")}/${endStr.replace("Z", "")}`,
+    location: params.location,
+    details: params.description,
+  });
+  return `https://calendar.google.com/calendar/render?${q.toString()}`;
+}
+
+function getOutlookCalendarUrl(params: { title: string; description: string; location: string; start: Date; end: Date }): string {
+  const q = new URLSearchParams({
+    path: "/calendar/action/compose",
+    rru: "addevent",
+    subject: params.title,
+    startdt: params.start.toISOString(),
+    enddt: params.end.toISOString(),
+    body: params.description,
+    location: params.location,
+  });
+  return `https://outlook.live.com/owa/0/?${q.toString()}`;
+}
+
+const COMPLETION_MODAL_STORAGE_KEY = "booking_completion_modal_seen_";
+
 export default function BookingDetailScreen() {
   useScreenTracking("Booking Detail");
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -55,7 +91,15 @@ export default function BookingDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [icsLoading, setIcsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"tracking" | "receipt" | "details">("tracking");
+  const [resendCooldownUntil, setResendCooldownUntil] = useState<number | null>(null);
+  const [showFallbackInput, setShowFallbackInput] = useState(false);
+  const [fallbackOtp, setFallbackOtp] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [pinSecondsLeft, setPinSecondsLeft] = useState<number | null>(null);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   const load = async () => {
     if (!id) return;
@@ -81,6 +125,56 @@ export default function BookingDetailScreen() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load on id change only
   }, [id]);
+
+  // Show post-completion modal once per booking when opening a completed booking
+  useEffect(() => {
+    if (!id || !booking || booking.status !== "completed") return;
+    let mounted = true;
+    (async () => {
+      try {
+        const seen = await AsyncStorage.getItem(COMPLETION_MODAL_STORAGE_KEY + id);
+        if (mounted && !seen) setShowCompletionModal(true);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => { mounted = false; };
+  }, [id, booking?.id, booking?.status]);
+
+  const dismissCompletionModal = useCallback((markSeen: boolean) => {
+    if (markSeen && id) {
+      AsyncStorage.setItem(COMPLETION_MODAL_STORAGE_KEY + id, "1").catch(() => {});
+    }
+    setShowCompletionModal(false);
+  }, [id]);
+
+  const handleCompletionWriteReview = useCallback(() => {
+    dismissCompletionModal(true);
+    haptic.light();
+    router.push({ pathname: "/(app)/review-write", params: { bookingId: booking?.id ?? id } });
+  }, [dismissCompletionModal, booking?.id, id]);
+
+  // Countdown for arrival PIN expiry
+  const pinExpiresAt = booking?.arrival_otp_expires_at;
+  const needsPinDisplay =
+    booking &&
+    booking.location_type === "at_home" &&
+    (booking.current_stage === "provider_arrived" || (booking as any).provider_arrived_at) &&
+    !booking.arrival_otp_verified &&
+    !!booking.arrival_otp;
+  useEffect(() => {
+    if (!needsPinDisplay || !pinExpiresAt) {
+      setPinSecondsLeft(null);
+      return;
+    }
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((new Date(pinExpiresAt).getTime() - Date.now()) / 1000));
+      setPinSecondsLeft(left);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [needsPinDisplay, pinExpiresAt]);
 
   // Realtime booking status updates
   useEffect(() => {
@@ -185,6 +279,92 @@ export default function BookingDetailScreen() {
       ? `${APP_URL}/account-settings/bookings/${id}`
       : `${APP_URL}/account-settings/bookings`;
     Linking.openURL(url);
+  };
+
+  const handleAddToCalendarIcs = useCallback(async () => {
+    if (!id) return;
+    haptic.light();
+    setIcsLoading(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) {
+        Alert.alert("Sign in required", "Please sign in to download the calendar file.");
+        return;
+      }
+      const url = `${APP_URL.replace(/\/$/, "")}/api/me/bookings/${id}/calendar.ics`;
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "omit",
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        const msg = text ? getApiErrorMessage({ message: text, status: response.status }, "Failed to load calendar file") : "Failed to load calendar file";
+        Alert.alert("Error", msg);
+        return;
+      }
+      const icsText = await response.text();
+      const filename = `booking-${booking?.booking_number ?? id}.ics`;
+      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+      await FileSystem.writeAsStringAsync(fileUri, icsText, { encoding: FileSystem.EncodingType.UTF8 });
+      await Share.share({
+        url: fileUri,
+        title: "Add to Calendar",
+        message: Platform.OS === "android" ? icsText : undefined,
+      });
+    } catch (e) {
+      Alert.alert("Error", e instanceof Error ? e.message : "Failed to download calendar file");
+    } finally {
+      setIcsLoading(false);
+    }
+  }, [id, booking?.booking_number]);
+
+  const handleResendPin = async () => {
+    if (!id || isResending || (resendCooldownUntil != null && Date.now() < resendCooldownUntil)) return;
+    setIsResending(true);
+    try {
+      const res = await api.post<{ data?: { arrival_otp_expires_at?: string }; error?: { message?: string; code?: string } }>(
+        `/api/me/bookings/${id}/resend-arrival-otp`,
+        {}
+      );
+      if (res.error) {
+        const msg = res.error.message || "Failed to resend";
+        const retryAfter = res.error.code === "RATE_LIMITED" ? " Please wait before trying again." : "";
+        Alert.alert("Error", msg + retryAfter);
+        if (res.error.code === "RATE_LIMITED") setResendCooldownUntil(Date.now() + 90000);
+      } else {
+        setResendCooldownUntil(Date.now() + 90000);
+        await load();
+      }
+    } catch (e) {
+      Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to resend code"));
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  const handleVerifyFallback = async () => {
+    const code = fallbackOtp.replace(/\D/g, "");
+    if (!id || code.length < 4 || isVerifying) return;
+    setIsVerifying(true);
+    try {
+      const res = await api.post<{ data?: { booking: any }; error?: { message?: string } }>(
+        `/api/me/bookings/${id}/verify-arrival`,
+        { otp: code }
+      );
+      if (res.error) {
+        Alert.alert("Error", res.error.message || "Verification failed");
+      } else {
+        setFallbackOtp("");
+        setShowFallbackInput(false);
+        await load();
+      }
+    } catch (e) {
+      Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to verify"));
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   if (loading && !booking) {
@@ -325,6 +505,69 @@ export default function BookingDetailScreen() {
                 </Text>
               </View>
             )}
+            {/* Customer-holds-PIN: show code for provider to enter */}
+            {needsPinDisplay && (
+              <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#BFDBFE", padding: 20 }} accessibilityLabel="Your verification code">
+                <Text style={{ fontSize: 16, fontWeight: "600", color: "#1E3A8A", marginBottom: 4 }}>Your verification code</Text>
+                <Text style={{ fontSize: 14, color: "#1E40AF", marginBottom: 12 }}>Give this code to your provider when they arrive.</Text>
+                <View style={{ alignItems: "center", marginVertical: 12 }}>
+                  <Text style={{ fontSize: 32, fontWeight: "700", letterSpacing: 6, color: "#1E3A8A" }}>
+                    {(booking.arrival_otp?.length === 4
+                      ? `${(booking.arrival_otp as string).slice(0, 2)} ${(booking.arrival_otp as string).slice(2)}`
+                      : booking.arrival_otp?.length === 6
+                        ? `${(booking.arrival_otp as string).slice(0, 3)} ${(booking.arrival_otp as string).slice(3)}`
+                        : booking.arrival_otp) ?? "—"}
+                  </Text>
+                </View>
+                {pinSecondsLeft != null && (
+                  <Text style={{ fontSize: 13, color: "#1E40AF", marginBottom: 12 }}>
+                    {pinSecondsLeft > 0 ? `Code expires in ${Math.floor(pinSecondsLeft / 60)}:${String(pinSecondsLeft % 60).padStart(2, "0")}` : "Code expired"}
+                  </Text>
+                )}
+                <TouchableOpacity
+                  onPress={handleResendPin}
+                  disabled={isResending || (resendCooldownUntil != null && Date.now() < resendCooldownUntil) || (pinSecondsLeft != null && pinSecondsLeft <= 0)}
+                  style={{ backgroundColor: Colors.primary, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12, alignSelf: "flex-start" }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Resend code"
+                >
+                  <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>
+                    {isResending ? "Sending…" : resendCooldownUntil != null && Date.now() < resendCooldownUntil ? "Resend code (wait)" : "Resend code"}
+                  </Text>
+                </TouchableOpacity>
+                {!showFallbackInput ? (
+                  <TouchableOpacity onPress={() => setShowFallbackInput(true)} style={{ marginTop: 12 }}>
+                    <Text style={{ fontSize: 13, color: "#1E40AF", textDecorationLine: "underline" }}>Having trouble? Enter code here</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: "#BFDBFE" }}>
+                    <Text style={{ fontSize: 13, color: "#1E3A8A", marginBottom: 8 }}>Enter the code (fallback)</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 6 }}>4 or 6 digits</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <TextInput
+                        value={fallbackOtp}
+                        onChangeText={(t) => setFallbackOtp(t.replace(/\D/g, "").slice(0, 6))}
+                        placeholder="1234"
+                        keyboardType="number-pad"
+                        maxLength={6}
+                        style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, fontSize: 18 }}
+                        accessibilityLabel="Verification code"
+                      />
+                      <TouchableOpacity
+                        onPress={handleVerifyFallback}
+                        disabled={fallbackOtp.replace(/\D/g, "").length < 4 || isVerifying}
+                        style={{ backgroundColor: Colors.primary, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12 }}
+                      >
+                        {isVerifying ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: "#fff", fontWeight: "600" }}>Verify</Text>}
+                      </TouchableOpacity>
+                    </View>
+                    <Pressable onPress={() => { setShowFallbackInput(false); setFallbackOtp(""); }}>
+                      <Text style={{ fontSize: 13, color: "#1E40AF" }}>Cancel</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            )}
             {/* Milestones (at-home: en route / arrived; at-salon: preparing / in progress) */}
             <View style={{ marginBottom: 16 }}>
               {(
@@ -404,6 +647,12 @@ export default function BookingDetailScreen() {
                   <Text style={{ fontSize: 12, color: Colors.gray[500], textTransform: "capitalize" }}>{booking.payment_status}</Text>
                 </View>
               )}
+              {typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (
+                <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Outstanding balance</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#B45309" }}>{booking.currency} {Number(booking.outstanding_balance).toFixed(2)}</Text>
+                </View>
+              )}
             </View>
             {payError && (
               <View style={{ backgroundColor: "#FEF2F2", borderRadius: 12, padding: 12, marginBottom: 16 }}>
@@ -415,6 +664,41 @@ export default function BookingDetailScreen() {
                 {payLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>Pay Now</Text>}
               </Pressable>
             )}
+            {(() => {
+              const charges = booking?.additional_charges ?? [];
+              const unpaidCharges = charges.filter((c: any) => c.status === "pending" || c.status === "approved");
+              if (unpaidCharges.length === 0) return null;
+              return (
+                <View style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 12 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Additional charges</Text>
+                  {unpaidCharges.map((c: any) => (
+                    <View key={c.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: unpaidCharges.length > 1 ? 1 : 0, borderBottomColor: Colors.gray[100] }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{c.description || "Additional charge"}</Text>
+                        <Text style={{ fontSize: 13, color: Colors.gray[500] }}>{booking.currency} {Number(c.amount || 0).toFixed(2)}</Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => {
+                          haptic.light();
+                          router.push({
+                            pathname: "/(app)/in-app-browser",
+                            params: {
+                              url: encodeURIComponent(`${APP_URL}/account-settings/bookings/${booking.id}/pay-additional/${c.id}`),
+                              title: "Pay additional charge",
+                            },
+                          } as never);
+                        }}
+                        style={{ backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Pay additional charge"
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Pay</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              );
+            })()}
             <View style={{ flexDirection: "row" }}>
               <TouchableOpacity
                 style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginRight: 12 }}
@@ -551,6 +835,67 @@ export default function BookingDetailScreen() {
           </View>
         )}
 
+        {booking.status !== "cancelled" && (() => {
+          const totalMinutes = (services || []).reduce((sum: number, s: any) => sum + (s.duration_minutes ?? s.offering?.duration_minutes ?? 0), 0);
+          const calStart = new Date(booking.selected_datetime);
+          const calEnd = new Date(calStart.getTime() + totalMinutes * 60 * 1000);
+          const addressObj = (booking as any).address;
+          const calLocation = location
+            ? ((location as { address?: string }).address || [location.name, (location as { address_line1?: string }).address_line1, (location as { city?: string }).city].filter(Boolean).join(", ") || "—")
+            : addressObj?.line1
+              ? [addressObj.line1, addressObj.city, addressObj.country].filter(Boolean).join(", ")
+              : (booking as any).address_line1
+                ? [(booking as any).address_line1, (booking as any).address_city, (booking as any).address_country].filter(Boolean).join(", ")
+                : "Address TBD";
+          const calTitle = `Appointment with ${provider?.business_name ?? "Beautonomi"}`;
+          const calDesc = `Booking #${booking.booking_number ?? ""}\n${(services || []).map((s: any) => `${s.offering_name ?? s.service_name ?? "Service"} (${s.duration_minutes ?? 0} min)`).join("\n")}`;
+          return (
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Add to calendar</Text>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    haptic.light();
+                    Linking.openURL(getGoogleCalendarUrl({ title: calTitle, description: calDesc, location: calLocation, start: calStart, end: calEnd }));
+                  }}
+                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add to Google Calendar"
+                >
+                  <Ionicons name="calendar-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Google Calendar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    haptic.light();
+                    Linking.openURL(getOutlookCalendarUrl({ title: calTitle, description: calDesc, location: calLocation, start: calStart, end: calEnd }));
+                  }}
+                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add to Outlook"
+                >
+                  <Ionicons name="calendar-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Outlook</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleAddToCalendarIcs}
+                  disabled={icsLoading}
+                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Download .ics file for Apple Calendar or other apps"
+                >
+                  {icsLoading ? (
+                    <ActivityIndicator size="small" color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                  ) : (
+                    <Ionicons name="calendar-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
+                  )}
+                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{Platform.OS === "ios" ? "Apple Calendar" : "Download .ics"}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })()}
+
         <SafetyPanicButton bookingId={id ?? null} />
 
         {canCancel && (
@@ -683,6 +1028,53 @@ export default function BookingDetailScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* Post-completion modal: once per booking when opening a completed booking */}
+      <Modal
+        visible={showCompletionModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => dismissCompletionModal(true)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 }}
+          onPress={() => dismissCompletionModal(true)}
+        >
+          <Pressable
+            style={{ backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 360 }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={{ alignItems: "center", marginBottom: 16 }}>
+              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="trophy" size={32} color={Colors.primary} />
+              </View>
+            </View>
+            <Text style={{ fontSize: 20, fontWeight: "700", color: Colors.gray[900], textAlign: "center", marginBottom: 8 }}>Booking complete</Text>
+            <Text style={{ fontSize: 15, color: Colors.gray[600], textAlign: "center", marginBottom: (booking?.loyalty_points_earned ?? 0) > 0 ? 12 : 20 }}>
+              You’re all set. Thanks for booking with us.
+            </Text>
+            {(booking?.loyalty_points_earned ?? 0) > 0 && (
+              <Text style={{ fontSize: 15, fontWeight: "600", color: Colors.primary, textAlign: "center", marginBottom: 20 }}>
+                You earned {booking.loyalty_points_earned} loyalty points. They’ve been added to your balance.
+              </Text>
+            )}
+            <TouchableOpacity
+              onPress={handleCompletionWriteReview}
+              style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Write a review</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => dismissCompletionModal(true)}
+              style={{ paddingVertical: 14, alignItems: "center" }}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: Colors.gray[600], fontWeight: "500", fontSize: 15 }}>Maybe later</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </>
   );
 }

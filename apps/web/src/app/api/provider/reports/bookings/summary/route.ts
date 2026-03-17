@@ -126,12 +126,15 @@ export async function GET(request: NextRequest) {
     (bookings || []).forEach((booking) => {
       const bookingRevenue = revenueByBooking.get(booking.id) || 0;
       if (!booking.booking_services || !Array.isArray(booking.booking_services)) return;
+      type ServicePriceRow = { price?: number };
+      type BookingServiceRow = { price?: number; offerings?: { title?: string } | Array<{ title?: string }> };
       const totalServicePrice = booking.booking_services.reduce(
-        (sum: number, s: any) => sum + Number(s.price || 0),
+        (sum: number, s: ServicePriceRow) => sum + Number(s.price ?? 0),
         0
       );
-      booking.booking_services.forEach((bs: any) => {
-        const serviceName = bs.offerings?.title || "Unknown";
+      booking.booking_services.forEach((bs: BookingServiceRow) => {
+        const off = bs.offerings != null ? (Array.isArray(bs.offerings) ? bs.offerings[0] : bs.offerings) : undefined;
+        const serviceName = off?.title ?? "Unknown";
         const existing = serviceMap.get(serviceName) || { serviceName, bookings: 0, revenue: 0 };
         existing.bookings += 1;
         const serviceProportion = totalServicePrice > 0

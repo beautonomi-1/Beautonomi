@@ -3,6 +3,18 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
+/** Booking row shape from bulk select (id, status, version, customer_id, loyalty_points_earned, booking_number; subtotal/currency optional if expanded) */
+type BulkBookingRow = {
+  id: string;
+  status?: string;
+  version?: number;
+  customer_id?: string;
+  loyalty_points_earned?: number;
+  booking_number?: string;
+  subtotal?: number;
+  currency?: string;
+};
+
 /**
  * POST /api/provider/bookings/bulk
  * 
@@ -30,7 +42,7 @@ export async function POST(request: NextRequest) {
     // Verify all bookings belong to provider
     const { data: bookings, error: checkError } = await supabaseAdmin
       .from("bookings")
-      .select("id, status, version, customer_id, loyalty_points_earned, booking_number")
+      .select("id, status, version, customer_id, loyalty_points_earned, booking_number, subtotal, currency")
       .eq("provider_id", providerId)
       .in("id", booking_ids);
 
@@ -57,8 +69,8 @@ export async function POST(request: NextRequest) {
       failed: [] as Array<{ id: string; reason: string }>,
     };
 
-    // Process each booking
     for (const booking of bookings) {
+      const row = booking as BulkBookingRow;
       try {
         if (action.toLowerCase() === "delete") {
           // Soft delete by updating status
@@ -76,8 +88,7 @@ export async function POST(request: NextRequest) {
             continue;
           }
         } else {
-          // Update status
-          const updateData: any = {
+          const updateData: Record<string, unknown> = {
             status: newStatus,
             updated_at: new Date().toISOString(),
           };
@@ -88,8 +99,7 @@ export async function POST(request: NextRequest) {
             updateData.cancelled_at = new Date().toISOString();
           }
 
-          // Increment version
-          const currentVersion = (booking as any).version || 0;
+          const currentVersion = row.version ?? 0;
           updateData.version = currentVersion + 1;
 
           const { error: updateError } = await supabaseAdmin
@@ -102,13 +112,9 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
-          // Handle loyalty points for status changes
-          const customerId = (booking as any).customer_id;
-          
+          const customerId = row.customer_id;
           if (newStatus === "completed" && customerId) {
-            // Award loyalty points for completed booking
-            const subtotal = (booking as any).subtotal || 0;
-            
+            const subtotal = row.subtotal ?? 0;
             if (subtotal > 0) {
               try {
                 const { calculateLoyaltyPoints } = await import("@/lib/loyalty/calculate-points");
@@ -121,18 +127,17 @@ export async function POST(request: NextRequest) {
                   .maybeSingle();
 
                 if (!existingTransaction) {
-                  const currency = (booking as any).currency || "ZAR";
+                  const currency = row.currency ?? "ZAR";
                   const pointsEarned = await calculateLoyaltyPoints(subtotal, supabaseAdmin, currency);
 
                   if (pointsEarned > 0) {
-                    // Create loyalty transaction for customer
                     const { error: loyaltyError } = await supabaseAdmin
                       .from("loyalty_point_transactions")
                       .insert({
                         user_id: customerId,
                         transaction_type: "earned",
                         points: pointsEarned,
-                        description: `Points earned for completed booking ${(booking as any).booking_number || booking.id}`,
+                        description: `Points earned for completed booking ${row.booking_number ?? booking.id}`,
                         reference_id: booking.id,
                         reference_type: "booking",
                         expires_at: null,
@@ -154,9 +159,7 @@ export async function POST(request: NextRequest) {
               }
             }
           } else if (newStatus === "cancelled") {
-            // Reverse loyalty points if booking was cancelled and points were earned
-            const loyaltyPointsEarned = (booking as any).loyalty_points_earned || 0;
-            
+            const loyaltyPointsEarned = row.loyalty_points_earned ?? 0;
             if (loyaltyPointsEarned > 0 && customerId) {
               try {
                 // Check if points were already earned (transaction exists)
@@ -176,7 +179,7 @@ export async function POST(request: NextRequest) {
                       user_id: customerId,
                       transaction_type: "redeemed",
                       points: loyaltyPointsEarned,
-                      description: `Points reversed for cancelled booking ${(booking as any).booking_number || booking.id}`,
+                      description: `Points reversed for cancelled booking ${row.booking_number ?? booking.id}`,
                       reference_id: booking.id,
                       reference_type: "booking",
                       expires_at: null,
@@ -206,10 +209,10 @@ export async function POST(request: NextRequest) {
               booking_id: booking.id,
               event_type: action.toLowerCase() === "delete" ? "deleted" : "status_changed",
               event_data: {
-                previous_status: (booking as any).status,
+                previous_status: row.status,
                 new_status: action.toLowerCase() === "delete" ? "cancelled" : newStatus,
                 field: "status",
-                old_value: (booking as any).status,
+                old_value: row.status,
                 new_value: action.toLowerCase() === "delete" ? "cancelled" : newStatus,
                 bulk_operation: true,
                 total_affected: booking_ids.length,
@@ -223,8 +226,9 @@ export async function POST(request: NextRequest) {
         }
 
         results.success.push(booking.id);
-      } catch (error: any) {
-        results.failed.push({ id: booking.id, reason: error.message || "Unknown error" });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        results.failed.push({ id: booking.id, reason: message });
       }
     }
 

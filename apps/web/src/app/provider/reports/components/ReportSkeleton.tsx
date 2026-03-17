@@ -25,7 +25,7 @@ export function ReportSkeleton() {
       {/* Stats Cards Skeleton */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
-          <Card key={i} className="border-gray-200">
+          <Card key={i} className="rounded-xl border-gray-200 shadow-sm">
             <CardHeader className="pb-3">
               <Skeleton className="h-4 w-24" />
             </CardHeader>
@@ -38,14 +38,14 @@ export function ReportSkeleton() {
       </div>
 
       {/* Content Cards Skeleton */}
-      <Card className="border-gray-200">
+      <Card className="rounded-xl border-gray-200 shadow-sm">
         <CardHeader>
-          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-6 w-48 rounded-lg" />
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-16 w-full rounded-lg" />
+              <Skeleton key={i} className="h-16 w-full rounded-xl" />
             ))}
           </div>
         </CardContent>

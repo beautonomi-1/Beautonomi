@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { writeConfigChangeLog } from "@/lib/config/config-change-log";
 
@@ -15,7 +16,7 @@ function parseEnv(s: string | null): string {
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const { searchParams } = new URL(request.url);
     const environment = parseEnv(searchParams.get("environment"));
 
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const body = await request.json();
     const environment = parseEnv(body.environment);
 

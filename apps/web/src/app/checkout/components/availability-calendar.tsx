@@ -1,9 +1,7 @@
 "use client";
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import Slider from "react-slick";
+import React, { useState, useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight, Clock, X, Loader2 } from "lucide-react";
-import "slick-carousel/slick/slick.css";
-import "slick-carousel/slick/slick-theme.css";
+import { EmblaSlider, type EmblaSliderApi } from "@/components/ui/embla-slider";
 import { fetcher } from "@/lib/http/fetcher";
 
 interface TimeSlot {
@@ -49,7 +47,7 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dateSlotCounts, setDateSlotCounts] = useState<Map<string, number>>(new Map());
-  const sliderRef = useRef<Slider>(null);
+  const [sliderApi, setSliderApi] = useState<EmblaSliderApi | null>(null);
 
   // Format date as YYYY-MM-DD for API
   const formatDateForAPI = (date: Date): string => {
@@ -161,15 +159,18 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
   useEffect(() => {
     const newDates = getDates(new Date(), 30);
     setDates(newDates);
-    if (sliderRef.current) {
-      const selectedIndex = newDates.findIndex(
-        (date) => date.toDateString() === selectedDate.toDateString()
-      );
-      if (selectedIndex >= 0) {
-        sliderRef.current.slickGoTo(selectedIndex, true);
-      }
-    }
   }, []);
+
+  // Scroll date strip to selected date when dates or api are ready
+  useEffect(() => {
+    if (dates.length === 0 || !sliderApi) return;
+    const selectedIndex = dates.findIndex(
+      (date) => date.toDateString() === selectedDate.toDateString()
+    );
+    if (selectedIndex >= 0) {
+      sliderApi.scrollTo(selectedIndex, true);
+    }
+  }, [dates, selectedDate, sliderApi]);
 
   // Fetch availability when date changes
   useEffect(() => {
@@ -222,29 +223,6 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
       fetchSlotCounts();
     }
   }, [dates, providerSlug, fetchAvailability, dateSlotCounts]);
-
-  const settings = {
-    dots: false,
-    infinite: false,
-    speed: 500,
-    slidesToShow: 7,
-    slidesToScroll: 1,
-    initialSlide: 0,
-    responsive: [
-      {
-        breakpoint: 1024,
-        settings: {
-          slidesToShow: 6,
-        },
-      },
-      {
-        breakpoint: 768,
-        settings: {
-          slidesToShow: 4,
-        },
-      },
-    ],
-  };
 
   const handleDateClick = (date: Date) => {
     setSelectedDate(date);
@@ -334,7 +312,12 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
       </div>
 
       {/* Date Slider */}
-      <Slider ref={sliderRef} {...settings} className="mb-4 sm:mb-6">
+      <EmblaSlider
+        slidesToShow={7}
+        loop={false}
+        setApi={setSliderApi}
+        className="mb-4 sm:mb-6"
+      >
         {dates.map((date, index) => {
           const availableCount = getAvailableCount(date);
           const isSelected = date.toDateString() === selectedDate.toDateString();
@@ -364,7 +347,7 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
             </div>
           );
         })}
-      </Slider>
+      </EmblaSlider>
 
       {/* Loading State */}
       {isLoading && (

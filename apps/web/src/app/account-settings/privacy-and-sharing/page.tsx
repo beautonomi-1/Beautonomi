@@ -83,7 +83,16 @@ const PrivacyPage = () => {
         };
       }>("/api/me/privacy-settings", { cache: "no-store" });
 
-      const settings = response.data || (response as any);
+      type PrivacySettingsPayload = {
+        accountVisibility?: boolean;
+        profileInformation?: boolean;
+        readReceipts?: boolean;
+        includeInSearchEngines?: boolean;
+        showHomeCity?: boolean;
+        showTripType?: boolean;
+        showLengthOfStay?: boolean;
+      };
+      const settings: PrivacySettingsPayload = response.data ?? (response as PrivacySettingsPayload);
 
       setAccountVisibility(settings.accountVisibility ?? false);
       setProfileInformation(settings.profileInformation ?? false);
@@ -92,7 +101,7 @@ const PrivacyPage = () => {
       setShowHomeCity(settings.showHomeCity ?? false);
       setShowTripType(settings.showTripType ?? false);
       setShowLengthOfStay(settings.showLengthOfStay ?? false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to load privacy settings:", error);
       toast.error("Failed to load privacy settings. Please try again.");
     } finally {
@@ -107,8 +116,8 @@ const PrivacyPage = () => {
       });
       toast.success("Setting updated successfully");
       await loadPrivacySettings();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to update setting. Please try again.");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to update setting. Please try again.");
       throw error;
     }
   };
@@ -126,15 +135,16 @@ const PrivacyPage = () => {
         };
       }>("/api/me/request-data", { cache: "no-store" });
       
-      const responseData = response.data || (response as any);
+      type DataExportStatusPayload = { isReady?: boolean; isPending?: boolean; downloadUrl?: string; fileName?: string };
+      const responseData: DataExportStatusPayload = response.data ?? (response as DataExportStatusPayload);
       
       setDataExportStatus({
-        isReady: responseData.isReady || false,
-        isPending: responseData.isPending || false,
+        isReady: responseData.isReady ?? false,
+        isPending: responseData.isPending ?? false,
         downloadUrl: responseData.downloadUrl,
         fileName: responseData.fileName,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to load data export status:", error);
       // Set default state on error
       setDataExportStatus({
@@ -156,7 +166,8 @@ const PrivacyPage = () => {
         };
       }>("/api/me/request-data");
 
-      const responseData = response.data || response as any;
+      type RequestDataResponse = { message?: string; downloadUrl?: string; fileName?: string; requestedAt?: string };
+      const responseData: RequestDataResponse = response.data ?? (response as RequestDataResponse);
 
       if (responseData.downloadUrl) {
         setDataExportStatus({
@@ -180,11 +191,11 @@ const PrivacyPage = () => {
           window.open(responseData.downloadUrl, '_blank');
         }
       } else {
-        toast.success(responseData.message || "Your data request has been submitted.");
+        toast.success(responseData.message ?? "Your data request has been submitted.");
         await loadDataExportStatus();
       }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to request your data. Please try again.");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to request your data. Please try again.");
     } finally {
       setIsRequestingData(false);
     }
@@ -228,8 +239,8 @@ const PrivacyPage = () => {
       setTimeout(() => {
         window.location.href = "/";
       }, 2000);
-    } catch (error: any) {
-      toast.error(error.message || "Failed to delete your account. Please try again.");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete your account. Please try again.");
     } finally {
       setIsDeletingAccount(false);
     }

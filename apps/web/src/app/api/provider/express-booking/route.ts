@@ -9,6 +9,8 @@ const createExpressLinkSchema = z.object({
   slug: z.string().min(1, "Slug is required").regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
   service_ids: z.array(z.string().uuid()).optional().default([]),
   staff_ids: z.array(z.string().uuid()).optional().default([]),
+  location_id: z.string().uuid().optional().nullable(),
+  location_type: z.enum(["at_salon", "at_home"]).optional().nullable(),
   expires_at: z.string().datetime().optional().nullable(),
   max_uses: z.number().int().positive().optional(),
   is_active: z.boolean().optional().default(true),
@@ -98,7 +100,24 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const validated = createExpressLinkSchema.parse(body);
+    let validated = createExpressLinkSchema.parse(body);
+    if (validated.location_type === "at_home") {
+      validated = { ...validated, location_id: null };
+    }
+    if (validated.location_id && validated.location_type !== "at_salon") {
+      validated = { ...validated, location_type: "at_salon" as const };
+    }
+    if (validated.location_id) {
+      const { data: loc } = await supabase
+        .from("provider_locations")
+        .select("id")
+        .eq("id", validated.location_id)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      if (!loc) {
+        return errorResponse("Selected location not found or does not belong to your business.", "INVALID_LOCATION", 400);
+      }
+    }
 
     // Check if slug already exists for this provider
     const { data: existingLink } = await supabase

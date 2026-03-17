@@ -34,10 +34,15 @@ import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalPro
 
 type BookingStatus = "all" | "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
 
+/** Booking as returned from list API (may include display names). */
+type ProviderBookingListItem = Booking & { customer_name?: string; location_name?: string; staff_name?: string };
+
+const BOOKINGS_CACHE_DURATION = 10 * 1000; // 10 seconds
+
 export default function ProviderBookings() {
   const _router = useRouter();
   const { selectedLocationId } = useProviderPortal();
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [bookings, setBookings] = useState<ProviderBookingListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
@@ -57,54 +62,8 @@ export default function ProviderBookings() {
   const [showPostNudge, setShowPostNudge] = useState(false);
 
   // Cache for bookings data
-  const bookingsCacheRef = useRef<Map<string, { data: Booking[]; timestamp: number }>>(new Map());
-  const BOOKINGS_CACHE_DURATION = 10 * 1000; // 10 seconds
-  const pendingBookingsRequests = useRef<Map<string, Promise<any>>>(new Map());
-
-  const loadBookings = useCallback(async () => {
-    // Create cache key
-    const params = new URLSearchParams();
-    if (statusFilter !== "all") params.set("status", statusFilter);
-    if (dateFilter) {
-      params.set("start_date", dateFilter);
-      const endDate = new Date(dateFilter);
-      endDate.setDate(endDate.getDate() + 1);
-      params.set("end_date", endDate.toISOString().split("T")[0]);
-    }
-    if (selectedLocationId) {
-      params.set("location_id", selectedLocationId);
-    }
-    const cacheKey = params.toString() || "all";
-
-    // Check cache first
-    const cached = bookingsCacheRef.current.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < BOOKINGS_CACHE_DURATION) {
-      setBookings(cached.data);
-      setIsLoading(false);
-      setError(null);
-      
-      // Refresh in background if cache is > 5 seconds old
-      if (Date.now() - cached.timestamp > 5 * 1000) {
-        loadBookingsFresh(cacheKey, params, true).catch(() => {
-          // Silently fail background refresh
-        });
-      }
-      return;
-    }
-
-    // Check for pending request
-    if (pendingBookingsRequests.current.has(cacheKey)) {
-      try {
-        const result = await pendingBookingsRequests.current.get(cacheKey);
-        setBookings(result);
-        return;
-      } catch {
-        // Continue with new request if previous failed
-      }
-    }
-
-    await loadBookingsFresh(cacheKey, params);
-  }, [statusFilter, dateFilter, selectedLocationId]);
+  const bookingsCacheRef = useRef<Map<string, { data: ProviderBookingListItem[]; timestamp: number }>>(new Map());
+  const pendingBookingsRequests = useRef<Map<string, Promise<ProviderBookingListItem[]>>>(new Map());
 
   const loadBookingsFresh = useCallback(async (cacheKey: string, params: URLSearchParams, isBackground = false) => {
     const requestPromise = (async () => {
@@ -117,7 +76,7 @@ export default function ProviderBookings() {
         setError(null);
         setConflictError(null);
 
-        const response = await fetcher.get<{ data: Booking[] }>(
+        const response = await fetcher.get<{ data: ProviderBookingListItem[] }>(
           `/api/provider/bookings?${params.toString()}`,
           { timeoutMs: 8000 } // 8 second timeout
         );
@@ -152,6 +111,44 @@ export default function ProviderBookings() {
     await requestPromise;
   }, []);
 
+  const loadBookings = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (dateFilter) {
+      params.set("start_date", dateFilter);
+      const endDate = new Date(dateFilter);
+      endDate.setDate(endDate.getDate() + 1);
+      params.set("end_date", endDate.toISOString().split("T")[0]);
+    }
+    if (selectedLocationId) {
+      params.set("location_id", selectedLocationId);
+    }
+    const cacheKey = params.toString() || "all";
+
+    const cached = bookingsCacheRef.current.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < BOOKINGS_CACHE_DURATION) {
+      setBookings(cached.data);
+      setIsLoading(false);
+      setError(null);
+      if (Date.now() - cached.timestamp > 5 * 1000) {
+        loadBookingsFresh(cacheKey, params, true).catch(() => {});
+      }
+      return;
+    }
+
+    if (pendingBookingsRequests.current.has(cacheKey)) {
+      try {
+        const result = await pendingBookingsRequests.current.get(cacheKey);
+        setBookings(result ?? []);
+        return;
+      } catch {
+        // continue
+      }
+    }
+
+    await loadBookingsFresh(cacheKey, params);
+  }, [statusFilter, dateFilter, selectedLocationId, loadBookingsFresh]);
+
   useEffect(() => {
     loadBookings();
   }, [loadBookings]);
@@ -180,9 +177,9 @@ export default function ProviderBookings() {
       if (newStatus === "completed" && booking) {
         setPendingRatingBooking({
           id: booking.id,
-          customer_name: (booking as any).customer_name ?? "Customer",
+          customer_name: booking.customer_name ?? "Customer",
           location_id: booking.location_id ?? null,
-          location_name: (booking as any).location_name ?? null,
+          location_name: booking.location_name ?? null,
         });
       }
     } catch (error) {
@@ -220,7 +217,7 @@ export default function ProviderBookings() {
     if (!searchQuery) return bookings;
     const query = searchQuery.toLowerCase();
     return bookings.filter((booking) => {
-      const customerName = (booking as any).customer_name?.toLowerCase() || "";
+      const customerName = booking.customer_name?.toLowerCase() || "";
       const bookingNumber = booking.booking_number?.toLowerCase() || "";
       return customerName.includes(query) || bookingNumber.includes(query);
     });
@@ -228,7 +225,7 @@ export default function ProviderBookings() {
 
   // Memoize grouped bookings - single pass instead of multiple filters
   const groupedBookings = useMemo(() => {
-    const grouped: Record<string, Booking[]> = {
+    const grouped: Record<string, ProviderBookingListItem[]> = {
       pending: [],
       confirmed: [],
       in_progress: [],
@@ -502,7 +499,7 @@ function BookingsList({
   selectedIds,
   onSelectionChange,
 }: {
-  bookings: Booking[];
+  bookings: ProviderBookingListItem[];
   onStatusChange: (id: string, status: string, version?: number) => void;
   selectedIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
@@ -551,7 +548,7 @@ function BookingCard({
   isSelected,
   onToggleSelection,
 }: {
-  booking: Booking;
+  booking: ProviderBookingListItem;
   onStatusChange: (id: string, status: string, version?: number) => void;
   onViewDetails: () => void;
   isSelected?: boolean;
@@ -606,7 +603,7 @@ function BookingCard({
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3">
               {getStatusIcon()}
               <h3 className="text-base sm:text-lg font-semibold text-gray-900 truncate">
-                {(booking as any).customer_name || "Customer"}
+                {booking.customer_name || "Customer"}
               </h3>
               <span
                 className={`px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium ${getStatusColor()}`}
@@ -636,16 +633,16 @@ function BookingCard({
                   })}
                 </span>
               </div>
-              {booking.location_type === "at_salon" && (booking as any).location_name && (
+              {booking.location_type === "at_salon" && booking.location_name && (
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 flex-shrink-0" />
-                  <span className="truncate">{(booking as any).location_name}</span>
+                  <span className="truncate">{booking.location_name}</span>
                 </div>
               )}
-              {(booking as any).staff_name && (
+              {booking.staff_name && (
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4 flex-shrink-0" />
-                  <span className="truncate">{(booking as any).staff_name}</span>
+                  <span className="truncate">{booking.staff_name}</span>
                 </div>
               )}
             </div>
@@ -662,7 +659,7 @@ function BookingCard({
                   key={index}
                   className="px-2.5 py-1 bg-gray-100 rounded-md text-xs text-gray-700"
                 >
-                  {(service as any).offering_name || "Service"}
+                  {service.offering_name || "Service"}
                 </span>
               ))}
               {booking.services.length > 3 && (
@@ -697,14 +694,14 @@ function BookingCard({
             {booking.status === "pending" && (
               <>
                 <Button
-                  onClick={() => onStatusChange(booking.id, "confirmed", (booking as any).version)}
+                  onClick={() => onStatusChange(booking.id, "confirmed", booking.version)}
                   className="bg-green-600 hover:bg-green-700 text-white min-h-[44px] text-sm sm:text-base w-full sm:w-auto"
                 >
                   Confirm
                 </Button>
                 <Button
                   variant="destructive"
-                  onClick={() => onStatusChange(booking.id, "cancelled", (booking as any).version)}
+                  onClick={() => onStatusChange(booking.id, "cancelled", booking.version)}
                   className="min-h-[44px] text-sm sm:text-base w-full sm:w-auto"
                 >
                   Cancel
@@ -713,7 +710,7 @@ function BookingCard({
             )}
             {booking.status === "confirmed" && (
               <Button
-                onClick={() => onStatusChange(booking.id, "completed", (booking as any).version)}
+                onClick={() => onStatusChange(booking.id, "completed", booking.version)}
                 className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px] text-sm sm:text-base w-full sm:w-auto"
               >
                 Mark Complete

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 const updatePageContentSchema = z.object({
   page_slug: z.string().min(1).optional(),
@@ -25,8 +27,8 @@ export async function GET(
   try {
     const { id } = await params;
     
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -82,8 +84,8 @@ export async function PUT(
   try {
     const { id } = await params;
     
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -109,7 +111,7 @@ export async function PUT(
       );
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (validationResult.data.page_slug !== undefined)
       updateData.page_slug = validationResult.data.page_slug;
     if (validationResult.data.section_key !== undefined)
@@ -179,15 +181,15 @@ export async function DELETE(
   try {
     const { id } = await params;
     
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
     const supabase = await getSupabaseServer(request);
 
-    const { data: pageContent, error } = await (supabase
-      .from("page_content") as any)
+    const { data: pageContent, error } = await supabase
+      .from("page_content")
       .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq("id", id)
       .select()

@@ -1,11 +1,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import crypto from "crypto";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
 
     const supabase = await getSupabaseServer(request);
     const { data, error } = await supabase
@@ -15,21 +16,20 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    // Don't return secrets
-    const safeData = (data || []).map((endpoint: any) => ({
+    const safeData = (data || []).map((endpoint: Record<string, unknown>) => ({
       ...endpoint,
-      secret: undefined, // Remove secret from response
+      secret: undefined,
     }));
 
     return successResponse({ endpoints: safeData });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return handleApiError(error, "Failed to fetch webhook endpoints");
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["superadmin"], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
         secret, // Only returned on creation
       },
     }, 201);
-  } catch (error: any) {
+  } catch (error: unknown) {
     return handleApiError(error, "Failed to create webhook endpoint");
   }
 }

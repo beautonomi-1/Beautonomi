@@ -5,6 +5,9 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { Booking } from "@/types/beautonomi";
+
+/** Booking as returned from list API (may include display names). */
+type BookingListItem = Booking & { provider_name?: string; services?: Array<{ offering_name?: string }> };
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Calendar, MapPin, Clock, User, Sparkles } from "lucide-react";
@@ -156,7 +159,7 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
             <div className="flex-1">
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
                 <h3 className="text-lg md:text-xl font-semibold text-gray-900">
-                  {(booking as any).provider_name || booking.services?.[0]?.offering_name || "Beauty Service"}
+                  {(booking as BookingListItem).provider_name || (booking as BookingListItem).services?.[0]?.offering_name || "Beauty Service"}
                 </h3>
                 <span
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold tracking-tight ${

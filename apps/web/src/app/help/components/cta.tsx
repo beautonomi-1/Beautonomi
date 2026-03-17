@@ -16,12 +16,12 @@ export default function CTA() {
   return (
     <div className="max-w-6xl mx-auto mb-7">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-32 items-center justify-between p-0 lg:p-6 border-none lg:border rounded-lg  mx-auto">
-        <div className="hidden lg:block">
+        <div className={user ? "hidden lg:block" : ""}>
           <h2 className="text-[26px] font-normal ">We&apos;re here for you</h2>
           <p className="text-base font-normal ">
             {user 
               ? "Can&apos;t find what you&apos;re looking for? Submit a support ticket and we&apos;ll help you out."
-              : "Log in to get help with your reservations, account, and more."}
+              : "You need to log in to submit or view your support tickets. We can help with your bookings, account, and more."}
           </p>
         </div>
         {user ? (
@@ -38,13 +38,18 @@ export default function CTA() {
             </Link>
           </div>
         ) : (
-          <Button
-            variant="secondary"
-            className="w-full"
-            onClick={handleLoginClick}
-          >
-            Log in or sign up
-          </Button>
+          <div className="flex flex-col gap-3 w-full">
+            <p className="text-sm text-zinc-600 lg:hidden">
+              Log in to submit or view your support tickets.
+            </p>
+            <Button
+              variant="secondary"
+              className="w-full"
+              onClick={handleLoginClick}
+            >
+              Log in or sign up
+            </Button>
+          </div>
         )}
       </div>
       <LoginModal open={isModalOpen} setOpen={setIsModalOpen} />

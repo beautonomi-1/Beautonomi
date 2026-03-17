@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, getPaginationParams } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, getPaginationParams  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/invoices
@@ -8,7 +9,7 @@ import { requireRoleInApi, successResponse, handleApiError, getPaginationParams 
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
 
     const supabase = await getSupabaseServer(request);
     const { page, limit, offset } = getPaginationParams(request);
@@ -42,8 +43,8 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    // Transform to include provider info (business_name as name for display)
-    const transformedInvoices = (invoices || []).map((invoice: any) => ({
+    type InvoiceRow = { providers?: { business_name?: string; [key: string]: unknown } | null; [key: string]: unknown };
+    const transformedInvoices = (invoices || []).map((invoice: InvoiceRow) => ({
       ...invoice,
       provider: invoice.providers
         ? { ...invoice.providers, name: invoice.providers.business_name }

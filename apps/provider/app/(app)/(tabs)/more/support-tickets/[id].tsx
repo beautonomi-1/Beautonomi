@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -15,7 +16,9 @@ import { api } from "@/lib/api-client";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
+import { trackSupportTicketDetailView, trackSupportTicketReply } from "@/lib/analytics";
 
 type Message = {
   id: string;
@@ -61,8 +64,11 @@ export default function SupportTicketDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const loadTicket = useCallback(async () => {
     if (!id) return;
+    setLoadError(null);
     try {
       const res = await api.get<{ ticket: Ticket; messages: Message[] }>(
         `/api/me/support-tickets/${id}`
@@ -70,14 +76,18 @@ export default function SupportTicketDetailScreen() {
       if (res.error) {
         setTicket(null);
         setMessages([]);
+        setLoadError(typeof res.error === "string" ? res.error : (res.error?.message ?? "Could not load ticket"));
         return;
       }
       const payload = res.data;
-      setTicket(payload?.ticket ?? null);
+      const t = payload?.ticket ?? null;
+      setTicket(t);
       setMessages(payload?.messages ?? []);
-    } catch {
+      if (t) trackSupportTicketDetailView(t.id, t.ticket_number);
+    } catch (e) {
       setTicket(null);
       setMessages([]);
+      setLoadError(e instanceof Error ? e.message : "Could not load ticket");
     } finally {
       setLoading(false);
     }
@@ -97,13 +107,16 @@ export default function SupportTicketDetailScreen() {
         message: msg,
       }) as { data?: unknown; error?: { message?: string } };
       if (res.error) {
+        const errMsg = typeof res.error === "string" ? res.error : (res.error?.message ?? "Could not send reply");
         setSending(false);
+        Alert.alert("Could not send", errMsg);
         return;
       }
       setReply("");
+      trackSupportTicketReply(id);
       await loadTicket();
-    } catch {
-      // ignore
+    } catch (e) {
+      Alert.alert("Error", e instanceof Error ? e.message : "Could not send reply");
     } finally {
       setSending(false);
     }
@@ -135,16 +148,22 @@ export default function SupportTicketDetailScreen() {
     return (
       <ScreenContainer>
         <ScreenHeader title="Ticket" onBack={() => router.back()} />
-        <View style={twStyle("flex-1 items-center justify-center px-4")}>
-          <Text style={twStyle("text-gray-500 text-center")}>Ticket not found</Text>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={twStyle("mt-4")}
-            accessibilityLabel="Back to ticket list"
-            accessibilityRole="button"
-          >
-            <Text style={twStyle("text-indigo-600 font-medium")}>Back to list</Text>
-          </TouchableOpacity>
+        <View style={twStyle("flex-1 justify-center px-4")}>
+          {loadError ? (
+            <ErrorState message={loadError} onRetry={loadTicket} />
+          ) : (
+            <>
+              <Text style={twStyle("text-gray-500 text-center")}>Ticket not found</Text>
+              <TouchableOpacity
+                onPress={() => router.back()}
+                style={twStyle("mt-4")}
+                accessibilityLabel="Back to ticket list"
+                accessibilityRole="button"
+              >
+                <Text style={twStyle("text-indigo-600 font-medium")}>Back to list</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </ScreenContainer>
     );

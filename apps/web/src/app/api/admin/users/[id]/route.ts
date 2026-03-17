@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { z } from "zod";
 
 /**
@@ -14,7 +15,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
@@ -29,10 +30,11 @@ export async function GET(
       return notFoundResponse("User not found");
     }
 
-    // Get user stats based on role
-    const stats: any = {};
+    type UserRow = { role?: string };
+    const stats: Record<string, unknown> = {};
+    const userRow = userData as UserRow;
 
-    if ((userData as any).role === "customer") {
+    if (userRow.role === "customer") {
       const { count: bookingCount } = await supabase
         .from("bookings")
         .select("*", { count: "exact", head: true })
@@ -59,7 +61,7 @@ export async function GET(
       stats.total_bookings = bookingCount || 0;
       stats.total_spent = totalSpent;
       stats.last_booking_date = lastBooking?.scheduled_at || null;
-    } else if ((userData as any).role === "provider_owner") {
+    } else if (userRow.role === "provider_owner") {
       const { count: providerCount } = await supabase
         .from("providers")
         .select("*", { count: "exact", head: true })
@@ -69,7 +71,7 @@ export async function GET(
     }
 
     return successResponse({
-      ...(userData as Record<string, any>),
+      ...(userData as Record<string, unknown>),
       stats,
     });
   } catch (error) {
@@ -96,7 +98,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['superadmin'], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
 
     const { id } = await params;
     const body = await request.json();
@@ -146,8 +148,7 @@ export async function PATCH(
       );
     }
 
-    // Build update object
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     
     if (validationResult.data.deactivated_at !== undefined) {
       const at = validationResult.data.deactivated_at
@@ -231,7 +232,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['superadmin'], request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);

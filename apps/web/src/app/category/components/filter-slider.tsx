@@ -1,7 +1,5 @@
 "use client";
-import { useRef } from "react";
-import "slick-carousel/slick/slick.css";
-import "slick-carousel/slick/slick-theme.css";
+import { useState, useCallback } from "react";
 import Image from "next/image";
 import img1 from "../../../../public/icons/1.1.png";
 import img2 from "../../../../public/icons/1.2.jpg";
@@ -27,68 +25,13 @@ import img21 from "../../../../public/icons/1.21.jpg";
 import img22 from "../../../../public/icons/1.22.jpg";
 import img23 from "../../../../public/icons/1.23.jpg";
 import img24 from "../../../../public/icons/1.24.jpg";
-import Slider from "react-slick";
+import { EmblaSlider, type EmblaSliderApi } from "@/components/ui/embla-slider";
 
 const FilterSlider = () => {
-    const sliderRef = useRef<any>(null);
-  
-    const handleNext = () => {
-      if (sliderRef.current) {
-        sliderRef.current.slickNext();
-      }
-    };
-  
-    const handlePrev = () => {
-      if (sliderRef.current) {
-        sliderRef.current.slickPrev();
-      }
-    };
-  
-    const settings = {
-      infinite: true,
-      slidesToShow: 12,
-      slidesToScroll: 4,
-      speed: 500,
-      arrows: false,
-      responsive: [
-        {
-            breakpoint: 2340,
-            settings: {
-              slidesToShow: 20,
-            },
-          },
-        {
-            breakpoint: 1580,
-            settings: {
-              slidesToShow: 12,
-            },
-          },
-          {
-            breakpoint: 1280,
-            settings: {
-              slidesToShow: 12,
-            },
-          },
-        {
-          breakpoint: 1024,
-          settings: {
-            slidesToShow: 8,
-          },
-        },
-        {
-          breakpoint: 768,
-          settings: {
-            slidesToShow: 6,
-          },
-        },
-        {
-          breakpoint: 480,
-          settings: {
-            slidesToShow: 4,
-          },
-        },
-      ],
-    };
+  const [sliderApi, setSliderApi] = useState<EmblaSliderApi | null>(null);
+
+  const handleNext = useCallback(() => sliderApi?.scrollNext(), [sliderApi]);
+  const handlePrev = useCallback(() => sliderApi?.scrollPrev(), [sliderApi]);
 
   const Filter = [
     { img: img1, title: "Cabins" },
@@ -119,8 +62,8 @@ const FilterSlider = () => {
 
   return (
     <div className="relative max-w-[2340px] mx-auto">
-      <div className="overflow-hidden px-16"> 
-        <Slider ref={sliderRef} {...settings}>
+      <div className="overflow-hidden px-16">
+        <EmblaSlider slidesToShow={12} loop setApi={setSliderApi}>
           {Filter.map((item, index) => (
             <div key={index} className="px-2 py-2">
               <div className="flex flex-col items-center justify-center cursor-pointer group p-2 h-full">
@@ -134,11 +77,11 @@ const FilterSlider = () => {
                     {item.title}
                   </p>
                 </div>
-                <span className="border-b-2 border-transparent group-hover:border-gray-300 w-16 mt-1"></span>
+                <span className="border-b-2 border-transparent group-hover:border-gray-300 w-16 mt-1" />
               </div>
             </div>
           ))}
-        </Slider>
+        </EmblaSlider>
       </div>
       <button
         onClick={handlePrev}

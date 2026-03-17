@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRole } from "@/lib/supabase/auth-server";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 
-function isTableMissingError(e: any): boolean {
-  const msg = typeof (e as any)?.message === "string" ? (e as any).message : "";
+function isTableMissingError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : (typeof e === "object" && e !== null && "message" in e && typeof (e as { message: unknown }).message === "string" ? (e as { message: string }).message : "");
   return msg.includes("schema cache") || (msg.includes("relation ") && msg.includes("does not exist")) || msg.includes("Could not find the table");
 }
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRole(["superadmin"]);
+    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
@@ -59,14 +60,14 @@ export async function GET(request: NextRequest) {
       },
       error: null,
     });
-  } catch (error: any) {
-    const err = error as { message?: string };
-    console.error("Error fetching reconciliations:", err);
-    if (isTableMissingError(err)) {
+  } catch (error: unknown) {
+    console.error("Error fetching reconciliations:", error);
+    if (isTableMissingError(error)) {
       return NextResponse.json({ data: [], meta: { page: 1, limit: 50, total: 0, has_more: false }, error: null });
     }
+    const message = error instanceof Error ? error.message : "Failed to fetch reconciliations";
     return NextResponse.json(
-      { error: err?.message || "Failed to fetch reconciliations" },
+      { error: message },
       { status: 500 }
     );
   }
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRole(["superadmin"]);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
 
     const body = await request.json();
@@ -116,10 +117,11 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ data, error: null });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error creating reconciliation:", error);
+    const message = error instanceof Error ? error.message : "Failed to create reconciliation";
     return NextResponse.json(
-      { error: error.message || "Failed to create reconciliation" },
+      { error: message },
       { status: 500 }
     );
   }
@@ -127,7 +129,7 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { user } = await requireRole(["superadmin"]);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
 
     const body = await request.json();
@@ -163,10 +165,11 @@ export async function PATCH(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ data, error: null });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error updating reconciliation:", error);
+    const message = error instanceof Error ? error.message : "Failed to update reconciliation";
     return NextResponse.json(
-      { error: error.message || "Failed to update reconciliation" },
+      { error: message },
       { status: 500 }
     );
   }

@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { normalizePhoneToE164 } from "@/lib/phone";
 import { Phone } from "lucide-react";
 
 interface Country {
@@ -44,18 +45,36 @@ function getCountryFlag(code: string): string {
   return String.fromCodePoint(...codePoints);
 }
 
-// Helper function to parse phone number and extract country code
+// Country codes (no +) for parsing E.164 without space; longest first
+const E164_COUNTRY_CODES = [
+  "254", "234", "233", "27", "91", "81", "86", "61", "49", "44", "39", "33", "34", "48", "46", "47", "31", "7", "1",
+];
+
+// Helper function to parse phone number and extract country code (handles E.164 with or without space)
 function parsePhoneNumber(phone: string): { countryCode: string; number: string } {
   if (!phone) return { countryCode: "+27", number: "" };
-  
-  // Check if phone starts with a country code (starts with +)
-  const match = phone.match(/^(\+\d{1,4})\s*(.+)$/);
-  if (match) {
-    return { countryCode: match[1], number: match[2] };
+  const trimmed = phone.trim();
+
+  // E.164 without space: +27823456789 → +27, 823456789
+  if (/^\+\d{8,15}$/.test(trimmed.replace(/\s/g, ""))) {
+    const digits = trimmed.replace(/\D/g, "");
+    for (const cc of E164_COUNTRY_CODES) {
+      if (digits.startsWith(cc) && digits.length > cc.length) {
+        const national = digits.slice(cc.length);
+        if (national.length >= 7 && national.length <= 14) {
+          return { countryCode: "+" + cc, number: national };
+        }
+      }
+    }
   }
-  
-  // Default to South Africa if no country code
-  return { countryCode: "+27", number: phone };
+
+  // With space: +27 823456789 or +27 0823456789
+  const match = trimmed.match(/^(\+\d{1,4})\s*(.+)$/);
+  if (match) {
+    return { countryCode: match[1], number: match[2].trim() };
+  }
+
+  return { countryCode: "+27", number: trimmed };
 }
 
 export function PhoneInput({
@@ -160,11 +179,13 @@ export function PhoneInput({
   const handleCountryCodeChange = (newCountryCode: string) => {
     setSelectedCountryCode(newCountryCode);
     onCountryCodeChange?.(newCountryCode);
-    
-    // Update full phone number
-    const fullPhone = phoneNumber ? `${newCountryCode} ${phoneNumber}` : "";
-    lastEmittedValueRef.current = fullPhone;
-    onChange?.(fullPhone);
+
+    const e164 = phoneNumber.trim()
+      ? normalizePhoneToE164(phoneNumber.trim(), newCountryCode.replace(/^\+/, ""))
+      : undefined;
+    const out = e164 ?? "";
+    lastEmittedValueRef.current = out;
+    onChange?.(out);
   };
 
   const handlePhoneNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -203,11 +224,13 @@ export function PhoneInput({
     
     setValidationError(error);
     onValidationChange?.(isValid, error);
-    
-    // Combine country code and number
-    const fullPhone = newNumber ? `${selectedCountryCode} ${newNumber}` : "";
-    lastEmittedValueRef.current = fullPhone;
-    onChange?.(fullPhone);
+
+    const e164 = newNumber.trim()
+      ? normalizePhoneToE164(newNumber.trim(), selectedCountryCode.replace(/^\+/, ""))
+      : undefined;
+    const out = e164 ?? "";
+    lastEmittedValueRef.current = out;
+    onChange?.(out);
   };
 
   return (

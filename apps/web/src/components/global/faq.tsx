@@ -112,25 +112,42 @@ export default function FAQ({ applyBgPrimary, category, limit }: FAQProps) {
 
     fetchFAQs();
   }, [category, limit]);
+  const onPrimary = !!applyBgPrimary;
+  const headingClass = onPrimary
+    ? "text-white md:mb-4 max-w-72 md:max-w-md text-[26px] md:text-4xl lg:text-[40px] font-normal lg:font-semibold"
+    : "md:mb-4 max-w-72 md:max-w-md text-[26px] md:text-4xl lg:text-[40px] font-normal lg:font-semibold";
+  const triggerClass = onPrimary
+    ? "text-lg md:text-[22px] font-light text-white hover:text-white/90 text-left [&[data-state=open]]:text-white"
+    : "text-lg md:text-[22px] font-light text-secondary text-left";
+  const contentClass = onPrimary ? "font-light text-white/95" : "font-light";
+  const listClass = onPrimary ? "list-decimal ml-6 text-white/95" : "list-decimal ml-6";
+  const paragraphClass = onPrimary
+    ? "text-base font-light text-white/95"
+    : "text-base font-light text-destructive";
+
   return (
     <div className={applyBgPrimary ? "bg-primary py-16" : ""}>
       <div className="container">
         <div className="block lg:grid grid-cols-12">
           <div className="col-span-5">
-            <h2 className="md:mb-4 max-w-72 md:max-w-md text-[26px] md:text-4xl lg:text-[40px] font-normal lg:font-semibold">
+            <h2 className={headingClass}>
               Your questions, answered
             </h2>
           </div>
           <div className="col-span-7">
             <Accordion type="single" collapsible>
               {faqData.map((faq) => (
-                <AccordionItem key={faq.id} value={faq.id} className="mb-3">
-                  <AccordionTrigger className="text-lg md:text-[22px] font-light text-secondary text-left">
+                <AccordionItem
+                  key={faq.id}
+                  value={faq.id}
+                  className={onPrimary ? "mb-3 border-b border-white/30" : "mb-3"}
+                >
+                  <AccordionTrigger className={triggerClass}>
                     {faq.question}
                   </AccordionTrigger>
-                  <AccordionContent className="font-light">
+                  <AccordionContent className={contentClass}>
                     {faq.isList ? (
-                      <ol className="list-decimal ml-6">
+                      <ol className={listClass}>
                         {faq.answer
                           .split(/(?=\d+\.\s+[A-Z])|(?=[A-Z][^.]*:)|(?=\.\s+[A-Z])/)
                           .filter(item => item.trim() && item.trim().length > 10)
@@ -147,7 +164,7 @@ export default function FAQ({ applyBgPrimary, category, limit }: FAQProps) {
                           })}
                       </ol>
                     ) : (
-                      <p className="text-base font-light text-destructive">{faq.answer}</p>
+                      <p className={paragraphClass}>{faq.answer}</p>
                     )}
                   </AccordionContent>
                 </AccordionItem>

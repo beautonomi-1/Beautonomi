@@ -1,14 +1,22 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { useResponsive } from "@/hooks/useResponsive";
+import { trackScreenView } from "@/lib/analytics";
 import { Colors } from "@/constants/colors";
+
+interface AnalyticsSummary {
+  revenue: { thisMonth: number; growth: string };
+  bookings: { thisMonth: number; upcoming: number; growth: string };
+  customers: { total: number };
+}
 
 interface ReportItem {
   name: string;
@@ -176,6 +184,11 @@ export default function ReportsIndex() {
   const router = useRouter();
   const { isTablet } = useResponsive();
   const [search, setSearch] = useState("");
+  const { data: analytics } = useApi<AnalyticsSummary>("/api/provider/analytics");
+
+  useEffect(() => {
+    trackScreenView("provider_reports");
+  }, []);
 
   const filteredCategories = useMemo(() => {
     if (!search.trim()) return REPORT_CATEGORIES;
@@ -191,9 +204,39 @@ export default function ReportsIndex() {
     })).filter((cat) => cat.reports.length > 0);
   }, [search]);
 
+  const revenueThisMonth = analytics?.revenue?.thisMonth ?? 0;
+  const bookingsThisMonth = analytics?.bookings?.thisMonth ?? 0;
+  const revenueGrowth = analytics?.revenue?.growth ?? "0";
+  const bookingsGrowth = analytics?.bookings?.growth ?? "0";
+
   return (
     <ScreenContainer>
       <ScreenHeader title="Reports" showBack subtitle="Analytics & insights" />
+
+      {analytics && (
+        <View style={{ marginBottom: 12, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: "#f8fafc", padding: 14 }}>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginBottom: 6 }}>This month</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
+                R{revenueThisMonth.toFixed(0)}
+              </Text>
+              {revenueGrowth !== "0" && revenueGrowth !== "New" && (
+                <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>({revenueGrowth}%)</Text>
+              )}
+              {revenueGrowth === "New" && (
+                <Text style={{ fontSize: 12, color: "#22c55e", marginLeft: 4 }}>New</Text>
+              )}
+            </View>
+            <View style={{ flexDirection: "row", alignItems: "baseline" }}>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[800] }}>{bookingsThisMonth} bookings</Text>
+              {bookingsGrowth !== "0" && bookingsGrowth !== "New" && (
+                <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>({bookingsGrowth}%)</Text>
+              )}
+            </View>
+          </View>
+        </View>
+      )}
 
       <View style={{ marginBottom: 12 }}>
         <SearchBar value={search} onChangeText={setSearch} placeholder="Search reports..." />
@@ -225,7 +268,7 @@ export default function ReportsIndex() {
                 accessibilityRole="button"
               >
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <View style={{ height: 48, width: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: report.bg }}>
+                  <View style={{ height: 48, width: 48, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: report.bg }}>
                     <Ionicons name={report.icon} size={24} color={report.color} />
                   </View>
                   <View style={{ marginLeft: 12, flex: 1 }}>

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
@@ -9,7 +10,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
     const searchParams = request.nextUrl.searchParams;
@@ -99,7 +100,7 @@ export async function GET(request: NextRequest) {
         const searchLower = search.toLowerCase();
         return (
           auto.name?.toLowerCase().includes(searchLower) ||
-          (auto.provider as any)?.business_name?.toLowerCase().includes(searchLower)
+          (auto.provider as { business_name?: string } | null)?.business_name?.toLowerCase().includes(searchLower)
         );
       })
       .map((auto) => {
@@ -111,7 +112,7 @@ export async function GET(request: NextRequest) {
           id: auto.id,
           name: auto.name,
           provider_id: auto.provider_id,
-          provider_name: (auto.provider as any)?.business_name || "Unknown",
+          provider_name: (auto.provider as { business_name?: string } | null)?.business_name ?? "Unknown",
           trigger_type: auto.trigger_type,
           action_type: auto.action_type,
           is_active: auto.is_active,

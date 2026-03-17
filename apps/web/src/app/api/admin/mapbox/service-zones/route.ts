@@ -53,7 +53,8 @@ export async function GET(request: Request) {
         .single();
 
       if (provider) {
-        query = query.eq("provider_id", (provider as any).id);
+        const providerRow = provider as { id: string };
+        query = query.eq("provider_id", providerRow.id);
       } else {
         return NextResponse.json({
           data: [],
@@ -79,8 +80,9 @@ export async function GET(request: Request) {
     }
 
     // Transform database schema to match frontend expectations
-    const transformedZones = (zones || []).map((zone: any) => {
-      const transformed: any = {
+    type ZoneRow = { id: string; name?: string; zone_type?: string; is_active?: boolean; provider_id?: string; radius_km?: number; center_longitude?: number; center_latitude?: number; polygon_coordinates?: unknown[] };
+    const transformedZones = (zones || []).map((zone: ZoneRow) => {
+      const transformed: Record<string, unknown> = {
         id: zone.id,
         name: zone.name,
         type: zone.zone_type, // zone_type -> type
@@ -98,7 +100,7 @@ export async function GET(request: Request) {
       } else if (zone.zone_type === "polygon") {
         // Transform polygon_coordinates from [[lat, lng], ...] to [{longitude, latitude}, ...]
         if (Array.isArray(zone.polygon_coordinates)) {
-          transformed.coordinates = zone.polygon_coordinates.map((coord: any) => {
+          transformed.coordinates = zone.polygon_coordinates.map((coord: unknown) => {
             if (Array.isArray(coord) && coord.length >= 2) {
               return {
                 longitude: coord[1], // lng is second
@@ -222,28 +224,24 @@ export async function POST(request: Request) {
       }
     }
 
-    // Transform frontend schema to database schema
-    const dbData: any = {
+    const dbData: Record<string, unknown> = {
       name: validationResult.data.name,
-      zone_type: validationResult.data.type, // type -> zone_type
+      zone_type: validationResult.data.type,
       is_active: validationResult.data.is_active,
       provider_id: validationResult.data.provider_id,
       radius_km: validationResult.data.radius_km,
     };
-
     if (validationResult.data.type === "radius") {
-      // For radius zones, extract coordinates
       const coords = validationResult.data.coordinates as { longitude: number; latitude: number };
       dbData.center_longitude = coords.longitude;
       dbData.center_latitude = coords.latitude;
     } else if (validationResult.data.type === "polygon") {
-      // For polygon zones, transform [{longitude, latitude}, ...] to [[lat, lng], ...]
       const coords = validationResult.data.coordinates as Array<{ longitude: number; latitude: number }>;
       dbData.polygon_coordinates = coords.map((coord) => [coord.latitude, coord.longitude]);
     }
 
-    const { data: zone, error } = await (supabase
-      .from("service_zones") as any)
+    const { data: zone, error } = await supabase
+      .from("service_zones")
       .insert(dbData)
       .select()
       .single();
@@ -262,29 +260,27 @@ export async function POST(request: Request) {
       );
     }
 
-    // Transform database schema back to frontend format
-    const transformedZone: any = {
-      id: zone.id,
-      name: zone.name,
-      type: zone.zone_type,
-      is_active: zone.is_active,
-      provider_id: zone.provider_id,
-      radius_km: zone.radius_km,
+    type ZoneRowInsert = { id: string; name?: string; zone_type?: string; is_active?: boolean; provider_id?: string; radius_km?: number; center_longitude?: number; center_latitude?: number; polygon_coordinates?: unknown[] };
+    type TransformedZoneInsert = { id: string; name?: string; type?: string; is_active?: boolean; provider_id?: string; radius_km?: number; coordinates?: unknown };
+    const zoneRow = zone as ZoneRowInsert;
+    const transformedZone: TransformedZoneInsert = {
+      id: zoneRow.id,
+      name: zoneRow.name,
+      type: zoneRow.zone_type,
+      is_active: zoneRow.is_active,
+      provider_id: zoneRow.provider_id,
+      radius_km: zoneRow.radius_km,
     };
-
-    if (zone.zone_type === "radius") {
+    if (zoneRow.zone_type === "radius") {
       transformedZone.coordinates = {
-        longitude: zone.center_longitude,
-        latitude: zone.center_latitude,
+        longitude: zoneRow.center_longitude,
+        latitude: zoneRow.center_latitude,
       };
-    } else if (zone.zone_type === "polygon") {
-      if (Array.isArray(zone.polygon_coordinates)) {
-        transformedZone.coordinates = zone.polygon_coordinates.map((coord: any) => {
+    } else if (zoneRow.zone_type === "polygon") {
+      if (Array.isArray(zoneRow.polygon_coordinates)) {
+        transformedZone.coordinates = zoneRow.polygon_coordinates.map((coord: unknown) => {
           if (Array.isArray(coord) && coord.length >= 2) {
-            return {
-              longitude: coord[1],
-              latitude: coord[0],
-            };
+            return { longitude: coord[1], latitude: coord[0] };
           }
           return coord;
         });
@@ -298,8 +294,8 @@ export async function POST(request: Request) {
       actor_role: auth.user.role,
       action: "admin.mapbox.service_zone.create",
       entity_type: "service_zone",
-      entity_id: zone.id,
-      metadata: { provider_id: zone.provider_id, type: zone.zone_type, name: zone.name },
+      entity_id: zoneRow.id,
+      metadata: { provider_id: zoneRow.provider_id, type: zoneRow.zone_type, name: zoneRow.name },
     });
 
     return NextResponse.json({

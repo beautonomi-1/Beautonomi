@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, handleApiError, successResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
 
-    const { data, error } = await (supabase.from("about_us_content") as any)
+    const { data, error } = await supabase
+      .from("about_us_content")
       .select('*')
       .order('display_order', { ascending: true });
 
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
@@ -34,7 +36,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data, error } = await (supabase.from("about_us_content") as any)
+    const { data, error } = await supabase
+      .from("about_us_content")
       .insert({
         section_key,
         title,

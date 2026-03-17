@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
@@ -9,7 +10,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(['superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
 
@@ -78,7 +79,8 @@ export async function GET(request: NextRequest) {
       providersWithAutomations?.map((p) => p.provider_id) || []
     );
 
-    providerSubscriptions?.forEach((sub: any) => {
+    type SubRow = { provider_id?: string; plan?: { price_monthly?: number; features?: { marketing_automations?: { enabled?: boolean } } } };
+    (providerSubscriptions as SubRow[] | null)?.forEach((sub) => {
       if (
         providersWithActiveAutomations.has(sub.provider_id) &&
         sub.plan?.features?.marketing_automations?.enabled

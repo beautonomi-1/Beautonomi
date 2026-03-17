@@ -23,7 +23,7 @@ interface Receipt {
   provider: {
     business_name: string;
     owner_email: string | null;
-    address: any;
+    address: { line1?: string; line2?: string; city?: string; state?: string; country?: string; postal_code?: string } | null;
   };
   services: Array<{
     name: string;

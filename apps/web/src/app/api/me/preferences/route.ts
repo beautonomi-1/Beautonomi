@@ -18,7 +18,7 @@ const preferencesSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     // Get user preferences (would need preferences table or user table columns)
     const { data: userData } = await supabase
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validated = preferencesSchema.parse(body);

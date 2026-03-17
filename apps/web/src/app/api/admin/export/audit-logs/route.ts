@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
@@ -10,8 +11,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRoleInApi(["superadmin"], request);
-    const { allowed, retryAfter } = checkRateLimit(auth.user.id, "export:audit-logs");
+    const { user } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
+    const { allowed, retryAfter } = checkRateLimit(user.id, "export:audit-logs");
     if (!allowed) {
       return errorResponse(
         `Rate limit exceeded. Try again in ${retryAfter} seconds.`,
@@ -72,7 +73,8 @@ export async function GET(request: NextRequest) {
       "Created At",
     ];
 
-    const rows = (logs || []).map((log: any) => [
+    type LogRow = { id: string; action?: string; actor_user_id?: string; actor?: { full_name?: string; email?: string }; actor_role?: string; entity_type?: string; entity_id?: string; metadata?: unknown; created_at?: string };
+    const rows = (logs || []).map((log: LogRow) => [
       log.id,
       log.action,
       log.actor_user_id || "",

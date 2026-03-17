@@ -117,6 +117,7 @@ export async function GET(request: NextRequest) {
       name: string;
       url: string;
       category?: string;
+      slug?: string;
     }> = [];
 
     // Add service suggestions
@@ -140,12 +141,13 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    // Add category suggestions
+    // Add category suggestions (include slug for search filter)
     (categories || []).forEach((category: any) => {
       suggestions.push({
         type: 'category',
         id: category.id,
         name: category.name,
+        slug: category.slug,
         url: `/category/${category.slug}`,
       });
     });

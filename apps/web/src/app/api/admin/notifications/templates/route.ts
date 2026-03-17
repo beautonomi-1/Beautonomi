@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 
 const templateSchema = z.object({
   key: z.string().min(1, "Key is required"),
@@ -13,7 +15,7 @@ const templateSchema = z.object({
   email_subject: z.string().optional().nullable(),
   email_body: z.string().optional().nullable(),
   sms_body: z.string().optional().nullable(),
-  live_activities_config: z.record(z.string(), z.any()).optional().nullable(),
+  live_activities_config: z.record(z.string(), z.unknown()).optional().nullable(),
   // Template metadata
   variables: z.array(z.string()).optional().default([]),
   url: z.string().url().optional().nullable(),
@@ -32,8 +34,8 @@ const _updateTemplateSchema = templateSchema.partial();
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -85,8 +87,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -122,8 +124,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: template, error } = await (supabase
-      .from("notification_templates") as any)
+    const { data: template, error } = await supabase
+      .from("notification_templates")
       .insert(validationResult.data)
       .select()
       .single();
@@ -142,13 +144,14 @@ export async function POST(request: Request) {
       );
     }
 
+    type TemplateRow = { id: string; key: string; channels: unknown; enabled: boolean };
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.notifications.template.create",
       entity_type: "notification_template",
-      entity_id: (template as any).id,
-      metadata: { key: (template as any).key, channels: (template as any).channels, enabled: (template as any).enabled },
+      entity_id: (template as TemplateRow).id,
+      metadata: { key: (template as TemplateRow).key, channels: (template as TemplateRow).channels, enabled: (template as TemplateRow).enabled },
     });
 
     return NextResponse.json({

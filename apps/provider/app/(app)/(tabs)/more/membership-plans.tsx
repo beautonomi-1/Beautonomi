@@ -17,6 +17,7 @@ import { SearchBar } from "@/components/ui/SearchBar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { StatCard } from "@/components/ui/StatCard";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
@@ -53,7 +54,7 @@ const INITIAL_FORM = {
   priceMonthly: "",
   discountPercent: "",
   isActive: true,
-  benefits: "",
+  benefitsList: [] as string[],
 };
 
 export default function MembershipPlansScreen() {
@@ -127,7 +128,7 @@ export default function MembershipPlansScreen() {
       priceMonthly: String(plan.price_monthly),
       discountPercent: plan.discount_percent ? String(plan.discount_percent) : "",
       isActive: plan.is_active,
-      benefits: plan.benefits?.join(", ") ?? "",
+      benefitsList: plan.benefits ?? [],
     });
     setShowDetail(null);
     setShowForm(true);
@@ -145,9 +146,7 @@ export default function MembershipPlansScreen() {
       price_monthly: Number(form.priceMonthly),
       discount_percent: form.discountPercent ? Number(form.discountPercent) : 0,
       is_active: form.isActive,
-      benefits: form.benefits
-        ? form.benefits.split(",").map((b) => b.trim()).filter(Boolean)
-        : undefined,
+      benefits: form.benefitsList.length > 0 ? form.benefitsList : undefined,
     };
 
     if (editing) {
@@ -449,13 +448,18 @@ export default function MembershipPlansScreen() {
             </View>
           </View>
 
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Benefits (comma separated)</Text>
-          <TextInput
-            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-            value={form.benefits}
-            onChangeText={(t) => setForm((p) => ({ ...p, benefits: t }))}
-            placeholder="e.g. Priority booking, Free products, 10% off"
-            placeholderTextColor="#9ca3af"
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Benefits</Text>
+          <ChipCombobox
+            value={form.benefitsList}
+            onChange={(v) => setForm((p) => ({ ...p, benefitsList: v }))}
+            staticSuggestions={[
+              { value: "Priority booking", label: "Priority booking" },
+              { value: "10% off", label: "10% off" },
+              { value: "Free product", label: "Free product" },
+              { value: "Exclusive events", label: "Exclusive events" },
+            ]}
+            placeholder="e.g. Priority booking, 10% off"
+            accessibilityLabel="Benefits"
           />
 
           <View style={twStyle("mb-4 flex-row items-center justify-between")}>

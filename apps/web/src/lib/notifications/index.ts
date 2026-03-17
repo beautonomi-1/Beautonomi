@@ -13,6 +13,7 @@ export {
   type NotificationChannel,
   type NotificationPayload,
   type SendNotificationResult,
+  type OneSignalSendOptions,
 } from "./onesignal";
 
 // All notification service functions

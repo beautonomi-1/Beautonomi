@@ -26,7 +26,7 @@ export async function POST(
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
 
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
 
@@ -90,16 +90,21 @@ export async function POST(
 
         const providerUserId = (providerRow as any)?.user_id;
         if (providerUserId) {
-          await sendToUser(providerUserId, {
-            title: "Additional Payment Update",
-            message: `Customer has ${approved ? "approved" : "rejected"} an additional payment request for booking ${(bookingRow as any)?.booking_number || ""}.`,
-            data: {
-              type: approved ? "additional_payment_approved" : "additional_payment_rejected",
-              booking_id: id,
-              charge_id,
+          await sendToUser(
+            providerUserId,
+            {
+              title: "Additional Payment Update",
+              message: `Customer has ${approved ? "approved" : "rejected"} an additional payment request for booking ${(bookingRow as any)?.booking_number || ""}.`,
+              data: {
+                type: approved ? "additional_payment_approved" : "additional_payment_rejected",
+                booking_id: id,
+                charge_id,
+              },
+              url: `/provider/bookings/${id}`,
             },
-            url: `/provider/bookings/${id}`,
-          });
+            ["push"],
+            { appType: "provider" }
+          );
         }
       }
     } catch (notifError) {

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { Appointment, TeamMember, AvailabilityBlockDisplay } from "@/lib/provider-portal/types";
 import { cn } from "@/lib/utils";
+import * as LucideIcons from "lucide-react";
 import { 
   Clock, 
   Calendar as CalendarIcon, 
@@ -870,7 +871,7 @@ export function CalendarMobileView({
                                     
                                     {/* Icon Flags - Show important indicators */}
                                     {activeIcons.slice(0, 1).map((icon, idx) => {
-                                      const IconComponent = require("lucide-react")[icon.icon];
+                                      const IconComponent = (LucideIcons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[icon.icon];
                                       if (!IconComponent) return null;
                                       return (
                                         <div
@@ -1115,7 +1116,7 @@ export function CalendarMobileView({
                                   const flags = extractIconFlags(apt);
                                   const activeIcons = getActiveIcons(flags);
                                   return activeIcons.slice(0, 2).map((icon, idx) => {
-                                    const IconComponent = require("lucide-react")[icon.icon];
+                                    const IconComponent = (LucideIcons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[icon.icon];
                                     if (!IconComponent) return null;
                                     return (
                                       <div
@@ -1199,7 +1200,7 @@ export function CalendarMobileView({
 }
 
 // Mobile Appointment Sheet Component - Full featured like desktop sidebar
-function _MobileAppointmentSheet({
+function MobileAppointmentSheet({
   appointment,
   onClose,
   onEdit,
@@ -1234,20 +1235,20 @@ function _MobileAppointmentSheet({
       const { toast: _toast } = await import("sonner");
       await providerApi.updateAppointment(currentAppointment.id, {
         status: newStatus,
-        ...((currentAppointment as any).version !== undefined && { version: (currentAppointment as any).version }),
+        ...(currentAppointment.version !== undefined && { version: currentAppointment.version }),
       });
       // Update local state immediately for instant feedback
       setCurrentAppointment({ ...currentAppointment, status: newStatus });
       // Call parent handler to refresh calendar
       onStatusChange(newStatus);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to update status:", error);
       const { toast } = await import("sonner");
       const { FetchError } = await import("@/lib/http/fetcher");
       if (error instanceof FetchError && error.status === 409) {
         toast.error("This appointment was modified by another user. Please refresh and try again.");
       } else {
-        toast.error(error?.message || "Failed to update status");
+        toast.error(error instanceof Error ? error.message : "Failed to update status");
       }
     }
   };
@@ -1274,20 +1275,20 @@ function _MobileAppointmentSheet({
       const { toast: _toast } = await import("sonner");
       await providerApi.updateAppointment(currentAppointment.id, {
         ...editedAppointment,
-        ...((currentAppointment as any).version !== undefined && { version: (currentAppointment as any).version }),
+        ...(currentAppointment.version !== undefined && { version: currentAppointment.version }),
       });
       setIsEditing(false);
       setEditedAppointment({});
       // Trigger refresh
       onEdit();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to save appointment:", error);
       const { toast } = await import("sonner");
       const { FetchError } = await import("@/lib/http/fetcher");
       if (error instanceof FetchError && error.status === 409) {
         toast.error("This appointment was modified by another user. Please refresh and try again.");
       } else {
-        toast.error(error?.message || "Failed to save changes");
+        toast.error(error instanceof Error ? error.message : "Failed to save changes");
       }
     } finally {
       setIsSaving(false);

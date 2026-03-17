@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import LanguageModal from "../global/langauges-modal";
 import { Facebook, Twitter, Linkedin, Instagram, ArrowRight } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
@@ -29,11 +30,17 @@ interface FooterSettings {
 }
 
 export default function Footer() {
+  const pathname = usePathname();
   const [modalOpen, setModalOpen] = useState(false);
   const [footerLinks, setFooterLinks] = useState<FooterLink[]>([]);
   const [appLinks, setAppLinks] = useState<AppLink[]>([]);
+  /** App links from Settings → Apps (platform_settings): provider on /become-a-partner, customer elsewhere */
+  const [contextAppLinks, setContextAppLinks] = useState<AppLink[] | null>(null);
   const [footerSettings, setFooterSettings] = useState<FooterSettings>({});
-  const [isLoading, setIsLoading] = useState(true); 
+  const [isLoading, setIsLoading] = useState(true);
+
+  const isProviderPage = Boolean(pathname?.startsWith("/become-a-partner"));
+  const appContext = isProviderPage ? "provider" : "customer";
 
   const _handleOpenModal = () => {
     setModalOpen(true);
@@ -64,6 +71,48 @@ export default function Footer() {
     };
     loadFooterData();
   }, []);
+
+  // Footer app buttons use Settings → Apps: provider on /become-a-partner, customer elsewhere (single source of truth)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetcher.get<{
+          data: {
+            android?: { download_url?: string; enabled?: boolean };
+            ios?: { app_store_url?: string; enabled?: boolean };
+          };
+          error: null;
+        }>(`/api/public/apps?type=${appContext}`);
+        if (cancelled || !res?.data) return;
+        const links: AppLink[] = [];
+        if (res.data.android?.enabled !== false && res.data.android?.download_url) {
+          links.push({
+            id: `${appContext}-android`,
+            platform: "android",
+            title: "Android",
+            href: res.data.android.download_url,
+            is_active: true,
+          });
+        }
+        if (res.data.ios?.enabled !== false && res.data.ios?.app_store_url) {
+          links.push({
+            id: `${appContext}-ios`,
+            platform: "ios",
+            title: "iOS",
+            href: res.data.ios.app_store_url,
+            is_active: true,
+          });
+        }
+        if (!cancelled) setContextAppLinks(links);
+      } catch {
+        if (!cancelled) setContextAppLinks(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [appContext]);
 
   // Group links by section (exclude Sitemap from about – shown only in bottom bar)
   const linksBySection = footerLinks.reduce((acc, link) => {
@@ -99,9 +148,11 @@ export default function Footer() {
     );
   };
 
-  // Get app links
-  const androidApp = appLinks.find((app) => app.platform === "android");
-  const iosApp = appLinks.find((app) => app.platform === "ios");
+  // Prefer Settings → Apps (contextAppLinks); fallback to Content → App links (footer_app_links)
+  const effectiveAppLinks =
+    contextAppLinks && contextAppLinks.length > 0 ? contextAppLinks : appLinks;
+  const androidApp = effectiveAppLinks.find((app) => app.platform === "android");
+  const iosApp = effectiveAppLinks.find((app) => app.platform === "ios");
 
   return (
     <footer className="bg-white border-t pt-8 md:pt-12 pb-20 md:pb-6">

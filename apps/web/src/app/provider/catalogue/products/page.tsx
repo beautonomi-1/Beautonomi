@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ProductCreateEditDialog } from "./components/ProductCreateEditDialog";
 import { ProductFiltersSheet } from "./components/ProductFiltersSheet";
+import { BarcodeLookup } from "@/components/provider-portal/BarcodeLookup";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import Breadcrumb from "@/components/ui/breadcrumb";
@@ -149,14 +150,31 @@ export default function ProviderProducts() {
     setIsCreateDialogOpen(false);
     const wasEdit = !!selectedProduct;
     setSelectedProduct(null);
-    
+
     // Reload products and metrics after a short delay to ensure backend has processed
     setTimeout(() => {
       loadProducts();
       loadMetrics();
     }, 500);
-    
+
     toast.success(wasEdit ? "Product updated" : "Product created");
+  };
+
+  const handleBarcodeSelect = async (
+    product: { id: string; name?: string },
+    _variant?: unknown
+  ) => {
+    try {
+      const res = await fetcher.get<{ data: ProductItem }>(
+        `/api/provider/products/${product.id}`
+      );
+      if (res.data) {
+        handleEdit(res.data);
+        toast.success(`Found: ${res.data.name}`);
+      }
+    } catch {
+      toast.error("Failed to load product");
+    }
   };
 
   const handleAdjustStock = (product: ProductItem, action: "add" | "remove") => {
@@ -274,6 +292,15 @@ export default function ProviderProducts() {
       </div>
 
       <div className="relative">
+        {productsArray.length > 0 && (
+          <div className="mb-4">
+            <BarcodeLookup
+              label="Find by barcode"
+              placeholder="Scan or enter barcode / SKU"
+              onSelect={handleBarcodeSelect}
+            />
+          </div>
+        )}
         <DataTableShell
           searchPlaceholder="Search products..."
           searchValue={searchQuery}

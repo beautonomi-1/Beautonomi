@@ -10,7 +10,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { format } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, exportToPDF, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface BusinessDashboardData {
   today: {
@@ -70,7 +70,7 @@ export default function BusinessDashboardReport() {
   const handleExport = (format: "csv" | "pdf" = "csv") => {
     if (!data) return;
     if (format === "csv") {
-      const exportData = formatReportDataForExport(data, "business-dashboard");
+      const exportData = formatReportDataForExport(data as unknown as ReportRow, "business-dashboard");
       exportToCSV(exportData, "business-dashboard-report");
     } else {
       exportToPDF("business-dashboard-report", "business-dashboard-report", "Business Performance Dashboard");

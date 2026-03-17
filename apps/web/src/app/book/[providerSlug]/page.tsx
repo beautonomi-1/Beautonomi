@@ -88,6 +88,7 @@ export default function BookProviderPage() {
       provider={provider}
       queryParams={{
         service: searchParams?.get("service") ?? undefined,
+        services: searchParams?.get("services") ?? undefined,
         staff: searchParams?.get("staff") ?? undefined,
         location: searchParams?.get("location") ?? undefined,
         location_type: (searchParams?.get("location_type") as "at_home" | "at_salon") ?? undefined,

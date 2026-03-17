@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 
 const citySchema = z.object({
   name: z.string().min(1, "City name is required"),
@@ -22,8 +24,8 @@ void _updateCitySchema;
  */
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -49,9 +51,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get provider count for each city
+    type CityRow = { name: string; country: string; [key: string]: unknown };
     const citiesWithCounts = await Promise.all(
-      (cities || []).map(async (city: any) => {
+      (cities || []).map(async (city: CityRow) => {
         const { count } = await supabase
           .from("providers")
           .select("*", { count: "exact", head: true })
@@ -92,8 +94,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -118,8 +120,8 @@ export async function POST(request: NextRequest) {
 
     const { name, country, image_url, description, is_active } = validationResult.data;
 
-    const { data: city, error } = await (supabase
-      .from("featured_cities") as any)
+    const { data: city, error } = await supabase
+      .from("featured_cities")
       .insert({
         name,
         country,
@@ -145,11 +147,11 @@ export async function POST(request: NextRequest) {
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: (auth.user as any).role || "superadmin",
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
       action: "admin.content.featured_city.create",
       entity_type: "featured_city",
-      entity_id: (city as any).id,
+      entity_id: (city as { id: string }).id,
       metadata: { name, country, is_active },
     });
 

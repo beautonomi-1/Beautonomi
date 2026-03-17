@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { arrayToCSV, generateCSVFilename } from "@/lib/utils/csv";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/export/users
@@ -11,12 +13,12 @@ import { checkRateLimit } from "@/lib/rate-limit";
  */
 export async function GET(request: Request) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const { allowed, retryAfter } = checkRateLimit(auth.user.id, "export:users");
+    const { allowed, retryAfter } = checkRateLimit(user.id, "export:users");
     if (!allowed) {
       return NextResponse.json(
         {
@@ -74,13 +76,14 @@ export async function GET(request: Request) {
     }
 
     // Transform data for CSV
-    const csvData = (users || []).map((user: any) => ({
+    type UserRow = { id: string; email?: string; full_name?: string; role: string; created_at?: string; last_login?: string };
+    const csvData = (users || []).map((user: UserRow) => ({
       "User ID": user.id,
-      "Email": user.email,
-      "Full Name": user.full_name || "",
+      "Email": user.email ?? "",
+      "Full Name": user.full_name ?? "",
       "Role": user.role,
-      "Created At": user.created_at,
-      "Last Login": user.last_login || "",
+      "Created At": user.created_at ?? "",
+      "Last Login": user.last_login ?? "",
     }));
 
     const csv = arrayToCSV(csvData);

@@ -25,6 +25,30 @@ const updateServiceZoneSchema = z.object({
   provider_id: z.string().uuid().optional().nullable(),
 });
 
+type ServiceZoneRow = {
+  id: string;
+  name: string | null;
+  zone_type: string;
+  is_active: boolean | null;
+  provider_id: string | null;
+  radius_km: number | null;
+  center_longitude: number | null;
+  center_latitude: number | null;
+  polygon_coordinates: [number, number][] | null;
+};
+
+type TransformedZone = {
+  id: string;
+  name: string | null;
+  type: string;
+  is_active: boolean | null;
+  provider_id: string | null;
+  radius_km: number | null;
+  coordinates?:
+    | { longitude: number; latitude: number }
+    | Array<{ longitude: number; latitude: number }>;
+};
+
 /**
  * GET /api/admin/mapbox/service-zones/[id]
  */
@@ -60,12 +84,12 @@ export async function GET(
       );
     }
 
-    // Check access for provider_owner
-    if (auth.user.role === "provider_owner" && (zone as any).provider_id) {
+    const zoneRow = zone as ServiceZoneRow;
+    if (auth.user.role === "provider_owner" && zoneRow.provider_id) {
       const { data: provider } = await supabase
         .from("providers")
         .select("id")
-        .eq("id", (zone as any).provider_id)
+        .eq("id", zoneRow.provider_id)
         .eq("user_id", auth.user.id)
         .single();
 
@@ -83,33 +107,27 @@ export async function GET(
       }
     }
 
-    // Transform database schema to match frontend expectations
-    const transformedZone: any = {
-      id: zone.id,
-      name: zone.name,
-      type: zone.zone_type, // zone_type -> type
-      is_active: zone.is_active,
-      provider_id: zone.provider_id,
-      radius_km: zone.radius_km,
+    const transformedZone: TransformedZone = {
+      id: zoneRow.id,
+      name: zoneRow.name,
+      type: zoneRow.zone_type,
+      is_active: zoneRow.is_active,
+      provider_id: zoneRow.provider_id,
+      radius_km: zoneRow.radius_km,
     };
 
-    // Transform coordinates based on zone type
-    if (zone.zone_type === "radius") {
+    if (zoneRow.zone_type === "radius") {
       transformedZone.coordinates = {
-        longitude: zone.center_longitude,
-        latitude: zone.center_latitude,
+        longitude: zoneRow.center_longitude ?? 0,
+        latitude: zoneRow.center_latitude ?? 0,
       };
-    } else if (zone.zone_type === "polygon") {
-      // Transform polygon_coordinates from [[lat, lng], ...] to [{longitude, latitude}, ...]
-      if (Array.isArray(zone.polygon_coordinates)) {
-        transformedZone.coordinates = zone.polygon_coordinates.map((coord: any) => {
-          if (Array.isArray(coord) && coord.length >= 2) {
-            return {
-              longitude: coord[1], // lng is second
-              latitude: coord[0],  // lat is first
-            };
+    } else if (zoneRow.zone_type === "polygon") {
+      if (Array.isArray(zoneRow.polygon_coordinates)) {
+        transformedZone.coordinates = zoneRow.polygon_coordinates.map((coord: [number, number]) => {
+          if (coord.length >= 2) {
+            return { longitude: coord[1], latitude: coord[0] };
           }
-          return coord;
+          return { longitude: 0, latitude: 0 };
         });
       } else {
         transformedZone.coordinates = [];
@@ -190,12 +208,12 @@ export async function PUT(
       );
     }
 
-    // Check access for provider_owner
-    if (auth.user.role === "provider_owner" && (existing as any).provider_id) {
+    const existingRow = existing as ServiceZoneRow;
+    if (auth.user.role === "provider_owner" && existingRow.provider_id) {
       const { data: provider } = await supabase
         .from("providers")
         .select("id")
-        .eq("id", (existing as any).provider_id)
+        .eq("id", existingRow.provider_id)
         .eq("user_id", auth.user.id)
         .single();
 
@@ -213,8 +231,7 @@ export async function PUT(
       }
     }
 
-    // Transform frontend schema to database schema
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
 
@@ -231,12 +248,11 @@ export async function PUT(
       updateData.radius_km = validationResult.data.radius_km;
     }
     if (validationResult.data.type !== undefined) {
-      updateData.zone_type = validationResult.data.type; // type -> zone_type
+      updateData.zone_type = validationResult.data.type;
     }
 
-    // Handle coordinates transformation
     if (validationResult.data.coordinates !== undefined) {
-      const zoneType = validationResult.data.type || existing.zone_type;
+      const zoneType = validationResult.data.type ?? existingRow.zone_type;
       
       if (zoneType === "radius") {
         const coords = validationResult.data.coordinates as { longitude: number; latitude: number };
@@ -252,8 +268,8 @@ export async function PUT(
       }
     }
 
-    const { data: zone, error } = await (supabase
-      .from("service_zones") as any)
+    const { data: zone, error } = await supabase
+      .from("service_zones")
       .update(updateData)
       .eq("id", id)
       .select()
@@ -273,31 +289,28 @@ export async function PUT(
       );
     }
 
-    // Transform database schema back to frontend format
-    const transformedZone: any = {
-      id: zone.id,
-      name: zone.name,
-      type: zone.zone_type,
-      is_active: zone.is_active,
-      provider_id: zone.provider_id,
-      radius_km: zone.radius_km,
+    const zoneResult = zone as ServiceZoneRow;
+    const transformedZone: TransformedZone = {
+      id: zoneResult.id,
+      name: zoneResult.name,
+      type: zoneResult.zone_type,
+      is_active: zoneResult.is_active,
+      provider_id: zoneResult.provider_id,
+      radius_km: zoneResult.radius_km,
     };
 
-    if (zone.zone_type === "radius") {
+    if (zoneResult.zone_type === "radius") {
       transformedZone.coordinates = {
-        longitude: zone.center_longitude,
-        latitude: zone.center_latitude,
+        longitude: zoneResult.center_longitude ?? 0,
+        latitude: zoneResult.center_latitude ?? 0,
       };
-    } else if (zone.zone_type === "polygon") {
-      if (Array.isArray(zone.polygon_coordinates)) {
-        transformedZone.coordinates = zone.polygon_coordinates.map((coord: any) => {
-          if (Array.isArray(coord) && coord.length >= 2) {
-            return {
-              longitude: coord[1],
-              latitude: coord[0],
-            };
+    } else if (zoneResult.zone_type === "polygon") {
+      if (Array.isArray(zoneResult.polygon_coordinates)) {
+        transformedZone.coordinates = zoneResult.polygon_coordinates.map((coord: [number, number]) => {
+          if (coord.length >= 2) {
+            return { longitude: coord[1], latitude: coord[0] };
           }
-          return coord;
+          return { longitude: 0, latitude: 0 };
         });
       } else {
         transformedZone.coordinates = [];
@@ -359,12 +372,12 @@ export async function DELETE(
       );
     }
 
-    // Check access for provider_owner
-    if (auth.user.role === "provider_owner" && (existing as any).provider_id) {
+    const existingRow = existing as ServiceZoneRow;
+    if (auth.user.role === "provider_owner" && existingRow.provider_id) {
       const { data: provider } = await supabase
         .from("providers")
         .select("id")
-        .eq("id", (existing as any).provider_id)
+        .eq("id", existingRow.provider_id)
         .eq("user_id", auth.user.id)
         .single();
 
@@ -382,8 +395,8 @@ export async function DELETE(
       }
     }
 
-    const { error } = await (supabase
-      .from("service_zones") as any)
+    const { error } = await supabase
+      .from("service_zones")
       .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq("id", id);
 

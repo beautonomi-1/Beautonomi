@@ -85,7 +85,7 @@ export interface ServiceItem {
   tax_rate?: number;
   pricing_name?: string;
   price_type?: "fixed" | "from" | "varies" | "free";
-  pricing_options?: any[]; // Multiple pricing options
+  pricing_options?: unknown[]; // Multiple pricing options
   included_services?: string[];
   service_available_for?: "everyone" | "women" | "men";
   service_cost_percentage?: number; // Cost as % of sale price
@@ -179,8 +179,8 @@ export interface Appointment {
   total_paid?: number;
   total_refunded?: number;
   service_id: string;
-  services?: any[];
-  products?: any[];
+  services?: unknown[];
+  products?: unknown[];
   cart_items?: Array<{
     id: string;
     type: string;
@@ -244,7 +244,7 @@ export interface Appointment {
   arrival_otp_expires_at?: string | null;
   arrival_otp_verified?: boolean;
   // QR code support (fallback when OTP is disabled)
-  qr_code_data?: any; // QRCodeData JSON
+  qr_code_data?: unknown; // QRCodeData JSON
   qr_code_verification_code?: string | null;
   qr_code_expires_at?: string | null;
   qr_code_verified?: boolean;
@@ -258,6 +258,8 @@ export interface Appointment {
   cancellation_policy_id?: string;
   service_fee_percentage?: number;
   service_fee_amount?: number;
+  /** Optional version for optimistic locking (PATCH) */
+  version?: number;
 }
 
 /**
@@ -298,8 +300,8 @@ export interface AppointmentHistoryEntry {
   performed_by: string;
   performed_by_name: string;
   performed_date: string;
-  changes?: Record<string, { from: any; to: any }>;
-  metadata?: Record<string, any>;
+  changes?: Record<string, { from: unknown; to: unknown }>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Sale {
@@ -317,7 +319,7 @@ export interface Sale {
   team_member_name?: string;
   location_id?: string;
   service_location_type?: string;
-  house_call_address?: Record<string, any>;
+  house_call_address?: Record<string, unknown>;
   coupon_code?: string;
   gift_card_code?: string;
   gift_card_amount?: number;
@@ -375,8 +377,10 @@ export interface YocoPayment {
   payment_date: string;
   appointment_id?: string;
   sale_id?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   error_message?: string;
+  /** Receipt URL from Yoco when available (for customer proof) */
+  receipt_url?: string;
 }
 
 export interface YocoIntegration {
@@ -398,7 +402,7 @@ export interface Shift {
   location_id?: string;
   notes?: string;
   is_recurring?: boolean;
-  recurring_pattern?: { type?: "alternating" | "weekly" | string; [key: string]: any };
+  recurring_pattern?: { type?: "alternating" | "weekly" | string; [key: string]: unknown };
 }
 
 export interface Campaign {
@@ -419,7 +423,7 @@ export interface Automation {
   is_active: boolean;
   description?: string;
   is_template?: boolean; // Whether this is a template
-  _raw?: any; // Store raw database data for template activation
+  _raw?: unknown; // Store raw database data for template activation
 }
 
 export interface DashboardMetrics {
@@ -570,14 +574,17 @@ export interface ExpressBookingLink {
   name: string;
   short_code: string;
   full_url: string;
-  service_id?: string; // Pre-selected service
+  service_id?: string; // First pre-selected service (backward compat)
+  service_ids?: string[]; // Pre-selected services
   team_member_id?: string; // Pre-selected team member
-  location_id?: string;
+  location_id?: string | null; // Pre-selected salon location (when location_type = at_salon)
+  location_type?: "at_salon" | "at_home" | null; // at_home = house call; null = customer chooses
   expires_at?: string;
+  max_uses?: number | null;
   is_active: boolean;
   usage_count: number;
   created_date: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -662,6 +669,8 @@ export interface CalendarEvent {
 export interface GroupBooking {
   id: string;
   ref_number: string;
+  /** ISO timestamp (from DB); when present, UI can derive scheduled_date/scheduled_time */
+  scheduled_at?: string;
   scheduled_date: string;
   scheduled_time: string;
   duration_minutes: number;
@@ -670,7 +679,7 @@ export interface GroupBooking {
   service_id: string;
   service_name: string;
   total_price: number;
-  status: "booked" | "started" | "completed" | "cancelled";
+  status: "booked" | "started" | "completed" | "cancelled" | "confirmed" | "pending";
   created_date: string;
   participants: GroupBookingParticipant[];
   notes?: string;

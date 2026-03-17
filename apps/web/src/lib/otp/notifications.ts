@@ -1,7 +1,8 @@
 /**
  * OTP Notification Service
- * 
- * Sends OTP codes to customers via SMS and Email
+ *
+ * Notifies customer when provider has arrived. PIN is shown only in-app (booking detail);
+ * no SMS or email to save cost.
  */
 
 import { sendToUser } from "@/lib/notifications/onesignal";
@@ -11,53 +12,42 @@ interface SendOTPOptions {
   phone: string;
   email: string;
   otp: string;
+  /** Booking UUID for deep link to booking detail */
+  bookingId: string;
   bookingNumber: string;
   providerName: string;
   customerName: string;
 }
 
 /**
- * Send OTP to customer via SMS and Email
+ * Notify customer that provider has arrived. Push only – PIN is shown in-app when they open the booking.
+ * No SMS or email (cost saving).
  */
 export async function sendOTPToCustomer(options: SendOTPOptions): Promise<void> {
-  const { customerId, phone: _phone, email: _email, otp, bookingNumber, providerName, customerName } = options;
+  const { customerId, bookingNumber, providerName, bookingId } = options;
 
-  const message = `Your Beautonomi arrival verification code is ${otp}. Valid for 10 minutes. Booking #${bookingNumber}. ${providerName} has arrived at your location.`;
+  const message = `${providerName} has arrived. Open the app to see your verification code for booking #${bookingNumber}.`;
 
-  // Send via OneSignal (Push, SMS, and Email)
   try {
-    const _emailBody = `
-      <h2>Provider Arrived</h2>
-      <p>Hello ${customerName},</p>
-      <p>${providerName} has arrived at your location for booking #${bookingNumber}.</p>
-      <p><strong style="font-size: 24px; letter-spacing: 4px;">Your verification code is: ${otp}</strong></p>
-      <p>This code is valid for 10 minutes. Please enter it in the app to confirm the provider's arrival.</p>
-      <p>If you didn't request this service, please contact support immediately.</p>
-    `;
-
     await sendToUser(
       customerId,
       {
-        title: "Provider Arrived - Verification Required",
-        message: message,
+        title: "Provider Arrived",
+        message,
         type: "provider_arrived",
         bookingId: bookingNumber,
         data: {
           type: "provider_arrived",
+          booking_id: bookingId,
           booking_number: bookingNumber,
-          otp: otp,
           provider_name: providerName,
         },
       },
-      ["push", "email", "sms"] // Send via all channels
+      ["push"],
+      { appType: "customer" }
     );
-
-    // Note: Email body formatting is handled by OneSignal template or can be customized
-    // The email_body field in sendToUser uses the message field by default
   } catch (error) {
-    console.error("Error sending OTP notification:", error);
-    // Don't throw - OTP is still generated and stored
-    // Provider can manually share OTP if notification fails
+    console.error("Error sending arrival notification:", error);
   }
 }
 
@@ -85,7 +75,8 @@ export async function sendProviderOnWayNotification(
           estimated_arrival: estimatedArrival,
         },
       },
-      ["push", "email"] // Push and email notifications
+      ["push", "email"],
+      { appType: "customer" }
     );
   } catch (error) {
     console.error("Error sending provider on way notification:", error);

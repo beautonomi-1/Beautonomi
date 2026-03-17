@@ -7,6 +7,7 @@ import { useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Colors } from "@/constants/colors";
+import { trackSupportTicketCreated } from "@/lib/analytics";
 
 export default function ContactSupportScreen() {
   const router = useRouter();
@@ -28,9 +29,14 @@ export default function ContactSupportScreen() {
       priority: "medium",
     });
     if (!res.error) {
+      const ticketNumber = (res as { data?: { ticket?: { ticket_number?: string } } })?.data?.ticket?.ticket_number;
+      if (ticketNumber) trackSupportTicketCreated(ticketNumber);
       setSubject("");
       setMessage("");
-      Alert.alert("Ticket sent", "Your support ticket has been created. We'll get back to you soon.", [
+      const message = ticketNumber
+        ? `Your support ticket has been created. Your ticket number is ${ticketNumber}. We'll get back to you soon.`
+        : "Your support ticket has been created. We'll get back to you soon.";
+      Alert.alert("Ticket sent", message, [
         { text: "View tickets", onPress: () => router.push("/(app)/(tabs)/more/support-tickets" as never) },
         { text: "OK", onPress: () => router.back() },
       ]);

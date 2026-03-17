@@ -250,6 +250,7 @@ async function sendMessageNotification(
     const templateKey = isCustomer ? "provider_new_message" : "customer_new_message";
     const template = await getNotificationTemplate(templateKey);
 
+    const appType = isCustomer ? ("provider" as const) : ("customer" as const);
     if (template?.enabled) {
       await sendTemplateNotification(
         templateKey,
@@ -259,15 +260,21 @@ async function sendMessageNotification(
           message_preview: messagePreview,
           conversation_id: conv.id,
         },
-        template.channels || ["push"]
+        template.channels || ["push"],
+        { appType }
       );
     } else {
-      await sendToUser(recipientUserId, {
-        title: isCustomer ? "New Message from Customer" : "New Message from Provider",
-        message: messagePreview,
-        data: { type: "new_message", conversation_id: conv.id, message_id: messageId },
-        url: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`,
-      });
+      await sendToUser(
+        recipientUserId,
+        {
+          title: isCustomer ? "New Message from Customer" : "New Message from Provider",
+          message: messagePreview,
+          data: { type: "new_message", conversation_id: conv.id, message_id: messageId },
+          url: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`,
+        },
+        ["push"],
+        { appType }
+      );
     }
   } catch {}
 

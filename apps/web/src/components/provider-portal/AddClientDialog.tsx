@@ -265,9 +265,9 @@ export function AddClientDialog({
       const result = await response.json();
       onSuccess?.(result.data as Client);
       onOpenChange(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to create client:", error);
-      alert(error.message || "Failed to create client. Please try again.");
+      alert(error instanceof Error ? error.message : "Failed to create client. Please try again.");
     } finally {
       setIsLoading(false);
     }

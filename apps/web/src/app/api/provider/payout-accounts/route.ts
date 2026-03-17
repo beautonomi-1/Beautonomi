@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
       .select("*")
       .eq("provider_id", providerId)
       .is("deleted_at", null)
+      .order("is_primary", { ascending: false })
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -147,6 +148,14 @@ export async function POST(request: NextRequest) {
     const details = (paystackRecipient.data as any)?.details;
     const accountNumberLast4 = account_number.slice(-4);
 
+    // First account for this provider becomes primary
+    const { data: existingAccounts } = await supabase
+      .from("provider_payout_accounts")
+      .select("id")
+      .eq("provider_id", providerId)
+      .is("deleted_at", null);
+    const isFirstAccount = !existingAccounts?.length;
+
     // Store in database - all columns must match provider_payout_accounts schema
     const { data: savedAccount, error: saveError } = await supabase
       .from("provider_payout_accounts")
@@ -161,6 +170,7 @@ export async function POST(request: NextRequest) {
         bank_name: details?.bank_name ?? null,
         currency: paystackRecipient.data.currency || currency,
         active: paystackRecipient.data.active !== false,
+        is_primary: isFirstAccount,
         metadata: {
           paystack_response: paystackRecipient.data,
           added_by: user.id,

@@ -72,9 +72,9 @@ export function SetDayOffDialog({
       toast.success(`Day off set for ${staffMember.name}`);
       onOpenChange(false);
       onSuccess?.();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to set day off:", error);
-      toast.error(error?.message || "Failed to set day off");
+      toast.error(error instanceof Error ? error.message : "Failed to set day off");
     } finally {
       setIsSaving(false);
     }

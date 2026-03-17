@@ -36,13 +36,12 @@ describe("POST /api/provider/on-demand/requests/[id]/accept", () => {
     mockGetProviderIdForUser.mockResolvedValue("provider-id-123");
   });
 
-  it("returns 409 when update returns no row (already handled or expired)", async () => {
+  it("returns 409 when select returns no row (already handled or expired)", async () => {
     const supabase = createMockSupabaseClient();
     const chain = {
-      update: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       gt: vi.fn().mockReturnThis(),
-      select: vi.fn().mockReturnThis(),
       maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
     };
     supabase.from.mockReturnValue(chain);

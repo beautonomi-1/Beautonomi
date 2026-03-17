@@ -145,6 +145,30 @@ export async function GET(request: Request) {
       query = query.gte("rating_average", filters.rating_min);
     }
 
+    // At-home filter: only providers that have at least one offering with supports_at_home = true
+    if (filters.at_home === true) {
+      const { data: atHomeOfferings } = await supabase
+        .from("offerings")
+        .select("provider_id")
+        .eq("is_active", true)
+        .eq("supports_at_home", true);
+      const atHomeProviderIds = [...new Set((atHomeOfferings ?? []).map((o: any) => o.provider_id))];
+      if (atHomeProviderIds.length === 0) {
+        return NextResponse.json({
+          data: {
+            providers: [],
+            services: [],
+            total: 0,
+            page: page,
+            limit: limit,
+            has_more: false,
+          },
+          error: null,
+        });
+      }
+      query = query.in("id", atHomeProviderIds);
+    }
+
     // Apply sorting
     switch (filters.sort_by) {
       case "price_low":
@@ -209,7 +233,7 @@ export async function GET(request: Request) {
     const userLng = filters.location?.longitude;
     const { data: locations } = await supabase
       .from("provider_locations")
-      .select("provider_id, city, country, is_primary, latitude, longitude")
+      .select("provider_id, city, country, is_primary, latitude, longitude, location_type")
       .in("provider_id", providerIds)
       .eq("is_active", true)
       .order("is_primary", { ascending: false });
@@ -242,24 +266,35 @@ export async function GET(request: Request) {
       }
     }
 
-    // Fetch minimum prices from offerings for each provider
+    // Fetch minimum prices and location support from offerings for each provider
     const { data: offerings } = await supabase
       .from("offerings")
-      .select("provider_id, price, currency")
+      .select("provider_id, price, currency, supports_at_home, supports_at_salon")
       .in("provider_id", providerIds)
       .eq("is_active", true);
 
-    // Create a map of provider_id -> minimum price
+    // Create a map of provider_id -> minimum price and location support
     const priceMap = new Map<string, { price: number; currency: string }>();
+    const supportsHouseCallsMap = new Map<string, boolean>();
+    const supportsSalonMap = new Map<string, boolean>();
     if (offerings) {
       offerings.forEach((offering: any) => {
-        const existing = priceMap.get(offering.provider_id);
+        const pid = offering.provider_id;
+        const existing = priceMap.get(pid);
         if (!existing || offering.price < existing.price) {
-          priceMap.set(offering.provider_id, {
+          priceMap.set(pid, {
             price: offering.price,
             currency: offering.currency,
           });
         }
+        if (offering.supports_at_home === true) supportsHouseCallsMap.set(pid, true);
+        if (offering.supports_at_salon !== false) supportsSalonMap.set(pid, true);
+      });
+    }
+    // supports_salon: also true if provider has at least one salon location (physical venue)
+    if (locations) {
+      locations.forEach((loc: any) => {
+        if ((loc.location_type || "salon") === "salon") supportsSalonMap.set(loc.provider_id, true);
       });
     }
 
@@ -268,6 +303,8 @@ export async function GET(request: Request) {
       const location = locationMap.get(provider.id);
       const priceInfo = priceMap.get(provider.id);
       const distance_km = distanceMap.get(provider.id) ?? null;
+      const supports_house_calls = supportsHouseCallsMap.get(provider.id) ?? false;
+      const supports_salon = supportsSalonMap.get(provider.id) ?? false;
 
       return {
         id: provider.id,
@@ -284,6 +321,8 @@ export async function GET(request: Request) {
         is_verified: provider.is_verified || false,
         starting_price: priceInfo?.price,
         currency: priceInfo?.currency || provider.currency || "ZAR",
+        supports_house_calls,
+        supports_salon,
         ...(distance_km != null ? { distance_km } : {}),
       };
     });
@@ -369,6 +408,8 @@ export async function GET(request: Request) {
             currency: priceInfo?.currency ?? p.currency ?? "ZAR",
             is_sponsored: true,
             campaign_id: winnerToCampaign.get(p.id) ?? null,
+            supports_house_calls: false,
+            supports_salon: true,
             ...(distance_km != null ? { distance_km } : {}),
           };
         });

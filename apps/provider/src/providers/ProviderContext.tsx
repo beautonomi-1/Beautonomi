@@ -5,6 +5,8 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api-client";
+import { identifyProvider } from "@/lib/analytics";
+import { useAuth } from "./AuthProvider";
 
 const LOCATION_STORAGE_KEY = "provider_selected_location_id";
 
@@ -39,6 +41,7 @@ interface ProviderContextType {
 const ProviderContext = createContext<ProviderContextType | undefined>(undefined);
 
 export function ProviderProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [provider, setProvider] = useState<ProviderProfile | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [selectedLocationId, setSelectedLocationIdState] = useState<string | null>(null);
@@ -90,13 +93,25 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId);
       setLoading(false);
     }
-  }, [selectedLocationId]);
+  }, [selectedLocationId, PROFILE_LOAD_TIMEOUT_MS]);
 
   useEffect(() => {
     fetchProfile();
     // Run once on mount; fetchProfile identity would cause repeated runs
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Enrich analytics identify when provider profile is available
+  useEffect(() => {
+    if (user?.id && provider) {
+      identifyProvider(user.id, {
+        provider_id: provider.id,
+        role: role ?? undefined,
+        business_type: provider.business_type,
+        locations_count: provider.locations?.length ?? 0,
+      });
+    }
+  }, [user?.id, provider, role]);
 
   return (
     <ProviderContext.Provider

@@ -109,7 +109,8 @@ export async function checkLowStockAndAlert(providerId?: string) {
             provider_name: provider.business_name || "Your business",
             product_list: productList,
           },
-          ["push", "email"]
+          ["push", "email"],
+          { appType: "provider" }
         );
 
         alertedCount++;

@@ -11,7 +11,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { subDays } from "date-fns";
 import { ReportSkeleton } from "../../components/ReportSkeleton";
 import { EmptyReportState } from "../../components/EmptyReportState";
-import { exportToCSV, exportToPDF, formatReportDataForExport } from "../../utils/export";
+import { exportToCSV, exportToPDF, formatReportDataForExport, type ReportRow } from "../../utils/export";
 
 interface BookingStatusData {
   statusBreakdown: {
@@ -140,7 +140,7 @@ export default function BookingStatusReport() {
               variant="outline" 
               onClick={() => {
                 if (!data) return;
-                const exportData = formatReportDataForExport(data, "booking-status");
+                const exportData = formatReportDataForExport(data as unknown as ReportRow, "booking-status");
                 exportToCSV(exportData, "booking-status-report");
               }} 
               className="gap-2 min-h-[44px] touch-manipulation"

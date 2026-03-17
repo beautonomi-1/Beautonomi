@@ -4,11 +4,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
+import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useBiometricAuth } from "@/hooks/useBiometricAuth";
 import { useTheme } from "@/providers/ThemeProvider";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
+
+interface SetupStatus {
+  isComplete: boolean;
+  completionPercentage: number;
+  steps: { id: string; title: string; completed: boolean; required: boolean; link: string }[];
+}
 
 interface SettingItem {
   icon: keyof typeof Ionicons.glyphMap;
@@ -26,6 +33,7 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
       { icon: "business-outline", label: "Business Details", subtitle: "Name, logo, description", route: "/(app)/(tabs)/more/settings/business", color: "#6366f1" },
       { icon: "time-outline", label: "Operating Hours", subtitle: "Opening & closing times", route: "/(app)/(tabs)/more/settings/hours", color: "#3b82f6" },
       { icon: "location-outline", label: "Locations", subtitle: "Manage your locations", route: "/(app)/(tabs)/more/settings/locations", color: "#22c55e" },
+      { icon: "navigate-outline", label: "Distance & radius", subtitle: "How far you travel for house calls", route: "/(app)/(tabs)/more/settings/distance-settings", color: "#0891b2" },
     ],
   },
   {
@@ -71,7 +79,6 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
       { icon: "grid-outline", label: "Service Categories", subtitle: "Organize your services", route: "/(app)/(tabs)/more/settings/service-categories", color: "#8b5cf6" },
       { icon: "add-circle-outline", label: "Service Addons", subtitle: "Upsell treatments & extras", route: "/(app)/(tabs)/more/settings/service-addons", color: "#f97316" },
       { icon: "trending-up-outline", label: "Upselling", subtitle: "Suggestions & recommendations", route: "/(app)/(tabs)/more/settings/upselling", color: "#f59e0b" },
-      { icon: "navigate-outline", label: "Distance Settings", subtitle: "Service area radius", route: "/(app)/(tabs)/more/settings/distance-settings", color: "#0891b2" },
     ],
   },
   {
@@ -137,6 +144,16 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
       { icon: "language-outline", label: "Language", subtitle: "English, isiZulu, Afrikaans, Sesotho", route: "/(app)/(tabs)/more/settings/language", color: "#0ea5e9" },
     ],
   },
+  {
+    title: "More",
+    items: [
+      { icon: "link-outline", label: "Calendar links", subtitle: "Booking page URLs & embed", route: "/(app)/(tabs)/more/settings/booking-link", color: "#6366f1" },
+      { icon: "options-outline", label: "Calendar display", subtitle: "Colors, icons, time grid", route: "/(app)/(tabs)/more/settings/calendar-preferences", color: "#3b82f6" },
+      { icon: "receipt-outline", label: "Receipt sequencing", subtitle: "Receipt numbers & format", route: "/(app)/(tabs)/more/settings/receipt-sequencing", color: "#0d9488" },
+      { icon: "megaphone-outline", label: "Ads", subtitle: "Ad campaigns & spend", route: "/(app)/(tabs)/more/settings/ads", color: "#f59e0b" },
+      { icon: "share-social-outline", label: "Marketing integrations", subtitle: "Connect marketing tools", route: "/(app)/(tabs)/more/settings/marketing-integrations", color: "#ec4899" },
+    ],
+  },
 ];
 
 export default function SettingsScreen() {
@@ -144,6 +161,7 @@ export default function SettingsScreen() {
   const { screenPadding } = useResponsive();
   const { isAvailable, biometricType, isEnabled, enable, disable } = useBiometricAuth();
   const { themeMode, setThemeMode } = useTheme();
+  const { data: setupStatus } = useApi<SetupStatus>("/api/provider/setup-status");
 
   const biometricLabel =
     biometricType === "face" ? "Face ID" :
@@ -168,6 +186,24 @@ export default function SettingsScreen() {
       >
         <ScreenHeader title="Settings" showBack subtitle="Business configuration" />
 
+        {setupStatus && !setupStatus.isComplete && setupStatus.completionPercentage < 100 && (
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/settings/setup-status" as never)}
+            style={twStyle("mb-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4")}
+            activeOpacity={0.8}
+          >
+            <View style={twStyle("flex-row items-center justify-between")}>
+              <View style={twStyle("flex-1")}>
+                <Text style={twStyle("font-semibold text-indigo-900")}>Setup status</Text>
+                <Text style={twStyle("mt-1 text-sm text-indigo-700")}>
+                  {setupStatus.completionPercentage}% complete – finish onboarding
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#4338ca" />
+            </View>
+          </TouchableOpacity>
+        )}
+
         {SETTINGS_SECTIONS.map((section) => (
           <View key={section.title} style={twStyle("mb-4")}>
             <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400")}>
@@ -176,11 +212,11 @@ export default function SettingsScreen() {
             <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
               {section.items.map((item, idx) => (
                 <TouchableOpacity
-                  key={item.route}
+                  key={item.route || item.label}
                   style={twStyle(`min-h-[56px] flex-row items-center px-4 py-3.5 ${
                     idx < section.items.length - 1 ? "border-b border-gray-50" : ""
                   }`)}
-                  onPress={() => router.push(item.route as any)}
+                  onPress={() => item.route && router.push(item.route as never)}
                 >
                   <View style={twStyle("min-h-[36px] min-w-[36px] items-center justify-center rounded-lg bg-gray-50")}>
                     <Ionicons name={item.icon} size={18} color={item.color} />

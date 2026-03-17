@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { NoteTemplate, NoteType } from "@/lib/provider-portal/types";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ChipCombobox } from "@/components/ui/chip-combobox";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 
@@ -195,6 +196,7 @@ export default function NoteTemplatesPage() {
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         template={selectedTemplate}
+        templates={templates}
         onSuccess={loadTemplates}
       />
     </div>
@@ -206,13 +208,24 @@ function NoteTemplateDialog({
   open,
   onOpenChange,
   template,
+  templates,
   onSuccess,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   template: NoteTemplate | null;
+  templates: NoteTemplate[];
   onSuccess: () => void;
 }) {
+  const categorySuggestions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          templates.map((t) => t.category).filter((c): c is string => Boolean(c?.trim()))
+        )
+      ).sort(),
+    [templates]
+  );
   const [formData, setFormData] = useState({
     name: "",
     content: "",
@@ -338,11 +351,13 @@ function NoteTemplateDialog({
 
           <div>
             <Label htmlFor="category">Category (Optional)</Label>
-            <Input
-              id="category"
-              value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+            <ChipCombobox
+              singleSelect
+              value={formData.category || null}
+              onChange={(v) => setFormData((prev) => ({ ...prev, category: v ?? "" }))}
+              staticSuggestions={categorySuggestions.map((c) => ({ value: c, label: c }))}
               placeholder="e.g., Follow-up, Reminder, Special Request"
+              aria-label="Category"
             />
           </div>
 

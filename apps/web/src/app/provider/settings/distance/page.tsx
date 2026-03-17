@@ -9,6 +9,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import Link from "next/link";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
 
@@ -192,11 +193,16 @@ export default function DistanceSettingsPage() {
           </div>
         )}
 
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
           <p className="text-xs sm:text-sm text-blue-800">
             <strong>Note:</strong> Distance is calculated from your primary business location 
-            to the customer's address. This setting only applies to house call bookings. 
+            to the customer&apos;s address. This setting only applies to house call bookings. 
             Salon bookings are not affected by this distance limit.
+          </p>
+          <p className="text-xs sm:text-sm text-blue-800">
+            <Link href="/provider/settings/locations" className="underline font-medium hover:no-underline">
+              Manage your business locations
+            </Link>
           </p>
         </div>
       </div>

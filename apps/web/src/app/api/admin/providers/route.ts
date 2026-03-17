@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 
 /**
  * GET /api/admin/providers
@@ -8,7 +9,7 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["superadmin"], request);
+    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
 
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
@@ -47,19 +48,21 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    const userIds = [...new Set((providers || []).map((p: any) => p.user_id).filter(Boolean))];
-    const usersMap = new Map<string, { full_name?: string; email?: string; phone?: string }>();
+    type ProviderRow = { user_id?: string; id: string; business_name?: string; slug?: string; business_type?: string; status?: string; is_verified?: boolean; billing_email?: string; billing_phone?: string; provider_locations?: unknown[]; created_at?: string; rating_average?: number; review_count?: number };
+    type UserRow = { id: string; full_name?: string; email?: string; phone?: string };
+    const userIds = [...new Set((providers || []).map((p: ProviderRow) => p.user_id).filter(Boolean))] as string[];
+    const usersMap = new Map<string, UserRow>();
     if (userIds.length > 0) {
       const { data: users } = await supabase
         .from("users")
         .select("id, full_name, email, phone")
         .in("id", userIds);
-      for (const u of users || []) {
-        usersMap.set((u as any).id, u);
+      for (const u of (users || []) as UserRow[]) {
+        usersMap.set(u.id, u);
       }
     }
 
-    const transformed = (providers || []).map((p: any) => {
+    const transformed = (providers || []).map((p: ProviderRow) => {
       const locations = (p.provider_locations || []) as { city?: string; country?: string }[];
       const firstLoc = locations[0];
       const status = p.status === "pending_approval" || p.status === "draft" ? "pending" : p.status;

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 
 const updateLocaleSchema = z.object({
   name: z.string().min(1).optional(),
@@ -17,8 +19,8 @@ export async function GET(
   { params }: { params: Promise<{ code: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -71,8 +73,8 @@ export async function PUT(
   { params }: { params: Promise<{ code: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -100,14 +102,14 @@ export async function PUT(
 
     // If setting as default, unset other defaults
     if (validationResult.data.is_default) {
-      await (supabase as any)
+      await supabase
         .from("iso_locales")
         .update({ is_default: false })
         .neq("code", code);
     }
 
-    const { data: locale, error } = await (supabase
-      .from("iso_locales") as any)
+    const { data: locale, error } = await supabase
+      .from("iso_locales")
       .update({
         ...validationResult.data,
         updated_at: new Date().toISOString(),
@@ -157,8 +159,8 @@ export async function DELETE(
   { params }: { params: Promise<{ code: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin"]);
-    if (!auth) {
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    if (!user) {
       return unauthorizedResponse("Authentication required");
     }
 
@@ -172,7 +174,7 @@ export async function DELETE(
       .eq("code", code)
       .single();
 
-    if ((locale as any)?.is_default) {
+    if ((locale as { is_default?: boolean } | null)?.is_default) {
       return NextResponse.json(
         {
           data: null,
@@ -185,8 +187,8 @@ export async function DELETE(
       );
     }
 
-    const { error } = await (supabase
-      .from("iso_locales") as any)
+    const { error } = await supabase
+      .from("iso_locales")
       .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq("code", code);
 

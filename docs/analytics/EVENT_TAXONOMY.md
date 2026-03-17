@@ -120,3 +120,5 @@ Examples:
 | Customer Mobile | `apps/customer/src/lib/analytics.ts` |
 | Provider Mobile | `apps/provider/src/lib/analytics.ts` |
 | Web (Server SDK) | `apps/web/src/lib/analytics/amplitude/server.ts` |
+
+**Canonical constants:** Use event name constants from `@beautonomi/analytics` (see `packages/analytics/src/events.ts`) when integrating in new code so web and mobile stay aligned. Property keys (e.g. `provider_id`, `booking_id`, `post_id`) should match the tables above for funnel and provider ROI consistency.

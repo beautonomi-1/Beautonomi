@@ -27,7 +27,7 @@ export default function ReviewPage() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [booking, setBooking] = useState<any>(null);
+  const [booking, setBooking] = useState<{ id: string; booking_number?: string; provider?: { business_name?: string } } | null>(null);
 
   useEffect(() => {
     loadBooking();
@@ -36,7 +36,7 @@ export default function ReviewPage() {
   const loadBooking = async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<any>(`/api/me/bookings/${bookingId}`, { cache: "no-store" });
+      const response = await fetcher.get<{ data: { id: string; booking_number?: string; provider?: { business_name?: string } } }>(`/api/me/bookings/${bookingId}`, { cache: "no-store" });
       setBooking(response.data);
     } catch (error) {
       console.error("Failed to load booking:", error);

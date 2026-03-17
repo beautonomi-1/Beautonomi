@@ -15,7 +15,7 @@ export async function POST(
 ) {
   try {
     const { user } = await requireRoleInApi(['customer'], request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id: bookingId, chargeId } = await params;
     const _body = await request.json();
 

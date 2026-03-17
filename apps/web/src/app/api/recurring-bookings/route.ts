@@ -36,7 +36,7 @@ const recurringBookingSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const body = await request.json();
 
     const validated = recurringBookingSchema.parse(body);
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
 
     const { data: recurring, error } = await supabase
       .from("recurring_appointments")

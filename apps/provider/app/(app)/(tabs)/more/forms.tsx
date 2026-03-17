@@ -317,7 +317,7 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                 return (
                   <TouchableOpacity
                     key={s.title}
-                    style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, marginTop: i === 0 ? 0 : 8 }}
+                    style={{ flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, marginTop: i === 0 ? 0 : 8 }}
                     onPress={() => handleSuggestion(s)}
                     accessibilityLabel={`Create ${s.title}`}
                     accessibilityRole="button"
@@ -352,7 +352,7 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
             return (
               <View
                 style={{
-                  borderRadius: 12,
+                  borderRadius: 16,
                   borderWidth: 1,
                   borderColor: Colors.gray[100],
                   backgroundColor: Colors.white,
@@ -689,6 +689,18 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
         title="Forms"
         showBack
         subtitle={`${forms?.length ?? 0} form templates`}
+        rightAction={
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowFormModal(true);
+            }}
+            style={{ flexDirection: "row", alignItems: "center", borderRadius: 10, backgroundColor: "#e0f2fe", paddingHorizontal: 12, paddingVertical: 8 }}
+          >
+            <Ionicons name="add" size={16} color="#0c4a6e" style={{ marginRight: 6 }} />
+            <Text style={{ fontSize: 14, fontWeight: "600", color: "#0c4a6e" }}>Create</Text>
+          </TouchableOpacity>
+        }
       />
       {inner}
     </ScreenContainer>

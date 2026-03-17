@@ -7,6 +7,7 @@ import { useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { WaitingIllustration } from "@/components/on-demand/WaitingIllustration";
 import { Button } from "@/components/ui/button";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 interface OnDemandRequest {
   id: string;
@@ -53,6 +54,42 @@ export default function OnDemandWaitingPage() {
     }
     load();
   }, [requestId, load]);
+
+  // Realtime: subscribe to UPDATEs on this request so status/booking_id appear without waiting for poll
+  const channelRef = useRef<ReturnType<ReturnType<typeof getSupabaseClient>["channel"]> | null>(null);
+  useEffect(() => {
+    if (!requestId) return;
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    channelRef.current = supabase
+      .channel(`on-demand-${requestId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "on_demand_requests",
+          filter: `id=eq.${requestId}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            const row = payload.new as Record<string, unknown>;
+            setRequest((prev) => ({
+              ...(prev ?? {}),
+              ...row,
+              provider_name: (row.provider_name as string) ?? prev?.provider_name ?? null,
+            } as OnDemandRequest));
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [requestId]);
 
   useEffect(() => {
     if (!requestId || !request) return;
