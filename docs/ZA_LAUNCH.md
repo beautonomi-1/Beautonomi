@@ -83,7 +83,7 @@ Work through each item in order. Mark `[x]` when complete.
 
 ### Infrastructure
 - [ ] Supabase project created in a region close to ZA (e.g. `ap-southeast-1` or dedicated ZA Supabase Cloud)
-- [ ] All migrations 001 → 410 applied: `supabase db push` or manual SQL execution
+- [ ] All migrations in `supabase/migrations/` applied through the latest numbered file (no gaps): `supabase db push` or manual SQL execution
 - [ ] ZA tenant row exists in `tenants` table: `slug = 'za'`, `is_active = true`
 - [ ] `tenant_domains` rows exist for `beautonomi.co.za` + `beautonomi.com` with `environment = 'production'`
 - [ ] Vercel (or equivalent) project deployed with production env vars set
