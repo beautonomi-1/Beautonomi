@@ -6,7 +6,16 @@ import { z } from "zod";
 const updateRecurringSchema = z.object({
   is_active: z.boolean().optional(),
   end_date: z.string().date().optional().nullable(),
+  preferred_time: z.string().min(1).optional(),
+  frequency: z.enum(["weekly", "biweekly", "monthly"]).optional(),
 });
+
+function preferredTimeToHhMmSs(preferred: string): string {
+  const t = preferred.trim();
+  if (/^\d{2}:\d{2}:\d{2}$/.test(t)) return t;
+  if (/^\d{2}:\d{2}$/.test(t)) return `${t}:00`;
+  return "10:00:00";
+}
 
 /**
  * PATCH /api/recurring-bookings/[id]
@@ -38,9 +47,20 @@ export async function PATCH(
     }
 
     // Update
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (validated.is_active !== undefined) updateData.is_active = validated.is_active;
     if (validated.end_date !== undefined) updateData.end_date = validated.end_date;
+    if (validated.preferred_time !== undefined) {
+      updateData.preferred_time = validated.preferred_time;
+      updateData.start_time = preferredTimeToHhMmSs(validated.preferred_time);
+    }
+    if (validated.frequency !== undefined) {
+      updateData.frequency = validated.frequency;
+      if (validated.frequency === "weekly") updateData.recurrence_rule = "FREQ=WEEKLY;INTERVAL=1";
+      else if (validated.frequency === "biweekly") updateData.recurrence_rule = "FREQ=WEEKLY;INTERVAL=2";
+      else updateData.recurrence_rule = "FREQ=MONTHLY;INTERVAL=1";
+    }
+    updateData.updated_at = new Date().toISOString();
 
     const { data: updated, error } = await supabase
       .from("recurring_appointments")

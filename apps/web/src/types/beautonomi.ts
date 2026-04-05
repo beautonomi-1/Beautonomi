@@ -339,6 +339,10 @@ export interface BookingDraft {
   use_wallet?: boolean;
   /** Resource IDs to assign (ordered: one per required slot per service). When set, used for validation and assignment. */
   resource_ids?: string[];
+  subscribe_recurring?: {
+    enabled: boolean;
+    frequency: 'weekly' | 'biweekly' | 'monthly';
+  };
 }
 
 export interface BookingService {

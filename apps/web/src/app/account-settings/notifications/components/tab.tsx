@@ -202,7 +202,9 @@ const NotificationModal = ({
                 />
               </div>
               <p className="text-sm text-gray-500 font-light">
-                Push notifications are off. To enable this feature, turn on notifications.
+                {localPrefs.push
+                  ? "We will send push alerts for this category when your device allows notifications from Beautonomi."
+                  : "Turn this on to allow push alerts for this category. You may also need to allow notifications in your browser or device settings."}
               </p>
             </div>
           </div>
@@ -654,10 +656,10 @@ const Page = () => {
                         Get answers to questions about notifications in our Help Center.
                       </p>
                       <a
-                        href="/help-center"
+                        href="/help"
                         className="text-sm font-medium text-primary hover:text-primary-hover underline transition-colors"
                       >
-                        Visit Help Center
+                        Visit Help Centre
                       </a>
                     </div>
                   </div>

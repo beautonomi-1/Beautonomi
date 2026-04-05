@@ -585,6 +585,13 @@ export function AppointmentDialog({
       } else {
         // Check if this is a recurring appointment
         if (formData.is_recurring && formData.recurrence_pattern) {
+          if (!formData.client_id?.trim()) {
+            alert(
+              "Recurring appointments must be tied to a saved client. Select a client from your list (not a one-off name only)."
+            );
+            setIsLoading(false);
+            return;
+          }
           const recurrenceRule = {
             pattern: formData.recurrence_pattern,
             interval: formData.recurrence_pattern === "biweekly" ? 2 : 1,
@@ -595,6 +602,7 @@ export function AppointmentDialog({
           try {
             await providerApi.createRecurringAppointment({
               ...appointmentData,
+              client_id: formData.client_id,
               recurrence_rule: recurrenceRule,
             } as any);
           } catch (error) {

@@ -5,11 +5,11 @@ import BottomNav from "@/components/layout/bottom-nav";
 
 export default function LocationsLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">
       <Suspense fallback={<div className="h-[73px] border-b border-gray-100 bg-white" aria-hidden />}>
         <BeautonomiHeader />
       </Suspense>
-      <main>{children}</main>
+      <main className="w-full max-w-full overflow-x-hidden">{children}</main>
       <Footer />
       <BottomNav />
     </div>

@@ -27,6 +27,7 @@ import {
   creditWalletForProductOrderIfNeeded,
   restockProductOrderLineItems,
 } from "@/lib/orders/product-order-lifecycle";
+import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recurring/try-create-recurring-from-paystack-metadata";
 
 async function lastResortCurrencyFromTenantId(
   tenantId: string | null | undefined,
@@ -204,6 +205,14 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
 
   if (bookingData.payment_status === "paid" && bookingData.payment_reference === reference) {
     console.log(`Payment ${reference} already processed`);
+    try {
+      await tryCreateCustomerRecurringFromPaystackChargeMetadata(
+        supabase,
+        metadata as Record<string, unknown> | undefined,
+      );
+    } catch (recurringErr) {
+      console.error("[recurring] charge.success idempotent recurring hook:", recurringErr);
+    }
     return;
   }
 
@@ -505,6 +514,15 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     if (!msg.toLowerCase().includes("duplicate") && !msg.toLowerCase().includes("unique")) {
       console.error("Error recording promotion usage:", promoError);
     }
+  }
+
+  try {
+    await tryCreateCustomerRecurringFromPaystackChargeMetadata(
+      supabase,
+      metadata as Record<string, unknown> | undefined,
+    );
+  } catch (recurringErr) {
+    console.error("[recurring] charge.success recurring hook:", recurringErr);
   }
 
   // Send OneSignal notifications

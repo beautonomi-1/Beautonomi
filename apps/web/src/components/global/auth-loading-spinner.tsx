@@ -4,14 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { BeautonomiLoadingIcon } from "@/components/BeautonomiLoadingIcon";
-
-/** Routes that do not show auth overlay so they can load immediately. */
-const PUBLIC_ROUTES_PREFIXES = ["/learn", "/help", "/login", "/signup", "/forgot-password", "/partner-profile", "/category", "/explore", "/gift-card", "/privacy-policy", "/terms-and-condition", "/accessibility", "/against-discrimination", "/BCover-for-partners", "/beautonomi-friendly", "/career", "/resources", "/become-a-partner"];
-
-function isPublicRoute(pathname: string | null): boolean {
-  if (!pathname) return false;
-  return pathname === "/" || PUBLIC_ROUTES_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
-}
+import { isCustomerShellPublicRoute } from "@/lib/navigation/customer-shell-public-routes";
 
 /**
  * AuthLoadingSpinner Component
@@ -36,7 +29,7 @@ export default function AuthLoadingSpinner() {
     return () => clearTimeout(timeout);
   }, [isLoading]);
 
-  if (!isLoading || isPublicRoute(pathname) || timedOut) return null;
+  if (!isLoading || isCustomerShellPublicRoute(pathname) || timedOut) return null;
 
   return (
     <div

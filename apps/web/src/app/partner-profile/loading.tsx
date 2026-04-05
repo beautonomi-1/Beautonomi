@@ -4,12 +4,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function PartnerProfileLoading() {
   return (
     <div
-      className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full"
+      className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full"
       aria-busy="true"
       aria-label="Loading provider profile"
     >
       <div className="h-[73px] md:h-[88px] border-b border-gray-100 bg-white shrink-0" />
-      <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20 py-6 md:py-10 space-y-6">
+      <div className="w-full max-w-full overflow-x-hidden max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20 py-6 md:py-10 space-y-6">
         <div className="flex flex-col md:flex-row md:items-start gap-6">
           <Skeleton className="h-48 w-full md:w-2/5 aspect-[4/3] rounded-xl shrink-0" />
           <div className="space-y-4 flex-1">

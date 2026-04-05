@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { RecurringAppointment, RecurrencePattern, FilterParams, PaginationParams } from "@/lib/provider-portal/types";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -209,9 +209,17 @@ export default function RecurringAppointmentsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {new Date(apt.scheduled_date) >= new Date()
-                          ? new Date(apt.scheduled_date).toLocaleDateString()
-                          : "Past"}
+                        {apt.next_occurrence_date ? (
+                          <span className="whitespace-nowrap">
+                            {new Date(`${apt.next_occurrence_date}T12:00:00`).toLocaleDateString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Money amount={apt.price} />
@@ -307,32 +315,75 @@ function RecurringAppointmentEditDialog({
   editMode: "single" | "series";
   onSuccess: () => void;
 }) {
-  const [formData, setFormData] = useState({
-    scheduled_date: appointment.scheduled_date,
-    scheduled_time: appointment.scheduled_time,
-    duration_minutes: appointment.duration_minutes,
-    price: appointment.price,
-    notes: appointment.notes || "",
-    recurrence_pattern: appointment.recurrence_rule.pattern,
-    recurrence_end_date: appointment.recurrence_rule.end_date || "",
-    recurrence_occurrences: appointment.recurrence_rule.occurrences || undefined,
-  });
+  const initialForm = useMemo(() => {
+    const meta = (appointment.metadata || {}) as Record<string, unknown>;
+    const dm =
+      typeof meta.duration_minutes === "number" && Number.isFinite(meta.duration_minutes)
+        ? meta.duration_minutes
+        : appointment.duration_minutes;
+    const pr =
+      typeof meta.price === "number" && Number.isFinite(meta.price)
+        ? meta.price
+        : appointment.price;
+    return {
+      scheduled_date: appointment.scheduled_date,
+      scheduled_time: appointment.scheduled_time,
+      duration_minutes: dm,
+      price: pr,
+      notes: appointment.notes || "",
+      recurrence_pattern: appointment.recurrence_rule.pattern,
+      recurrence_end_date: appointment.end_date || appointment.recurrence_rule.end_date || "",
+      recurrence_occurrences: appointment.recurrence_rule.occurrences || undefined,
+    };
+  }, [appointment]);
+
+  const [formData, setFormData] = useState(initialForm);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) setFormData(initialForm);
+  }, [open, initialForm]);
+
+  const mergedMetadata = useCallback(() => {
+    const base =
+      appointment.metadata && typeof appointment.metadata === "object"
+        ? { ...appointment.metadata }
+        : {};
+    return {
+      ...base,
+      duration_minutes: formData.duration_minutes,
+      price: formData.price,
+    };
+  }, [appointment.metadata, formData.duration_minutes, formData.price]);
+
+  const simpleFrequencyFromPattern = (
+    p: RecurrencePattern
+  ): "weekly" | "biweekly" | "monthly" | null => {
+    if (p === "weekly") return "weekly";
+    if (p === "biweekly") return "biweekly";
+    if (p === "monthly") return "monthly";
+    return null;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
+      const metadata = mergedMetadata();
       if (editMode === "series") {
+        const freq = simpleFrequencyFromPattern(formData.recurrence_pattern as RecurrencePattern);
         await providerApi.updateRecurringSeries(appointment.series_id, {
           scheduled_date: formData.scheduled_date,
           scheduled_time: formData.scheduled_time,
           duration_minutes: formData.duration_minutes,
           price: formData.price,
           notes: formData.notes,
+          metadata,
+          frequency: freq,
+          end_date: formData.recurrence_end_date || undefined,
           recurrence_rule: {
-            pattern: formData.recurrence_pattern as any,
+            pattern: formData.recurrence_pattern as RecurrencePattern,
             interval: formData.recurrence_pattern === "biweekly" ? 2 : 1,
             end_date: formData.recurrence_end_date || undefined,
             occurrences: formData.recurrence_occurrences,
@@ -346,6 +397,7 @@ function RecurringAppointmentEditDialog({
           duration_minutes: formData.duration_minutes,
           price: formData.price,
           notes: formData.notes,
+          metadata,
         });
         toast.success("Appointment updated");
       }

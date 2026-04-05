@@ -26,13 +26,15 @@ export default async function WhyBeautonomiPage() {
   const content = await getPublicPageContent("why-beautonomi");
 
   return (
-    <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">
       <BeautonomiHeader />
-      <WhyBeautonomiHero content={content} />
-      <Features content={content} />
-      <Benefits content={content} />
-      <CTABanner content={content} />
-      <FAQ applyBgPrimary={false} />
+      <div className="w-full max-w-full overflow-x-hidden">
+        <WhyBeautonomiHero content={content} />
+        <Features content={content} />
+        <Benefits content={content} />
+        <CTABanner content={content} />
+        <FAQ applyBgPrimary={false} />
+      </div>
       <Footer />
       <BottomNav />
     </div>

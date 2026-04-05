@@ -121,7 +121,7 @@ export function ProviderGlobalSearch({
 
   // Click outside to close (dropdown is portaled, so check both container and dropdown)
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: PointerEvent) => {
       const target = e.target as Node;
       const isOutsideContainer =
         containerRef.current && !containerRef.current.contains(target);
@@ -133,8 +133,8 @@ export function ProviderGlobalSearch({
         onFocusChange?.(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("pointerdown", handleClickOutside);
+    return () => document.removeEventListener("pointerdown", handleClickOutside);
   }, [onFocusChange]);
 
   const handleSelect = (suggestion: ProviderSearchSuggestion) => {
@@ -219,7 +219,7 @@ export function ProviderGlobalSearch({
           }}
           placeholder={placeholder}
           className={cn(
-            "pl-10 bg-gray-50 border-gray-200 w-full",
+            "pl-10 bg-gray-50 border-gray-200 w-full text-base md:text-sm",
             inputClassName
           )}
           style={inputStyle}

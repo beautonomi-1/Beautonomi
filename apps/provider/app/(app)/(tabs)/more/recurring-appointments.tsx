@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   ScrollView,
   RefreshControl,
   Alert,
+  TextInput,
+  Switch,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -119,12 +121,49 @@ function formatShortDate(dateStr: string): string {
   }
 }
 
+type SimpleSeriesFreq = "weekly" | "biweekly" | "monthly";
+
+function rruleFromSimple(f: SimpleSeriesFreq): string {
+  if (f === "weekly") return "FREQ=WEEKLY;INTERVAL=1";
+  if (f === "biweekly") return "FREQ=WEEKLY;INTERVAL=2";
+  return "FREQ=MONTHLY;INTERVAL=1";
+}
+
+function simpleFreqFromItem(item: RecurringAppointment): SimpleSeriesFreq {
+  const fr = (item.frequency || "").toLowerCase();
+  if (fr === "weekly" || fr === "biweekly" || fr === "monthly") return fr;
+  const rr = (item.recurrence_rule || "").toUpperCase();
+  if (rr.includes("FREQ=WEEKLY") && rr.includes("INTERVAL=2")) return "biweekly";
+  if (rr.includes("FREQ=WEEKLY")) return "weekly";
+  if (rr.includes("FREQ=MONTHLY")) return "monthly";
+  return "weekly";
+}
+
+function timeToHhMm(raw: string | null | undefined): string {
+  const t = (raw || "").trim();
+  if (/^\d{2}:\d{2}:\d{2}/.test(t)) return t.slice(0, 5);
+  if (/^\d{2}:\d{2}$/.test(t)) return t;
+  return "10:00";
+}
+
+function timeToHhMmSs(hhmm: string): string {
+  const t = hhmm.trim();
+  if (/^\d{2}:\d{2}:\d{2}$/.test(t)) return t;
+  if (/^\d{2}:\d{2}$/.test(t)) return `${t}:00`;
+  return "10:00:00";
+}
+
 export default function RecurringAppointmentsScreen() {
   const { selectedLocationId } = useProvider();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [viewItem, setViewItem] = useState<RecurringAppointment | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">("all");
+  const [editFreq, setEditFreq] = useState<SimpleSeriesFreq>("weekly");
+  const [editTime, setEditTime] = useState("10:00");
+  const [editEnd, setEditEnd] = useState("");
+  const [editNoEnd, setEditNoEnd] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const recurringUrl = selectedLocationId
     ? `/api/provider/recurring-appointments?limit=100&location_id=${encodeURIComponent(selectedLocationId)}`
@@ -151,6 +190,41 @@ export default function RecurringAppointmentsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setViewItem(item);
   }, []);
+
+  useEffect(() => {
+    if (!viewItem) return;
+    setEditFreq(simpleFreqFromItem(viewItem));
+    setEditTime(timeToHhMm(viewItem.start_time || viewItem.preferred_time));
+    const end = viewItem.end_date ? String(viewItem.end_date).slice(0, 10) : "";
+    setEditEnd(end);
+    setEditNoEnd(!viewItem.end_date);
+  }, [viewItem]);
+
+  const saveScheduleEdits = useCallback(async () => {
+    if (!viewItem) return;
+    if (!editNoEnd && !editEnd.trim()) {
+      Alert.alert("End date", 'Choose an end date or turn on "No end date".');
+      return;
+    }
+    setSavingEdit(true);
+    const body: Record<string, unknown> = {
+      recurrence_rule: rruleFromSimple(editFreq),
+      frequency: editFreq,
+      preferred_time: editTime,
+      start_time: timeToHhMmSs(editTime),
+    };
+    if (editNoEnd) body.end_date = null;
+    else body.end_date = editEnd.trim();
+    const { error: err } = await patchRecurring(`/api/provider/recurring-appointments/${viewItem.id}`, body);
+    setSavingEdit(false);
+    if (err) {
+      Alert.alert("Error", err);
+    } else {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setViewItem(null);
+      refresh();
+    }
+  }, [viewItem, editFreq, editTime, editEnd, editNoEnd, patchRecurring, refresh]);
 
   const handleToggleActive = useCallback(
     async (item: RecurringAppointment) => {
@@ -597,6 +671,106 @@ export default function RecurringAppointmentsScreen() {
               <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{viewItem.notes}</Text>
             </View>
           ) : null}
+
+          <View
+            style={{
+              marginBottom: 14,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: "#E0E7FF",
+              backgroundColor: "#EEF2FF",
+              padding: 12,
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[500], marginBottom: 8 }}>
+              EDIT SERIES SCHEDULE
+            </Text>
+            <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 6 }}>Frequency</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+              {(["weekly", "biweekly", "monthly"] as const).map((f) => (
+                <TouchableOpacity
+                  key={f}
+                  onPress={() => setEditFreq(f)}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: editFreq === f ? "#6366f1" : Colors.gray[200],
+                    backgroundColor: editFreq === f ? "#fff" : Colors.gray[50],
+                  }}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: editFreq === f ? "#4f46e5" : Colors.gray[700] }}>
+                    {f === "weekly" ? "Weekly" : f === "biweekly" ? "Every 2 wks" : "Monthly"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 4 }}>Preferred time (HH:MM)</Text>
+            <TextInput
+              value={editTime}
+              onChangeText={setEditTime}
+              placeholder="10:00"
+              style={{
+                borderWidth: 1,
+                borderColor: Colors.gray[200],
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                fontSize: 15,
+                marginBottom: 10,
+                backgroundColor: "#fff",
+              }}
+            />
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[800], flex: 1 }}>No end date</Text>
+              <Switch
+                value={editNoEnd}
+                onValueChange={(on) => {
+                  setEditNoEnd(on);
+                  if (on) setEditEnd("");
+                }}
+                trackColor={{ false: Colors.gray[200], true: "#C7D2FE" }}
+                thumbColor={editNoEnd ? "#6366f1" : "#f4f4f5"}
+              />
+            </View>
+            {!editNoEnd && (
+              <>
+                <Text style={{ fontSize: 11, color: Colors.gray[500], marginBottom: 4 }}>End date (YYYY-MM-DD)</Text>
+                <TextInput
+                  value={editEnd}
+                  onChangeText={setEditEnd}
+                  placeholder="2026-12-31"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: Colors.gray[200],
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    fontSize: 15,
+                    marginBottom: 10,
+                    backgroundColor: "#fff",
+                  }}
+                />
+              </>
+            )}
+            <TouchableOpacity
+              onPress={saveScheduleEdits}
+              disabled={savingEdit || patching}
+              style={{
+                marginTop: 4,
+                borderRadius: 12,
+                backgroundColor: "#4f46e5",
+                paddingVertical: 12,
+                alignItems: "center",
+                opacity: savingEdit || patching ? 0.6 : 1,
+              }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: "700", color: "#fff" }}>
+                {savingEdit ? "Saving…" : "Save schedule changes"}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Pause / Resume */}
           <TouchableOpacity

@@ -1,14 +1,15 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ArrowRight, Flame } from "lucide-react";
 import Link from "next/link";
-import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import ProviderCard from "./provider-card-dynamic";
 import { useUserLocation } from "@/hooks/useUserLocation";
-import { PUBLIC_HOME_CLIENT_TIMEOUT_MS } from "@/app/home/home-public-api";
+import { fetchPublicHomeClient } from "@/app/home/fetch-public-home-client";
+import { cn } from "@/lib/utils";
 
 type HottestPicksSectionProps = {
   categorySlug?: string;
@@ -25,13 +26,25 @@ const HottestPicksSection = ({
     initialHydrated ? (initialProviders ?? []) : [],
   );
   const [isLoading, setIsLoading] = useState(() => !initialHydrated);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { location: userLocation } = useUserLocation();
+  const prevInitialProvidersRef = useRef(initialProviders);
 
   useEffect(() => {
-    const loadData = async (silent: boolean) => {
+    if (!initialHydrated) return;
+    if (prevInitialProvidersRef.current === initialProviders) return;
+    prevInitialProvidersRef.current = initialProviders;
+    setProviders(initialProviders ?? []);
+  }, [initialHydrated, initialProviders]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadData = async () => {
+      const silent = providers.length > 0;
       try {
         if (!silent) setIsLoading(true);
+        else setIsRefreshing(true);
         setError(null);
         const params = new URLSearchParams();
         if (userLocation?.latitude != null && userLocation?.longitude != null) {
@@ -41,16 +54,11 @@ const HottestPicksSection = ({
         if (categorySlug && categorySlug !== "all") {
           params.set("category", categorySlug);
         }
-        const query = params.toString();
-        const response = await fetcher.get<{
-          data: { hottest: PublicProviderCard[] };
-          error: null;
-        }>(`/api/public/home${query ? `?${query}` : ""}`, {
-          timeoutMs: PUBLIC_HOME_CLIENT_TIMEOUT_MS,
-        });
-        setProviders(response.data.hottest || []);
+        const response = await fetchPublicHomeClient(params);
+        if (cancelled) return;
+        setProviders(response.data?.hottest ?? []);
       } catch (err) {
-        // Only set error for actual failures, not empty data
+        if (cancelled) return;
         if (err instanceof FetchTimeoutError || err instanceof FetchError) {
           const errorMessage =
             err instanceof FetchTimeoutError
@@ -59,34 +67,29 @@ const HottestPicksSection = ({
           if (!silent) {
             setError(errorMessage);
           } else {
-            console.warn("Home hottest refetch failed (keeping SSR data):", err);
+            console.warn("Home hottest refetch failed (keeping previous data):", err);
           }
           if (!silent) {
             console.error("Error loading hottest picks:", err);
           }
         } else {
-          // For other errors, just log and show empty state
           console.error("Error loading hottest picks:", err);
-          setProviders([]);
+          if (!silent) setProviders([]);
         }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
       }
     };
 
-    if (!initialHydrated) {
-      void loadData(false);
-      return;
-    }
-    if (userLocation?.latitude != null && userLocation?.longitude != null) {
-      void loadData(true);
-    }
-  }, [
-    userLocation?.latitude,
-    userLocation?.longitude,
-    categorySlug,
-    initialHydrated,
-  ]);
+    void loadData();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userLocation?.latitude, userLocation?.longitude, categorySlug]);
 
   const handleRetry = () => {
     setError(null);
@@ -135,7 +138,13 @@ const HottestPicksSection = ({
   }
 
   return (
-    <div className="mb-8 md:mb-12">
+    <div
+      className={cn(
+        "mb-8 md:mb-12",
+        isRefreshing && "opacity-60 transition-opacity duration-150",
+      )}
+      aria-busy={isRefreshing}
+    >
       <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
         <div className="flex justify-between items-center mb-4 md:mb-6">
           <div className="flex items-center gap-2">

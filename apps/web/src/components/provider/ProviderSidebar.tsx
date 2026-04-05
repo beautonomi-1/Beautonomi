@@ -31,10 +31,14 @@ import {
   Store,
   CalendarRange,
   CalendarOff,
+  Repeat,
   Package,
   FileEdit,
   HelpCircle,
   Ticket,
+  Link2,
+  Monitor,
+  Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProviderSidebar } from "@/contexts/ProviderSidebarContext";
@@ -59,6 +63,8 @@ const navigationSections = [
     title: "Operations",
     items: [
       { icon: Clock, label: "Waitlist", href: "/provider/waitlist", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: Repeat, label: "Recurring", href: "/provider/recurring-appointments", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: Monitor, label: "Front desk", href: "/provider/front-desk", permission: "view_calendar" as keyof StaffPermissions },
       { icon: UserCheck, label: "Waiting Room", href: "/provider/waiting-room", permission: "view_calendar" as keyof StaffPermissions },
       { icon: UsersRound, label: "Clients", href: "/provider/clients", permission: "view_clients" as keyof StaffPermissions },
     ],
@@ -100,6 +106,7 @@ const navigationSections = [
     items: [
       { icon: Tag, label: "Sales", href: "/provider/sales", permission: "view_sales" as keyof StaffPermissions },
       { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" as keyof StaffPermissions },
+      { icon: Coins, label: "Payouts", href: "/provider/payouts", permission: "view_sales" as keyof StaffPermissions },
       { icon: BarChart3, label: "Analytics", href: "/provider/analytics", permission: "view_reports" as keyof StaffPermissions },
       { icon: BarChart3, label: "Reports", href: "/provider/reports", permission: "view_reports" as keyof StaffPermissions },
       { icon: Trophy, label: "Rewards & Badges", href: "/provider/gamification", permission: undefined },
@@ -117,6 +124,7 @@ const navigationSections = [
       { icon: Star, label: "Reviews", href: "/provider/reviews", permission: "view_reviews" as keyof StaffPermissions },
       { icon: MessageSquare, label: "Messages", href: "/provider/messaging", permission: "view_messages" as keyof StaffPermissions },
       { icon: Megaphone, label: "Marketing", href: "/provider/marketing/automations", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: Link2, label: "Booking links", href: "/provider/express-booking", permission: "edit_settings" as keyof StaffPermissions },
     ],
   },
 ];
@@ -182,6 +190,18 @@ const isActiveRoute = (pathname: string, href: string) => {
   }
   if (href === "/provider/gamification") {
     return pathname.startsWith("/provider/gamification");
+  }
+  if (href === "/provider/payouts") {
+    return pathname.startsWith("/provider/payouts");
+  }
+  if (href === "/provider/express-booking") {
+    return pathname.startsWith("/provider/express-booking");
+  }
+  if (href === "/provider/front-desk") {
+    return pathname.startsWith("/provider/front-desk");
+  }
+  if (href === "/provider/recurring-appointments") {
+    return pathname.startsWith("/provider/recurring-appointments");
   }
   if (href === "/help") {
     return pathname === "/help" || (pathname.startsWith("/help/") && !pathname.startsWith("/help/my-tickets"));
@@ -356,7 +376,7 @@ export function ProviderSidebar() {
                       href={item.href}
                       prefetch={true}
                       className={cn(
-                        "flex items-center gap-3 h-10 rounded-xl transition-all relative group",
+                        "flex items-center gap-3 min-h-11 touch-manipulation rounded-xl transition-all relative group",
                         isExpanded ? "px-3" : "justify-center px-2",
                         isActive
                           ? "text-white shadow-lg"
@@ -368,17 +388,17 @@ export function ProviderSidebar() {
                       } : undefined}
                     >
                       <Icon className={cn(
-                        "w-5 h-5 flex-shrink-0 transition-transform",
+                        "w-5 h-5 flex-shrink-0 transition-transform pointer-events-none",
                         isActive && "scale-110"
                       )} />
                       {isExpanded && (
                         <>
-                          <span className="text-sm font-medium whitespace-nowrap flex-1">
+                          <span className="text-sm font-medium whitespace-nowrap flex-1 pointer-events-none">
                             {item.label}
                           </span>
                           {item.badge && (
                             <span 
-                              className="px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#1a1f3c] rounded"
+                              className="px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#1a1f3c] rounded pointer-events-none"
                               style={{
                                 backgroundColor: secondaryColor,
                               }}
@@ -426,16 +446,16 @@ export function ProviderSidebar() {
                 href={item.href}
                 prefetch={true}
                 className={cn(
-                  "flex items-center gap-3 h-10 rounded-xl transition-all",
+                  "flex items-center gap-3 min-h-11 touch-manipulation rounded-xl transition-all",
                   isExpanded ? "px-3" : "justify-center px-2",
                   isActive
                     ? "bg-white/10 text-white"
                     : "text-gray-400 hover:bg-white/10 hover:text-white"
                 )}
               >
-                <Icon className="w-5 h-5 flex-shrink-0" />
+                <Icon className="w-5 h-5 flex-shrink-0 pointer-events-none" />
                 {isExpanded && (
-                  <span className="text-sm font-medium">{item.label}</span>
+                  <span className="text-sm font-medium pointer-events-none">{item.label}</span>
                 )}
               </Link>
             );
@@ -459,26 +479,28 @@ export function ProviderSidebar() {
           {/* Logout Button */}
           {isExpanded ? (
             <button
+              type="button"
               onClick={handleLogout}
               className={cn(
-                "flex items-center gap-3 h-10 w-full rounded-xl px-3",
+                "flex items-center gap-3 min-h-11 touch-manipulation w-full rounded-xl px-3",
                 "text-gray-400 hover:bg-red-500/10 hover:text-red-400 transition-all"
               )}
             >
-              <LogOut className="w-5 h-5 flex-shrink-0" />
-              <span className="text-sm font-medium">Sign Out</span>
+              <LogOut className="w-5 h-5 flex-shrink-0 pointer-events-none" />
+              <span className="text-sm font-medium pointer-events-none">Sign Out</span>
             </button>
           ) : (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  type="button"
                   onClick={handleLogout}
                   className={cn(
-                    "flex items-center justify-center h-10 w-full rounded-xl px-2",
+                    "flex items-center justify-center min-h-11 touch-manipulation w-full rounded-xl px-2",
                     "text-gray-400 hover:bg-red-500/10 hover:text-red-400 transition-all"
                   )}
                 >
-                  <LogOut className="w-5 h-5" />
+                  <LogOut className="w-5 h-5 pointer-events-none" />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right" className="font-medium">

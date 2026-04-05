@@ -106,6 +106,13 @@ export const bookingDraftSchema = z.object({
   resource_ids: z.array(z.string().uuid("Invalid resource ID")).optional(),
   /** Minutes after service duration for mobile at-home slots; must match `/api/availability` `travelBuffer`. */
   availability_travel_buffer_minutes: z.coerce.number().int().min(0).max(360).optional(),
+  /** When enabled, recurring series is created after payment (Paystack metadata) or immediately if no card redirect. */
+  subscribe_recurring: z
+    .object({
+      enabled: z.boolean(),
+      frequency: z.enum(["weekly", "biweekly", "monthly"]),
+    })
+    .optional(),
 });
 
 export type PublicBookingValidatedBody = z.infer<typeof bookingDraftSchema>;
@@ -142,5 +149,6 @@ export function toBookingDraftFromPublicBody(body: PublicBookingValidatedBody): 
     gift_card_code: body.gift_card_code ?? undefined,
     use_wallet: body.use_wallet,
     resource_ids: body.resource_ids,
+    subscribe_recurring: body.subscribe_recurring,
   };
 }

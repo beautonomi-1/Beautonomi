@@ -163,9 +163,9 @@ export default function Error({
 
   // Customer error page
   return (
-    <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">
       <BeautonomiHeader/>
-      <div className="flex flex-col pt-16 pb-20 items-center justify-center bg-primary">
+      <div className="w-full max-w-full overflow-x-hidden flex flex-col pt-16 pb-20 items-center justify-center bg-primary">
         <Image src={logo} alt="Logo" className="w-32 h-32 mb-6" />
         
         <h2 className="text-7xl font-bold mb-4">

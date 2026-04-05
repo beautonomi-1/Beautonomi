@@ -134,13 +134,15 @@ export default async function PartnerProfilePage({
   const origin = await getPublicSiteOriginFromHeaders();
 
   return (
-    <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">
       <ProviderJsonLd provider={provider} origin={origin} slug={provider.slug} />
       <BeautonomiHeader />
+      <div className="w-full max-w-full overflow-x-hidden">
       <PartnerProfileClient
         provider={provider}
         initialServiceCategories={initialServiceCategories}
       />
+      </div>
       <Footer />
       <BottomNav />
     </div>

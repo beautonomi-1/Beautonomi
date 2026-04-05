@@ -1,15 +1,16 @@
 "use client";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
-import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import ProviderCard from "./provider-card-dynamic";
 import { useUserLocation } from "@/hooks/useUserLocation";
-import { PUBLIC_HOME_CLIENT_TIMEOUT_MS } from "@/app/home/home-public-api";
+import { fetchPublicHomeClient } from "@/app/home/fetch-public-home-client";
+import { cn } from "@/lib/utils";
 import Stars from '../../../../public/images/Group 1.8f1d86be 1.svg';
 
 // Use static strings to avoid useTranslation() running before i18n is ready (prevents hook-order and .length errors)
@@ -32,8 +33,17 @@ const TopRatedSection = ({
     initialHydrated ? (initialProviders ?? []) : [],
   );
   const [isLoading, setIsLoading] = useState(() => !initialHydrated);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { location: userLocation } = useUserLocation();
+  const prevInitialProvidersRef = useRef(initialProviders);
+
+  useEffect(() => {
+    if (!initialHydrated) return;
+    if (prevInitialProvidersRef.current === initialProviders) return;
+    prevInitialProvidersRef.current = initialProviders;
+    setProviders(initialProviders ?? []);
+  }, [initialHydrated, initialProviders]);
 
   const handleRetry = useCallback(() => {
     setError(null);
@@ -42,9 +52,12 @@ const TopRatedSection = ({
   }, []);
 
   useEffect(() => {
-    const loadData = async (silent: boolean) => {
+    let cancelled = false;
+    const loadData = async () => {
+      const silent = providers.length > 0;
       try {
         if (!silent) setIsLoading(true);
+        else setIsRefreshing(true);
         setError(null);
         const params = new URLSearchParams();
         if (userLocation?.latitude != null && userLocation?.longitude != null) {
@@ -54,57 +67,46 @@ const TopRatedSection = ({
         if (categorySlug && categorySlug !== "all") {
           params.set("category", categorySlug);
         }
-        const query = params.toString();
-        const response = await fetcher.get<{
-          data?: { topRated?: PublicProviderCard[] };
-          error?: null;
-        }>(`/api/public/home${query ? `?${query}` : ""}`, {
-          timeoutMs: PUBLIC_HOME_CLIENT_TIMEOUT_MS,
-        });
+        const response = await fetchPublicHomeClient(params);
+        if (cancelled) return;
         const list = response?.data?.topRated;
         setProviders(Array.isArray(list) ? list : []);
       } catch (err) {
-        // Only set error for actual failures, not empty data
+        if (cancelled) return;
         if (err instanceof FetchTimeoutError || err instanceof FetchError) {
           const errorMessage =
             err instanceof FetchTimeoutError
               ? "Request timed out. Please try again."
               : err.message;
-          // Background refetch after SSR must not replace content with an error banner
           if (!silent) {
             setError(errorMessage);
           } else {
-            console.warn("Home top-rated refetch failed (keeping SSR data):", err);
+            console.warn("Home top-rated refetch failed (keeping previous data):", err);
           }
-          // Only log non-timeout errors in development (timeouts are expected when DB isn't set up)
           if (!(err instanceof FetchTimeoutError) || process.env.NODE_ENV === "production") {
             if (!silent) {
               console.error("Error loading top rated providers:", err);
             }
           }
         } else {
-          // For other errors, just log and show empty state
           console.error("Error loading top rated providers:", err);
-          setProviders([]);
+          if (!silent) setProviders([]);
         }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
       }
     };
 
-    if (!initialHydrated) {
-      void loadData(false);
-      return;
-    }
-    if (userLocation?.latitude != null && userLocation?.longitude != null) {
-      void loadData(true);
-    }
-  }, [
-    userLocation?.latitude,
-    userLocation?.longitude,
-    categorySlug,
-    initialHydrated,
-  ]);
+    void loadData();
+    return () => {
+      cancelled = true;
+    };
+    // `providers.length` read intentionally without listing `providers` in deps (avoids loops; stale slice is correct for SWR silent mode)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userLocation?.latitude, userLocation?.longitude, categorySlug]);
 
   const safeProviders = providers ?? [];
 
@@ -149,7 +151,13 @@ const TopRatedSection = ({
   }
 
   return (
-    <div className="mb-8 md:mb-12 mt-4 md:mt-8">
+    <div
+      className={cn(
+        "mb-8 md:mb-12 mt-4 md:mt-8",
+        isRefreshing && "opacity-60 transition-opacity duration-150",
+      )}
+      aria-busy={isRefreshing}
+    >
       <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
         <div className="flex justify-between items-center mb-4 md:mb-6">
           <div className="flex items-center gap-2">

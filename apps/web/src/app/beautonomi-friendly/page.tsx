@@ -34,8 +34,9 @@ const Page = async () => {
   const content = (await getPublicPageContent("beautonomi-friendly")) as FriendlyPageContent | null;
 
   return (
-    <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">
       <BeautonomiHeader />
+      <div className="w-full max-w-full overflow-x-hidden">
       <AirFriendlyHero content={content} />
       <TheCarousel />
       <GetStarted />
@@ -43,6 +44,7 @@ const Page = async () => {
         <FAQ applyBgPrimary={false} />
       </div>
       <OtherCities />
+      </div>
       <Footer />
       <BottomNav />
     </div>

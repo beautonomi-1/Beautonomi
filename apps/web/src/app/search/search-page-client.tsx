@@ -16,9 +16,11 @@ function SearchPageInner({ initialCategories }: { initialCategories: Category[] 
   }, [isReady, track]);
 
   return (
-    <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">
       <BeautonomiHeader />
-      <SearchResults initialCategories={initialCategories} />
+      <div className="w-full max-w-full overflow-x-hidden">
+        <SearchResults initialCategories={initialCategories} />
+      </div>
       <Footer />
       <BottomNav />
     </div>

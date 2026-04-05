@@ -7,6 +7,20 @@
    ============================================================================ */
 
 @layer base {
+  /* iOS / iPadOS Safari: reliable taps; avoid dead clicks on links/buttons */
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    touch-action: manipulation;
+  }
+  a[href]:not([tabindex="-1"]),
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+    -webkit-tap-highlight-color: rgba(255, 0, 119, 0.12);
+  }
+
   :root {
     /* Brand (align with @beautonomi/ui-tokens) */
     --primary: #FF0077;

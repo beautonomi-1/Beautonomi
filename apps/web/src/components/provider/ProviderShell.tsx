@@ -25,6 +25,15 @@ const PRIMARY_ROUTES = [
   "/provider/finance",
   "/provider/catalogue",
   "/provider/settings",
+  "/provider/sales",
+  "/provider/waitlist",
+  "/provider/recurring-appointments",
+  "/provider/express-booking",
+  "/provider/front-desk",
+  "/provider/orders",
+  "/provider/ecommerce",
+  "/provider/reports",
+  "/provider/analytics",
 ];
 
 export function ProviderShell({ children }: { children: React.ReactNode }) {

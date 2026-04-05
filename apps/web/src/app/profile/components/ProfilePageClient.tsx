@@ -9,6 +9,7 @@ import AboutSection from "@/components/profile/AboutSection";
 import BeautyPreferencesCard from "@/components/profile/BeautyPreferencesCard";
 import { CustomFieldsForm } from "@/components/custom-fields/CustomFieldsForm";
 import type { ProfileUser, ProfileData, CompletionData } from "@/types/profile";
+import AccountHubGrid from "@/app/account-settings/components/account-hub-grid";
 
 interface ProfilePageClientProps {
   user: ProfileUser | null;
@@ -142,6 +143,8 @@ export default function ProfilePageClient({
           showSaveButton={true}
         />
       </div>
+
+      <AccountHubGrid embeddedInProfile />
     </div>
   );
 }

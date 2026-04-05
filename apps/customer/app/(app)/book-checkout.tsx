@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
   TextInput,
+  Switch,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -38,6 +39,7 @@ import type { SavedPaymentMethod } from "@/types/api";
 interface BookingServiceSnapshot {
   offering_id: string;
   id?: string;
+  staff_id?: string | null;
   duration_minutes: number;
   price: number;
   currency: string;
@@ -94,6 +96,7 @@ interface ConsumeResponse {
   booking_id?: string;
   booking_number?: string;
   payment_url?: string | null;
+  recurring_subscription?: { created: boolean; pending?: boolean; message?: string };
 }
 
 interface CustomFieldDefinition {
@@ -543,6 +546,8 @@ export default function BookCheckoutScreen() {
   const [addonsList, setAddonsList] = useState<AddonOption[]>([]);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
   const [isGroupBooking, setIsGroupBooking] = useState(false);
+  const [subscribeRecurring, setSubscribeRecurring] = useState(false);
+  const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly">("weekly");
   const [groupParticipants, setGroupParticipants] = useState<{ id: string; name: string; phone?: string; notes?: string; service_ids: string[] }[]>([]);
   const [productsList, setProductsList] = useState<{
     id: string;
@@ -1377,6 +1382,9 @@ export default function BookCheckoutScreen() {
           phone: user.phone ?? undefined,
         };
       }
+      if (subscribeRecurring && user && !routeRescheduleBookingId && !isGroupBooking) {
+        payload.subscribe_recurring = { enabled: true, frequency: recurringFrequency };
+      }
 
       const res = await api.post<ConsumeResponse>(
         `/api/public/booking-holds/${hold_id}/consume`,
@@ -1395,6 +1403,22 @@ export default function BookCheckoutScreen() {
 
       /* Server creates the Paystack transaction in POST /api/public/bookings; must open this URL (same as web book/continue). */
       const paymentUrl = data?.payment_url;
+
+      const recurringSub = data?.recurring_subscription;
+      const notifyRecurringSubscription = () => {
+        if (!subscribeRecurring) return;
+        if (recurringSub?.created) {
+          Alert.alert("Repeating schedule saved", "Manage it anytime under Account settings → Recurring bookings.");
+        } else if (recurringSub?.pending) {
+          Alert.alert(
+            "Repeating schedule",
+            "After your payment succeeds, your repeating schedule will appear under Account settings → Recurring bookings.",
+          );
+        } else if (recurringSub && recurringSub.created === false && recurringSub.message) {
+          Alert.alert("Repeating schedule", recurringSub.message);
+        }
+      };
+
       if (paymentUrl && paymentMethod === "card") {
         await WebBrowser.openBrowserAsync(paymentUrl, {
           presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
@@ -1403,11 +1427,13 @@ export default function BookCheckoutScreen() {
         const amountPaid = paymentOption === "deposit" && hasDeposit ? depositAmount : total;
         trackBookingConfirmed(bookingId ?? hold_id, paymentMethod, total);
         trackPaymentSuccess(bookingId ?? hold_id, amountPaid);
+        notifyRecurringSubscription();
         navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
       } else {
         if (selectedCardId && !useNewCard && savedCards.length > 0) refreshCards();
         trackBookingConfirmed(bookingId ?? hold_id, paymentMethod, total);
         trackPaymentSuccess(bookingId ?? hold_id, total);
+        notifyRecurringSubscription();
         navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
       }
     } catch (e) {
@@ -1416,7 +1442,7 @@ export default function BookCheckoutScreen() {
       setConsuming(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pay helpers and navigateToBooking are stable refs
-  }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled]);
+  }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency]);
 
   /* ─── Loading skeleton ─── */
   if (loading) {
@@ -2374,6 +2400,65 @@ export default function BookCheckoutScreen() {
                     ))}
                   </View>
                 ))}
+              </View>
+            )}
+
+            {/* ═══ Repeat booking (signed-in, not reschedule / group) ═══ */}
+            {user && !routeRescheduleBookingId && !isGroupBooking && (
+              <View
+                style={{
+                  marginBottom: 16,
+                  padding: 14,
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: "#BFDBFE",
+                  backgroundColor: "#EFF6FF",
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 6 }}>Repeat this booking</Text>
+                <Text style={{ fontSize: 12, color: "#4B5563", lineHeight: 17, marginBottom: 10 }}>
+                  When enabled, your repeat schedule is saved as soon as the booking is created. You pay per visit. External card payment still saves the schedule—manage it under Account settings.
+                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: "#374151", flex: 1, marginRight: 12 }}>Turn on repeating visits</Text>
+                  <Switch
+                    value={subscribeRecurring}
+                    onValueChange={setSubscribeRecurring}
+                    trackColor={{ false: "#E5E7EB", true: "#93C5FD" }}
+                    thumbColor={subscribeRecurring ? Colors.primary : "#f4f4f5"}
+                  />
+                </View>
+                {subscribeRecurring && (
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                    {(["weekly", "biweekly", "monthly"] as const).map((f) => (
+                      <Pressable
+                        key={f}
+                        onPress={() => {
+                          haptic.light();
+                          setRecurringFrequency(f);
+                        }}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          borderRadius: 10,
+                          borderWidth: 1.5,
+                          borderColor: recurringFrequency === f ? Colors.primary : "#D1D5DB",
+                          backgroundColor: recurringFrequency === f ? Colors.primaryLight : "#fff",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "600",
+                            color: recurringFrequency === f ? Colors.primary : "#374151",
+                          }}
+                        >
+                          {f === "weekly" ? "Weekly" : f === "biweekly" ? "Every 2 wks" : "Monthly"}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
               </View>
             )}
 

@@ -135,6 +135,9 @@ export interface BookingState {
     specialRequests?: string;
     houseCallInstructions?: string;
   } | null;
+  /** Repeating schedule after checkout (POST /api/public/bookings subscribe_recurring). */
+  subscribeRecurring?: boolean;
+  recurringFrequency?: "weekly" | "biweekly" | "monthly";
 }
 
 const STEP_ORDER: BookingStep[] = ["services", "groupParticipants", "venue", "packages", "calendar", "promotions", "yourInfo", "payment"];
@@ -176,6 +179,8 @@ function defaultBookingState(
           phone: user.phone || "",
         }
       : null,
+    subscribeRecurring: false,
+    recurringFrequency: "weekly",
   };
 }
 

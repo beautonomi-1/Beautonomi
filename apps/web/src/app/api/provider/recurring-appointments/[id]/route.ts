@@ -8,11 +8,14 @@ import { z } from "zod";
 const updateRecurringSchema = z.object({
   recurrence_rule: z.string().min(1).optional(),
   start_date: z.string().date().optional(),
-  end_date: z.string().date().optional(),
+  end_date: z.string().date().optional().nullable(),
   start_time: z.string().regex(/^\d{2}:\d{2}:\d{2}$/).optional(),
   notes: z.string().optional(),
   is_active: z.boolean().optional(),
   location_id: z.string().uuid().nullable().optional(),
+  frequency: z.string().min(1).optional().nullable(),
+  preferred_time: z.string().optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**

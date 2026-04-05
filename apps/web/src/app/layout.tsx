@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
 // Country restriction modal removed - not needed
@@ -17,6 +17,12 @@ import {
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { getTenantRegionConfig } from "@/lib/regions/config";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   const h = await headers();

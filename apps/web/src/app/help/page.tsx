@@ -38,13 +38,15 @@ const Page = async () => {
   const content = await getHelpPageContent();
 
   return (
-    <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">
       <BeautonomiHeader />
-      <div className="text-center pt-4 pb-0">
-        <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Help centre</p>
+      <div className="w-full max-w-full overflow-x-hidden">
+        <div className="text-center pt-4 pb-0">
+          <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Help centre</p>
+        </div>
+        <SearchBox content={content} />
+        <CTA content={content} />
       </div>
-      <SearchBox content={content} />
-      <CTA content={content} />
       <Footer />
       <BottomNav />
     </div>

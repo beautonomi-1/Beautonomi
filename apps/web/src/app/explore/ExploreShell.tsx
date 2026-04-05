@@ -7,7 +7,7 @@ import BottomNav from "@/components/layout/bottom-nav";
 
 export default function ExploreShell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">
       <BeautonomiHeader />
       <main className="w-full max-w-full overflow-x-hidden">{children}</main>
       <Footer />

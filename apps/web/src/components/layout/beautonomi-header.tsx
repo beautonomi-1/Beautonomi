@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useTransition, useCallback } from "react";
 import Link from "next/link";
 import { MapPin, ChevronDown, ChevronLeft, ChevronRight, Search, Menu, User, Home, Briefcase, History, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import { HomeNavIcon, ExploreNavIcon } from "@/components/layout/nav-icons";
 import { GlobalCategoryIcon } from "@/components/icons/GlobalCategoryIcon";
 import { CustomerNotificationsDropdown } from "@/components/customer/CustomerNotificationsDropdown";
+import { cn } from "@/lib/utils";
 
 interface Category {
   id: string;
@@ -51,8 +52,9 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   onCategoryChange,
   initialGlobalCategories,
 }) => {
-  const { user, isLoading: authLoading, signOut } = useAuth();
+  const { user, isLoading: authLoading, signOut, role: authRole } = useAuth();
   const router = useRouter();
+  const [isCategoryNavPending, startCategoryTransition] = useTransition();
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const isHomePage = pathname === "/" || pathname === "";
@@ -236,8 +238,6 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   );
 
   useEffect(() => {
-    setIsMounted(true);
-    
     // Load saved location from localStorage
     if (typeof window !== "undefined") {
       const savedLocation = localStorage.getItem("userLocation");
@@ -450,14 +450,24 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
     if (onCategoryChange) {
       onCategoryChange(slug);
     } else {
-      // Use client-side navigation to avoid full document reload on mobile.
-      if (slug === "all") {
-        router.replace("/", { scroll: false });
-      } else {
-        router.replace(`/?category=${encodeURIComponent(slug)}`, { scroll: false });
-      }
+      startCategoryTransition(() => {
+        if (slug === "all") {
+          router.replace("/", { scroll: false });
+        } else {
+          router.replace(`/?category=${encodeURIComponent(slug)}`, { scroll: false });
+        }
+      });
     }
   };
+
+  const prefetchCategoryHome = useCallback(
+    (slug: string) => {
+      if (onCategoryChange) return;
+      const href = slug === "all" ? "/" : `/?category=${encodeURIComponent(slug)}`;
+      router.prefetch(href);
+    },
+    [onCategoryChange, router],
+  );
 
   // Get current location using geolocation API
   const getCurrentLocation = async () => {
@@ -654,7 +664,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   };
 
   return (
-    <header className="relative bg-white border-b shadow-sm sticky top-0 z-50">
+    <header className="relative bg-white border-b shadow-sm sticky top-0 z-[100] isolate">
       {/* Address Selector Bar - Top Most */}
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-[2340px] mx-auto px-4 md:px-6 lg:px-20">
@@ -666,7 +676,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="w-full max-w-md bg-[#FF007F] hover:bg-[#E6006F] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 flex items-center justify-center gap-2 font-medium transition-colors shadow-sm"
+                  className="w-full max-w-md bg-[#FF007F] hover:bg-[#E6006F] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 flex items-center justify-center gap-2 font-medium transition-colors shadow-sm touch-manipulation select-none"
                 >
                   <MapPin className="h-4 w-4 md:h-5 md:w-5 text-white flex-shrink-0" />
                   <span className="text-sm md:text-base truncate flex-1 text-center">{selectedAddress}</span>
@@ -836,14 +846,16 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
           </div>
 
           {/* Center: Home | Explore nav (desktop + mobile, centered) */}
-          <nav className="flex items-center gap-1 absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2">
+          <nav
+            className="flex items-center gap-1 absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 max-w-[calc(100%-200px)] z-[5]"
+            aria-label="Primary"
+          >
             <Link
               href="/"
-              className={`relative flex flex-col items-center gap-0.5 px-3 py-2 md:px-5 md:gap-1 rounded-lg transition-colors min-w-[56px] md:min-w-[72px] ${
-                isHomePage
-                  ? "text-[#FF007F] font-bold"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
+              className={cn(
+                "relative flex flex-col items-center gap-0.5 px-3 py-2 md:px-5 md:gap-1 rounded-lg transition-colors min-w-[56px] md:min-w-[72px] touch-manipulation select-none",
+                isHomePage ? "text-[#FF007F] font-bold" : "text-gray-600 hover:text-gray-900 active:text-gray-900",
+              )}
             >
               <HomeNavIcon active={isHomePage} size={24} />
               <span className="text-[10px] md:text-xs font-medium">Home</span>
@@ -853,11 +865,10 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
             </Link>
             <Link
               href="/explore"
-              className={`relative flex flex-col items-center gap-0.5 px-3 py-2 md:px-5 md:gap-1 rounded-lg transition-colors min-w-[56px] md:min-w-[72px] ${
-                isExplorePage
-                  ? "text-[#FF007F] font-bold"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
+              className={cn(
+                "relative flex flex-col items-center gap-0.5 px-3 py-2 md:px-5 md:gap-1 rounded-lg transition-colors min-w-[56px] md:min-w-[72px] touch-manipulation select-none",
+                isExplorePage ? "text-[#FF007F] font-bold" : "text-gray-600 hover:text-gray-900 active:text-gray-900",
+              )}
             >
               <ExploreNavIcon active={isExplorePage} size={24} />
               <span className="flex items-center gap-1 text-[10px] md:text-xs font-medium">
@@ -872,14 +883,14 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
             </Link>
           </nav>
 
-          {/* Right: Search Icon + Become a partner + User Menu */}
-          <div className="flex items-center justify-end gap-2 md:gap-4 min-w-0 md:min-w-[140px]">
-            {/* Search Icon Toggle */}
+          {/* Right: Search (desktop) + Become a partner + User Menu — mobile search lives in bottom nav */}
+          <div className="relative z-[110] flex items-center justify-end gap-2 md:gap-4 min-w-0 md:min-w-[140px]">
+            {/* Search Icon Toggle — md+ only; mobile uses /search from bottom navigation */}
             <button
               ref={searchToggleRef}
               type="button"
               onClick={toggleSearch}
-              className="p-1.5 md:p-2 rounded-full hover:bg-gray-100 transition-colors"
+              className="hidden md:inline-flex p-1.5 md:p-2 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
               aria-label="Toggle search"
             >
               <Search className="h-5 w-5 md:h-6 md:w-6 text-gray-700" />
@@ -905,7 +916,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                     <button
                       type="button"
                       aria-label="Open menu"
-                      className="p-1.5 md:p-2 rounded-full hover:bg-gray-100 transition-colors"
+                      className="p-1.5 md:p-2 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 inline-flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
                     >
                       <Menu className="h-5 w-5 md:h-6 md:w-6 text-gray-700" />
                     </button>
@@ -920,10 +931,10 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                       </SheetDescription>
                     </SheetHeader>
                     <div className="flex flex-col p-2">
-                      <div className="flex gap-2 px-4 py-2 border-b border-gray-100 md:hidden">
+                      <div className="grid grid-cols-3 gap-2 px-4 py-2 border-b border-gray-100 md:hidden">
                         <Link
                           href="/"
-                          className={`flex-1 py-2 text-center text-sm font-medium rounded-lg ${
+                          className={`py-2 text-center text-sm font-medium rounded-lg ${
                             isHomePage ? "bg-[#FF007F]/10 text-[#FF007F]" : "text-gray-600 hover:bg-gray-50"
                           }`}
                           onClick={() => setIsUserMenuOpen(false)}
@@ -932,12 +943,21 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                         </Link>
                         <Link
                           href="/explore"
-                          className={`flex-1 py-2 text-center text-sm font-medium rounded-lg ${
+                          className={`py-2 text-center text-sm font-medium rounded-lg ${
                             isExplorePage ? "bg-[#FF007F]/10 text-[#FF007F]" : "text-gray-600 hover:bg-gray-50"
                           }`}
                           onClick={() => setIsUserMenuOpen(false)}
                         >
                           Explore
+                        </Link>
+                        <Link
+                          href="/search"
+                          className={`py-2 text-center text-sm font-medium rounded-lg ${
+                            pathname === "/search" ? "bg-[#FF007F]/10 text-[#FF007F]" : "text-gray-600 hover:bg-gray-50"
+                          }`}
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          Search
                         </Link>
                       </div>
                       <Button
@@ -993,7 +1013,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                     <button
                       type="button"
                       aria-label="User menu"
-                      className="p-1.5 md:p-2 rounded-full hover:bg-gray-100 transition-colors"
+                      className="p-1.5 md:p-2 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 inline-flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
                     >
                       <User className="h-5 w-5 md:h-6 md:w-6 text-gray-700" />
                     </button>
@@ -1005,28 +1025,16 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                       </p>
                       <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                     </div>
+                    {(authRole ?? user?.role) && (authRole ?? user?.role) !== "customer" ? (
+                      <DropdownMenuItem asChild>
+                        <Link href="/portal" className="cursor-pointer">
+                          Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                    ) : null}
                     <DropdownMenuItem asChild>
-                      <Link
-                        href="/portal"
-                        className="cursor-pointer"
-                      >
-                        Dashboard
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link
-                        href="/profile"
-                        className="cursor-pointer"
-                      >
-                        Profile
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link
-                        href="/account-settings"
-                        className="cursor-pointer"
-                      >
-                        Account Settings
+                      <Link href="/profile" className="cursor-pointer">
+                        Profile and account
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem
@@ -1050,14 +1058,17 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
         </div>
       </div>
 
-      {/* Search Section - Toggle to expand */}
-      <div 
+      {/* Search Section - Toggle to expand (desktop only) */}
+      <div
         ref={searchContainerRef}
-        className={`max-w-[2340px] mx-auto px-4 md:px-6 lg:px-20 transition-all duration-300 ease-in-out overflow-visible ${
-          isSearchOpen ? "max-h-96 opacity-100 pb-4 pt-2 border-t border-gray-100" : "max-h-0 opacity-0 overflow-hidden"
-        }`}
+        className={cn(
+          "hidden md:block max-w-[2340px] mx-auto px-4 md:px-6 lg:px-20 transition-all duration-300 ease-in-out overflow-visible",
+          isSearchOpen
+            ? "max-h-96 opacity-100 pb-4 pt-2 border-t border-gray-100 pointer-events-auto"
+            : "max-h-0 opacity-0 overflow-hidden pointer-events-none",
+        )}
       >
-        <form onSubmit={handleSearch} className="relative z-50">
+        <form onSubmit={handleSearch} className="relative z-50 touch-manipulation">
           <input
             type="text"
             placeholder="Search for providers..."
@@ -1155,13 +1166,17 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
 
       {/* Category Navigation - Home page only */}
       {isHomePage && (
-      <div className="border-t bg-white">
+      <div
+        className={cn("border-t bg-white", isCategoryNavPending && "opacity-[0.97] transition-opacity")}
+        aria-busy={isCategoryNavPending}
+      >
         <div className="max-w-[2340px] mx-auto px-4 md:px-6 lg:px-20">
           <div className="relative flex items-center gap-2">
             {/* Left scroll button */}
             <button
+              type="button"
               onClick={() => scrollCategories("left")}
-              className="hidden md:flex items-center justify-center w-8 h-8 rounded-full bg-white border border-gray-200 hover:bg-gray-50 shadow-sm z-10"
+              className="hidden md:flex items-center justify-center w-8 h-8 rounded-full bg-white border border-gray-200 hover:bg-gray-50 shadow-sm z-10 touch-manipulation"
               aria-label="Scroll left"
             >
               <ChevronLeft className="h-4 w-4 text-gray-400" />
@@ -1178,12 +1193,15 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                 return (
                   <button
                     key={category.id}
+                    type="button"
                     onClick={() => handleCategoryClick(category.slug)}
-                    className={`relative flex flex-col items-center gap-1 md:gap-2 px-2 md:px-4 py-1.5 md:py-3 whitespace-nowrap transition-colors ${
+                    onPointerEnter={() => prefetchCategoryHome(category.slug)}
+                    className={cn(
+                      "relative flex flex-col items-center gap-1 md:gap-2 px-2 md:px-4 py-2 md:py-3 min-h-[44px] md:min-h-0 whitespace-nowrap transition-colors touch-manipulation select-none rounded-lg active:opacity-80",
                       isActive
                         ? "text-[#FF007F] font-semibold"
-                        : "text-gray-600 font-normal hover:text-gray-900"
-                    }`}
+                        : "text-gray-600 font-normal hover:text-gray-900 active:text-gray-900",
+                    )}
                   >
                     <span className="flex items-center justify-center h-6 w-6 text-inherit">
                       {renderCategoryIcon(category.icon, isActive)}
@@ -1199,8 +1217,9 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
 
             {/* Right scroll button */}
             <button
+              type="button"
               onClick={() => scrollCategories("right")}
-              className="hidden md:flex items-center justify-center w-8 h-8 rounded-full bg-white border border-gray-200 hover:bg-gray-50 shadow-sm z-10"
+              className="hidden md:flex items-center justify-center w-8 h-8 rounded-full bg-white border border-gray-200 hover:bg-gray-50 shadow-sm z-10 touch-manipulation"
               aria-label="Scroll right"
             >
               <ChevronRight className="h-4 w-4 text-gray-400" />

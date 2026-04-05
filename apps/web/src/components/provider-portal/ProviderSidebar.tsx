@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * @deprecated Use `@/components/provider/ProviderSidebar` from the main provider shell instead.
+ * This alternate layout is not mounted by `ProviderShell`; kept only for reference or legacy experiments.
+ */
+
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";

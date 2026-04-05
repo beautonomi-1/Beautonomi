@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { computeUserNotificationRollup } from "@/lib/notifications/customer-notification-channels";
 
 /**
  * GET /api/me/notification-preferences
@@ -206,6 +207,14 @@ export async function PATCH(request: NextRequest) {
         throw new Error('Notification preferences column not found. Please run database migration 105_add_tax_info_to_user_profiles.sql');
       }
       throw err;
+    }
+
+    // Keep users.*_notifications_enabled in sync so cron, retention, and legacy checks match the UI.
+    try {
+      const rollup = computeUserNotificationRollup(updatedPreferences);
+      await supabase.from("users").update(rollup).eq("id", user.id);
+    } catch (syncErr) {
+      console.warn("notification-preferences: could not sync users notification flags", syncErr);
     }
 
     return successResponse(result);

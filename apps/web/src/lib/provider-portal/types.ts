@@ -558,6 +558,14 @@ export interface RecurringAppointment {
   notes?: string;
   /** Branch for recurring rule (when multi-location) */
   location_id?: string | null;
+  /** DB `metadata` (e.g. duration_minutes, price overrides from provider UI). */
+  metadata?: Record<string, unknown>;
+  /** Simple cadence when set (customer + cron paths). */
+  frequency?: string | null;
+  last_booking_date?: string | null;
+  end_date?: string | null;
+  /** Next due occurrence on or after today (computed). */
+  next_occurrence_date?: string | null;
 }
 
 /**

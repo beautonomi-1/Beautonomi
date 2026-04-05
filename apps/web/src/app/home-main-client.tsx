@@ -101,31 +101,26 @@ export default function HomeMainClient({
       )}
       <div className="pt-4 md:pt-6 w-full max-w-full overflow-x-hidden">
         <TopRatedSection
-          key={`top-rated-${selectedCategory}`}
           categorySlug={selectedCategory}
           initialProviders={initialHomeData?.topRated}
           initialHydrated={initialHydrated}
         />
         <SponsoredSection
-          key={`sponsored-${selectedCategory}`}
           categorySlug={selectedCategory}
           initialProviders={initialHomeData?.sponsored}
           initialHydrated={initialHydrated}
         />
         <NearestProvidersSection
-          key={`nearest-${selectedCategory}`}
           categorySlug={selectedCategory}
           initialProviders={initialHomeData?.nearest}
           initialHydrated={initialHydrated}
         />
         <HottestPicksSection
-          key={`hottest-${selectedCategory}`}
           categorySlug={selectedCategory}
           initialProviders={initialHomeData?.hottest}
           initialHydrated={initialHydrated}
         />
         <UpcomingTalentSection
-          key={`upcoming-${selectedCategory}`}
           categorySlug={selectedCategory}
           initialProviders={initialHomeData?.upcoming}
           initialHydrated={initialHydrated}

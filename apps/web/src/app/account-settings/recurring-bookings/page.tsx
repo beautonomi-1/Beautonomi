@@ -1,40 +1,102 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, MapPin, Pause, Play, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar, Clock, MapPin, Pause, Play, Pencil, X } from "lucide-react";
 import AuthGuard from "@/components/auth/auth-guard";
 import { toast } from "sonner";
 import BackButton from "../components/back-button";
 
+type SimpleFrequency = "weekly" | "biweekly" | "monthly";
+
+function preferredTimeToInputValue(preferred: string | null | undefined): string {
+  const t = (preferred || "").trim();
+  if (/^\d{2}:\d{2}:\d{2}/.test(t)) return t.slice(0, 5);
+  if (/^\d{2}:\d{2}$/.test(t)) return t;
+  return "10:00";
+}
+
+function normalizeFrequency(
+  f: string | null | undefined,
+  recurrenceRule?: string | null
+): SimpleFrequency {
+  const v = (f || "").toLowerCase();
+  if (v === "weekly" || v === "biweekly" || v === "monthly") return v;
+  const rr = (recurrenceRule || "").toUpperCase();
+  if (rr.includes("FREQ=WEEKLY") && rr.includes("INTERVAL=2")) return "biweekly";
+  if (rr.includes("FREQ=WEEKLY")) return "weekly";
+  if (rr.includes("FREQ=MONTHLY")) return "monthly";
+  return "weekly";
+}
+
 interface RecurringBooking {
   id: string;
-  frequency: "weekly" | "biweekly" | "monthly";
+  frequency?: SimpleFrequency | string | null;
+  recurrence_rule?: string | null;
   start_date: string;
   end_date: string | null;
   preferred_time: string;
   location_type: "at_home" | "at_salon";
+  payment_method?: string | null;
   is_active: boolean;
   provider: {
     id: string;
     business_name: string;
-    slug: string;
+    slug?: string | null;
   };
-  metadata: {
+  /** Enriched on GET */
+  service_name?: string;
+  provider_name?: string;
+  next_date?: string | null;
+  status?: "active" | "paused" | "cancelled";
+  price?: number | null;
+  currency?: string | null;
+  metadata?: {
     services?: Array<{ offering_id: string; staff_id?: string }>;
     address?: { line1?: string; city?: string; state?: string; country?: string; postal_code?: string };
   };
   created_at: string;
 }
 
+type RecurringBookingsResponse = {
+  data: { recurring: RecurringBooking[] } | null;
+  error: unknown;
+};
+
 export default function RecurringBookingsPage() {
   const [recurring, setRecurring] = useState<RecurringBooking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scheduleSheetOpen, setScheduleSheetOpen] = useState(false);
+  const [editingBooking, setEditingBooking] = useState<RecurringBooking | null>(null);
+  const [editPreferredTime, setEditPreferredTime] = useState("10:00");
+  const [editFrequency, setEditFrequency] = useState<SimpleFrequency>("weekly");
+  const [editEndDate, setEditEndDate] = useState("");
+  const [editSeriesNoEnd, setEditSeriesNoEnd] = useState(false);
+  const [savingSchedule, setSavingSchedule] = useState(false);
 
   useEffect(() => {
     loadRecurring();
@@ -44,11 +106,11 @@ export default function RecurringBookingsPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await fetcher.get<{ data: { recurring: RecurringBooking[] } }>(
-        "/api/recurring-bookings",
-        { cache: "no-store" }
-      );
-      setRecurring(response.data.recurring || []);
+      const response = await fetcher.get<RecurringBookingsResponse>("/api/recurring-bookings", {
+        cache: "no-store",
+        staleTimeMs: 0,
+      });
+      setRecurring(response.data?.recurring ?? []);
     } catch (err) {
       setError(err instanceof FetchError ? err.message : "Failed to load recurring bookings");
       console.error("Error loading recurring bookings:", err);
@@ -83,13 +145,53 @@ export default function RecurringBookingsPage() {
     }
   };
 
-  const getFrequencyLabel = (freq: string) => {
+  const getFrequencyLabel = (booking: RecurringBooking) => {
+    const freq = normalizeFrequency(booking.frequency, booking.recurrence_rule);
     const labels: Record<string, string> = {
       weekly: "Weekly",
       biweekly: "Bi-weekly",
       monthly: "Monthly",
     };
-    return labels[freq] || freq;
+    return labels[freq] || String(booking.frequency || freq);
+  };
+
+  const openScheduleEditor = useCallback((booking: RecurringBooking) => {
+    setEditingBooking(booking);
+    setEditPreferredTime(preferredTimeToInputValue(booking.preferred_time));
+    setEditFrequency(normalizeFrequency(booking.frequency, booking.recurrence_rule));
+    const end = booking.end_date?.slice(0, 10) ?? "";
+    setEditEndDate(end);
+    setEditSeriesNoEnd(!booking.end_date);
+    setScheduleSheetOpen(true);
+  }, []);
+
+  const saveSchedule = async () => {
+    if (!editingBooking) return;
+    if (!editSeriesNoEnd && !editEndDate.trim()) {
+      toast.error("Choose an end date or turn on “No end date”.");
+      return;
+    }
+    setSavingSchedule(true);
+    try {
+      const payload: Record<string, unknown> = {
+        preferred_time: editPreferredTime,
+        frequency: editFrequency,
+      };
+      if (editSeriesNoEnd) {
+        payload.end_date = null;
+      } else if (editEndDate.trim()) {
+        payload.end_date = editEndDate.trim();
+      }
+      await fetcher.patch(`/api/recurring-bookings/${editingBooking.id}`, payload);
+      toast.success("Schedule updated");
+      setScheduleSheetOpen(false);
+      setEditingBooking(null);
+      await loadRecurring();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to update schedule");
+    } finally {
+      setSavingSchedule(false);
+    }
   };
 
   if (isLoading) {
@@ -117,25 +219,48 @@ export default function RecurringBookingsPage() {
         <div className="space-y-4">
           {recurring.length === 0 ? (
             <Card>
-              <CardContent className="py-8 text-center">
-                <p className="text-gray-600 mb-4">No recurring bookings</p>
-                <p className="text-sm text-gray-500">
-                  Create a recurring booking to automatically schedule appointments
+              <CardContent className="py-8 text-center space-y-4">
+                <p className="text-gray-600">No recurring bookings yet</p>
+                <p className="text-sm text-gray-500 max-w-md mx-auto">
+                  Book a salon and turn on &quot;Repeat this booking&quot; at checkout (web or app, signed in), or ask your provider to set up a series for you.
                 </p>
+                <Button asChild variant="default">
+                  <Link href="/search">Find a salon</Link>
+                </Button>
               </CardContent>
             </Card>
           ) : (
             recurring.map((booking) => (
               <Card key={booking.id}>
                 <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle>{booking.provider.business_name}</CardTitle>
-                      <div className="flex items-center gap-2 mt-2">
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="min-w-0">
+                      <CardTitle className="text-lg">{booking.provider.business_name}</CardTitle>
+                      {booking.provider.slug ? (
+                        <Link
+                          href={`/partner-profile?slug=${encodeURIComponent(booking.provider.slug)}`}
+                          className="text-sm font-medium text-primary hover:underline mt-1 inline-block"
+                        >
+                          View salon profile
+                        </Link>
+                      ) : null}
+                      {booking.service_name && (
+                        <p className="text-sm text-muted-foreground mt-1 truncate">{booking.service_name}</p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
                         <Badge variant={booking.is_active ? "default" : "secondary"}>
-                          {booking.is_active ? "Active" : "Paused"}
+                          {booking.status === "cancelled"
+                            ? "Ended"
+                            : booking.is_active
+                              ? "Active"
+                              : "Paused"}
                         </Badge>
-                        <Badge variant="outline">{getFrequencyLabel(booking.frequency)}</Badge>
+                        <Badge variant="outline">{getFrequencyLabel(booking)}</Badge>
+                        {booking.payment_method && (
+                          <Badge variant="outline" className="capitalize">
+                            {booking.payment_method}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -151,13 +276,31 @@ export default function RecurringBookingsPage() {
                         </p>
                       </div>
                     </div>
-                    {booking.end_date && (
+                    {booking.end_date ? (
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-gray-400" />
                         <div>
                           <p className="text-sm font-semibold">End Date</p>
                           <p className="text-sm text-gray-600">
                             {new Date(booking.end_date).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No fixed end date — runs until you pause or cancel.</p>
+                    )}
+                    {booking.next_date && (
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-gray-400" />
+                        <div>
+                          <p className="text-sm font-semibold">Next visit</p>
+                          <p className="text-sm text-gray-600">
+                            {new Date(booking.next_date + "T12:00:00").toLocaleDateString(undefined, {
+                              weekday: "short",
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            })}
                           </p>
                         </div>
                       </div>
@@ -180,10 +323,20 @@ export default function RecurringBookingsPage() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2 pt-4 border-t">
+                  <div className="flex flex-wrap gap-2 pt-4 border-t">
                     <Button
                       variant="outline"
                       size="sm"
+                      className="touch-manipulation min-h-10"
+                      onClick={() => openScheduleEditor(booking)}
+                    >
+                      <Pencil className="w-4 h-4 mr-1" />
+                      Edit schedule
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="touch-manipulation min-h-10"
                       onClick={() => handleToggle(booking.id, booking.is_active)}
                     >
                       {booking.is_active ? (
@@ -201,8 +354,8 @@ export default function RecurringBookingsPage() {
                     <Button
                       variant="outline"
                       size="sm"
+                      className="text-red-600 hover:text-red-700 touch-manipulation min-h-10"
                       onClick={() => handleCancel(booking.id)}
-                      className="text-red-600 hover:text-red-700"
                     >
                       <X className="w-4 h-4 mr-1" />
                       Cancel
@@ -213,6 +366,101 @@ export default function RecurringBookingsPage() {
             ))
           )}
         </div>
+
+        <Sheet open={scheduleSheetOpen} onOpenChange={setScheduleSheetOpen}>
+          <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto sm:max-w-md sm:mx-auto rounded-t-xl">
+            <SheetHeader>
+              <SheetTitle>Edit schedule</SheetTitle>
+              <SheetDescription>
+                Update cadence, preferred time, and optional end date. Auto-bookings follow these settings.
+              </SheetDescription>
+            </SheetHeader>
+            {editingBooking && (
+              <div className="space-y-4 py-4">
+                <p className="text-sm font-medium text-foreground">
+                  {editingBooking.provider.business_name}
+                </p>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-frequency">How often</Label>
+                  <Select
+                    value={editFrequency}
+                    onValueChange={(v) => setEditFrequency(v as SimpleFrequency)}
+                  >
+                    <SelectTrigger id="edit-frequency" className="touch-manipulation min-h-11">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="biweekly">Bi-weekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-time">Preferred time</Label>
+                  <Input
+                    id="edit-time"
+                    type="time"
+                    value={editPreferredTime}
+                    onChange={(e) => setEditPreferredTime(e.target.value)}
+                    className="touch-manipulation min-h-11"
+                  />
+                </div>
+                <div className="flex items-start gap-3 rounded-lg border border-border p-3">
+                  <Checkbox
+                    id="edit-no-end"
+                    checked={editSeriesNoEnd}
+                    onCheckedChange={(c) => {
+                      const on = c === true;
+                      setEditSeriesNoEnd(on);
+                      if (on) setEditEndDate("");
+                    }}
+                    className="mt-1"
+                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="edit-no-end" className="font-medium cursor-pointer">
+                      No end date
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Uncheck to stop the series after a specific date.
+                    </p>
+                  </div>
+                </div>
+                {!editSeriesNoEnd && (
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-end">End date</Label>
+                    <Input
+                      id="edit-end"
+                      type="date"
+                      value={editEndDate}
+                      onChange={(e) => setEditEndDate(e.target.value)}
+                      className="touch-manipulation min-h-11"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            <SheetFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11 touch-manipulation"
+                onClick={() => setScheduleSheetOpen(false)}
+                disabled={savingSchedule}
+              >
+                Close
+              </Button>
+              <Button
+                type="button"
+                className="min-h-11 touch-manipulation"
+                disabled={savingSchedule || !editingBooking}
+                onClick={() => void saveSchedule()}
+              >
+                {savingSchedule ? "Saving…" : "Save changes"}
+              </Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
       </div>
     </AuthGuard>
   );
