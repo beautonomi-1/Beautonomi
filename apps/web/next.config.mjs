@@ -96,7 +96,7 @@ const nextConfig = {
   webpack: (config, { dev, isServer }) => {
     // Cap parallel module work in production builds to avoid OOM on 7–8GB runners (heap alone can exceed RAM).
     if (!dev) {
-      config.parallelism = Math.min(config.parallelism ?? 100, 2);
+      config.parallelism = Math.min(config.parallelism ?? 100, 1);
     }
     // Windows dev: persistent webpack filesystem cache under .next/dev/cache/webpack can hit ENOENT
     // (missing *.pack.gz / routes-manifest) after partial deletes or restarts while compiling → 500 ISE.

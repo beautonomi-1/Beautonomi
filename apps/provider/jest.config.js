@@ -10,7 +10,13 @@ module.exports = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },
-  testPathIgnorePatterns: ["<rootDir>/node_modules/", "<rootDir>/.expo/"],
+  // RN + @testing-library/react-native pull Flow/ESM from react-native; keep CI on node + smoke.test.ts only.
+  testPathIgnorePatterns: [
+    "<rootDir>/node_modules/",
+    "<rootDir>/.expo/",
+    "<rootDir>/__tests__/smoke\\.test\\.tsx$",
+    "<rootDir>/__tests__/smoke\\.rn\\.test\\.tsx$",
+  ],
   collectCoverageFrom: [
     "src/**/*.{ts,tsx}",
     "app/**/*.{ts,tsx}",
