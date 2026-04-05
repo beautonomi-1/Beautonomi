@@ -7,11 +7,13 @@ import BackButton from "@/components/ui/back-button";
 import BottomNav from "@/components/layout/bottom-nav";
 import AuthGuard from "@/components/auth/auth-guard";
 import { useAuth } from "@/providers/AuthProvider";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useRouter } from "next/navigation";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Edit, Check, X, Globe, Loader2 } from "lucide-react";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 type PreferenceField = "language" | "currency" | "timezone" | null;
 
@@ -31,6 +33,10 @@ interface Preferences {
 }
 
 const GlobalPreferences: React.FC = () => {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+  const tenantTimezone =
+    bundle?.meta?.tenant_region?.timezone?.trim() || "Africa/Johannesburg";
   const { user } = useAuth();
   const [editingField, setEditingField] = useState<PreferenceField>(null);
   const [preferences, setPreferences] = useState<Preferences>({
@@ -89,23 +95,25 @@ const GlobalPreferences: React.FC = () => {
       // Now load preferences with the loaded options
       const data = profileRes.data;
       const languageCode = data?.preferred_language || "en";
-      const currencyCode = data?.preferred_currency || "ZAR";
-      const timezoneCode = data?.timezone || "Africa/Johannesburg";
+      const currencyCode = data?.preferred_currency || tenantCurrency;
+      const timezoneCode = data?.timezone || tenantTimezone;
 
       const languageOption = loadedOptions.languages.find(l => l.code === languageCode) || 
         loadedOptions.languages.find(l => l.code === "en") || 
         { code: "en", name: "English" };
       const currencyOption = loadedOptions.currencies.find(c => c.code === currencyCode) || 
-        loadedOptions.currencies.find(c => c.code === "ZAR") || 
-        { code: "ZAR", name: "South African Rand" };
+        loadedOptions.currencies.find(c => c.code === tenantCurrency) || 
+        loadedOptions.currencies.find(c => c.code === LAST_RESORT_CURRENCY) || 
+        { code: tenantCurrency, name: tenantCurrency };
       const timezoneOption = loadedOptions.timezones.find(t => t.code === timezoneCode) || 
+        loadedOptions.timezones.find(t => t.code === tenantTimezone) || 
         loadedOptions.timezones.find(t => t.code === "Africa/Johannesburg") || 
-        { code: "Africa/Johannesburg", name: "Africa/Johannesburg" };
+        { code: tenantTimezone, name: tenantTimezone };
 
       setPreferences({
         language: { code: languageOption.code || "en", name: languageOption.name },
-        currency: { code: currencyOption.code || "ZAR", name: currencyOption.name },
-        timezone: { code: timezoneOption.code || "Africa/Johannesburg", name: timezoneOption.name },
+        currency: { code: currencyOption.code || tenantCurrency, name: currencyOption.name },
+        timezone: { code: timezoneOption.code || tenantTimezone, name: timezoneOption.name },
       });
     } catch (error) {
       console.error("Failed to load preferences:", error);

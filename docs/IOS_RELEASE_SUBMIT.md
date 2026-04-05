@@ -2,6 +2,14 @@
 
 Use this when you want to ship new builds to TestFlight / App Store and Google Play. **GitHub already runs production builds** when you push to `main`.
 
+## iOS version support & App Store expectations
+
+- **Minimum iOS:** **15.1+** (required by [Expo SDK 54](https://docs.expo.dev/versions/latest/); enforced via `expo-build-properties` → `deploymentTarget` in both apps). Older iOS releases cannot run these binaries; Apple also stops supporting very old OS versions for *new submissions* over time—check [Apple’s current requirements](https://developer.apple.com/news/upcoming-requirements/).
+- **Xcode / SDK:** Build with the **Xcode version EAS “latest”** expects for SDK 54 (see Expo’s compatibility table).
+- **Encryption export:** `ITSAppUsesNonExemptEncryption` is **false** (standard HTTPS only). Answer App Store Connect’s export-compliance questions to match.
+- **Privacy:** Usage descriptions are set for location, photos, camera, tracking (ATT), push background mode, and **Face ID / Touch ID** (`expo-local-authentication`). Complete **Privacy Nutrition Labels** and any **Privacy Manifest** follow-ups in App Store Connect when Apple prompts.
+- **After native changes:** Run a fresh **EAS production iOS build** so `prebuild` picks up plugin changes (`npx expo prebuild` locally is optional for verification).
+
 ## Submit both apps, both platforms (iOS + Android)
 
 After builds have finished on [expo.dev](https://expo.dev), from the **repo root** run:

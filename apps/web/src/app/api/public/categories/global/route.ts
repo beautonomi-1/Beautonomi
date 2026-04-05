@@ -1,10 +1,15 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import type { ApiResponse } from "@/lib/supabase/api-helpers";
+
+/** Public data; short cache reduces repeat latency (nav, home, headers). */
+const CACHE_CONTROL =
+  "public, s-maxage=60, stale-while-revalidate=300";
 
 /**
  * GET /api/public/categories/global
- * 
+ *
  * Get all active global categories (for home page)
  * Only returns featured categories by default, or all if ?all=true
  */
@@ -43,48 +48,41 @@ export async function GET(request: NextRequest) {
       return successResponse([]);
     }
 
-    console.log(`Found ${categories?.length || 0} global service categories (featuredOnly: ${featuredOnly})`);
-
     // If no categories found, return empty array
     if (!categories || categories.length === 0) {
-      console.warn("No categories found in global_service_categories table");
       return successResponse([]);
     }
 
-    // Get provider count for each category (with error handling)
-    const categoriesWithCounts = await Promise.all(
-      (categories || []).map(async (category: any) => {
-        try {
-          const { count, error: countError } = await supabase
-            .from("provider_global_category_associations")
-            .select("*", { count: "exact", head: true })
-            .eq("global_category_id", category.id);
+    const categoryIds = categories.map((c: { id: string }) => c.id);
 
-          // If count query fails, just set count to 0
-          if (countError) {
-            console.warn(`Failed to get count for category ${category.id}:`, countError);
-            return {
-              ...category,
-              provider_count: 0,
-            };
-          }
+    // One query for all provider counts (avoids N round-trips to Supabase per category).
+    const countByCategory = new Map<string, number>();
+    const { data: assocRows, error: assocError } = await supabase
+      .from("provider_global_category_associations")
+      .select("global_category_id")
+      .in("global_category_id", categoryIds);
 
-          return {
-            ...category,
-            provider_count: count || 0,
-          };
-        } catch (err) {
-          console.warn(`Error getting provider count for category ${category.id}:`, err);
-          return {
-            ...category,
-            provider_count: 0,
-          };
-        }
-      })
+    if (assocError) {
+      console.warn("Failed to batch-fetch provider counts for global categories:", assocError);
+    } else {
+      for (const row of assocRows ?? []) {
+        const id = row.global_category_id as string;
+        countByCategory.set(id, (countByCategory.get(id) ?? 0) + 1);
+      }
+    }
+
+    const categoriesWithCounts = categories.map((category: Record<string, unknown>) => ({
+      ...category,
+      provider_count: countByCategory.get(category.id as string) ?? 0,
+    }));
+
+    return NextResponse.json<ApiResponse<typeof categoriesWithCounts>>(
+      { data: categoriesWithCounts, error: null },
+      {
+        status: 200,
+        headers: { "Cache-Control": CACHE_CONTROL },
+      }
     );
-
-    console.log(`Returning ${categoriesWithCounts.length} categories with provider counts`);
-    return successResponse(categoriesWithCounts);
   } catch (error) {
     return handleApiError(error, "Failed to fetch global categories");
   }

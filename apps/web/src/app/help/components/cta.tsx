@@ -4,8 +4,17 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/providers/AuthProvider";
+import type { HelpPageContent } from "../page";
 
-export default function CTA() {
+function sectionText(content: HelpPageContent | null | undefined, key: string) {
+  return content?.[key]?.content?.trim() ?? "";
+}
+
+interface CTAProps {
+  content?: HelpPageContent | null;
+}
+
+export default function CTA({ content = null }: CTAProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const { user } = useAuth();
 
@@ -13,15 +22,24 @@ export default function CTA() {
     setIsModalOpen(true);
   };
 
+  const heading = sectionText(content, "cta_heading") || "We're here for you";
+  const bodyGuest =
+    sectionText(content, "cta_body_guest") ||
+    "You need to log in to submit or view your support tickets. We can help with your bookings, account, and more.";
+  const bodyAuthed =
+    sectionText(content, "cta_body_authenticated") ||
+    "Can't find what you're looking for? Submit a support ticket and we'll help you out.";
+  const mobileHintGuest =
+    sectionText(content, "cta_mobile_hint_guest") ||
+    "Log in to submit or view your support tickets.";
+
   return (
     <div className="max-w-6xl mx-auto mb-7">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-32 items-center justify-between p-0 lg:p-6 border-none lg:border rounded-lg  mx-auto">
         <div className={user ? "hidden lg:block" : ""}>
-          <h2 className="text-[26px] font-normal ">We&apos;re here for you</h2>
+          <h2 className="text-[26px] font-normal ">{heading}</h2>
           <p className="text-base font-normal ">
-            {user 
-              ? "Can&apos;t find what you&apos;re looking for? Submit a support ticket and we&apos;ll help you out."
-              : "You need to log in to submit or view your support tickets. We can help with your bookings, account, and more."}
+            {user ? bodyAuthed : bodyGuest}
           </p>
         </div>
         {user ? (
@@ -39,9 +57,7 @@ export default function CTA() {
           </div>
         ) : (
           <div className="flex flex-col gap-3 w-full">
-            <p className="text-sm text-zinc-600 lg:hidden">
-              Log in to submit or view your support tickets.
-            </p>
+            <p className="text-sm text-zinc-600 lg:hidden">{mobileHintGuest}</p>
             <Button
               variant="secondary"
               className="w-full"
@@ -52,7 +68,11 @@ export default function CTA() {
           </div>
         )}
       </div>
-      <LoginModal open={isModalOpen} setOpen={setIsModalOpen} />
+      <LoginModal
+        open={isModalOpen}
+        setOpen={setIsModalOpen}
+        initialMode="login"
+      />
     </div>
   );
 }

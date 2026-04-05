@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@radix-ui/react-tabs";
 import CustomerTab from "./guestTab";
-import ProviderTab from "./hostTab";
-import ExperienceHost from "./experienceHostTab";
+import ProviderTab from "./provider-tab";
+import ExperienceProviderTab from "./experience-provider-tab";
 import BusinessAdmin from "./businessAdminTab";
 import CTA from "@/app/help/components/cta";
 
@@ -87,7 +87,7 @@ const TabComponent = () => {
             >
               {tab.value === "step1" ? <CustomerTab /> : null}
               {tab.value === "step2" ? <ProviderTab /> : null}
-              {tab.value === "step3" ? <ExperienceHost /> : null}
+              {tab.value === "step3" ? <ExperienceProviderTab /> : null}
               {tab.value === "step4" ? <BusinessAdmin /> : null}
             </TabsContent>
           ))}

@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 /**
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
     const providerId = searchParams.get("provider_id");
 
@@ -36,6 +38,7 @@ export async function GET(request: NextRequest) {
       const { data: provider } = await supabase
         .from("providers")
         .select("id, business_name, tax_rate_percent")
+        .eq("tenant_id", tenantId)
         .eq("id", providerId)
         .single();
 
@@ -52,6 +55,7 @@ export async function GET(request: NextRequest) {
     const { data: bookings } = await supabase
       .from("bookings")
       .select("tax_amount, total_amount, status")
+      .eq("tenant_id", tenantId)
       .eq("status", "completed");
 
     const totalTaxCollected = bookings?.reduce((sum, b) => sum + (Number(b.tax_amount) || 0), 0) || 0;
@@ -85,6 +89,7 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
     const { provider_id, tax_rate_percent } = body;
 
@@ -93,7 +98,8 @@ export async function POST(request: NextRequest) {
       const { error } = await supabase
         .from("providers")
         .update({ tax_rate_percent: tax_rate_percent || 0 })
-        .eq("id", provider_id);
+        .eq("id", provider_id)
+        .eq("tenant_id", tenantId);
 
       if (error) throw error;
 

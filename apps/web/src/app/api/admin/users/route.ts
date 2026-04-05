@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection, successResponse, handleApiError, getPaginationParams  } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, requireRoleInApi, successResponse, handleApiError, getPaginationParams  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { collectTenantScopedUserIds } from "@/lib/tenant/admin-tenant-scope";
 import { z } from "zod";
+import type { UserRole } from "@/types/beautonomi";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/admin/users
@@ -15,13 +20,22 @@ export async function GET(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
+    const scopedUserIds = await collectTenantScopedUserIds(supabase, tenantId);
     const { searchParams } = new URL(request.url);
     const { page, limit, offset } = getPaginationParams(request);
 
     const search = searchParams.get("search");
     const role = searchParams.get("role");
+    const signupSource = searchParams.get("signup_source");
 
     let query = supabase.from("users").select("*", { count: "exact" });
+
+    if (scopedUserIds.length > 0) {
+      query = query.or(`preferred_home_tenant_id.eq.${tenantId},id.in.(${scopedUserIds.join(",")})`);
+    } else {
+      query = query.eq("preferred_home_tenant_id", tenantId);
+    }
 
     // Apply filters
     if (search) {
@@ -32,6 +46,10 @@ export async function GET(request: NextRequest) {
 
     if (role && role !== "all") {
       query = query.eq("role", role);
+    }
+
+    if (signupSource && signupSource !== "all") {
+      query = query.eq("signup_source", signupSource);
     }
 
     // Apply pagination
@@ -66,21 +84,38 @@ export async function GET(request: NextRequest) {
  * 
  * Create a new user (superadmin only)
  */
+const MANAGEABLE_USER_ROLES = [
+  "customer",
+  "provider_owner",
+  "provider_staff",
+  "support_agent",
+  "admin_support",
+  "admin_finance",
+  "admin_trust",
+  "admin_content",
+  "admin_ecommerce",
+  "admin_marketing",
+  "admin_integrations",
+  "admin_operations",
+  "admin_platform_config",
+  "superadmin",
+] as const satisfies readonly UserRole[];
+
 const createUserSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
   full_name: z.string().min(1, "Full name is required"),
   phone: z.string().optional(),
-  role: z.enum(["customer", "provider", "admin", "superadmin"]).default("customer"),
+  role: z.enum(MANAGEABLE_USER_ROLES).default("customer"),
   date_of_birth: z.string().optional(),
   preferred_language: z.string().optional().default("en"),
-  preferred_currency: z.string().optional().default("ZAR"),
+  preferred_currency: z.string().optional(),
   timezone: z.string().optional().default("Africa/Johannesburg"),
 });
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
+    await requireRoleInApi(["superadmin"], request);
 
     const body = await request.json();
     const validationResult = createUserSchema.safeParse(body);
@@ -102,7 +137,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email, password, full_name, phone, role, date_of_birth, preferred_language, preferred_currency, timezone } = validationResult.data;
+    const {
+      email,
+      password,
+      full_name,
+      phone,
+      role,
+      date_of_birth,
+      preferred_language,
+      preferred_currency: preferredCurrencyInput,
+      timezone,
+    } = validationResult.data;
+    const tenantIdForCurrency = await resolveAdminApiTenantId(request);
+    const lastResortCurrency =
+      (await getTenantRegionConfig(tenantIdForCurrency))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    const preferred_currency = preferredCurrencyInput ?? lastResortCurrency;
 
     // Use admin client to create auth user
     const supabaseAdmin = getSupabaseAdmin();

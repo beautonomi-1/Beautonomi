@@ -26,6 +26,8 @@ import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Plus, Search, Download, Send } from "lucide-react";
 import RoleGuard from "@/components/auth/RoleGuard";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 
 interface Provider {
   id: string;
@@ -49,6 +51,7 @@ interface Invoice {
 }
 
 export default function AdminBillingDashboard() {
+  const locale = useTenantLocaleTag();
   const [providers, setProviders] = useState<Provider[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -134,9 +137,9 @@ export default function AdminBillingDashboard() {
   });
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-ZA", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
-      currency: "ZAR",
+      currency: LAST_RESORT_CURRENCY,
     }).format(amount);
   };
 

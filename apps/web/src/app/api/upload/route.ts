@@ -2,10 +2,14 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 
+/** Must match `405_storage_product_images_bucket.sql` (not the legacy non-existent `public` bucket). */
+const PRODUCT_UPLOAD_BUCKET =
+  process.env.STORAGE_PRODUCT_BUCKET?.trim() || "product-images";
+
 /**
  * POST /api/upload
- * 
- * Upload a file to Supabase Storage
+ *
+ * Upload a file to Supabase Storage (product catalogue images under folder `products/`).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -44,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     // Upload to Supabase Storage
     const { data: _uploadData, error: uploadError } = await supabase.storage
-      .from("public")
+      .from(PRODUCT_UPLOAD_BUCKET)
       .upload(filePath, buffer, {
         contentType: file.type,
         upsert: false,
@@ -62,7 +66,7 @@ export async function POST(request: NextRequest) {
 
     // Get public URL
     const { data: urlData } = supabase.storage
-      .from("public")
+      .from(PRODUCT_UPLOAD_BUCKET)
       .getPublicUrl(filePath);
 
     const publicUrl = urlData.publicUrl;

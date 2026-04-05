@@ -14,6 +14,8 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 interface ReferralSettings {
   referral_amount: number;
@@ -33,6 +35,9 @@ interface ReferralFAQ {
 }
 
 export default function ReferralSettingsPage() {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency =
+    bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const { user, role } = useAuth();
   const [settings, setSettings] = useState<ReferralSettings | null>(null);
   const [faqs, setFaqs] = useState<ReferralFAQ[]>([]);
@@ -322,7 +327,7 @@ export default function ReferralSettingsPage() {
                     }
                     className="p-2 border rounded-md"
                   >
-                    <option value="ZAR">ZAR</option>
+                    <option value={LAST_RESORT_CURRENCY}>{tenantCurrency}</option>
                     <option value="USD">USD</option>
                     <option value="EUR">EUR</option>
                   </select>

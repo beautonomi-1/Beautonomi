@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -27,6 +28,7 @@ interface SalesSummaryData {
 }
 
 export default function SalesSummaryReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -81,7 +83,7 @@ export default function SalesSummaryReport() {
   const handleExport = (format: "csv" | "pdf" = "csv") => {
     if (!data) return;
     if (format === "csv") {
-      const exportData = formatReportDataForExport(data as unknown as ReportRow, "sales-summary");
+      const exportData = formatReportDataForExport(data as unknown as ReportRow, "sales-summary", exportCurrency);
       exportToCSV(exportData, "sales-summary-report");
     } else {
       exportToPDF("sales-summary-report", "sales-summary-report", "Sales Summary Report");
@@ -193,7 +195,7 @@ export default function SalesSummaryReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalRevenue.toLocaleString()}
+                  {fmt(data.totalRevenue)}
                 </p>
                 <div className="flex items-center gap-1 text-sm">
                   {data.revenueGrowth >= 0 ? (
@@ -250,7 +252,7 @@ export default function SalesSummaryReport() {
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-semibold text-gray-900">
-                ZAR {data.averageBookingValue.toLocaleString()}
+                {fmt(data.averageBookingValue)}
               </p>
             </CardContent>
           </Card>
@@ -304,7 +306,7 @@ export default function SalesSummaryReport() {
                       </p>
                     </div>
                     <p className="text-sm font-semibold text-gray-900">
-                      ZAR {day.revenue.toLocaleString()}
+                      {fmt(day.revenue)}
                     </p>
                   </div>
                 ))}
@@ -335,7 +337,7 @@ export default function SalesSummaryReport() {
                       </p>
                     </div>
                     <p className="text-sm font-semibold text-gray-900">
-                      ZAR {service.revenue.toLocaleString()}
+                      {fmt(service.revenue)}
                     </p>
                   </div>
                 ))}
@@ -377,7 +379,7 @@ export default function SalesSummaryReport() {
                       </p>
                     </div>
                     <p className="text-sm font-semibold text-gray-900">
-                      ZAR {staff.revenue.toLocaleString()}
+                      {fmt(staff.revenue)}
                     </p>
                   </div>
                 ))}

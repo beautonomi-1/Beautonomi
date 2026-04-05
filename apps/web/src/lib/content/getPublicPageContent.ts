@@ -1,0 +1,39 @@
+import { getSupabaseServer } from "@/lib/supabase/server";
+
+export type PublicPageContent = {
+  [sectionKey: string]: {
+    content: string;
+    content_type: string;
+    metadata: Record<string, unknown>;
+  };
+};
+
+export async function getPublicPageContent(
+  pageSlug: string
+): Promise<PublicPageContent | null> {
+  try {
+    const supabase = await getSupabaseServer();
+    const { data, error } = await supabase
+      .from("page_content")
+      .select("section_key, content, content_type, metadata")
+      .eq("page_slug", pageSlug)
+      .eq("is_active", true)
+      .order("display_order", { ascending: true })
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    const contentMap: PublicPageContent = {};
+    for (const row of data || []) {
+      contentMap[row.section_key] = {
+        content: row.content,
+        content_type: row.content_type,
+        metadata: row.metadata || {},
+      };
+    }
+    return contentMap;
+  } catch (error) {
+    console.error(`Failed to load public content for ${pageSlug}:`, error);
+    return null;
+  }
+}

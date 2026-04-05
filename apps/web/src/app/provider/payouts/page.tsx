@@ -10,6 +10,7 @@ import Link from "next/link";
 import { fetcher } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Badge } from "@/components/ui/badge";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface NextDateData {
   payout_schedule: string;
@@ -39,23 +40,27 @@ export default function ProviderPayoutsCenter() {
   const [earnings, setEarnings] = useState<FinanceEarnings | null>(null);
   const [payouts, setPayouts] = useState<PayoutItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const { format: fmt } = useReportCurrency();
 
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
-        const [nextRes, financeRes, payoutsRes] = await Promise.all([
+        setLoadError(null);
+        const [nextRes, financeRes, payoutsRes] = await Promise.allSettled([
           fetcher.get<{ data: NextDateData }>("/api/provider/payouts/next-date"),
           fetcher.get<{ data: { earnings: FinanceEarnings } }>("/api/provider/finance?range=month"),
           fetcher.get<{ data: PayoutItem[] }>("/api/provider/payouts"),
         ]);
-        setNextDate(nextRes.data ?? null);
-        setEarnings((financeRes.data as any)?.earnings ?? null);
-        setPayouts(Array.isArray(payoutsRes.data) ? payoutsRes.data : []);
+        if (nextRes.status === "fulfilled") setNextDate(nextRes.value.data ?? null);
+        if (financeRes.status === "fulfilled") setEarnings((financeRes.value.data as any)?.earnings ?? null);
+        if (payoutsRes.status === "fulfilled") setPayouts(Array.isArray(payoutsRes.value.data) ? payoutsRes.value.data : []);
+        if (nextRes.status === "rejected" && financeRes.status === "rejected") {
+          setLoadError("Failed to load payout data. Please refresh.");
+        }
       } catch {
-        setNextDate(null);
-        setEarnings(null);
-        setPayouts([]);
+        setLoadError("Failed to load payout data. Please refresh.");
       } finally {
         setLoading(false);
       }
@@ -92,6 +97,12 @@ export default function ProviderPayoutsCenter() {
           breadcrumbs={[{ label: "Provider", href: "/provider" }, { label: "Payout center", href: "/provider/payouts" }]}
         />
 
+        {loadError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {loadError}
+          </div>
+        )}
+
         <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
           <SectionCard title="Available balance" className="md:col-span-2">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -101,12 +112,12 @@ export default function ProviderPayoutsCenter() {
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-gray-900">
-                    R {(earnings?.available_balance ?? 0).toLocaleString()}
+                    {fmt(earnings?.available_balance ?? 0)}
                   </p>
                   <p className="text-sm text-gray-500">
-                    Min payout: R {(earnings?.minimum_payout_amount ?? 100).toLocaleString()}
+                    Min payout: {fmt(earnings?.minimum_payout_amount ?? 100)}
                     {(earnings?.pending_payouts ?? 0) > 0 && (
-                      <span> · Pending: R {(earnings?.pending_payouts ?? 0).toLocaleString()}</span>
+                      <span> · Pending: {fmt(earnings?.pending_payouts ?? 0)}</span>
                     )}
                   </p>
                 </div>
@@ -199,7 +210,7 @@ export default function ProviderPayoutsCenter() {
                           ? new Date(p.requested_at).toLocaleDateString()
                           : "—"}
                       </td>
-                      <td className="py-3 pr-4 font-medium">R {p.amount.toLocaleString()}</td>
+                      <td className="py-3 pr-4 font-medium">{fmt(p.amount)}</td>
                       <td className="py-3">{statusBadge(p.status)}</td>
                     </tr>
                   ))}

@@ -15,6 +15,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 import { Ionicons } from "@expo/vector-icons";
+import { getTenantLocaleTag } from "@/lib/locale";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -40,8 +41,16 @@ interface WaitlistEntry {
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
+function parseValidDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-ZA", {
+  const parsed = parseValidDate(iso);
+  if (!parsed) return "—";
+  return parsed.toLocaleDateString(getTenantLocaleTag(), {
     year: "numeric",
     month: "short",
     day: "numeric",

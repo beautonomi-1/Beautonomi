@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError, notFoundResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 
@@ -70,6 +72,7 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const validationResult = reviewSchema.safeParse(body);
     if (!validationResult.success) {
@@ -91,6 +94,7 @@ export async function PATCH(
         reviewed_by: user.id,
       })
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .select(`
         *,
         user:users!user_verifications_user_id_fkey (
@@ -116,6 +120,38 @@ export async function PATCH(
       entity_id: id,
       metadata: { status, user_id: (verification as { user_id?: string } | null)?.user_id, rejection_reason: status === "rejected" ? rejection_reason : null },
     });
+
+    // If the verified user is a provider, sync the approval into provider_verification_status
+    // so the provider's KYC screen reflects the manual review result.
+    const verifiedUserId = (verification as { user_id?: string } | null)?.user_id;
+    if (verifiedUserId && (status === "approved" || status === "rejected")) {
+      try {
+        const adminClient = getSupabaseAdmin();
+        const { data: provider } = await adminClient
+          .from("providers")
+          .select("id")
+          .eq("user_id", verifiedUserId)
+          .limit(1)
+          .maybeSingle();
+        if (provider?.id) {
+          const kycStatus = status === "approved" ? "approved" : "rejected";
+          await adminClient
+            .from("provider_verification_status")
+            .upsert(
+              {
+                provider_id: provider.id,
+                status: kycStatus,
+                last_reviewed_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "provider_id" }
+            );
+        }
+      } catch (syncErr) {
+        console.error("Failed to sync provider_verification_status after manual review:", syncErr);
+        // Non-fatal — the user_verifications table was already updated correctly
+      }
+    }
 
     return successResponse(verification);
   } catch (error) {

@@ -1,10 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection, successResponse,
-  errorResponse,
-  handleApiError, } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * PATCH /api/admin/user-reports/[id]
@@ -17,6 +15,7 @@ export async function PATCH(
 ) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
     const body = await request.json();
 
@@ -38,11 +37,15 @@ export async function PATCH(
 
     const { data: existing, error: fetchError } = await supabase
       .from("user_reports")
-      .select("id, status")
+      .select("id, status, tenant_id")
       .eq("id", id)
       .single();
 
     if (fetchError || !existing) {
+      return errorResponse("Report not found", "NOT_FOUND", 404);
+    }
+
+    if ((existing as { tenant_id?: string }).tenant_id !== tenantId) {
       return errorResponse("Report not found", "NOT_FOUND", 404);
     }
 

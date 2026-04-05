@@ -1,3 +1,5 @@
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/requireRole";
 import {
@@ -7,6 +9,9 @@ import {
   CreateTransferRecipientRequest,
 } from "@/lib/payments/paystack-complete";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 
 /**
  * GET /api/paystack/transfer-recipients
@@ -22,6 +27,7 @@ export async function GET(request: Request) {
       );
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const { searchParams } = new URL(request.url);
     const perPage = searchParams.get("perPage");
     const page = searchParams.get("page");
@@ -29,6 +35,7 @@ export async function GET(request: Request) {
     const response = await listTransferRecipients({
       perPage: perPage ? parseInt(perPage) : undefined,
       page: page ? parseInt(page) : undefined,
+      tenantId,
     });
 
     return NextResponse.json({
@@ -64,6 +71,9 @@ export async function POST(request: Request) {
       );
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const fallbackCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const body = await request.json();
     const {
       provider_id,
@@ -91,13 +101,37 @@ export async function POST(request: Request) {
       );
     }
 
+    const supabaseForTenant = await getSupabaseServer(request);
+    const { data: provRow } = await supabaseForTenant
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", provider_id)
+      .maybeSingle();
+    if (
+      !resourceTenantMatchesHostTenant(
+        tenantId,
+        (provRow as { tenant_id?: string | null } | null)?.tenant_id,
+      )
+    ) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "Provider is not in this market.",
+            code: "TENANT_MISMATCH",
+          },
+        },
+        { status: 403 },
+      );
+    }
+
     // Create transfer recipient request
     const recipientRequest: CreateTransferRecipientRequest = {
       type: type as "nuban" | "basa" | "mobile_money" | "barter",
       name,
       account_number,
       bank_code,
-      currency: currency || "ZAR",
+      currency: currency || fallbackCurrency,
       description: description || `Payout recipient for provider ${provider_id}`,
       email,
       metadata: {
@@ -106,10 +140,10 @@ export async function POST(request: Request) {
       },
     };
 
-    const response = await createTransferRecipient(recipientRequest);
+    const response = await createTransferRecipient(recipientRequest, { tenantId });
 
     // Store recipient in database
-    const supabase = await getSupabaseServer();
+    const supabase = supabaseForTenant;
     const accountNumber = response.data.details.account_number || "";
     const last4 = accountNumber ? accountNumber.slice(-4) : null;
     await (supabase.from("provider_payout_accounts") as any).upsert({
@@ -160,6 +194,9 @@ export async function PUT(request: Request) {
       );
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const fallbackCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const body = await request.json();
     const { recipients } = body;
 
@@ -176,23 +213,53 @@ export async function PUT(request: Request) {
       );
     }
 
+    const supabase = await getSupabaseServer(request);
+    const providerIds = new Set<string>();
+    for (const r of recipients as { provider_id?: string; metadata?: { provider_id?: string } }[]) {
+      const pid = r?.provider_id || r?.metadata?.provider_id;
+      if (typeof pid === "string" && pid.trim()) providerIds.add(pid.trim());
+    }
+    for (const pid of providerIds) {
+      const { data: provRow } = await supabase
+        .from("providers")
+        .select("tenant_id")
+        .eq("id", pid)
+        .maybeSingle();
+      if (
+        !resourceTenantMatchesHostTenant(
+          tenantId,
+          (provRow as { tenant_id?: string | null } | null)?.tenant_id,
+        )
+      ) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "One or more providers are not in this market.",
+              code: "TENANT_MISMATCH",
+            },
+          },
+          { status: 403 },
+        );
+      }
+    }
+
     const recipientRequests: CreateTransferRecipientRequest[] = recipients.map(
       (r: any) => ({
         type: r.type,
         name: r.name,
         account_number: r.account_number,
         bank_code: r.bank_code,
-        currency: r.currency || "ZAR",
+        currency: r.currency || fallbackCurrency,
         description: r.description,
         email: r.email,
         metadata: r.metadata,
       })
     );
 
-    const response = await bulkCreateTransferRecipients(recipientRequests);
+    const response = await bulkCreateTransferRecipients(recipientRequests, { tenantId });
 
     // Store recipients in database
-    const supabase = await getSupabaseServer();
     const records = response.data
       .map((recipient: any, idx: number) => {
         const input = recipients[idx] || {};

@@ -1,0 +1,1057 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ActivityIndicator,
+  FlatList,
+  Switch,
+  Alert,
+  Modal,
+  Image,
+} from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import * as Haptics from "expo-haptics";
+import { Ionicons } from "@expo/vector-icons";
+import { api } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase/client";
+import {
+  isCompleteSupabaseSmsOtp,
+  normalizeSupabaseAuthPhone,
+  normalizeSupabaseSmsOtpToken,
+  SUPABASE_AUTH_OTP_LENGTH,
+  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+} from "@/lib/supabase-sms-otp";
+import {
+  COUNTRY_CODES,
+  type CountryCodeOption,
+  composeE164FromNational,
+  splitPhoneForNationalInput,
+  validateNationalPhoneDigits,
+} from "@/lib/phone-country-codes";
+import { getDeviceDefaultCountryDial } from "@/lib/phone";
+import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
+import { OtpDigitRow } from "@/components/OtpDigitRow";
+import { twStyle } from "@/lib/twStyle";
+import { Colors } from "@/constants/colors";
+import { APP_URL } from "@/config/public-env";
+import { resolveGlobalCategoryIconUri } from "@beautonomi/utils";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { useOnboardingWizard } from "./OnboardingWizardContext";
+import { coerceOwnerPhoneToE164ForForm, isValidOwnerPhoneE164 } from "./onboarding-phone";
+import { DEFAULT_COUNTRY_NAME } from "./state";
+import type { BusinessType, OnboardingService, TeamSize, YocoMachine } from "./types";
+
+const labelCls = "mb-1 text-xs font-semibold text-gray-700";
+const inputCls =
+  "rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900";
+
+function Step1TeamSize() {
+  const { formData, updateFormData } = useOnboardingWizard();
+  const opts: { id: TeamSize; title: string; sub: string }[] = [
+    { id: "freelancer", title: "Solo / freelancer", sub: "Just me" },
+    { id: "small", title: "Small team", sub: "2–10 people" },
+    { id: "medium", title: "Medium team", sub: "11–20 people" },
+    { id: "large", title: "Large team", sub: "20+ people" },
+  ];
+  return (
+    <View style={twStyle("gap-3")}>
+      <Text style={twStyle("text-sm text-gray-600")}>
+        We use this to tailor payroll questions and defaults. You can still run salon, mobile, or both later.
+      </Text>
+      {opts.map((o) => {
+        const sel = formData.team_size === o.id;
+        return (
+          <TouchableOpacity
+            key={o.id}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              updateFormData({
+                team_size: o.id,
+                business_type: o.id === "freelancer" ? "mobile" : "salon",
+              });
+            }}
+            style={twStyle(
+              `rounded-2xl border-2 p-4 ${sel ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
+            )}
+          >
+            <Text style={twStyle("text-base font-semibold text-gray-900")}>{o.title}</Text>
+            <Text style={twStyle("mt-1 text-sm text-gray-600")}>{o.sub}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+function Step2Identity() {
+  const { formData, updateFormData, loadingDraft } = useOnboardingWizard();
+  const deviceDial = getDeviceDefaultCountryDial();
+  const [countryCode, setCountryCode] = useState("+27");
+  const [national, setNational] = useState("");
+  const phoneFieldsSeeded = useRef(false);
+  const [countryModal, setCountryModal] = useState(false);
+  const [countrySearch, setCountrySearch] = useState("");
+  const [sending, setSending] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [codeSent, setCodeSent] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [pendingE164, setPendingE164] = useState("");
+  const [countdown, setCountdown] = useState(0);
+
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const t = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
+
+  useEffect(() => {
+    if (loadingDraft || phoneFieldsSeeded.current) return;
+    phoneFieldsSeeded.current = true;
+    const sp = splitPhoneForNationalInput(formData.owner_phone || "", deviceDial);
+    setCountryCode(sp.countryCode);
+    setNational(sp.nationalDisplay);
+  }, [loadingDraft, formData.owner_phone, deviceDial]);
+
+  useEffect(() => {
+    const e164 = composeE164FromNational(countryCode, national);
+    const next = e164 ? normalizeSupabaseAuthPhone(e164) : "";
+    if (next !== (formData.owner_phone || "")) {
+      updateFormData({ owner_phone: next, phone_verified: false });
+      setCodeSent(false);
+      setOtp("");
+      setPendingE164("");
+    }
+  }, [countryCode, national, formData.owner_phone, updateFormData]);
+
+  const sendCode = async () => {
+    const e164 = coerceOwnerPhoneToE164ForForm(formData.owner_phone) || composeE164FromNational(countryCode, national);
+    const normalized = e164 ? normalizeSupabaseAuthPhone(e164) : "";
+    if (!normalized || !isValidOwnerPhoneE164(normalized)) {
+      Alert.alert("Phone", "Enter a valid mobile number.");
+      return;
+    }
+    const err = validateNationalPhoneDigits(national, countryCode);
+    if (err) {
+      Alert.alert("Phone", err);
+      return;
+    }
+    setSending(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ phone: normalized });
+      if (error) throw error;
+      setPendingE164(normalized);
+      setOtp("");
+      setCodeSent(true);
+      setCountdown(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS);
+      Alert.alert("Code sent", `We sent a ${SUPABASE_AUTH_OTP_LENGTH}-digit code to your phone.`);
+    } catch (e) {
+      Alert.alert("Could not send code", e instanceof Error ? e.message : "Try again.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const verify = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? otp);
+    if (!pendingE164 || !isCompleteSupabaseSmsOtp(token)) {
+      Alert.alert("Code", `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from SMS.`);
+      return;
+    }
+    setVerifying(true);
+    try {
+      const phone = normalizeSupabaseAuthPhone(pendingE164);
+      const { error } = await supabase.auth.verifyOtp({
+        phone,
+        token,
+        type: "phone_change",
+      });
+      if (error) throw error;
+      await api.patch("/api/me/profile", { phone, phone_verified: true });
+      updateFormData({
+        phone_verified: true,
+        owner_phone: phone,
+        phone: phone,
+      });
+      Alert.alert("Verified", "Phone number verified.");
+    } catch (e) {
+      Alert.alert("Verification failed", e instanceof Error ? e.message : "Try again.");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  return (
+    <View style={twStyle("gap-4")}>
+      <View>
+        <Text style={twStyle(labelCls)}>Full name</Text>
+        <TextInput
+          value={formData.owner_name || ""}
+          onChangeText={(t) => updateFormData({ owner_name: t, phone_verified: false })}
+          placeholder="Your name"
+          placeholderTextColor="#9ca3af"
+          style={twStyle(inputCls)}
+        />
+      </View>
+      <View>
+        <Text style={twStyle(labelCls)}>Email</Text>
+        <TextInput
+          value={formData.owner_email || ""}
+          onChangeText={(t) => updateFormData({ owner_email: t })}
+          placeholder="you@example.com"
+          placeholderTextColor="#9ca3af"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          style={twStyle(inputCls)}
+        />
+      </View>
+      <View>
+        <Text style={twStyle(labelCls)}>Mobile</Text>
+        <View style={twStyle("flex-row gap-2")}>
+          <TouchableOpacity
+            onPress={() => setCountryModal(true)}
+            style={twStyle("justify-center rounded-xl border border-gray-200 bg-gray-50 px-3")}
+          >
+            <Text style={twStyle("font-medium text-gray-800")}>
+              {countryCode.startsWith("+") ? countryCode : `+${countryCode}`}
+            </Text>
+          </TouchableOpacity>
+          <TextInput
+            value={national}
+            onChangeText={(t) => {
+              setNational(t.replace(/[^\d\s]/g, ""));
+            }}
+            placeholder="82 123 4567"
+            placeholderTextColor="#9ca3af"
+            keyboardType="phone-pad"
+            style={twStyle(`${inputCls} flex-1`)}
+          />
+        </View>
+        <Modal visible={countryModal} animationType="slide" presentationStyle="pageSheet">
+          <View style={twStyle("flex-1 bg-white p-4 pt-12")}>
+            <Text style={twStyle("text-lg font-semibold text-gray-900")}>Country code</Text>
+            <TextInput
+              value={countrySearch}
+              onChangeText={setCountrySearch}
+              placeholder="Search…"
+              style={twStyle("mt-3 rounded-xl border border-gray-200 px-3 py-2")}
+            />
+            <FlatList<CountryCodeOption>
+              data={COUNTRY_CODES.filter(
+                (c: CountryCodeOption) =>
+                  !countrySearch.trim() ||
+                  c.label.toLowerCase().includes(countrySearch.toLowerCase()) ||
+                  c.code.replace(/\D/g, "").includes(countrySearch.replace(/\D/g, "")),
+              )}
+              keyExtractor={(c: CountryCodeOption) => c.code}
+              style={twStyle("mt-4 flex-1")}
+              renderItem={({ item: c }: { item: CountryCodeOption }) => (
+                <TouchableOpacity
+                  style={twStyle("border-b border-gray-100 py-3")}
+                  onPress={() => {
+                    setCountryCode(c.code);
+                    setCountryModal(false);
+                    setCountrySearch("");
+                  }}
+                >
+                  <Text style={twStyle("text-base text-gray-900")}>
+                    {c.flag} {c.label}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity onPress={() => setCountryModal(false)} style={twStyle("py-3 items-center")}>
+              <Text style={twStyle("font-medium text-primary")}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
+        <TouchableOpacity
+          onPress={sendCode}
+          disabled={sending || countdown > 0}
+          style={twStyle("mt-3 rounded-xl bg-gray-900 py-3 items-center")}
+        >
+          <Text style={twStyle("font-semibold text-white")}>
+            {sending
+              ? "Sending…"
+              : countdown > 0
+                ? `Resend (${Math.floor(countdown / 60)}:${String(countdown % 60).padStart(2, "0")})`
+                : "Send verification code"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+      {codeSent ? (
+        <View>
+          <Text style={twStyle(labelCls)}>Verification code</Text>
+          <OtpDigitRow
+            value={otp}
+            onChange={setOtp}
+            onComplete={(code) => {
+              if (!verifying && !formData.phone_verified) void verify(code);
+            }}
+            disabled={verifying || Boolean(formData.phone_verified)}
+            autoFocus
+            accessibilityLabelPrefix="Phone verification"
+          />
+          <TouchableOpacity
+            onPress={() => void verify()}
+            disabled={verifying || formData.phone_verified}
+            style={twStyle("mt-4 rounded-xl bg-primary py-3 items-center")}
+          >
+            {verifying ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={twStyle("font-semibold text-white")}>
+                {formData.phone_verified ? "Verified" : "Verify"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : null}
+      {formData.phone_verified ? (
+        <View style={twStyle("flex-row items-center gap-2 rounded-xl border border-green-200 bg-green-50 p-3")}>
+          <Ionicons name="checkmark-circle" size={22} color="#16a34a" />
+          <Text style={twStyle("text-sm font-medium text-green-900")}>Phone verified</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function Step3Business() {
+  const { formData, updateFormData } = useOnboardingWizard();
+  const types: { id: BusinessType; label: string }[] = [
+    { id: "salon", label: "Salon / studio" },
+    { id: "mobile", label: "Mobile / at-home" },
+    { id: "both", label: "Both" },
+  ];
+  return (
+    <View style={twStyle("gap-4")}>
+      <View>
+        <Text style={twStyle(labelCls)}>Business name</Text>
+        <TextInput
+          value={formData.business_name || ""}
+          onChangeText={(t) => updateFormData({ business_name: t })}
+          placeholder="Shown to clients"
+          placeholderTextColor="#9ca3af"
+          style={twStyle(inputCls)}
+        />
+      </View>
+      <Text style={twStyle(labelCls)}>Business type</Text>
+      {types.map((t) => {
+        const sel = formData.business_type === t.id;
+        return (
+          <TouchableOpacity
+            key={t.id}
+            onPress={() => updateFormData({ business_type: t.id })}
+            style={twStyle(
+              `rounded-2xl border-2 p-4 ${sel ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
+            )}
+          >
+            <Text style={twStyle("text-base font-semibold text-gray-900")}>{t.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+      <View>
+        <Text style={twStyle(labelCls)}>Description (recommended)</Text>
+        <TextInput
+          value={formData.description || ""}
+          onChangeText={(t) => updateFormData({ description: t })}
+          placeholder="What you offer and what makes you unique"
+          placeholderTextColor="#9ca3af"
+          multiline
+          numberOfLines={4}
+          style={twStyle(`${inputCls} min-h-[100px]`)}
+        />
+      </View>
+    </View>
+  );
+}
+
+function Step4Payment() {
+  const { formData, updateFormData } = useOnboardingWizard();
+  const yoco: { id: YocoMachine; t: string }[] = [
+    { id: "yes", t: "Yes, I have Yoco" },
+    { id: "no", t: "No — I want one" },
+    { id: "other", t: "Other card machine" },
+  ];
+  return (
+    <View style={twStyle("gap-4")}>
+      <Text style={twStyle(labelCls)}>Yoco card machine</Text>
+      {yoco.map((o) => (
+        <TouchableOpacity
+          key={o.id}
+          onPress={() => updateFormData({ yoco_machine: o.id })}
+          style={twStyle(
+            `rounded-2xl border-2 p-4 ${formData.yoco_machine === o.id ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
+          )}
+        >
+          <Text style={twStyle("text-base font-semibold text-gray-900")}>{o.t}</Text>
+        </TouchableOpacity>
+      ))}
+      {formData.yoco_machine === "other" ? (
+        <TextInput
+          value={formData.yoco_machine_other || ""}
+          onChangeText={(t) => updateFormData({ yoco_machine_other: t })}
+          placeholder="Which device?"
+          placeholderTextColor="#9ca3af"
+          style={twStyle(inputCls)}
+        />
+      ) : null}
+      <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 gap-3")}>
+        <View style={twStyle("flex-row items-center justify-between gap-3")}>
+          <View style={twStyle("flex-1 pr-1")}>
+            <Text style={twStyle("text-base font-semibold text-gray-900")}>VAT registered (SARS)</Text>
+            <Text style={twStyle("mt-1 text-sm text-gray-600")}>
+              Turn on if you have a VAT number for invoices and tax.
+            </Text>
+          </View>
+          <Switch
+            value={formData.is_vat_registered === true}
+            onValueChange={(v) => updateFormData({ is_vat_registered: v, vat_number: v ? formData.vat_number : undefined })}
+          />
+        </View>
+        {formData.is_vat_registered ? (
+          <TextInput
+            value={formData.vat_number || ""}
+            onChangeText={(t) => updateFormData({ vat_number: t.replace(/\D/g, "").slice(0, 10) })}
+            placeholder="10-digit VAT number"
+            placeholderTextColor="#9ca3af"
+            keyboardType="number-pad"
+            style={twStyle(inputCls)}
+          />
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function Step5Software() {
+  const { formData, updateFormData } = useOnboardingWizard();
+  return (
+    <View style={twStyle("gap-3")}>
+      <Text style={twStyle("text-sm text-gray-600")}>
+        Optional — helps us understand where providers are coming from.
+      </Text>
+      <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 gap-2")}>
+        <Text style={twStyle(labelCls)}>Previous booking software</Text>
+        <Text style={twStyle("text-sm text-gray-600")}>
+          {`Type a product name or "none" if you're new to software.`}
+        </Text>
+        <TextInput
+          value={
+            formData.previous_software === "other"
+              ? formData.previous_software_other || ""
+              : formData.previous_software || ""
+          }
+          onChangeText={(t) => {
+            const slug = t.toLowerCase().replace(/\s+/g, "_").slice(0, 80);
+            updateFormData({ previous_software: slug || undefined, previous_software_other: undefined });
+          }}
+          placeholder="e.g. Fresha, Vagaro, or None"
+          placeholderTextColor="#9ca3af"
+          style={twStyle(inputCls)}
+        />
+      </View>
+    </View>
+  );
+}
+
+function Step6Payroll() {
+  const { formData, updateFormData } = useOnboardingWizard();
+  const opts = ["commission", "hourly", "both", "other"] as const;
+  return (
+    <View style={twStyle("gap-3")}>
+      <Text style={twStyle("text-sm text-gray-600")}>
+        How you usually compensate staff or contractors. You can refine this later in settings.
+      </Text>
+      <Text style={twStyle(labelCls)}>Payroll model</Text>
+      {opts.map((o) => (
+        <TouchableOpacity
+          key={o}
+          onPress={() => updateFormData({ payroll_type: o })}
+          style={twStyle(
+            `rounded-2xl border-2 p-4 capitalize ${formData.payroll_type === o ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
+          )}
+        >
+          <Text style={twStyle("text-base font-semibold text-gray-900")}>{o}</Text>
+        </TouchableOpacity>
+      ))}
+      <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 gap-2")}>
+        <Text style={twStyle(labelCls)}>Optional details</Text>
+        <Text style={twStyle("text-sm text-gray-600")}>Anything we should know about schedules, splits, or tools.</Text>
+        <TextInput
+          value={formData.payroll_details || ""}
+          onChangeText={(t) => updateFormData({ payroll_details: t })}
+          placeholder="Optional details"
+          placeholderTextColor="#9ca3af"
+          style={twStyle(inputCls)}
+        />
+      </View>
+    </View>
+  );
+}
+
+function Step7Location() {
+  const { formData, updateFormData } = useOnboardingWizard();
+  const addr = formData.address ?? {
+    line1: "",
+    city: "",
+    state: "",
+    postal_code: "",
+    country: DEFAULT_COUNTRY_NAME,
+  };
+  const mapboxCountry =
+    addr.country === DEFAULT_COUNTRY_NAME || addr.country?.toLowerCase().includes("south africa")
+      ? "ZA"
+      : "ZA";
+
+  const onSelect = (p: ParsedAddress) => {
+    updateFormData({
+      address: {
+        ...addr,
+        line1: p.address_line1,
+        city: p.city,
+        state: p.state,
+        postal_code: p.postal_code,
+        country: p.country || DEFAULT_COUNTRY_NAME,
+        latitude: p.latitude,
+        longitude: p.longitude,
+      },
+    });
+  };
+
+  return (
+    <View style={twStyle("gap-4")}>
+      <Text style={twStyle("text-sm text-gray-600")}>
+        Search and pick a suggestion so we capture accurate coordinates for zones and travel.
+      </Text>
+      <AddressAutocomplete
+        value={addr.line1 || ""}
+        onSelect={onSelect}
+        onBlur={(q) => {
+          if (q.trim() && !addr.line1) {
+            updateFormData({
+              address: { ...addr, line1: q.trim(), country: addr.country || DEFAULT_COUNTRY_NAME },
+            });
+          }
+        }}
+        label="Street address"
+        countryCode={mapboxCountry}
+        defaultCountryName={DEFAULT_COUNTRY_NAME}
+        proximity={
+          addr.latitude && addr.longitude
+            ? { latitude: addr.latitude, longitude: addr.longitude }
+            : undefined
+        }
+      />
+      <View>
+        <Text style={twStyle(labelCls)}>Apt / suite (optional)</Text>
+        <TextInput
+          value={addr.line2 || ""}
+          onChangeText={(t) => updateFormData({ address: { ...addr, line2: t || undefined } })}
+          style={twStyle(inputCls)}
+        />
+      </View>
+      <View>
+        <Text style={twStyle(labelCls)}>City</Text>
+        <TextInput
+          value={addr.city || ""}
+          onChangeText={(t) => updateFormData({ address: { ...addr, city: t } })}
+          style={twStyle(inputCls)}
+        />
+      </View>
+      <View>
+        <Text style={twStyle(labelCls)}>Country</Text>
+        <TextInput
+          value={addr.country || ""}
+          onChangeText={(t) => updateFormData({ address: { ...addr, country: t } })}
+          style={twStyle(inputCls)}
+        />
+      </View>
+    </View>
+  );
+}
+
+async function uploadOnboardingImage(uri: string, mime: string, name: string): Promise<string | null> {
+  const formData = new FormData();
+  formData.append("file", { uri, type: mime, name } as unknown as Blob);
+  formData.append("folder", "provider-onboarding");
+  const res = await api.fetch<{ url?: string }>("/api/upload", {
+    method: "POST",
+    body: formData,
+  });
+  if (res.error || !res.data?.url) return null;
+  return res.data.url;
+}
+
+function Step8Photos() {
+  const { formData, updateFormData } = useOnboardingWizard();
+  const pick = async (kind: "thumb" | "avatar" | "gallery") => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission", "Allow photo access to upload.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: kind !== "gallery",
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const a = result.assets[0];
+    const url = await uploadOnboardingImage(
+      a.uri,
+      a.mimeType || "image/jpeg",
+      a.fileName || `img-${Date.now()}.jpg`,
+    );
+    if (!url) {
+      Alert.alert("Upload failed", "Try again.");
+      return;
+    }
+    if (kind === "thumb") updateFormData({ thumbnail_url: url });
+    else if (kind === "avatar") updateFormData({ avatar_url: url });
+    else updateFormData({ gallery: [...(formData.gallery || []), url] });
+  };
+
+  return (
+    <View style={twStyle("gap-3")}>
+      <Text style={twStyle("text-sm text-gray-600")}>Optional — you can add these later in settings.</Text>
+      <TouchableOpacity
+        onPress={() => pick("thumb")}
+        style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 items-center")}
+      >
+        <Text style={twStyle("text-base font-semibold text-gray-900")}>Main business photo</Text>
+        <Text style={twStyle("mt-1 text-center text-sm text-gray-600")}>Shown on your listing</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => pick("avatar")}
+        style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 items-center")}
+      >
+        <Text style={twStyle("text-base font-semibold text-gray-900")}>Profile / avatar</Text>
+        <Text style={twStyle("mt-1 text-center text-sm text-gray-600")}>How you appear to clients</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        onPress={() => pick("gallery")}
+        style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 items-center")}
+      >
+        <Text style={twStyle("text-base font-semibold text-gray-900")}>Add gallery image</Text>
+        <Text style={twStyle("mt-1 text-center text-sm text-gray-600")}>Portfolio-style photos</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+type ZoneRow = { id: string; name: string; zone_type: string; match_reason?: string };
+
+function Step9Zones() {
+  const { formData, updateFormData } = useOnboardingWizard();
+  const [zones, setZones] = useState<ZoneRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const lat = formData.address?.latitude;
+    const lng = formData.address?.longitude;
+    if (lat == null || lng == null) {
+      setLoading(false);
+      return;
+    }
+    (async () => {
+      setLoading(true);
+      const hadZones = (formData.selected_zone_ids?.length ?? 0) > 0;
+      try {
+        const res = await api.post<{ suggested_zones: ZoneRow[] }>("/api/provider/onboarding/suggest-zones", {
+          address: formData.address?.line1 || "",
+          latitude: lat,
+          longitude: lng,
+          city: formData.address?.city || "",
+          postal_code: formData.address?.postal_code || "",
+          country: formData.address?.country || "",
+        });
+        const list = res.data?.suggested_zones ?? [];
+        setZones(list);
+        if (list.length && !hadZones) {
+          updateFormData({ selected_zone_ids: list.map((z) => z.id) });
+        }
+      } catch {
+        setZones([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [
+    formData.address?.latitude,
+    formData.address?.longitude,
+    formData.address?.line1,
+    formData.address?.city,
+    formData.address?.postal_code,
+    formData.address?.country,
+    formData.selected_zone_ids?.length,
+    updateFormData,
+  ]);
+
+  if (loading) {
+    return (
+      <View style={twStyle("py-8 items-center")}>
+        <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
+
+  if (!zones.length) {
+    return <Text style={twStyle("text-sm text-gray-600")}>No zones matched. You can configure zones later.</Text>;
+  }
+
+  const toggle = (id: string) => {
+    const cur = formData.selected_zone_ids || [];
+    if (cur.includes(id)) updateFormData({ selected_zone_ids: cur.filter((x) => x !== id) });
+    else updateFormData({ selected_zone_ids: [...cur, id] });
+  };
+
+  const selectedIds = formData.selected_zone_ids || [];
+
+  return (
+    <FlatList<ZoneRow>
+      data={zones}
+      keyExtractor={(z: ZoneRow) => z.id}
+      scrollEnabled={false}
+      renderItem={({ item }: { item: ZoneRow }) => {
+        const on = selectedIds.includes(item.id);
+        return (
+          <TouchableOpacity
+            onPress={() => toggle(item.id)}
+            style={twStyle(
+              `mb-3 rounded-2xl border-2 p-4 ${on ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
+            )}
+          >
+            <Text style={twStyle("text-base font-semibold text-gray-900")}>{item.name}</Text>
+            {item.match_reason ? (
+              <Text style={twStyle("mt-1 text-xs text-sky-800")}>{item.match_reason}</Text>
+            ) : null}
+          </TouchableOpacity>
+        );
+      }}
+    />
+  );
+}
+
+type Cat = { id: string; name: string; icon?: string };
+
+function Step10Categories() {
+  const { formData, updateFormData } = useOnboardingWizard();
+  const [cats, setCats] = useState<Cat[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const res = await api.get<Cat[]>("/api/public/categories/global?all=true");
+      setCats(Array.isArray(res.data) ? res.data : []);
+      setLoading(false);
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={twStyle("py-8 items-center")}>
+        <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
+
+  const toggle = (id: string) => {
+    const cur = formData.global_category_ids || [];
+    if (cur.includes(id)) updateFormData({ global_category_ids: cur.filter((x) => x !== id) });
+    else updateFormData({ global_category_ids: [...cur, id] });
+  };
+
+  return (
+    <FlatList<Cat>
+      data={cats}
+      keyExtractor={(c: Cat) => c.id}
+      numColumns={2}
+      columnWrapperStyle={twStyle("gap-2")}
+      scrollEnabled={false}
+      renderItem={({ item }: { item: Cat }) => {
+        const on = (formData.global_category_ids || []).includes(item.id);
+        const iconUri = resolveGlobalCategoryIconUri(item.icon, APP_URL);
+        return (
+          <TouchableOpacity
+            onPress={() => toggle(item.id)}
+            style={twStyle(
+              `mb-3 flex-1 rounded-2xl border-2 p-4 ${on ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
+            )}
+          >
+            <View style={twStyle("h-8 w-8 items-center justify-center")}>
+              {iconUri ? (
+                <Image
+                  source={{ uri: iconUri }}
+                  style={{ width: 28, height: 28 }}
+                  resizeMode="contain"
+                  accessibilityIgnoresInvertColors
+                />
+              ) : (
+                <Ionicons
+                  name="pricetag-outline"
+                  size={22}
+                  color={on ? Colors.primary : "#64748b"}
+                />
+              )}
+            </View>
+            <Text style={twStyle("mt-1 text-base font-semibold text-gray-900")} numberOfLines={2}>
+              {item.name}
+            </Text>
+          </TouchableOpacity>
+        );
+      }}
+    />
+  );
+}
+
+function Step11Services() {
+  const { formData, updateFormData } = useOnboardingWizard();
+  const tenantCurrency = getTenantDefaultCurrency();
+  const [title, setTitle] = useState("");
+  const [price, setPrice] = useState("");
+  const [dur, setDur] = useState("60");
+  const services = formData.services || [];
+
+  const add = () => {
+    const p = parseFloat(price);
+    const d = parseInt(dur, 10) || 60;
+    if (!title.trim() || Number.isNaN(p)) {
+      Alert.alert("Service", "Enter title and price.");
+      return;
+    }
+    const s: OnboardingService = {
+      title: title.trim(),
+      duration_minutes: d,
+      price: p,
+      currency: getTenantDefaultCurrency(),
+      supports_at_home: formData.business_type !== "salon",
+      supports_at_salon: formData.business_type !== "mobile",
+    };
+    updateFormData({ services: [...services, s] });
+    setTitle("");
+    setPrice("");
+    setDur("60");
+  };
+
+  const remove = (i: number) => {
+    const next = [...services];
+    next.splice(i, 1);
+    updateFormData({ services: next });
+  };
+
+  return (
+    <View style={twStyle("gap-4")}>
+      {services.map((s, i) => (
+        <View
+          key={`${s.title}-${i}`}
+          style={twStyle("flex-row items-center justify-between rounded-2xl border-2 border-gray-200 bg-white p-4")}
+        >
+          <View style={twStyle("flex-1 pr-2")}>
+            <Text style={twStyle("text-base font-semibold text-gray-900")}>{s.title}</Text>
+            <Text style={twStyle("text-xs text-gray-600")}>
+              {s.duration_minutes} min · {s.currency || tenantCurrency} {s.price}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => remove(i)}>
+            <Ionicons name="trash-outline" size={22} color="#ef4444" />
+          </TouchableOpacity>
+        </View>
+      ))}
+      <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 gap-3")}>
+        <Text style={twStyle(labelCls)}>Add a service</Text>
+        <Text style={twStyle("text-sm text-gray-600")}>You can add more services later in the catalogue.</Text>
+        <TextInput value={title} onChangeText={setTitle} placeholder="Name" style={twStyle(inputCls)} />
+        <TextInput
+          value={price}
+          onChangeText={setPrice}
+          placeholder={`Price (${tenantCurrency})`}
+          keyboardType="decimal-pad"
+          style={twStyle(inputCls)}
+        />
+        <TextInput value={dur} onChangeText={setDur} placeholder="Minutes" keyboardType="number-pad" style={twStyle(inputCls)} />
+      </View>
+      <TouchableOpacity
+        onPress={add}
+        style={twStyle("rounded-2xl border-2 border-primary bg-white py-4 items-center")}
+      >
+        <Text style={twStyle("text-base font-semibold text-primary")}>Add service</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+
+function Step12Hours() {
+  const { formData, updateFormData } = useOnboardingWizard();
+  const oh = formData.operating_hours || {};
+
+  const setDay = (day: string, patch: Partial<{ open: string; close: string; closed: boolean }>) => {
+    const cur = oh[day] || { open: "09:00", close: "18:00", closed: false };
+    updateFormData({
+      operating_hours: { ...oh, [day]: { ...cur, ...patch } },
+    });
+  };
+
+  return (
+    <View style={twStyle("gap-3")}>
+      {DAYS.map((day) => {
+        const h = oh[day] || { open: "09:00", close: "18:00", closed: false };
+        return (
+          <View
+            key={day}
+            style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4")}
+          >
+            <View style={twStyle("flex-row items-center justify-between")}>
+              <Text style={twStyle("w-28 text-base font-semibold capitalize text-gray-900")}>{day}</Text>
+              <View style={twStyle("flex-row items-center gap-2")}>
+                <Text style={twStyle("text-sm text-gray-600")}>Open</Text>
+                <Switch value={!h.closed} onValueChange={(v) => setDay(day, { closed: !v })} />
+              </View>
+            </View>
+            {!h.closed ? (
+              <View style={twStyle("mt-2 flex-row gap-2")}>
+                <TextInput
+                  value={h.open}
+                  onChangeText={(t) => setDay(day, { open: t })}
+                  style={twStyle(`${inputCls} flex-1`)}
+                />
+                <TextInput
+                  value={h.close}
+                  onChangeText={(t) => setDay(day, { close: t })}
+                  style={twStyle(`${inputCls} flex-1`)}
+                />
+              </View>
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function Step13Review() {
+  const { formData } = useOnboardingWizard();
+  const a = formData.address;
+  return (
+    <View style={twStyle("rounded-2xl border-2 border-gray-200 bg-white p-4 gap-3")}>
+      <Text style={twStyle("text-sm text-gray-700")}>
+        <Text style={twStyle("font-semibold text-gray-900")}>Business: </Text>
+        {formData.business_name}
+      </Text>
+      <Text style={twStyle("text-sm text-gray-700")}>
+        <Text style={twStyle("font-semibold text-gray-900")}>Type: </Text>
+        {formData.business_type}
+      </Text>
+      <Text style={twStyle("text-sm text-gray-700")}>
+        <Text style={twStyle("font-semibold text-gray-900")}>Address: </Text>
+        {a?.line1}, {a?.city}, {a?.country}
+      </Text>
+      <Text style={twStyle("text-sm text-gray-700")}>
+        <Text style={twStyle("font-semibold text-gray-900")}>Categories: </Text>
+        {(formData.global_category_ids || []).length} selected
+      </Text>
+      <Text style={twStyle("text-sm text-gray-700")}>
+        <Text style={twStyle("font-semibold text-gray-900")}>Services: </Text>
+        {(formData.services || []).length} added (optional)
+      </Text>
+    </View>
+  );
+}
+
+type PlanRow = {
+  id: string;
+  name: string;
+  price: string;
+  period: string | null;
+  description: string | null;
+  is_popular: boolean;
+  features: string[];
+};
+
+function Step14Plan() {
+  const { formData, updateFormData } = useOnboardingWizard();
+  const [plans, setPlans] = useState<PlanRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const res = await api.get<PlanRow[]>("/api/public/pricing/plans");
+      setPlans(Array.isArray(res.data) ? res.data : []);
+      setLoading(false);
+    })();
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={twStyle("py-8 items-center")}>
+        <ActivityIndicator color={Colors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={twStyle("gap-3")}>
+      {plans.map((p) => {
+        const sel = formData.selected_plan_id === p.id;
+        return (
+          <TouchableOpacity
+            key={p.id}
+            onPress={() => updateFormData({ selected_plan_id: p.id, selected_plan_name: p.name })}
+            style={twStyle(
+              `rounded-2xl border-2 p-4 ${sel ? "border-primary bg-rose-50" : "border-gray-200 bg-white"}`,
+            )}
+          >
+            <Text style={twStyle("text-lg font-bold text-gray-900")}>{p.name}</Text>
+            <Text style={twStyle("mt-1 text-primary")}>
+              {p.price}
+              {p.period ? ` ${p.period}` : ""}
+            </Text>
+            {p.description ? (
+              <Text style={twStyle("mt-2 text-sm text-gray-600")}>{p.description}</Text>
+            ) : null}
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+export function OnboardingStepBody() {
+  const { currentStep } = useOnboardingWizard();
+  switch (currentStep) {
+    case 1:
+      return <Step1TeamSize />;
+    case 2:
+      return <Step2Identity />;
+    case 3:
+      return <Step3Business />;
+    case 4:
+      return <Step4Payment />;
+    case 5:
+      return <Step5Software />;
+    case 6:
+      return <Step6Payroll />;
+    case 7:
+      return <Step7Location />;
+    case 8:
+      return <Step8Photos />;
+    case 9:
+      return <Step9Zones />;
+    case 10:
+      return <Step10Categories />;
+    case 11:
+      return <Step11Services />;
+    case 12:
+      return <Step12Hours />;
+    case 13:
+      return <Step13Review />;
+    case 14:
+      return <Step14Plan />;
+    default:
+      return null;
+  }
+}

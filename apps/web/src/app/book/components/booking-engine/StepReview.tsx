@@ -58,6 +58,7 @@ export function StepReview({
   const currency = data.currency;
   const isAtHome = data.venueType === "at_home";
   const policyAccepted = data.policyAccepted === true;
+  const hasDateTime = data.selectedDate != null && data.selectedSlot != null;
   const hours = cancellationPolicy?.hours_before_cutoff ?? 24;
   const lateType = cancellationPolicy?.late_cancellation_type ?? "no_refund";
   const lateTypeLabel =
@@ -221,7 +222,7 @@ export function StepReview({
       <button
         type="button"
         onClick={onConfirm}
-        disabled={isCreatingHold || !policyAccepted}
+        disabled={isCreatingHold || !policyAccepted || !hasDateTime}
         className={cn(
           "w-full rounded-2xl h-14 font-semibold text-white transition-all touch-manipulation flex items-center justify-center gap-2 disabled:opacity-70 disabled:active:scale-100",
           MIN_TAP,

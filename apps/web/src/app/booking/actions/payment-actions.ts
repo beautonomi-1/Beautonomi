@@ -1,6 +1,7 @@
 "use server";
 
 import { fetcher } from "@/lib/http/fetcher";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface InitializePaymentParams {
   email: string;
@@ -71,7 +72,7 @@ export async function chargeSavedCard(
         payment_method_id: params.payment_method_id,
         amount: params.amount,
         email: params.email,
-        currency: params.currency || "ZAR",
+        currency: params.currency || LAST_RESORT_CURRENCY,
         metadata: params.metadata,
       }
     );

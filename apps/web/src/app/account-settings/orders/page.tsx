@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -48,6 +49,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default function OrderHistoryPage() {
+  const locale = useTenantLocaleTag();
   const [orders, setOrders] = useState<ProductOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
@@ -120,7 +122,7 @@ export default function OrderHistoryPage() {
             {orders.map((order) => {
               const itemCount = order.items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
               const firstImage = order.items?.[0]?.product_image_url;
-              const date = new Date(order.created_at).toLocaleDateString("en-ZA", {
+              const date = new Date(order.created_at).toLocaleDateString(locale, {
                 day: "numeric",
                 month: "short",
                 year: "numeric",

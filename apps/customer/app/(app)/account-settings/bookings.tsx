@@ -8,11 +8,21 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import type { Booking } from "@/types/api";
 
+function parseValidDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
 function formatDate(s: string) {
-  return new Date(s).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const parsed = parseValidDate(s);
+  if (!parsed) return "—";
+  return parsed.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 }
 function formatTime(s: string) {
-  return new Date(s).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const parsed = parseValidDate(s);
+  if (!parsed) return "—";
+  return parsed.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
 export default function AccountBookingsScreen() {
@@ -30,13 +40,18 @@ export default function AccountBookingsScreen() {
     else setLoading(true);
     setError(null);
     try {
-      const res = await api.get<any>(`/api/me/bookings?status=${tab}`);
+      const res = await api.get<any>(
+        `/api/me/bookings?status=${encodeURIComponent(tab)}&limit=100&page=1`
+      );
       if (res.error) {
         setError(res.error.message || "Failed to load");
         setBookings([]);
       } else {
-        const body = res.data;
-        setBookings(Array.isArray(body) ? body : (body?.items ?? []));
+        const body = res.data as Booking[] | { items?: Booking[]; data?: Booking[] } | undefined;
+        const list = Array.isArray(body)
+          ? body
+          : (body && typeof body === "object" ? body.items ?? body.data : undefined);
+        setBookings(Array.isArray(list) ? list : []);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
@@ -121,7 +136,32 @@ export default function AccountBookingsScreen() {
           </View>
         )}
         {bookings.length === 0 ? (
-          <Text style={{ textAlign: "center", color: Colors.gray[500], paddingVertical: 48 }}>No bookings</Text>
+          <View style={{ paddingVertical: 48, alignItems: "center" }}>
+            <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 8, textAlign: "center" }}>
+              {tab === "upcoming"
+                ? "No appointments scheduled...yet!"
+                : tab === "past"
+                  ? "No past appointments yet"
+                  : "No cancelled bookings"}
+            </Text>
+            <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 20 }}>
+              {tab === "upcoming"
+                ? "Browse providers and book your next visit."
+                : tab === "past"
+                  ? "Completed visits will appear here."
+                  : "Cancelled appointments will show here."}
+            </Text>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/search")}
+              style={{ backgroundColor: Colors.primary, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel={tab === "upcoming" ? "Start searching for providers" : "Find providers"}
+            >
+              <Text style={{ color: Colors.white, fontWeight: "600" }}>
+                {tab === "upcoming" ? "Start Searching" : "Find providers"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           bookings.map((b) => (
             <Pressable

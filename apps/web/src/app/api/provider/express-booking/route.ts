@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkExpressBookingFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { sanitizeExpressPrefill } from "@/lib/express-booking/prefill";
 import { z } from "zod";
 
 const createExpressLinkSchema = z.object({
@@ -14,6 +15,8 @@ const createExpressLinkSchema = z.object({
   expires_at: z.string().datetime().optional().nullable(),
   max_uses: z.number().int().positive().optional(),
   is_active: z.boolean().optional().default(true),
+  /** Validated subset: addon_ids, promotion_code, gift_card_code, product_cart */
+  prefill: z.unknown().optional(),
 });
 
 /**
@@ -101,17 +104,19 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     let validated = createExpressLinkSchema.parse(body);
-    if (validated.location_type === "at_home") {
-      validated = { ...validated, location_id: null };
+    const prefillDb = sanitizeExpressPrefill(validated.prefill);
+    const { prefill: _dropPrefill, ...validatedRow } = validated;
+    if (validatedRow.location_type === "at_home") {
+      validatedRow.location_id = null;
     }
-    if (validated.location_id && validated.location_type !== "at_salon") {
-      validated = { ...validated, location_type: "at_salon" as const };
+    if (validatedRow.location_id && validatedRow.location_type !== "at_salon") {
+      validatedRow.location_type = "at_salon";
     }
-    if (validated.location_id) {
+    if (validatedRow.location_id) {
       const { data: loc } = await supabase
         .from("provider_locations")
         .select("id")
-        .eq("id", validated.location_id)
+        .eq("id", validatedRow.location_id)
         .eq("provider_id", providerId)
         .maybeSingle();
       if (!loc) {
@@ -124,7 +129,7 @@ export async function POST(request: NextRequest) {
       .from("express_booking_links")
       .select("id")
       .eq("provider_id", providerId)
-      .eq("slug", validated.slug)
+      .eq("slug", validatedRow.slug)
       .maybeSingle();
 
     if (existingLink) {
@@ -139,7 +144,8 @@ export async function POST(request: NextRequest) {
       .from("express_booking_links")
       .insert({
         provider_id: providerId,
-        ...validated,
+        ...validatedRow,
+        prefill: prefillDb,
         use_count: 0,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

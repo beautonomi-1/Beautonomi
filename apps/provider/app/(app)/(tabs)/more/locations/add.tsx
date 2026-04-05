@@ -1,7 +1,7 @@
 /**
  * Add location – POST /api/provider/locations. Required: name, address_line1, city, country.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -15,15 +15,26 @@ import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useTranslation } from "@beautonomi/i18n";
 import { api } from "@/lib/api-client";
-import { validateRequired, validatePhone } from "@/lib/validation";
+import { validateRequired } from "@/lib/validation";
+import { validateE164Phone } from "@/lib/phone-country-codes";
+import { E164PhoneField } from "@/components/E164PhoneField";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { Colors } from "@/constants/colors";
+import { countryFilterIso2FromStorage } from "@beautonomi/utils";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { getCachedConfigBundle } from "@/lib/config-bundle";
+
+function tenantCountryFallback(): string {
+  return getCachedConfigBundle()?.meta?.tenant_region?.name?.trim() || "";
+}
 
 export default function AddLocationScreen() {
   const router = useRouter();
+  const { bundle } = useConfigBundle();
+  const countrySeeded = useRef(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
   const [address_line1, setAddressLine1] = useState("");
@@ -31,8 +42,17 @@ export default function AddLocationScreen() {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [postal_code, setPostalCode] = useState("");
-  const [country, setCountry] = useState("South Africa");
-  const [phone, setPhone] = useState("");
+  const [country, setCountry] = useState("");
+
+  useEffect(() => {
+    if (countrySeeded.current) return;
+    const n = bundle?.meta?.tenant_region?.name?.trim();
+    if (n) {
+      setCountry(n);
+      countrySeeded.current = true;
+    }
+  }, [bundle?.meta?.tenant_region?.name]);
+  const [phoneE164, setPhoneE164] = useState("");
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -55,8 +75,6 @@ export default function AddLocationScreen() {
     if (cityErr) nextErrors.city = cityErr;
     const countryErr = validateRequired(country);
     if (countryErr) nextErrors.country = countryErr;
-    const phoneErr = validatePhone(phone, false);
-    if (phoneErr) nextErrors.phone = phoneErr;
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
       const firstKey = Object.keys(nextErrors)[0];
@@ -66,6 +84,13 @@ export default function AddLocationScreen() {
         : t(firstMsg);
       Alert.alert(t("validation.fixForm"), message);
       return;
+    }
+    if (phoneE164.trim()) {
+      const pe = validateE164Phone(phoneE164);
+      if (pe) {
+        Alert.alert(t("validation.fixForm"), pe);
+        return;
+      }
     }
     const trimmedName = name.trim();
     const trimmedAddress = address_line1.trim();
@@ -81,7 +106,7 @@ export default function AddLocationScreen() {
       state: state.trim() || undefined,
       postal_code: postal_code.trim() || undefined,
       country: trimmedCountry,
-      phone: phone.trim() || undefined,
+      phone: phoneE164.trim() || undefined,
       latitude: latitude ?? undefined,
       longitude: longitude ?? undefined,
     });
@@ -95,7 +120,7 @@ export default function AddLocationScreen() {
       { text: "OK", onPress: () => router.back() },
     ]);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- FIELD_LABELS is static
-  }, [name, address_line1, address_line2, city, state, postal_code, country, phone, latitude, longitude, router, t]);
+  }, [name, address_line1, address_line2, city, state, postal_code, country, phoneE164, latitude, longitude, router, t]);
 
   return (
     <ScreenContainer scrollable={false}>
@@ -154,7 +179,7 @@ export default function AddLocationScreen() {
                   setCity(addr.city);
                   setState(addr.state);
                   setPostalCode(addr.postal_code);
-                  setCountry(addr.country || "South Africa");
+                  setCountry(addr.country || tenantCountryFallback());
                   setLatitude(addr.latitude);
                   setLongitude(addr.longitude);
                   if (errors.address_line1) setErrors((e) => ({ ...e, address_line1: "" }));
@@ -164,7 +189,13 @@ export default function AddLocationScreen() {
                 onBlur={(text) => setAddressLine1(text)}
                 placeholder="Street address or search…"
                 label={undefined}
-                countryCode="ZA"
+                countryCode={countryFilterIso2FromStorage(country) ?? "ZA"}
+                defaultCountryName={country.trim() || undefined}
+                proximity={
+                  latitude != null && longitude != null && !(latitude === 0 && longitude === 0)
+                    ? { latitude, longitude }
+                    : undefined
+                }
               />
               {errors.address_line1 ? (
                 <Text style={{ marginTop: 4, fontSize: 14, color: "#ef4444" }}>
@@ -264,30 +295,13 @@ export default function AddLocationScreen() {
               </View>
             </View>
             <View style={{ marginBottom: 24 }}>
-              <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Phone</Text>
-              <TextInput
-                style={{
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: errors.phone ? "#ef4444" : Colors.gray[200],
-                  backgroundColor: Colors.white,
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                  fontSize: 16,
-                  color: Colors.gray[900],
-                }}
-                value={phone}
-                onChangeText={(t) => {
-                  setPhone(t);
-                  if (errors.phone) setErrors((e) => ({ ...e, phone: "" }));
-                }}
-                placeholder="Location phone"
-                placeholderTextColor="#9ca3af"
-                keyboardType="phone-pad"
+              <E164PhoneField
+                label="Phone"
+                valueE164={phoneE164}
+                onChangeE164={setPhoneE164}
+                showHint={false}
+                accessibilityLabel="Location phone"
               />
-              {errors.phone ? (
-                <Text style={{ marginTop: 4, fontSize: 14, color: "#ef4444" }}>{t(errors.phone)}</Text>
-              ) : null}
             </View>
             <ActionButton
               label="Add location"

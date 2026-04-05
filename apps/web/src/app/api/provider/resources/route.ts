@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import {
+  isProviderSubscriptionFeatureEnabled,
+  SUBSCRIPTION_FEATURE_KEYS,
+} from "@/lib/subscriptions/feature-access";
 import { z } from "zod";
 
 const resourceTypeEnum = z.enum(["room", "chair", "equipment", "other"]);
@@ -9,6 +13,7 @@ const createResourceSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   group_id: z.string().uuid().nullable().optional(),
+  location_id: z.string().uuid().nullable().optional(),
   capacity: z.number().optional(),
   is_active: z.boolean().optional(),
   resource_type: resourceTypeEnum.optional(),
@@ -27,6 +32,7 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const providerIdParam = searchParams.get("provider_id"); // For superadmin to view specific provider
+    const locationId = searchParams.get("location_id");
 
     // For superadmin, allow viewing any provider's resources
     let providerId: string | null = null;
@@ -53,6 +59,10 @@ export async function GET(request: NextRequest) {
       query = query.eq("provider_id", providerId);
     }
 
+    if (locationId) {
+      query = query.eq("location_id", locationId);
+    }
+
     const { data: resources, error } = await query;
 
     if (error) {
@@ -76,6 +86,7 @@ export async function GET(request: NextRequest) {
         group_color: group?.color || null,
         group_id: resource.group_id || null,
         provider_id: resource.provider_id,
+        location_id: resource.location_id ?? null,
         created_at: resource.created_at,
         updated_at: resource.updated_at,
       };
@@ -123,6 +134,18 @@ export async function POST(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
+    const resourcesOk = await isProviderSubscriptionFeatureEnabled(
+      providerId,
+      SUBSCRIPTION_FEATURE_KEYS.serviceResources
+    );
+    if (!resourcesOk) {
+      return errorResponse(
+        "Equipment and room resources are not included in your current subscription plan. Upgrade to add resources.",
+        "SUBSCRIPTION_FEATURE_DISABLED",
+        403
+      );
+    }
+
     // Create resource
     const insertData: any = {
       provider_id: providerId,
@@ -143,6 +166,9 @@ export async function POST(request: NextRequest) {
     }
     if (data.calendar_color !== undefined && data.calendar_color !== null) {
       insertData.calendar_color = data.calendar_color.trim() || null;
+    }
+    if (data.location_id !== undefined) {
+      insertData.location_id = data.location_id || null;
     }
 
     const { data: newResource, error: insertError } = await (supabase

@@ -1,0 +1,80 @@
+# Provider — main store set (run while signed IN; complete provider profile).
+# EXPO_PUBLIC_SCREENSHOT_MODE=1; optional EXPO_PUBLIC_SCREENSHOT_BOOKING_ID for booking detail
+#
+appId: com.beautonomi.partner
+---
+- launchApp:
+    clearState: false
+    stopApp: false
+
+- openLink: provider://screenshot/tabs/dashboard
+- waitForAnimationToEnd:
+    timeout: 18000
+- takeScreenshot:
+    path: pr_02_dashboard_home
+
+- openLink: provider://screenshot/more/bookings
+- waitForAnimationToEnd:
+    timeout: 18000
+- takeScreenshot:
+    path: pr_03_bookings_list
+
+- openLink: provider://screenshot/tabs/calendar
+- waitForAnimationToEnd:
+    timeout: 18000
+- takeScreenshot:
+    path: pr_04_calendar_schedule
+
+- openLink: provider://screenshot/tabs/clients
+- waitForAnimationToEnd:
+    timeout: 18000
+- takeScreenshot:
+    path: pr_05_clients
+
+- openLink: provider://screenshot/more/booking-detail
+- waitForAnimationToEnd:
+    timeout: 18000
+- takeScreenshot:
+    path: pr_06_booking_detail
+
+- openLink: provider://screenshot/more/service-form
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot:
+    path: pr_07_service_business_setup
+
+- openLink: provider://screenshot/more/my-earnings
+- waitForAnimationToEnd:
+    timeout: 18000
+- takeScreenshot:
+    path: pr_08_my_earnings
+
+- openLink: provider://screenshot/more/finance-hub
+- waitForAnimationToEnd:
+    timeout: 18000
+- takeScreenshot:
+    path: pr_09_finance_hub
+
+- openLink: provider://screenshot/more/reports
+- waitForAnimationToEnd:
+    timeout: 18000
+- takeScreenshot:
+    path: pr_10_reports
+
+- openLink: provider://screenshot/more/profile
+- waitForAnimationToEnd:
+    timeout: 12000
+- takeScreenshot:
+    path: pr_11_profile_settings
+
+- openLink: provider://screenshot/more/catalogue
+- waitForAnimationToEnd:
+    timeout: 18000
+- takeScreenshot:
+    path: pr_12_catalogue_services
+
+- openLink: provider://screenshot/more/settings/business
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot:
+    path: pr_13_business_settings

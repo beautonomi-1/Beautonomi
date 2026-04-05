@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       throw profileError;
     }
 
-    // Default privacy settings
+    // Default privacy settings (analytics_consent true for backward compatibility)
     const defaultSettings = {
       accountVisibility: false,
       profileInformation: false,
@@ -47,6 +47,7 @@ export async function GET(request: NextRequest) {
       services_booked_visible: false,
       interests_visible: false,
       questions_visible: false,
+      analytics_consent: true,
     };
 
     // Merge settings from users table (columns) with user_profiles (JSONB)
@@ -99,6 +100,7 @@ export async function PATCH(request: NextRequest) {
       services_booked_visible: false,
       interests_visible: false,
       questions_visible: false,
+      analytics_consent: true,
     };
 
     const currentSettings = existingProfile?.privacy_settings || defaultSettings;
@@ -159,6 +161,9 @@ export async function PATCH(request: NextRequest) {
     }
     if (body.receive_marketing !== undefined) {
       privacySettingsJsonb.receive_marketing = body.receive_marketing;
+    }
+    if (body.analytics_consent !== undefined) {
+      privacySettingsJsonb.analytics_consent = Boolean(body.analytics_consent);
     }
 
     // Update users table if there are column updates

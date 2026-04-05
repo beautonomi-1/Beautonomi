@@ -5,7 +5,6 @@ import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
-import { getWebProviderBaseUrl } from "@/lib/web-url";
 import { twStyle } from "@/lib/twStyle";
 
 interface Plan {
@@ -28,16 +27,8 @@ export default function UpgradeInfoScreen() {
   const router = useRouter();
   const { data: subscription, loading, error } = useApi<Subscription | null>("/api/provider/subscription");
 
-  const openWebUpgrade = () => {
-    const base = getWebProviderBaseUrl().replace(/\/$/, "");
-    const url = `${base}/provider/settings/billing`;
-    router.push({
-      pathname: "/(app)/(tabs)/more/in-app-browser",
-      params: {
-        url: encodeURIComponent(url),
-        title: encodeURIComponent("Billing & upgrade"),
-      },
-    } as never);
+  const openUpgrade = () => {
+    router.push("/(app)/(tabs)/more/settings/subscription" as never);
   };
 
   const planName = subscription?.plan?.name ?? null;
@@ -82,19 +73,16 @@ export default function UpgradeInfoScreen() {
         </View>
 
         <Text style={twStyle("text-base text-gray-700 leading-6")}>
-          To upgrade your plan from Freelancer to Salon, please use the web portal. There you can compare plans and complete the upgrade.
-        </Text>
-        <Text style={twStyle("mt-4 text-sm text-gray-500")}>
-          Open the provider dashboard on web (More → Portal or open in app) and go to Settings or Billing to upgrade.
+          Upgrade your plan from Freelancer to Salon directly in the app. Compare plans and continue to secure checkout from the subscription screen.
         </Text>
 
         <TouchableOpacity
-          onPress={openWebUpgrade}
+          onPress={openUpgrade}
           style={twStyle("mt-6 rounded-xl border border-gray-300 bg-white py-4 px-4")}
           activeOpacity={0.7}
         >
           <Text style={twStyle("text-center font-semibold text-gray-900")}>
-            Open web to upgrade plan
+            Upgrade plan
           </Text>
         </TouchableOpacity>
       </View>

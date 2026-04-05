@@ -1,8 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
+import { resolveTenantIdWithZaFallback } from '@/lib/tenant/resolve-tenant-from-db';
+import { getTenantRegionConfig } from '@/lib/regions/config';
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
+    let defaultCurrency: string = LAST_RESORT_CURRENCY;
+    try {
+      const tenantId = await resolveTenantIdWithZaFallback(request);
+      const tenantRegion = await getTenantRegionConfig(tenantId);
+      defaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    } catch (tenantErr) {
+      console.warn(
+        "Tenant resolution failed in /api/public/subscription-plans (using last-resort currency):",
+        tenantErr,
+      );
+    }
     const supabase = await getSupabaseServer();
 
     // Fetch available subscription plans
@@ -21,7 +35,7 @@ export async function GET(_request: NextRequest) {
             id: 'basic',
             name: 'Basic',
             price: 99,
-            currency: 'ZAR',
+            currency: defaultCurrency,
             billing_period: 'monthly',
             features: [
               'Up to 50 bookings per month',
@@ -34,7 +48,7 @@ export async function GET(_request: NextRequest) {
             id: 'professional',
             name: 'Professional',
             price: 199,
-            currency: 'ZAR',
+            currency: defaultCurrency,
             billing_period: 'monthly',
             features: [
               'Unlimited bookings',
@@ -49,7 +63,7 @@ export async function GET(_request: NextRequest) {
             id: 'enterprise',
             name: 'Enterprise',
             price: 399,
-            currency: 'ZAR',
+            currency: defaultCurrency,
             billing_period: 'monthly',
             features: [
               'Unlimited everything',
@@ -74,7 +88,7 @@ export async function GET(_request: NextRequest) {
           plan_id: p.id,
           name: p.name,
           price: Number(p.price_monthly),
-          currency: p.currency || "ZAR",
+          currency: p.currency || defaultCurrency,
           billing_period: "monthly",
           features,
           is_popular: (p as any).is_popular || false,
@@ -86,7 +100,7 @@ export async function GET(_request: NextRequest) {
           plan_id: p.id,
           name: p.name,
           price: Number(p.price_yearly),
-          currency: p.currency || "ZAR",
+          currency: p.currency || defaultCurrency,
           billing_period: "yearly",
           features,
           is_popular: (p as any).is_popular || false,

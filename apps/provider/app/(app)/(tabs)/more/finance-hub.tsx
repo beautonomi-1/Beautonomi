@@ -7,6 +7,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 type Earnings = { total_earnings?: number; pending_payouts?: number; available_balance?: number; this_month?: number };
 type FinanceResponse = { earnings?: Earnings; transactions?: unknown[] };
@@ -48,7 +49,7 @@ export default function FinanceHubScreen() {
   const total = earnings?.total_earnings ?? 0;
   const pending = earnings?.pending_payouts ?? 0;
   const available = earnings?.available_balance ?? 0;
-  const currency = "ZAR";
+  const currency = getTenantDefaultCurrency();
 
   return (
     <ScreenContainer>

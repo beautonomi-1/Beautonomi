@@ -93,6 +93,7 @@ export function useFrontDeskData(input: UseFrontDeskDataInput): UseFrontDeskData
       const [bookingsRes, staffData, locationsData, servicesData] = await Promise.all([
         fetcher.get<{ data: Booking[] }>(`/api/provider/bookings?${params.toString()}`, {
           timeoutMs: 8000,
+          staleTimeMs: 0,
         }),
         fetchStaff(locationId),
         fetchLocations(),

@@ -1,14 +1,27 @@
 import { NextRequest } from "next/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+} from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays, format, eachDayOfInterval } from "date-fns";
+import { subDays, format, eachDayOfInterval, startOfDay, endOfDay } from "date-fns";
+import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 
+/**
+ * GET /api/provider/reports/weekly-revenue
+ * Daily totals aligned with main dashboard revenue (provider_earnings only), same as `revenue_today` / `revenue_this_week`.
+ */
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(
       ["provider_owner", "provider_staff", "superadmin"],
       request,
-    );    const supabaseAdmin = createClient(
+    );
+    const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       { auth: { autoRefreshToken: false, persistSession: false } },
@@ -21,47 +34,29 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const locationId = searchParams.get("location_id");
     const startDate = searchParams.get("start_date")
-      ? new Date(searchParams.get("start_date")!)
-      : subDays(new Date(), 6);
+      ? startOfDay(new Date(searchParams.get("start_date")!))
+      : startOfDay(subDays(new Date(), 6));
     const endDate = searchParams.get("end_date")
-      ? new Date(searchParams.get("end_date")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("end_date")!))
+      : endOfDay(new Date());
 
-    const { data: rows } = await supabaseAdmin
-      .from("finance_transactions")
-      .select("net, amount, created_at, booking_id")
-      .eq("provider_id", providerId)
-      .eq("transaction_type", "provider_earnings")
-      .gte("created_at", startDate.toISOString())
-      .lte("created_at", new Date(endDate.getTime() + 86400000).toISOString());
+    const { revenueByDate } = await getProviderRevenue(
+      supabaseAdmin,
+      providerId,
+      startDate,
+      endDate,
+      locationId,
+      { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES },
+    );
 
-    let filteredRows = rows || [];
-    if (locationId && filteredRows.length > 0) {
-      const { data: locationBookings } = await supabaseAdmin
-        .from("bookings")
-        .select("id")
-        .eq("provider_id", providerId)
-        .eq("location_id", locationId);
-      const bookingIds = new Set((locationBookings || []).map((b: { id: string }) => b.id));
-      filteredRows = filteredRows.filter(
-        (r: { booking_id?: string | null }) => r.booking_id && bookingIds.has(r.booking_id)
-      );
-    }
-
-    const revenueMap = new Map<string, number>();
     const days = eachDayOfInterval({ start: startDate, end: endDate });
-    days.forEach((d) => revenueMap.set(format(d, "yyyy-MM-dd"), 0));
-
-    filteredRows.forEach((r: { created_at: string; net?: number; amount?: number }) => {
-      const day = format(new Date(r.created_at), "yyyy-MM-dd");
-      const val = Number(r.net ?? r.amount ?? 0);
-      revenueMap.set(day, (revenueMap.get(day) ?? 0) + val);
+    const result = days.map((d) => {
+      const key = format(d, "yyyy-MM-dd");
+      return {
+        day: key,
+        revenue: revenueByDate.get(key) ?? 0,
+      };
     });
-
-    const result = days.map((d) => ({
-      day: format(d, "yyyy-MM-dd"),
-      revenue: revenueMap.get(format(d, "yyyy-MM-dd")) ?? 0,
-    }));
 
     return successResponse(result);
   } catch (error) {

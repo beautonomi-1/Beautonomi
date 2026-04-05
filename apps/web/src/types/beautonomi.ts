@@ -5,6 +5,7 @@ export type UserRole =
   | 'customer'
   | 'provider_owner'
   | 'provider_staff'
+  | 'provider_onboarding'
   | 'superadmin'
   | 'support_agent'
   | 'admin_support'
@@ -160,6 +161,8 @@ export interface PublicProviderDetail extends PublicProviderCard {
   languages_spoken?: string[];
   current_badge?: ProviderBadge | null;
   total_points?: number;
+  /** False when the provider opted out of search indexing; booking pages may set noindex. */
+  seo_indexable?: boolean;
 }
 
 // Service/Offering Types
@@ -315,11 +318,19 @@ export interface BookingDraft {
   selected_datetime: string; // ISO string
   guests: Guest[];
   addons: string[]; // Offering IDs
-  products?: Array<{ product_id?: string; productId?: string; quantity: number; totalPrice?: number }>; // Product line items
+  products?: Array<{
+    product_id?: string;
+    productId?: string;
+    quantity: number;
+    unitPrice?: number;
+    totalPrice?: number;
+    productVariantId?: string | null;
+  }>; // Product line items
   package_id?: string;
   tip_amount: number;
   travel_fee?: number; // Travel fee for at-home services only
   special_requests?: string;
+  house_call_instructions?: string | null;
   client_info?: ClientInfo;
   payment_method?: 'card' | 'cash' | 'giftcard' | 'paypal';
   payment_option?: 'deposit' | 'full';
@@ -357,6 +368,11 @@ export interface Booking {
   customer_id: string;
   provider_id: string;
   status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show';
+  /**
+   * Raw DB workflow status from API (pending = needs provider confirmation).
+   * `status` may be mapped to provider-facing values (e.g. pending+confirmed → booked).
+   */
+  db_status?: "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
   location_type: 'at_home' | 'at_salon';
   location_id: string | null;
   address: BookingAddress | null;
@@ -369,9 +385,34 @@ export interface Booking {
   package_id: string | null;
   subtotal: number;
   tip_amount: number;
+  travel_fee: number;
+  discount_amount: number;
+  discount_code?: string | null;
+  discount_reason?: string | null;
+  promotion_discount_amount: number;
+  membership_discount_amount: number;
+  membership_discount_percentage: number;
+  loyalty_discount_amount: number;
+  loyalty_points_redeemed: number;
+  gift_card_amount: number;
+  wallet_amount: number;
+  tax_amount: number;
+  tax_rate: number;
+  platform_service_fee: number;
+  service_fee_amount: number;
+  service_fee_percentage: number;
   total_amount: number;
+  total_paid: number;
+  total_refunded: number;
+  cancellation_fee: number;
   currency: string;
-  payment_status: 'pending' | 'paid' | 'failed' | 'refunded' | 'partially_refunded';
+  payment_status:
+    | 'pending'
+    | 'paid'
+    | 'partially_paid'
+    | 'failed'
+    | 'refunded'
+    | 'partially_refunded';
   house_call_instructions?: string | null; // Separate from special_requests for house calls
   payment_method: string | null;
   special_requests: string | null;
@@ -398,6 +439,10 @@ export interface Booking {
   /** Group booking ref (e.g. GB-xxx) when this booking is part of a group */
   is_group_booking?: boolean;
   group_booking_ref?: string | null;
+  /** Resolved package title when `package_id` is set */
+  package_name?: string | null;
+  /** Provider summary, populated in detail views */
+  provider?: { id?: string; business_name?: string; slug?: string; phone?: string; email?: string } | null;
 }
 
 export interface BookingAddress {

@@ -1,8 +1,14 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection, successResponse, notFoundResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 
 /**
  * POST /api/admin/bookings/[id]/refund
@@ -20,6 +26,7 @@ export async function POST(
     if (!user) throw new Error("Authentication required");
     const { id } = await params;
     const supabase = getSupabaseAdmin();
+    if (!supabase) throw new Error("Admin client unavailable");
     const body = await request.json();
 
     const { amount, reason } = body;
@@ -28,17 +35,22 @@ export async function POST(
       return errorResponse("Invalid refund amount", "VALIDATION_ERROR", 400);
     }
 
-    const { data: booking } = await supabase
-      .from("bookings")
-      .select("id, total_amount, total_paid, total_refunded, customer_id, booking_number, currency, payment_status")
-      .eq("id", id)
-      .single();
+    const tenantId = await resolveAdminApiTenantId(request);
+    const loaded = await fetchBookingInAdminTenant(
+      supabase,
+      id,
+      tenantId,
+      "id, total_amount, total_paid, total_refunded, customer_id, booking_number, currency, payment_status, tenant_id, provider_id"
+    );
+    if ("error" in loaded) return loaded.error;
 
-    if (!booking) {
-      return notFoundResponse("Booking not found");
-    }
+    const effectiveTenantId =
+      (loaded.booking as { tenant_id?: string | null }).tenant_id ?? tenantId;
+    const tenantRegion = effectiveTenantId ? await getTenantRegionConfig(effectiveTenantId) : null;
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    const adminRefundLocale = getTenantLocaleTagFromRegionConfig(tenantRegion);
 
-    const b = booking as {
+    const b = loaded.booking as {
       total_amount: number;
       total_paid?: number;
       total_refunded?: number;
@@ -46,6 +58,7 @@ export async function POST(
       customer_id: string;
       booking_number: string;
       currency?: string;
+      provider_id?: string | null;
     };
 
     if (b.payment_status !== "paid" && b.payment_status !== "partially_paid") {
@@ -54,22 +67,33 @@ export async function POST(
 
     const availableForRefund = (b.total_paid ?? 0) - (b.total_refunded ?? 0);
     if (amount > availableForRefund) {
+      const displayCurrency = b.currency || lastResortCurrency;
+      const fmtAvail = new Intl.NumberFormat(adminRefundLocale, {
+        style: "currency",
+        currency: displayCurrency,
+      }).format(availableForRefund);
       return errorResponse(
-        `Refund amount exceeds available refund amount (R${availableForRefund.toFixed(2)})`,
+        `Refund amount exceeds available refund amount (${fmtAvail})`,
         "VALIDATION_ERROR",
         400
       );
     }
+
+    const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+      tenant_id: (loaded.booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+      provider_id: b.provider_id ?? null,
+    });
 
     // 1. Credit customer wallet (refunds always go to wallet)
     const rpc = supabase.rpc.bind(supabase) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
     const { error: walletError } = await rpc("wallet_credit_admin", {
       p_user_id: b.customer_id,
       p_amount: amount,
-      p_currency: b.currency || "ZAR",
+      p_currency: b.currency || lastResortCurrency,
       p_description: `Refund for booking ${b.booking_number}: ${reason || "Admin refund"}`,
       p_reference_id: id,
       p_reference_type: "booking_refund",
+      p_tenant_id: financeTenantId,
     });
 
     if (walletError) {
@@ -94,6 +118,19 @@ export async function POST(
     if (refundError || !refund) {
       return handleApiError(refundError, "Failed to create refund");
     }
+
+    await supabase.from("finance_transactions").insert({
+      tenant_id: financeTenantId,
+      booking_id: id,
+      provider_id: b.provider_id ?? null,
+      transaction_type: "refund",
+      amount: -amount,
+      fees: 0,
+      commission: 0,
+      net: -amount,
+      description: `Refund for booking ${b.booking_number}: ${reason || "Admin refund"}`,
+      created_at: new Date().toISOString(),
+    });
 
     await writeAuditLog({
       actor_user_id: user.id,
@@ -120,7 +157,7 @@ export async function POST(
         b.customer_id,
         {
           title: "Refund added to wallet",
-          message: `A refund of ${b.currency || "ZAR"} ${amount.toFixed(2)} for booking ${b.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
+          message: `A refund of ${b.currency || lastResortCurrency} ${amount.toFixed(2)} for booking ${b.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
           data: { type: "refund_processed", booking_id: id, refund_id: (refund as { id: string }).id },
           url: "/account-settings/wallet",
         },

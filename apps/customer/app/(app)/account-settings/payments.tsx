@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -6,11 +6,27 @@ import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { getTenantLocaleTag } from "@/lib/locale";
+import { formatMoney } from "@beautonomi/utils";
 
-const SAVE_CARD_INFO =
-  "We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.";
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString(getTenantLocaleTag());
+}
 
 export default function PaymentsScreen() {
+  const { bundle } = useConfigBundle();
+  const tenantCur =
+    bundle?.meta?.tenant_region?.default_currency?.trim() ?? getTenantDefaultCurrency();
+  const saveCardInfo = useMemo(() => {
+    const example = formatMoney(1, tenantCur);
+    return `We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. ${example}) may be placed and reversed—this confirms your card for future use.`;
+  }, [tenantCur]);
+
   const [methods, setMethods] = useState<any[]>([]);
   const [giftCards, setGiftCards] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,7 +68,11 @@ export default function PaymentsScreen() {
         style: "destructive",
         onPress: async () => {
           const res = await api.fetch<any>("/api/me/payment-methods", { method: "DELETE", body: { id } });
-          if (!res.error) load();
+          if (res.error) {
+            Alert.alert("Error", res.error.message ?? "Could not remove card. Please try again.");
+          } else {
+            load();
+          }
         },
       },
     ]);
@@ -88,7 +108,7 @@ export default function PaymentsScreen() {
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Payment methods</Text>
             <TouchableOpacity
-              onPress={() => Alert.alert("Save card", SAVE_CARD_INFO)}
+              onPress={() => Alert.alert("Save card", saveCardInfo)}
               accessibilityLabel="Info about saving card"
               style={{ padding: 4 }}
             >
@@ -96,9 +116,7 @@ export default function PaymentsScreen() {
             </TouchableOpacity>
           </View>
           <View style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 12, marginBottom: 12 }}>
-            <Text style={{ fontSize: 12, color: Colors.gray[600] }}>
-              We&apos;ll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.
-            </Text>
+            <Text style={{ fontSize: 12, color: Colors.gray[600] }}>{saveCardInfo}</Text>
           </View>
           {methods.length === 0 ? (
             <Text style={{ color: Colors.gray[500], paddingVertical: 16 }}>No payment methods saved</Text>
@@ -144,7 +162,7 @@ export default function PaymentsScreen() {
                 </Text>
                 <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
                   Balance: {g.currency} {(g.balance ?? 0).toFixed(2)}
-                  {g.expires_at ? ` · Expires ${new Date(g.expires_at).toLocaleDateString()}` : ""}
+                  {g.expires_at ? ` · Expires ${formatDateSafe(g.expires_at)}` : ""}
                 </Text>
               </View>
             ))

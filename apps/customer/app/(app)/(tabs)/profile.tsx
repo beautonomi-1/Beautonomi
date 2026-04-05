@@ -19,11 +19,21 @@ import { useNotifications } from "@/providers/NotificationsContext";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors, shadow } from "@/constants/colors";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, IOS_APP_STORE_ID } from "@/config/public-env";
 import { api } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
 
 type IconName = keyof typeof Ionicons.glyphMap;
+
+function formatMemberSince(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  return parsed.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+}
 
 export default function ProfileScreen() {
   useScreenTracking("Profile");
@@ -91,7 +101,9 @@ export default function ProfileScreen() {
         reviewCount: Number(rating?.review_count) || 0,
         avatarUrl: avatarFromProfile ?? comp?.avatar_url ?? null,
       });
-    } catch {}
+    } catch (err) {
+      console.warn("[Profile] fetchProfileData error:", err);
+    }
   }, [user]);
 
   useEffect(() => {
@@ -138,12 +150,7 @@ export default function ProfileScreen() {
   const checklistItems = profileData?.checklistItems ?? [];
   const loyaltyPoints = profileData?.loyaltyPoints ?? 0;
 
-  const memberSince = user.created_at
-    ? new Date(user.created_at).toLocaleDateString("en-US", {
-        month: "long",
-        year: "numeric",
-      })
-    : null;
+  const memberSince = formatMemberSince(user.created_at);
 
   const getCompletionItemRoute = (id: string): string | null => {
     switch (id) {
@@ -604,7 +611,8 @@ export default function ProfileScreen() {
             icon="chatbubble-ellipses-outline"
             label="Give us feedback"
             onPress={() => {
-              const iosAppId = (Constants.expoConfig?.extra as { iosAppId?: string })?.iosAppId;
+              const iosAppId =
+                IOS_APP_STORE_ID && IOS_APP_STORE_ID !== "0000000000" ? IOS_APP_STORE_ID : "";
               if (Platform.OS === "ios" && iosAppId) {
                 Linking.openURL(`https://apps.apple.com/app/id${iosAppId}?action=write-review`).catch(() => {
                   Linking.openURL(`https://apps.apple.com/app/id${iosAppId}`).catch(() => {});
@@ -612,7 +620,13 @@ export default function ProfileScreen() {
               } else if (Platform.OS === "android") {
                 Linking.openURL("https://play.google.com/store/apps/details?id=com.beautonomi").catch(() => {});
               } else {
-                router.push({ pathname: "/(app)/in-app-browser", params: { url: encodeURIComponent(`${APP_URL}/contact`), title: "Contact" } });
+                router.push({
+                  pathname: "/(app)/in-app-browser",
+                  params: {
+                    url: encodeURIComponent(`${APP_URL}/help-center?topic=feedback`),
+                    title: "Feedback",
+                  },
+                });
               }
             }}
           />

@@ -3,11 +3,29 @@
  */
 
 import * as amplitude from "@amplitude/analytics-browser";
+import { sessionReplayPlugin } from "@amplitude/plugin-session-replay-browser";
 import { AmplitudeConfig } from "./types";
 import { PluginPipeline, PluginContext } from "./plugins";
 
 let pluginPipeline: PluginPipeline | null = null;
 let isInitialized = false;
+/** Last Session Replay choice used at init; mismatch triggers reset + re-init (e.g. login). */
+let lastEnableSessionReplay: boolean | undefined = undefined;
+
+/**
+ * Reset browser Amplitude SDK and local pipeline state so init can run again
+ * (e.g. after switching anonymous → authenticated session replay policy).
+ */
+export function hardResetAmplitudeBrowser(): void {
+  try {
+    amplitude.reset();
+  } catch {
+    /* ignore */
+  }
+  pluginPipeline = null;
+  isInitialized = false;
+  lastEnableSessionReplay = undefined;
+}
 
 export interface AmplitudeClient {
   track: (eventName: string, eventProperties?: Record<string, any>) => void;
@@ -17,15 +35,29 @@ export interface AmplitudeClient {
   isReady: () => boolean;
 }
 
+export type InitAmplitudeOptions = {
+  /**
+   * When false, Session Replay is not loaded (anonymous sessions / no consent).
+   * When true, replay uses admin-configured sampling_rate (default 0.01).
+   */
+  enableSessionReplay?: boolean;
+};
+
 /**
  * Initialize Amplitude SDK with config
  */
 export async function initAmplitude(
   config: AmplitudeConfig,
-  context: PluginContext
+  context: PluginContext,
+  options?: InitAmplitudeOptions
 ): Promise<AmplitudeClient | null> {
+  const enableSessionReplay = options?.enableSessionReplay ?? true;
+
   if (isInitialized && pluginPipeline) {
-    return createClient(pluginPipeline);
+    if (lastEnableSessionReplay === enableSessionReplay) {
+      return createClient(pluginPipeline);
+    }
+    hardResetAmplitudeBrowser();
   }
 
   if (!config.api_key_public) {
@@ -34,20 +66,26 @@ export async function initAmplitude(
   }
 
   try {
-    // Initialize Amplitude SDK
     amplitude.init(config.api_key_public, {
       defaultTracking: {
-        pageViews: false, // We'll track page views manually
-        sessions: false, // We'll track sessions manually
-        formInteractions: false,
-        fileDownloads: false,
+        pageViews: true,
+        sessions: true,
+        formInteractions: true,
+        fileDownloads: true,
       },
     });
 
-    // Create plugin pipeline
-    pluginPipeline = new PluginPipeline(context);
+    if (enableSessionReplay) {
+      const sampleRate =
+        config.sampling_rate != null && config.sampling_rate >= 0 && config.sampling_rate <= 1
+          ? config.sampling_rate
+          : 0.01;
+      amplitude.add(sessionReplayPlugin({ sampleRate }));
+    }
 
+    pluginPipeline = new PluginPipeline(context);
     isInitialized = true;
+    lastEnableSessionReplay = enableSessionReplay;
 
     return createClient(pluginPipeline);
   } catch (error) {

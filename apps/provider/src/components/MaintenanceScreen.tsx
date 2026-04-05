@@ -13,7 +13,7 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
 
 export interface MaintenanceConfig {
   enabled: boolean;
@@ -85,11 +85,14 @@ export default function MaintenanceScreen({
     setError(null);
     setSubmitting(true);
     try {
-      const res = await fetch(`${baseUrl}/api/public/maintenance-notify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), scope }),
-      });
+      const res = await fetch(
+        `${baseUrl}/api/public/maintenance-notify`,
+        withWebApiTenantHeaders({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim(), scope }),
+        }),
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data?.error ?? "Something went wrong. Please try again.");

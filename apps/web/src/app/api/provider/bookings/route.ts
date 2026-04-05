@@ -6,9 +6,19 @@ import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkBookingLimitsFeatureAccess } from "@/lib/subscriptions/feature-access";
 import type { Booking } from "@/types/beautonomi";
 import { determineAppointmentStatusFromDB } from "@/lib/provider-portal/appointment-settings";
+import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 import { mapStatusToProvider } from "@/lib/utils/booking-status";
 import { checkBookingConflict, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  createBookingsReadCacheKey,
+  getCachedProviderBookingsList,
+  invalidateProviderBookingsReadCache,
+  setCachedProviderBookingsList,
+} from "@/lib/bookings/provider-bookings-read-cache";
 
 // Map frontend status to database enum values
 // Frontend: booked, started, completed, cancelled, no_show
@@ -56,7 +66,7 @@ async function waitForUserProfileRow(supabaseAdmin: any, userId: string) {
  * 
  * Get provider's bookings with filters
  */
-export async function GET(request: NextRequest) {
+async function handleGetProviderBookings(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
 
@@ -74,6 +84,18 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
+    const cacheKey = createBookingsReadCacheKey(providerId, new URL(request.url).search);
+    const cachedList = getCachedProviderBookingsList(cacheKey);
+    if (cachedList) {
+      const cachedResponse = successResponse(cachedList as Booking[]);
+      cachedResponse.headers.set("Cache-Control", "private, max-age=5, stale-while-revalidate=10");
+      return cachedResponse;
+    }
+
     let query = supabaseAdmin
       .from("bookings")
       .select(
@@ -83,6 +105,7 @@ export async function GET(request: NextRequest) {
         customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
         locations:provider_locations(id, name, address_line1, city),
         group_bookings!bookings_group_booking_id_fkey(ref_number),
+        service_packages!bookings_package_id_fkey(id, name),
         booking_services(
           id,
           offering_id,
@@ -154,6 +177,14 @@ export async function GET(request: NextRequest) {
       query = query.eq("location_id", locationId);
     }
 
+    const limitParam = searchParams.get("limit");
+    if (limitParam) {
+      const parsedLimit = Number(limitParam);
+      if (Number.isFinite(parsedLimit) && parsedLimit > 0) {
+        query = query.limit(Math.min(parsedLimit, 1000));
+      }
+    }
+
     // Note: team_member_id filtering is done client-side in the API client
     // because staff_id is stored in booking_services (child table), not directly in bookings
 
@@ -177,7 +208,7 @@ export async function GET(request: NextRequest) {
         service_name: bs.offering?.title || bs.offerings?.title || "Service",
         duration_minutes: bs.duration_minutes || bs.offering?.duration_minutes || 60,
         price: bs.price || bs.offering?.price || 0,
-        currency: bs.currency || "ZAR",
+        currency: bs.currency || lastResortCurrency,
         scheduled_start_at: bs.scheduled_start_at,
         scheduled_end_at: bs.scheduled_end_at,
         guest_name: bs.guest_name || null,
@@ -202,9 +233,11 @@ export async function GET(request: NextRequest) {
         version: booking.version || 0,
         provider_id: booking.provider_id,
         status: mapStatusFromDatabase(booking.status),
+        /** DB enum so clients can style pending vs confirmed even when `status` is mapped to `booked`. */
+        db_status: booking.status,
         location_type: booking.location_type,
         location_id: booking.location_id,
-        // Construct address object from individual columns
+        // Construct address object (include at-home / house-call detail fields for calendar + list UIs)
         address: booking.address_line1 ? {
           line1: booking.address_line1,
           line2: booking.address_line2,
@@ -212,7 +245,18 @@ export async function GET(request: NextRequest) {
           state: booking.address_state,
           country: booking.address_country,
           postal_code: booking.address_postal_code,
+          latitude: booking.address_latitude,
+          longitude: booking.address_longitude,
+          apartment_unit: booking.apartment_unit,
+          building_name: booking.building_name,
+          floor_number: booking.floor_number,
+          access_codes: booking.access_codes
+            ? (typeof booking.access_codes === "string" ? JSON.parse(booking.access_codes) : booking.access_codes)
+            : null,
+          parking_instructions: booking.parking_instructions,
+          location_landmarks: booking.location_landmarks,
         } : null,
+        house_call_instructions: booking.house_call_instructions || null,
         scheduled_at: booking.scheduled_at,
         completed_at: booking.completed_at || null,
         cancelled_at: booking.cancelled_at || null,
@@ -221,6 +265,11 @@ export async function GET(request: NextRequest) {
         products: products,
         addons: [], // Addons would need to be fetched from booking_addons table
         package_id: booking.package_id || null,
+        package_name: (() => {
+          const sp = (booking as { service_packages?: { name?: string } | Array<{ name?: string }> }).service_packages;
+          const one = Array.isArray(sp) ? sp[0] : sp;
+          return typeof one?.name === "string" ? one.name : null;
+        })(),
         subtotal: booking.subtotal || 0,
         discount_amount: booking.discount_amount || 0,
         discount_code: booking.discount_code || null,
@@ -233,7 +282,7 @@ export async function GET(request: NextRequest) {
         total_amount: booking.total_amount || 0,
         total_paid: booking.total_paid || 0,
         total_refunded: booking.total_refunded || 0,
-        currency: booking.currency || "ZAR",
+        currency: booking.currency || lastResortCurrency,
         payment_status: booking.payment_status,
         payment_method: null, // payment_method_id is the actual column
         special_requests: booking.special_requests || null,
@@ -259,7 +308,9 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    const response = successResponse(transformedBookings as Booking[]);
+    setCachedProviderBookingsList(cacheKey, transformedBookings as unknown as Booking[]);
+
+    const response = successResponse(transformedBookings as unknown as Booking[]);
     
     // Add cache headers for faster subsequent requests (5 seconds)
     response.headers.set('Cache-Control', 'private, max-age=5, stale-while-revalidate=10');
@@ -276,7 +327,7 @@ export async function GET(request: NextRequest) {
  * 
  * Create a new booking/appointment
  */
-export async function POST(request: NextRequest) {
+async function handleCreateProviderBooking(request: NextRequest) {
   try {
     // Check permission to create appointments
     const permissionCheck = await requirePermission('create_appointments', request);
@@ -294,6 +345,12 @@ export async function POST(request: NextRequest) {
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
+
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
+    invalidateProviderBookingsReadCache(providerId);
 
     // Check booking limits
     const bookingAccess = await checkBookingLimitsFeatureAccess(providerId);
@@ -505,6 +562,22 @@ export async function POST(request: NextRequest) {
     const serviceFeeAmount = isWalkIn ? 0 : (body.service_fee_amount || 0);
     const serviceFeePercentage = isWalkIn ? 0 : (body.service_fee_percentage || 0);
 
+    const numOrNull = (v: unknown): number | null => {
+      if (v == null || v === "") return null;
+      const n = typeof v === "number" ? v : Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const bodyLat = numOrNull(
+      (body as { address_latitude?: unknown }).address_latitude ??
+        (body as { address?: { latitude?: unknown; lat?: unknown } }).address?.latitude ??
+        (body as { address?: { lat?: unknown } }).address?.lat,
+    );
+    const bodyLng = numOrNull(
+      (body as { address_longitude?: unknown }).address_longitude ??
+        (body as { address?: { longitude?: unknown; lng?: unknown } }).address?.longitude ??
+        (body as { address?: { lng?: unknown } }).address?.lng,
+    );
+
     // Prepare booking data - only include columns that exist in the bookings table
     // Note: services and addons are stored in separate tables (booking_services, booking_addons)
     const bookingData: any = {
@@ -522,6 +595,8 @@ export async function POST(request: NextRequest) {
       address_state: body.address?.state || body.address_state || null,
       address_country: body.address?.country || body.address_country || null,
       address_postal_code: body.address?.postal_code || body.address_postal_code || null,
+      address_latitude: bodyLat,
+      address_longitude: bodyLng,
       package_id: body.package_id || null,
       subtotal: body.subtotal || 0,
       discount_amount: body.discount_amount || 0,
@@ -531,7 +606,7 @@ export async function POST(request: NextRequest) {
       tax_rate: effectiveTaxRate, // Store the effective tax rate
       tip_amount: body.tip_amount || 0,
       total_amount: body.total_amount || body.subtotal || 0,
-      currency: body.currency || "ZAR",
+      currency: body.currency || lastResortCurrency,
       status: mapStatusToDatabase(finalStatus),
       payment_status: "pending",
       special_requests: body.special_requests || null,
@@ -586,13 +661,14 @@ export async function POST(request: NextRequest) {
     let booking: any;
 
     if (useRpcPath) {
-      // Conflict check before RPC (same slot as client/portal booking)
+      // Conflict check before RPC (same slot as client/portal booking).
+      // endAt already includes trailing bufferMinutes above; checkBookingConflict() adds buffer again — pass 0.
       const conflictResult = await checkBookingConflict(
         supabaseAdmin as any,
         staffId,
         startAt,
         endAt,
-        bufferMinutes
+        0
       );
       if (conflictResult.hasConflict) {
         return errorResponse(
@@ -617,7 +693,7 @@ export async function POST(request: NextRequest) {
                   staff_id: service.staffId || service.staff_id || staffId,
                   duration_minutes: duration,
                   price: service.price ?? 0,
-                  currency: service.currency || "ZAR",
+                  currency: service.currency || lastResortCurrency,
                   scheduled_start_at: start.toISOString(),
                   scheduled_end_at: end.toISOString(),
                 };
@@ -633,7 +709,7 @@ export async function POST(request: NextRequest) {
                   staff_id: staffId,
                   duration_minutes: duration,
                   price: body.price ?? 0,
-                  currency: body.currency || "ZAR",
+                  currency: body.currency || lastResortCurrency,
                   scheduled_start_at: start.toISOString(),
                   scheduled_end_at: end.toISOString(),
                 },
@@ -738,7 +814,7 @@ export async function POST(request: NextRequest) {
             staff_id: service.staffId || service.staff_id || body.team_member_id || body.staff_id || null,
             duration_minutes: duration,
             price: service.price || 0,
-            currency: service.currency || "ZAR",
+            currency: service.currency || lastResortCurrency,
             scheduled_start_at: start.toISOString(),
             scheduled_end_at: end.toISOString(),
           };
@@ -760,7 +836,7 @@ export async function POST(request: NextRequest) {
           staff_id: body.team_member_id || body.staff_id || null,
           duration_minutes: duration,
           price: body.price || 0,
-          currency: body.currency || "ZAR",
+          currency: body.currency || lastResortCurrency,
           scheduled_start_at: start.toISOString(),
           scheduled_end_at: end.toISOString(),
         };
@@ -787,7 +863,7 @@ export async function POST(request: NextRequest) {
           addon_id: addonId,
           quantity: 1,
           price: priceByAddonId.get(addonId) ?? 0,
-          currency: body.currency || "ZAR",
+          currency: body.currency || lastResortCurrency,
         }));
         const { error: baError } = await supabaseAdmin
           .from("booking_addons")
@@ -823,8 +899,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Transform to match Booking type
-    const transformedBooking: Booking = {
+    // Transform to match Booking type (partial row → full Booking shape at runtime)
+    const transformedBooking = {
       id: booking.id,
       booking_number: booking.booking_number,
       customer_id: booking.customer_id,
@@ -852,36 +928,45 @@ export async function POST(request: NextRequest) {
       subtotal: booking.subtotal || 0,
       tip_amount: booking.tip_amount || 0,
       total_amount: booking.total_amount || 0,
-      currency: booking.currency || "ZAR",
+      currency: booking.currency || lastResortCurrency,
       payment_status: booking.payment_status,
       payment_method: null, // payment_method is not a column, it's payment_method_id
       special_requests: booking.special_requests || null,
       loyalty_points_earned: booking.loyalty_points_earned || 0,
       created_at: booking.created_at,
       updated_at: booking.updated_at,
-    };
+    } as unknown as Booking;
 
     // Notify customer that provider created a booking for them
-    try {
-      await supabaseAdmin.from("notifications").insert({
+    void import("@/lib/notifications/insert-notification").then(({ insertNotification }) =>
+      insertNotification({
         user_id: customerId,
         type: "new_appointment",
         title: "New Appointment Created",
         message: `An appointment has been created for you. Booking ${booking.booking_number || booking.id.slice(0, 8)}.`,
-        metadata: {
+        data: {
           booking_id: booking.id,
           booking_number: booking.booking_number,
           provider_id: providerId,
         },
-        link: `/account-settings/bookings/${booking.id}`,
-      });
-    } catch (notifError) {
-      // Log but don't fail the request
-      console.warn("Failed to create customer notification for new booking:", notifError);
-    }
+        action_url: `/account-settings/bookings/${booking.id}`,
+      })
+    );
+
+    void import("@/lib/subscriptions/subscription-limit-notifications")
+      .then((m) => m.maybeNotifyProviderSubscriptionLimits(providerId))
+      .catch((e) => console.warn("Subscription usage notification:", e));
 
     return successResponse(transformedBooking);
   } catch (error) {
     return handleApiError(error, "Failed to create booking");
   }
+}
+
+export async function GET(request: NextRequest) {
+  return withRouteMetrics(request, "/api/provider/bookings", "GET", () => handleGetProviderBookings(request));
+}
+
+export async function POST(request: NextRequest) {
+  return withRouteMetrics(request, "/api/provider/bookings", "POST", () => handleCreateProviderBooking(request));
 }

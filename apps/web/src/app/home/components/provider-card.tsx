@@ -2,7 +2,7 @@
 import React from "react";
 import Image from "next/image";
 import { FaStar } from "react-icons/fa";
-import { Heart, Check } from "lucide-react";
+import { Heart, Check, MapPin } from "lucide-react";
 import Link from "next/link";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
@@ -148,7 +148,6 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
     <Link
       href={`/partner-profile?slug=${encodeURIComponent(provider.slug)}`}
       className="block"
-      prefetch={false}
       aria-label={`View ${businessName}, ${ratingText}, ${reviewCountText}`}
     >
       <article className="w-full cursor-pointer group" aria-labelledby={`provider-name-${provider.id}`}>
@@ -323,13 +322,21 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
           )}
 
           {provider.distance_km != null && (
-            <p className="text-xs md:text-sm text-gray-500 whitespace-nowrap flex-shrink-0 mt-1" aria-label={`${provider.distance_km.toFixed(0)} kilometers away`}>
-              {provider.distance_km.toFixed(0)} KM Away
+            <p
+              className="mt-1 inline-flex items-center gap-1.5 whitespace-nowrap text-xs md:text-sm font-medium text-gray-600"
+              aria-label={`${provider.distance_km.toFixed(1)} kilometers away`}
+            >
+              <MapPin className="h-3.5 w-3.5 md:h-4 md:w-4 text-gray-500" aria-hidden />
+              {provider.distance_km.toFixed(1)} km away
             </p>
           )}
         </div>
       </article>
-      <LoginModal open={isLoginModalOpen} setOpen={setIsLoginModalOpen} />
+      <LoginModal
+        open={isLoginModalOpen}
+        setOpen={setIsLoginModalOpen}
+        initialMode="login"
+      />
     </Link>
   );
 };

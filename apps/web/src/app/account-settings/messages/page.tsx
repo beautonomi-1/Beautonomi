@@ -84,11 +84,12 @@ export default function Component() {
     }
   }, [selectedConversation, showChat]);
 
-  // Handle query parameters: provider and conversation
+  // Handle query parameters: provider, conversation, and bookingId
   useEffect(() => {
     const handleQueryParams = async () => {
       const providerId = searchParams.get("provider");
       const conversationId = searchParams.get("conversation");
+      const bookingId = searchParams.get("bookingId");
 
       // If no query params, reset the flag
       if (!providerId && !conversationId) {
@@ -140,14 +141,14 @@ export default function Component() {
           return;
         }
         hasHandledQueryParams.current = paramsKey;
-        await createOrFindConversation(providerId);
+        await createOrFindConversation(providerId, bookingId ?? undefined);
       }
     };
 
     handleQueryParams();
   }, [searchParams, conversations, isLoadingConversations, currentUserId, isCreatingConversation, router, selectedConversation]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional: createOrFindConversation is stable
 
-  const createOrFindConversation = async (providerId: string) => {
+  const createOrFindConversation = async (providerId: string, bookingId?: string) => {
     if (isCreatingConversation) return;
     
     try {
@@ -164,10 +165,10 @@ export default function Component() {
         return;
       }
 
-      // Create new conversation
+      // Create new conversation, linking to the booking if provided
       const response = await fetcher.post<{ data: { id: string; created: boolean } }>(
         "/api/me/conversations/create",
-        { provider_id: providerId, booking_id: null },
+        { provider_id: providerId, booking_id: bookingId ?? null },
         { timeoutMs: 10000 }
       );
 

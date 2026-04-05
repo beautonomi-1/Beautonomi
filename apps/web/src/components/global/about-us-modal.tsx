@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import PlatformLogo from "../platform/PlatformLogo";
 import { fetcher } from "@/lib/http/fetcher";
+import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 
 interface AboutUsContent {
   section_key: string;
@@ -89,7 +90,7 @@ export default function AboutUsModal({ isOpen, onClose }: AboutUsModalProps) {
                       <li key={item.section_key}>
                         {item.title}:{" "}
                         {isHelpCenter ? (
-                          <a href="/help" className="text-[#FF0077] hover:underline">
+                          <a href={PLATFORM_CONTACT_HREF} className="text-[#FF0077] hover:underline">
                             {item.content}
                           </a>
                         ) : (

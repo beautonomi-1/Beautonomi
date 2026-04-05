@@ -29,6 +29,8 @@ interface MangomintStatusLegendProps {
   variant?: "inline" | "popover" | "collapsible";
   showKinds?: boolean;
   showBlocks?: boolean;
+  /** Staff time off / day off vs manual closed periods (availability blocks). */
+  showAvailabilityOverlays?: boolean;
   compact?: boolean;
 }
 
@@ -43,6 +45,7 @@ export function MangomintStatusLegend({
   variant = "inline",
   showKinds = true,
   showBlocks = true,
+  showAvailabilityOverlays = false,
   compact = false,
 }: MangomintStatusLegendProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -177,6 +180,88 @@ export function MangomintStatusLegend({
                   compact ? "text-[10px]" : "text-xs"
                 )}>
                   Travel Block
+                </span>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {showAvailabilityOverlays && (
+        <>
+          <div className="border-t border-border" />
+          <div>
+            <h4
+              className={cn(
+                "font-medium text-muted-foreground mb-2",
+                compact ? "text-[10px] uppercase tracking-wide" : "text-xs",
+              )}
+            >
+              Closed &amp; time off
+            </h4>
+            <p
+              className={cn(
+                "text-muted-foreground mb-2",
+                compact ? "text-[10px] leading-snug" : "text-[11px] leading-snug",
+              )}
+            >
+              Same rules customers see when booking: staff PTO blocks that person; closed periods apply per location or everyone.
+            </p>
+            <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1")}>
+              <div className="flex items-center gap-2">
+                <div
+                  className={cn("rounded-sm flex-shrink-0", compact ? "w-3 h-3" : "w-4 h-4")}
+                  style={{
+                    backgroundColor: "#EDE9FE",
+                    border: "1px solid #8B5CF6",
+                  }}
+                />
+                <span
+                  className={cn("text-muted-foreground", compact ? "text-[10px]" : "text-xs")}
+                >
+                  Staff time off / day off
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div
+                  className={cn("rounded-sm flex-shrink-0", compact ? "w-3 h-3" : "w-4 h-4")}
+                  style={{
+                    backgroundColor: "#E5E7EB",
+                    border: "1px solid #9CA3AF",
+                  }}
+                />
+                <span
+                  className={cn("text-muted-foreground", compact ? "text-[10px]" : "text-xs")}
+                >
+                  Unavailable (closed period)
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div
+                  className={cn("rounded-sm flex-shrink-0", compact ? "w-3 h-3" : "w-4 h-4")}
+                  style={{
+                    backgroundColor: "#FEF3C7",
+                    border: "1px solid #F59E0B",
+                  }}
+                />
+                <span
+                  className={cn("text-muted-foreground", compact ? "text-[10px]" : "text-xs")}
+                >
+                  Break
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div
+                  className={cn("rounded-sm flex-shrink-0", compact ? "w-3 h-3" : "w-4 h-4")}
+                  style={{
+                    backgroundColor: "#DBEAFE",
+                    border: "1px solid #3B82F6",
+                  }}
+                />
+                <span
+                  className={cn("text-muted-foreground", compact ? "text-[10px]" : "text-xs")}
+                >
+                  Maintenance
                 </span>
               </div>
             </div>

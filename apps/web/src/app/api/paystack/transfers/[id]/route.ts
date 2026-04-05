@@ -5,6 +5,66 @@ import {
   finalizeTransfer,
   verifyTransfer,
 } from "@/lib/payments/paystack-complete";
+import { getSupabaseServer } from "@/lib/supabase/server";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+
+/**
+ * When a payout row links this Paystack transfer id/code, ensure provider is on the Host tenant.
+ */
+async function tenantGuardForTransfer(
+  request: Request,
+  tenantId: string,
+  id: string,
+): Promise<Response | null> {
+  const supabase = await getSupabaseServer(request);
+  const { data: p1 } = await supabase
+    .from("payouts")
+    .select("provider_id")
+    .eq("transfer_code", id)
+    .maybeSingle();
+  let providerId = (p1 as { provider_id?: string } | null)?.provider_id;
+  if (!providerId) {
+    const { data: p2 } = await supabase
+      .from("payouts")
+      .select("provider_id")
+      .eq("payout_provider_transaction_id", id)
+      .maybeSingle();
+    providerId = (p2 as { provider_id?: string } | null)?.provider_id;
+  }
+  if (!providerId && /^\d+$/.test(id)) {
+    const { data: p3 } = await supabase
+      .from("payouts")
+      .select("provider_id")
+      .eq("transfer_id", Number(id))
+      .maybeSingle();
+    providerId = (p3 as { provider_id?: string } | null)?.provider_id;
+  }
+  if (!providerId) return null;
+  const { data: prov } = await supabase
+    .from("providers")
+    .select("tenant_id")
+    .eq("id", providerId)
+    .maybeSingle();
+  if (
+    !resourceTenantMatchesHostTenant(
+      tenantId,
+      (prov as { tenant_id?: string | null } | null)?.tenant_id,
+    )
+  ) {
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          message: "Transfer is not in this market.",
+          code: "TENANT_MISMATCH",
+        },
+      },
+      { status: 403 },
+    );
+  }
+  return null;
+}
 
 /**
  * GET /api/paystack/transfers/[id]
@@ -23,8 +83,12 @@ export async function GET(
       );
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const { id } = await params;
-    const response = await fetchTransfer(id);
+    const tenantBlock = await tenantGuardForTransfer(request, tenantId, id);
+    if (tenantBlock) return tenantBlock;
+
+    const response = await fetchTransfer(id, { tenantId });
 
     return NextResponse.json({
       data: response.data,
@@ -62,7 +126,11 @@ export async function PUT(
       );
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const { id } = await params;
+    const tenantBlock = await tenantGuardForTransfer(request, tenantId, id);
+    if (tenantBlock) return tenantBlock;
+
     const body = await request.json();
     const { otp } = body;
 
@@ -79,7 +147,7 @@ export async function PUT(
       );
     }
 
-    const response = await finalizeTransfer(id, otp);
+    const response = await finalizeTransfer(id, otp, { tenantId });
 
     return NextResponse.json({
       data: response.data,
@@ -117,8 +185,12 @@ export async function POST(
       );
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const { id } = await params;
-    const response = await verifyTransfer(id);
+    const tenantBlock = await tenantGuardForTransfer(request, tenantId, id);
+    if (tenantBlock) return tenantBlock;
+
+    const response = await verifyTransfer(id, { tenantId });
 
     return NextResponse.json({
       data: response.data,

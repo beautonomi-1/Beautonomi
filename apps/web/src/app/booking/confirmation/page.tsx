@@ -10,6 +10,8 @@ import { getGoogleCalendarUrl, getOutlookCalendarUrl, downloadICS } from "@/lib/
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
+import { useRefreshAmplitudeIdentify } from "@/hooks/useAmplitude";
+import { clearBookingFlowStorage } from "@/app/booking/components/booking-flow-persistence";
 
 interface BookingDetails {
   id: string;
@@ -20,8 +22,10 @@ interface BookingDetails {
   total_amount: number;
   currency: string;
   services: Array<{
-    title: string;
-    duration: number;
+    title?: string;
+    offering_name?: string;
+    duration?: number;
+    duration_minutes?: number;
     price: number;
     staff_name?: string;
   }>;
@@ -46,6 +50,8 @@ interface BookingDetails {
     phone: string;
   };
   special_requests?: string;
+  payment_status?: string;
+  payment_provider?: string;
   provider?: {
     business_name: string;
     phone?: string;
@@ -61,6 +67,11 @@ export default function BookingConfirmationPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const referralTracked = useRef(false);
+  const refreshIdentify = useRefreshAmplitudeIdentify("client");
+
+  useEffect(() => {
+    clearBookingFlowStorage();
+  }, []);
 
   useEffect(() => {
     if (!bookingId) {
@@ -70,22 +81,33 @@ export default function BookingConfirmationPage() {
     }
 
     const loadBooking = async () => {
-      try {
-        setIsLoading(true);
-        const response = await fetcher.get<{ data: BookingDetails }>(
-          `/api/me/bookings/${bookingId}`
-        );
-        setBooking(response.data);
-      } catch (err) {
-        const errorMessage =
-          err instanceof FetchError
-            ? err.message
-            : "Failed to load booking details";
-        setError(errorMessage);
-        console.error("Error loading booking:", err);
-      } finally {
-        setIsLoading(false);
+      setIsLoading(true);
+      // Retry up to 3 times with backoff — the booking may have just been written to DB
+      const delays = [0, 1000, 2500];
+      let lastErr: unknown = null;
+      for (const delay of delays) {
+        if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+        try {
+          const response = await fetcher.get<{ data: BookingDetails }>(
+            `/api/me/bookings/${bookingId}`
+          );
+          setBooking(response.data);
+          refreshIdentify();
+          setIsLoading(false);
+          return;
+        } catch (err) {
+          lastErr = err;
+          // Only retry on 404 (booking may not be visible yet); bail immediately on other errors
+          if (err instanceof FetchError && err.status !== 404) break;
+        }
       }
+      const errorMessage =
+        lastErr instanceof FetchError
+          ? lastErr.message
+          : "Failed to load booking details";
+      setError(errorMessage);
+      console.error("Error loading booking:", lastErr);
+      setIsLoading(false);
     };
 
     loadBooking();
@@ -120,7 +142,7 @@ export default function BookingConfirmationPage() {
     }
   };
 
-  const totalDurationMinutes = booking?.services?.reduce((sum, s) => sum + (s.duration || 0), 0) ?? 0;
+  const totalDurationMinutes = booking?.services?.reduce((sum, s) => sum + (s.duration || s.duration_minutes || 0), 0) ?? 0;
   const bookingStart = booking?.selected_datetime ? new Date(booking.selected_datetime) : null;
   const bookingEnd = bookingStart
     ? new Date(bookingStart.getTime() + totalDurationMinutes * 60 * 1000)
@@ -135,7 +157,7 @@ export default function BookingConfirmationPage() {
     bookingStart && bookingEnd
       ? {
           title: `Appointment with ${booking.provider?.business_name || "provider"}`,
-          description: `Booking #${booking.booking_number}\n${booking.services?.map((s) => `${s.title} (${s.duration} min)`).join("\n") ?? ""}`,
+          description: `Booking #${booking.booking_number}\n${booking.services?.map((s) => `${s.title || s.offering_name || "Service"} (${s.duration || s.duration_minutes || 0} min)`).join("\n") ?? ""}`,
           location: locationStr,
           start: bookingStart,
           end: bookingEnd,
@@ -159,16 +181,41 @@ export default function BookingConfirmationPage() {
         <BeautonomiHeader />
         <div className="flex items-center justify-center min-h-[60vh] px-4">
           <div className="text-center max-w-md">
-            <h1 className="text-2xl font-semibold text-gray-900 mb-2">
-              Booking Not Found
-            </h1>
-            <p className="text-gray-600 mb-6">{error || "Unable to load booking details"}</p>
-            <Button
-              onClick={() => router.push("/")}
-              className="bg-primary hover:bg-primary-hover"
-            >
-              Go Home
-            </Button>
+            {/* Show success tick when booking was just created but details couldn't load */}
+            {bookingId ? (
+              <>
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
+                  <CheckCircle className="w-8 h-8 text-green-600" />
+                </div>
+                <h1 className="text-2xl font-semibold text-gray-900 mb-2">
+                  Booking Confirmed!
+                </h1>
+                <p className="text-gray-500 text-sm mb-6">
+                  Your booking was created successfully. We could not load the full details right now — check your email for a confirmation, or view your bookings below.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <Button
+                    onClick={() => router.push(bookingId ? `/account-settings/bookings/${bookingId}` : "/account-settings/bookings")}
+                    className="bg-primary hover:bg-primary-hover"
+                  >
+                    View Booking
+                  </Button>
+                  <Button variant="outline" onClick={() => router.push("/")}>
+                    Go Home
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h1 className="text-2xl font-semibold text-gray-900 mb-2">
+                  Booking Not Found
+                </h1>
+                <p className="text-gray-600 mb-6">{error || "Unable to load booking details"}</p>
+                <Button onClick={() => router.push("/")} className="bg-primary hover:bg-primary-hover">
+                  Go Home
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -256,23 +303,29 @@ export default function BookingConfirmationPage() {
             <div className="border-t pt-6">
               <h3 className="font-semibold text-gray-900 mb-4">Services</h3>
               <div className="space-y-3">
-                {booking.services.map((service, index) => (
-                  <div key={index} className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{service.title}</p>
-                      {service.staff_name && (
-                        <p className="text-sm text-gray-600">with {service.staff_name}</p>
-                      )}
-                      <p className="text-sm text-gray-500">
-                        <Clock className="w-3 h-3 inline mr-1" />
-                        {service.duration} min
+                {booking.services.map((service, index) => {
+                  const serviceTitle = service.title || service.offering_name || "Service";
+                  const serviceDuration = service.duration || service.duration_minutes || 0;
+                  return (
+                    <div key={index} className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">{serviceTitle}</p>
+                        {service.staff_name && (
+                          <p className="text-sm text-gray-600">with {service.staff_name}</p>
+                        )}
+                        {serviceDuration > 0 && (
+                          <p className="text-sm text-gray-500">
+                            <Clock className="w-3 h-3 inline mr-1" />
+                            {serviceDuration} min
+                          </p>
+                        )}
+                      </div>
+                      <p className="font-semibold text-gray-900">
+                        {formatCurrency(service.price, booking.currency)}
                       </p>
                     </div>
-                    <p className="font-semibold text-gray-900">
-                      {formatCurrency(service.price, booking.currency)}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
                 {booking.addons && booking.addons.length > 0 && (
                   <>
                     {booking.addons.map((addon, index) => (
@@ -292,12 +345,28 @@ export default function BookingConfirmationPage() {
 
             {/* Total */}
             <div className="border-t pt-4">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center mb-2">
                 <span className="text-lg font-semibold text-gray-900">Total</span>
                 <span className="text-2xl font-bold text-primary">
                   {formatCurrency(booking.total_amount, booking.currency)}
                 </span>
               </div>
+              {booking.payment_provider === "cash" ? (
+                <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                  <p className="text-sm text-amber-800 font-medium">
+                    {booking.location_type === "at_home"
+                      ? "Payment: Cash on arrival — you'll pay when your provider arrives."
+                      : "Payment: Cash at the salon — you'll pay when you arrive."}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 mt-1">
+                  Payment status:{" "}
+                  <span className={booking.payment_status === "paid" ? "text-green-600 font-medium" : "text-yellow-600 font-medium"}>
+                    {booking.payment_status === "paid" ? "Paid" : "Pending"}
+                  </span>
+                </p>
+              )}
             </div>
 
             {/* Special Requests */}
@@ -384,17 +453,22 @@ export default function BookingConfirmationPage() {
             Share
           </Button>
           <Button
-            onClick={() => router.push("/trips")}
+            onClick={() => router.push(bookingId ? `/account-settings/bookings/${bookingId}` : "/account-settings/bookings")}
             className="flex-1 bg-primary hover:bg-primary-hover touch-target"
           >
-            View My Bookings
+            View Booking
           </Button>
         </div>
 
         {/* Help Text */}
         <div className="mt-8 p-4 bg-blue-50 rounded-lg">
           <p className="text-sm text-blue-900">
-            <strong>What's next?</strong> You'll receive a confirmation email with all the details.
+            <strong>What's next?</strong>{" "}
+            {booking.payment_provider === "cash"
+              ? booking.location_type === "at_home"
+                ? "Your provider will be on their way at the scheduled time. Have your cash ready for when they arrive."
+                : "Simply arrive at the salon at your scheduled time and pay cash at the counter."
+              : "You'll receive a confirmation email with all the details."}{" "}
             If you need to make changes or cancel, please contact the provider directly or visit
             your bookings page.
           </p>

@@ -1,5 +1,7 @@
 "use client";
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import React, { useState, useEffect } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
@@ -22,6 +24,8 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminFilterBar } from "@/components/admin/AdminFilterBar";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { currencySelectLabel } from "@/lib/locale/currency";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface GiftCard {
@@ -38,6 +42,8 @@ interface GiftCard {
 }
 
 export default function AdminGiftCards() {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [giftCards, setGiftCards] = useState<GiftCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -49,7 +55,7 @@ export default function AdminGiftCards() {
   const [formData, setFormData] = useState({
     code: "",
     initial_balance: "",
-    currency: "ZAR",
+    currency: tenantCurrency,
     expires_at: "",
     metadata: "{}",
   });
@@ -85,7 +91,7 @@ export default function AdminGiftCards() {
     setFormData({
       code: "",
       initial_balance: "",
-      currency: "ZAR",
+      currency: tenantCurrency,
       expires_at: "",
       metadata: "{}",
     });
@@ -175,9 +181,9 @@ export default function AdminGiftCards() {
   };
 
   const formatCurrency = (amount: number, currency: string) => {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: currency || "ZAR",
+      currency: currency || tenantCurrency,
     }).format(amount);
   };
 
@@ -416,10 +422,10 @@ export default function AdminGiftCards() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ZAR">ZAR (South African Rand)</SelectItem>
-                      <SelectItem value="USD">USD (US Dollar)</SelectItem>
-                      <SelectItem value="EUR">EUR (Euro)</SelectItem>
-                      <SelectItem value="GBP">GBP (British Pound)</SelectItem>
+                      <SelectItem value={LAST_RESORT_CURRENCY}>{currencySelectLabel(LAST_RESORT_CURRENCY)}</SelectItem>
+                      <SelectItem value="USD">{currencySelectLabel("USD")}</SelectItem>
+                      <SelectItem value="EUR">{currencySelectLabel("EUR")}</SelectItem>
+                      <SelectItem value="GBP">{currencySelectLabel("GBP")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

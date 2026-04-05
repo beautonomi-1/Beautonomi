@@ -1,3 +1,5 @@
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/requireRole";
 import {
@@ -7,6 +9,9 @@ import {
   convertToSmallestUnit,
 } from "@/lib/payments/paystack-complete";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 
 /**
  * GET /api/paystack/transfers
@@ -22,23 +27,51 @@ export async function GET(request: Request) {
       );
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const { searchParams } = new URL(request.url);
     const perPage = searchParams.get("perPage");
     const page = searchParams.get("page");
     const status = searchParams.get("status");
     const providerId = searchParams.get("provider_id");
 
+    if (providerId) {
+      const supabase = await getSupabaseServer(request);
+      const { data: prov } = await supabase
+        .from("providers")
+        .select("tenant_id")
+        .eq("id", providerId)
+        .maybeSingle();
+      if (
+        !resourceTenantMatchesHostTenant(
+          tenantId,
+          (prov as { tenant_id?: string | null } | null)?.tenant_id,
+        )
+      ) {
+        return NextResponse.json(
+          {
+            data: null,
+            error: {
+              message: "Provider is not in this market.",
+              code: "TENANT_MISMATCH",
+            },
+          },
+          { status: 403 },
+        );
+      }
+    }
+
     const response = await listTransfers({
       perPage: perPage ? parseInt(perPage) : undefined,
       page: page ? parseInt(page) : undefined,
       status: status || undefined,
+      tenantId,
     });
 
     // Filter by provider if specified
     let transfers = response.data;
     if (providerId) {
-      const supabase = await getSupabaseServer();
-      const { data: payoutAccount } = await (supabase
+      const supabaseFilter = await getSupabaseServer(request);
+      const { data: payoutAccount } = await (supabaseFilter
         .from("provider_payout_accounts") as any)
         .select("recipient_code")
         .eq("provider_id", providerId)
@@ -85,6 +118,9 @@ export async function POST(request: Request) {
       );
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const fallbackCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const body = await request.json();
     const { provider_id, amount, reason, reference, currency } = body;
 
@@ -102,8 +138,31 @@ export async function POST(request: Request) {
       );
     }
 
+    const supabase = await getSupabaseServer(request);
+    const { data: provRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", provider_id)
+      .maybeSingle();
+    if (
+      !resourceTenantMatchesHostTenant(
+        tenantId,
+        (provRow as { tenant_id?: string | null } | null)?.tenant_id,
+      )
+    ) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "Provider is not in this market.",
+            code: "TENANT_MISMATCH",
+          },
+        },
+        { status: 403 },
+      );
+    }
+
     // Get provider's transfer recipient
-    const supabase = await getSupabaseServer();
     const { data: payoutAccount, error: accountError } = await (supabase
       .from("provider_payout_accounts") as any)
       .select("*")
@@ -131,10 +190,10 @@ export async function POST(request: Request) {
       recipient: payoutAccount.recipient_code,
       reason: reason || `Payout to provider ${provider_id}`,
       reference: reference || `payout_${provider_id}_${Date.now()}`,
-      currency: currency || payoutAccount.currency || "ZAR",
+      currency: currency || payoutAccount.currency || fallbackCurrency,
     };
 
-    const response = await createTransfer(transferRequest);
+    const response = await createTransfer(transferRequest, { tenantId });
     // Note: this route is a Paystack utility endpoint. The canonical payout queue flow
     // is handled via /api/admin/payouts/[id]/initiate-transfer which updates the payouts table.
 

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  successResponse,
+  handleApiError,
+  getProviderIdForUser,
+} from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/me/account-status
@@ -31,21 +36,27 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Check if provider is suspended
+    // Provider suspension is on providers.status (org-wide). Resolve provider id for both
+    // owners (providers.user_id) and staff (provider_staff.user_id → provider_id).
     if (userData?.role === "provider_owner" || userData?.role === "provider_staff") {
-      const { data: provider } = await supabase
-        .from("providers")
-        .select("id, status, status_reason, updated_at")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const providerId = await getProviderIdForUser(user.id, supabase);
+      if (providerId) {
+        const { data: provider } = await supabase
+          .from("providers")
+          .select("id, status, status_reason, updated_at")
+          .eq("id", providerId)
+          .maybeSingle();
 
-      if (provider && provider.status === "suspended") {
-        return successResponse({
-          is_suspended: true,
-          suspension_reason: provider.status_reason || "Your account has been suspended. Please contact support for more information.",
-          suspended_at: provider.updated_at,
-          provider_id: provider.id,
-        });
+        if (provider && provider.status === "suspended") {
+          return successResponse({
+            is_suspended: true,
+            suspension_reason:
+              provider.status_reason ||
+              "Your account has been suspended. Please contact support for more information.",
+            suspended_at: provider.updated_at,
+            provider_id: provider.id,
+          });
+        }
       }
     }
 

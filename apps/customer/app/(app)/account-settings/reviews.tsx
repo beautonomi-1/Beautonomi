@@ -7,6 +7,13 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
+
 export default function ReviewsScreen() {
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const } : {};
@@ -65,7 +72,7 @@ export default function ReviewsScreen() {
                             <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginLeft: 4 }}>{r.rating}/5</Text>
                             {booking?.scheduled_at && (
                               <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>
-                                · {new Date(booking.scheduled_at).toLocaleDateString()}
+                                · {formatDateSafe(booking.scheduled_at)}
                               </Text>
                             )}
                           </View>

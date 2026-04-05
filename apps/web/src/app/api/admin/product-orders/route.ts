@@ -5,6 +5,7 @@ import { requireAdminSection,
   handleApiError,
  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_ECOMMERCE } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/product-orders — superadmin: list all product orders with stats
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_ECOMMERCE, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get("status");
@@ -28,9 +30,10 @@ export async function GET(request: NextRequest) {
         `*,
         items:product_order_items(id, product_name, quantity, unit_price, total_price),
         customer:users!product_orders_customer_id_fkey(id, full_name, email),
-        provider:providers(id, business_name)`,
+        provider:providers!inner(id, business_name, tenant_id)`,
         { count: "exact" },
       )
+      .eq("provider.tenant_id", tenantId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -42,7 +45,8 @@ export async function GET(request: NextRequest) {
 
     const { data: stats } = await supabase
       .from("product_orders")
-      .select("status, total_amount, payment_status")
+      .select("status, total_amount, payment_status, provider:providers!inner(tenant_id)")
+      .eq("provider.tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
     const statRows = (stats ?? []) as OrderStatRow[];

@@ -4,6 +4,11 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespon
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkLocationFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
+import {
+  ensureProviderHasPrimaryLocation,
+  linkActiveStaffToNewLocation,
+  setPrimaryLocation,
+} from "@/lib/provider/location-maintenance";
 
 interface Location {
   id: string;
@@ -39,12 +44,21 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    const { data: locations, error } = await supabase
+    const { searchParams } = new URL(request.url);
+    const includeInactive = searchParams.get("include_inactive") === "true";
+
+    let query = supabase
       .from("provider_locations")
       .select("*")
       .eq("provider_id", providerId)
-      .eq("is_active", true)
+      .order("is_primary", { ascending: false })
       .order("name");
+
+    if (!includeInactive) {
+      query = query.eq("is_active", true);
+    }
+
+    const { data: locations, error } = await query;
 
     if (error) {
       throw error;
@@ -93,9 +107,8 @@ export async function POST(request: NextRequest) {
     } = body;
 
     if (!name || !address_line1 || !city || !country) {
-      return handleApiError(
-        new Error("name, address_line1, city, and country are required"),
-        "Validation failed",
+      return errorResponse(
+        "name, address_line1, city, and country are required",
         "VALIDATION_ERROR",
         400
       );
@@ -137,8 +150,8 @@ export async function POST(request: NextRequest) {
     let finalLatitude = latitude ? parseFloat(latitude.toString()) : null;
     let finalLongitude = longitude ? parseFloat(longitude.toString()) : null;
 
-    // Geocode address if coordinates not provided
-    if (!finalLatitude || !finalLongitude) {
+    // Geocode address if coordinates not provided (use null checks so 0 is valid)
+    if (finalLatitude == null || finalLongitude == null) {
       try {
         const mapbox = await getMapboxService();
         const fullAddress = [
@@ -198,30 +211,48 @@ export async function POST(request: NextRequest) {
       throw error || new Error("Failed to create location");
     }
 
-    // Map working_hours to operating_hours for frontend consistency
-    const mappedLocation = {
-      ...location,
-      operating_hours: location.working_hours || {},
-    };
-
-    // Check if this is the first location or if it's being set as primary
-    const { data: existingLocations } = await supabase
+    const { data: siblingLocations } = await supabase
       .from("provider_locations")
-      .select("id, is_primary")
+      .select("id")
       .eq("provider_id", providerId)
       .neq("id", location.id);
 
-    const isFirstLocation = (existingLocations?.length || 0) === 0;
-    const isPrimary = body.is_primary || isFirstLocation; // First location is primary by default
+    const isFirstLocation = (siblingLocations?.length || 0) === 0;
+    const isPrimary = Boolean(body.is_primary) || isFirstLocation;
+
+    try {
+      await linkActiveStaffToNewLocation(providerId, location.id);
+    } catch (e) {
+      console.warn("Staff–location linking after create:", e);
+    }
+
+    if (isPrimary) {
+      await setPrimaryLocation(supabase, providerId, location.id);
+    }
+    await ensureProviderHasPrimaryLocation(supabase, providerId);
+
+    const { data: locationAfterPrimary } = await supabase
+      .from("provider_locations")
+      .select("*")
+      .eq("id", location.id)
+      .single();
+
+    const locRow = locationAfterPrimary || location;
+
+    // Map working_hours to operating_hours for frontend consistency
+    const mappedLocation = {
+      ...locRow,
+      operating_hours: (locRow as any).working_hours || {},
+    };
 
     // If this is primary location (or first location), check for suggested zones
-    if (isPrimary && finalLatitude && finalLongitude) {
+    if (isPrimary && finalLatitude != null && finalLongitude != null) {
       try {
         // Import the suggest endpoint logic
         const { getMapboxService: getMapbox } = await import("@/lib/mapbox/mapbox");
         const mapbox = await getMapbox();
         
-        if (finalLatitude && finalLongitude) {
+        if (finalLatitude != null && finalLongitude != null) {
           const providerCoordinates = {
             latitude: finalLatitude,
             longitude: finalLongitude,

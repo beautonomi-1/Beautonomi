@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import LanguageModal from "../global/langauges-modal";
 import { Facebook, Twitter, Linkedin, Instagram, ArrowRight } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
+import type { PublicFooterInitial } from "@/types/public-footer-initial";
 
 interface FooterLink {
   id: string;
@@ -29,15 +30,26 @@ interface FooterSettings {
   copyright_text?: string;
 }
 
-export default function Footer() {
+export default function Footer({
+  initialFooter,
+}: {
+  /** When provided (e.g. home RSC), links/settings render immediately without client fetch */
+  initialFooter?: PublicFooterInitial;
+}) {
   const pathname = usePathname();
   const [modalOpen, setModalOpen] = useState(false);
-  const [footerLinks, setFooterLinks] = useState<FooterLink[]>([]);
-  const [appLinks, setAppLinks] = useState<AppLink[]>([]);
+  const [footerLinks, setFooterLinks] = useState<FooterLink[]>(
+    () => initialFooter?.links ?? [],
+  );
+  const [appLinks, setAppLinks] = useState<AppLink[]>(
+    () => initialFooter?.appLinks ?? [],
+  );
   /** App links from Settings → Apps (platform_settings): provider on /become-a-partner, customer elsewhere */
   const [contextAppLinks, setContextAppLinks] = useState<AppLink[] | null>(null);
-  const [footerSettings, setFooterSettings] = useState<FooterSettings>({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [footerSettings, setFooterSettings] = useState<FooterSettings>(
+    () => initialFooter?.settings ?? {},
+  );
+  const [isLoading, setIsLoading] = useState(() => initialFooter === undefined);
 
   const isProviderPage = Boolean(pathname?.startsWith("/become-a-partner"));
   const appContext = isProviderPage ? "provider" : "customer";
@@ -47,6 +59,8 @@ export default function Footer() {
   };
 
   useEffect(() => {
+    if (initialFooter !== undefined) return;
+
     const loadFooterData = async () => {
       try {
         const [linksResponse, settingsResponse] = await Promise.all([
@@ -70,7 +84,7 @@ export default function Footer() {
       }
     };
     loadFooterData();
-  }, []);
+  }, [initialFooter]);
 
   // Footer app buttons use Settings → Apps: provider on /become-a-partner, customer elsewhere (single source of truth)
   useEffect(() => {
@@ -126,6 +140,34 @@ export default function Footer() {
 
   // Get social media links
   const socialLinks = linksBySection.social || [];
+  const businessLinks = (linksBySection.business || []).filter((link) => {
+    const title = (link.title || "").trim().toLowerCase();
+    const href = (link.href || "").trim().toLowerCase();
+    // Avoid duplicate footer entry: keep Gift Card Purchase under About only.
+    if (title === "gift card purchase") return false;
+    if (href.includes("gift-card-purchase")) return false;
+    return true;
+  });
+  const legalLinks = (() => {
+    const raw = linksBySection.legal || [];
+    const seen = new Set<string>();
+    const out: FooterLink[] = [];
+    for (const link of raw) {
+      const title = (link.title || "").trim().toLowerCase();
+      const href = (link.href || "").trim().toLowerCase();
+      // Treat "Terms of Service" and "Terms of Use" as same destination in footer.
+      const isTermsAlias =
+        title === "terms of service" ||
+        title === "terms of use" ||
+        href.includes("/terms-and-condition") ||
+        href.includes("/terms");
+      const key = isTermsAlias ? "terms" : `${href}::${title}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(link);
+    }
+    return out;
+  })();
 
   // Helper to render a link
   const renderLink = (link: FooterLink) => {
@@ -221,11 +263,11 @@ export default function Footer() {
                   ))}
                 </ul>
               </div>
-              {linksBySection.business && linksBySection.business.length > 0 && (
+              {businessLinks.length > 0 && (
                 <div>
                   <h4 className="font-semibold text-sm text-gray-900 mb-3">For Business</h4>
                   <ul className="space-y-2 text-sm font-light text-gray-600">
-                    {linksBySection.business.map((link) => (
+                    {businessLinks.map((link) => (
                       <li key={link.id} className="hover:underline">
                         {renderLink(link)}
                       </li>
@@ -233,11 +275,11 @@ export default function Footer() {
                   </ul>
                 </div>
               )}
-              {linksBySection.legal && linksBySection.legal.length > 0 && (
+              {legalLinks.length > 0 && (
                 <div>
                   <h4 className="font-semibold text-sm text-gray-900 mb-3">Legal</h4>
                   <ul className="space-y-2 text-sm font-light text-gray-600">
-                    {linksBySection.legal.map((link) => (
+                    {legalLinks.map((link) => (
                       <li key={link.id} className="hover:underline">
                         {renderLink(link)}
                       </li>

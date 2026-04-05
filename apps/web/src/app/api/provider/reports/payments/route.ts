@@ -47,14 +47,15 @@ export async function GET(request: NextRequest) {
       if (t.transaction_type === "provider_earnings") {
         if (val >= 0) totalCollected += val;
         else totalRefunded += Math.abs(val);
+        // Only attribute provider_earnings to payment methods so breakdown matches totals.
+        const method = (t.metadata as any)?.payment_method || "other";
+        const existing = methodMap.get(method) || { amount: 0, count: 0 };
+        if (val > 0) {
+          existing.amount += val;
+          existing.count += 1;
+        }
+        methodMap.set(method, existing);
       }
-      const method = (t.metadata as any)?.payment_method || "other";
-      const existing = methodMap.get(method) || { amount: 0, count: 0 };
-      if (val > 0) {
-        existing.amount += val;
-        existing.count += 1;
-      }
-      methodMap.set(method, existing);
     });
 
     const { data: payouts } = await supabaseAdmin

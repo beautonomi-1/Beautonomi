@@ -1,17 +1,18 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);    const supabase = await getSupabaseServer(request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const supabase = getSupabaseAdmin();
 
     const body = await request.json();
 
     const { error } = await supabase
       .from("notifications")
-      .update({ ...body, updated_at: new Date().toISOString() })
+      .update({ ...body })
       .eq("id", id)
       .eq("user_id", user.id);
 
@@ -26,7 +27,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const { id } = await params;
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
 
     const { error } = await supabase
       .from("notifications")

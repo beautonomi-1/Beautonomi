@@ -12,6 +12,8 @@ import { toast } from "sonner";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import EmptyState from "@/components/ui/empty-state";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 
 interface PackageItem {
   id: string;
@@ -46,6 +48,7 @@ interface ServicePackage {
 }
 
 export default function ProviderPackagesPage() {
+  const locale = useTenantLocaleTag();
   const [packages, setPackages] = useState<ServicePackage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -86,8 +89,8 @@ export default function ProviderPackagesPage() {
     }
   };
 
-  const formatCurrency = (amount: number, currency: string = "ZAR") => {
-    return new Intl.NumberFormat("en-ZA", {
+  const formatCurrency = (amount: number, currency: string = LAST_RESORT_CURRENCY) => {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: currency,
     }).format(amount);

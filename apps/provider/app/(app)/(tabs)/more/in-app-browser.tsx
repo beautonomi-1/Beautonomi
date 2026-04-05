@@ -1,19 +1,18 @@
 /**
- * In-app browser: loads a URL (e.g. Paystack payment, onboarding, invoices) in a WebView
- * so providers stay in the app and remain authenticated.
+ * External link launcher (legacy route compatibility).
+ * Opens target URLs in the device browser instead of in-app WebView.
  * Route: (app)/(tabs)/more/in-app-browser?url=<encoded>&title=...
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
   ActivityIndicator,
   TouchableOpacity,
   StyleSheet,
-  Linking,
 } from "react-native";
+import * as Linking from "expo-linking";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { WebView } from "react-native-webview";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
@@ -23,10 +22,27 @@ export default function InAppBrowserScreen() {
   const params = useLocalSearchParams<{ url?: string; title?: string }>();
   const rawUrl = params.url ? decodeURIComponent(params.url) : "";
   const displayTitle = params.title ? decodeURIComponent(params.title) : "Link";
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const [opening, setOpening] = useState(true);
+  const hasOpened = useRef(false);
 
   const isValid =
     rawUrl.startsWith("https://") || rawUrl.startsWith("http://");
+
+  useEffect(() => {
+    if (!isValid || !rawUrl || hasOpened.current) {
+      setOpening(false);
+      return;
+    }
+    hasOpened.current = true;
+    Linking.openURL(rawUrl)
+      .catch((error) => {
+        setOpenError(error instanceof Error ? error.message : "Failed to open link");
+      })
+      .finally(() => {
+        setOpening(false);
+      });
+  }, [isValid, rawUrl]);
 
   if (!rawUrl || !isValid) {
     return (
@@ -81,55 +97,28 @@ export default function InAppBrowserScreen() {
           {displayTitle}
         </Text>
       </View>
-      <View style={styles.webviewWrap}>
-        <WebView
-          source={{ uri: rawUrl }}
-          style={styles.webview}
-          originWhitelist={["https://*", "http://*", "provider://*"]}
-          onShouldStartLoadWithRequest={(request) => {
-            const u = request.url;
-            if (u.startsWith("provider://")) {
-              Linking.openURL(u).catch(() => {});
-              return false;
-            }
-            return true;
-          }}
-          onMessage={(e) => {
-            try {
-              const msg = JSON.parse(e.nativeEvent.data);
-              if (msg?.type === "subscription_success") {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                router.replace("/(app)/(tabs)/more/settings/subscription" as never);
-              }
-            } catch {
-              // ignore
-            }
-          }}
-          onError={(e) =>
-            setLoadError(e.nativeEvent.description || "Failed to load")
-          }
-          onHttpError={(e) =>
-            setLoadError(`HTTP ${e.nativeEvent.statusCode}`)
-          }
-          startInLoadingState
-          renderLoading={() => (
-            <View style={styles.loading}>
-              <ActivityIndicator size="large" color={Colors.primary} />
-              <Text style={styles.loadingText}>Loading…</Text>
-            </View>
-          )}
-        />
-        {loadError ? (
-          <View style={styles.loadError}>
-            <Text style={styles.errorText}>{loadError}</Text>
+      <View style={styles.centered}>
+        {opening ? (
+          <>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={styles.loadingText}>Opening in browser…</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.errorText}>
+              {openError ?? "Opened in your browser. Return to continue in the app."}
+            </Text>
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                Linking.openURL(rawUrl).catch(() => {});
+              }}
               style={styles.backLink}
             >
-              <Text style={styles.backLinkText}>Go back</Text>
+              <Text style={styles.backLinkText}>Open again</Text>
             </TouchableOpacity>
-          </View>
-        ) : null}
+          </>
+        )}
       </View>
     </View>
   );
@@ -152,34 +141,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: Colors.gray[900],
   },
-  webviewWrap: { flex: 1 },
-  webview: { flex: 1 },
-  loading: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.white,
-  },
   loadingText: { marginTop: 12, color: Colors.gray[500] },
   centered: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: 24,
-  },
-  loadError: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.white,
     padding: 24,
   },
   errorText: { textAlign: "center", color: Colors.gray[600] },

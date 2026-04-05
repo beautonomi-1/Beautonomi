@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -42,6 +43,7 @@ const statusConfig = {
 };
 
 export default function BookingStatusReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -140,7 +142,7 @@ export default function BookingStatusReport() {
               variant="outline" 
               onClick={() => {
                 if (!data) return;
-                const exportData = formatReportDataForExport(data as unknown as ReportRow, "booking-status");
+                const exportData = formatReportDataForExport(data as unknown as ReportRow, "booking-status", exportCurrency);
                 exportToCSV(exportData, "booking-status-report");
               }} 
               className="gap-2 min-h-[44px] touch-manipulation"
@@ -268,7 +270,7 @@ export default function BookingStatusReport() {
                         {item.percentage.toFixed(1)}%
                       </p>
                       <p className="text-xs text-gray-600">
-                        ZAR {item.revenue.toLocaleString()}
+                        {fmt(item.revenue)}
                       </p>
                     </div>
                   </div>

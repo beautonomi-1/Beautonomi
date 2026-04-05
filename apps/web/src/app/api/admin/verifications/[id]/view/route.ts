@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError, notFoundResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/verifications/[id]/view
@@ -15,11 +16,12 @@ export async function GET(
     await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     // Get verification record
     const { data: verification, error: verificationError } = await supabase
       .from("user_verifications")
-      .select("document_url")
+      .select("document_url, tenant_id")
       .eq("id", id)
       .single();
 
@@ -28,6 +30,10 @@ export async function GET(
         return notFoundResponse("Verification not found");
       }
       throw verificationError;
+    }
+
+    if ((verification as { tenant_id?: string }).tenant_id !== tenantId) {
+      return notFoundResponse("Verification not found");
     }
 
     // Extract file path from document_url

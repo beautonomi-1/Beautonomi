@@ -10,6 +10,7 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 const updateSchema = z.object({
   category_id: z.string().uuid().optional(),
@@ -38,11 +39,13 @@ export async function GET(
 
     const { id } = await params;
     const supabase = await getSupabaseServer();
+    const tenantId = await resolveAdminApiTenantId(_request);
 
     const { data, error } = await supabase
       .from("learning_articles")
       .select("*, learning_categories(id, title, slug, audience)")
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .single();
 
     if (error || !data) {
@@ -72,6 +75,7 @@ export async function PUT(
 
     const { id } = await params;
     const supabase = await getSupabaseServer();
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     const parsed = updateSchema.safeParse(body);
@@ -93,6 +97,7 @@ export async function PUT(
       .from("learning_articles")
       .update(parsed.data)
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
       .single();
 
@@ -133,8 +138,13 @@ export async function DELETE(
 
     const { id } = await params;
     const supabase = await getSupabaseServer();
+    const tenantId = await resolveAdminApiTenantId(_request);
 
-    const { error } = await supabase.from("learning_articles").delete().eq("id", id);
+    const { error } = await supabase
+      .from("learning_articles")
+      .delete()
+      .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
 
     if (error) {
       console.error("Error deleting learning article:", error);

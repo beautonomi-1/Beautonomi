@@ -6,6 +6,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import type { WaitlistMatch } from './matching';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { LAST_RESORT_CURRENCY } from '@/lib/regions/last-resort-currency';
 
 /**
  * Check if provider has auto-booking enabled
@@ -100,7 +101,7 @@ export async function createAutoBooking(
       staff_id: staffId,
       duration_minutes: durationMinutes,
       price: Number(service.price),
-      currency: service.currency || 'ZAR',
+      currency: service.currency || LAST_RESORT_CURRENCY,
       scheduled_start_at: slotDate.toISOString(),
       scheduled_end_at: endTime.toISOString(),
     }];

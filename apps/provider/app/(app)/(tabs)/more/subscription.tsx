@@ -73,14 +73,14 @@ export function SubscriptionContent() {
       </View>
       <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>Plan & billing</Text>
       <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>
-        Your current subscription. Upgrades and payment methods are managed in the provider portal.
+        Your current subscription. Manage upgrades and billing from the in-app subscription flow.
       </Text>
 
       {!sub ? (
         <View style={{ marginTop: 24, borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 16 }}>
           <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>No active subscription</Text>
           <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[500] }}>
-            Subscribe in the provider portal to unlock all features.
+            Subscribe from Settings {"->"} Subscription to unlock all features.
           </Text>
         </View>
       ) : (

@@ -1,10 +1,20 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from '@/lib/supabase/api-helpers';
+import {
+  requireRoleInApi,
+  successResponse,
+  handleApiError,
+  getProviderIdForUser,
+  errorResponse,
+} from '@/lib/supabase/api-helpers';
 import { z } from 'zod';
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { createCustomer, fetchCustomer } from '@/lib/payments/paystack-complete';
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 
 const initializePaymentSchema = z.object({
   plan_id: z.string().uuid('Plan ID is required'),
@@ -22,7 +32,31 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const providerId = await getProviderIdForUser(user.id, supabase);
+    if (!providerId) {
+      return errorResponse("Provider not found", "NOT_FOUND", 404);
+    }
+    const { data: providerTenantRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    if (
+      !resourceTenantMatchesHostTenant(
+        tenantId,
+        (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id,
+      )
+    ) {
+      return errorResponse(
+        "Your provider account is not on this market. Use the site or app for the correct region.",
+        "TENANT_MISMATCH",
+        403,
+      );
+    }
+
     const body = await request.json();
 
     const { plan_id, billing_period, in_app } = initializePaymentSchema.parse(body);
@@ -64,7 +98,7 @@ export async function POST(request: NextRequest) {
     let customerCode: string;
     try {
       // Try to fetch existing customer
-      const customerResponse = await fetchCustomer(email);
+      const customerResponse = await fetchCustomer(email, { tenantId });
       customerCode = customerResponse.data?.customer_code || email;
     } catch {
       // Create new customer if doesn't exist
@@ -74,7 +108,7 @@ export async function POST(request: NextRequest) {
           first_name: userEmailRow?.first_name || undefined,
           last_name: userEmailRow?.last_name || undefined,
           phone: userEmailRow?.phone || undefined,
-        });
+        }, { tenantId });
         customerCode = customerResponse.data?.customer_code || email;
       } catch (err: any) {
         throw new Error(`Failed to create Paystack customer: ${err.message}`);
@@ -88,7 +122,7 @@ export async function POST(request: NextRequest) {
         plan_id,
         billing_period,
         amount,
-        currency: (plan as any).currency || "ZAR",
+        currency: (plan as any).currency || lastResortCurrency,
         status: "pending",
       })
       .select("*")
@@ -106,7 +140,7 @@ export async function POST(request: NextRequest) {
     const paystackData = await initializePaystackTransaction({
       email,
       amountInSmallestUnit: convertToSmallestUnit(amount),
-      currency: (plan as any).currency || "ZAR",
+      currency: (plan as any).currency || lastResortCurrency,
       reference,
       callback_url: callbackUrl,
       metadata: {
@@ -117,6 +151,7 @@ export async function POST(request: NextRequest) {
         customer_code: customerCode,
         kind: "subscription_authorization",
       },
+      tenantId,
     });
 
     const paymentUrl = paystackData?.data?.authorization_url || null;

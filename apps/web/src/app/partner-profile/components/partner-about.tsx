@@ -8,6 +8,8 @@ interface PartnerAboutProps {
   locations?: Array<{
     id: string;
     name?: string;
+    is_primary?: boolean;
+    location_type?: "salon" | "base";
     address_line1?: string;
     address_line2?: string;
     city?: string;
@@ -21,6 +23,59 @@ interface PartnerAboutProps {
   operating_hours?: Record<string, { open: string; close: string; is_closed?: boolean }>;
 }
 
+type DayHoursNormalized = {
+  closed: boolean;
+  open?: string;
+  close?: string;
+};
+
+const normalizeDayHours = (value: unknown): DayHoursNormalized | null => {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const closed = raw.is_closed === true || raw.closed === true || raw.is_open === false;
+  const open =
+    typeof raw.open === "string"
+      ? raw.open
+      : typeof raw.open_time === "string"
+        ? raw.open_time
+        : undefined;
+  const close =
+    typeof raw.close === "string"
+      ? raw.close
+      : typeof raw.close_time === "string"
+        ? raw.close_time
+        : undefined;
+  return { closed, open, close };
+};
+
+const parseHoursSource = (input: unknown): Record<string, unknown> | null => {
+  if (!input) return null;
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof input === "object") return input as Record<string, unknown>;
+  return null;
+};
+
+const hasNonEmptyHours = (hours: Record<string, unknown> | null): hours is Record<string, unknown> =>
+  Boolean(hours && Object.keys(hours).length > 0);
+
+const readDayValue = (hoursData: Record<string, unknown>, day: string): unknown => {
+  const entries = Object.entries(hoursData);
+  const target = day.toLowerCase();
+  const direct = entries.find(([k]) => k.toLowerCase() === target);
+  if (direct) return direct[1];
+  // Fallback: allow abbreviated keys like "mon", "tue", etc.
+  const abbrev = target.slice(0, 3);
+  const short = entries.find(([k]) => k.toLowerCase().slice(0, 3) === abbrev);
+  return short?.[1];
+};
+
 const PartnerAbout: React.FC<PartnerAboutProps> = ({ 
   description, 
   locations = [],
@@ -29,35 +84,43 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
   // Format operating hours if available - check both operating_hours prop and location working_hours
   const formatOperatingHours = () => {
     // First try operating_hours prop
-    let hoursData = operating_hours;
+    let hoursData = parseHoursSource(operating_hours);
     
     // If not available, try to get from primary location
-    if (!hoursData && locations && locations.length > 0) {
-      const primaryLocation = locations.find(loc => loc.working_hours) || locations[0];
-      if (primaryLocation?.working_hours) {
-        hoursData = typeof primaryLocation.working_hours === 'string' 
-          ? JSON.parse(primaryLocation.working_hours) 
-          : primaryLocation.working_hours;
+    if (!hasNonEmptyHours(hoursData) && locations.length > 0) {
+      const locationWithHours = [
+        ...locations.filter((loc) => loc.is_primary),
+        ...locations,
+      ].find((loc) => hasNonEmptyHours(parseHoursSource(loc.working_hours)));
+
+      if (locationWithHours?.working_hours) {
+        hoursData = parseHoursSource(locationWithHours.working_hours);
       }
     }
     
-    if (!hoursData) return null;
+    if (!hasNonEmptyHours(hoursData)) return null;
     
     const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
     return days.map((day) => {
-      const hours = hoursData[day];
-      if (!hours || hours.is_closed) {
+      const normalized = normalizeDayHours(readDayValue(hoursData, day));
+      if (!normalized || normalized.closed || !normalized.open || !normalized.close) {
         return { day: day.charAt(0).toUpperCase() + day.slice(1), hours: "Closed" };
       }
       return {
         day: day.charAt(0).toUpperCase() + day.slice(1),
-        hours: `${hours.open} - ${hours.close}`
+        hours: `${normalized.open} - ${normalized.close}`
       };
     });
   };
 
   const formattedHours = formatOperatingHours();
-  const primaryLocation = locations[0];
+  // Privacy-first: only explicitly salon locations can expose full public address.
+  const salonLocations = locations.filter((loc) => loc.location_type === "salon");
+  const publicLocation =
+    salonLocations.find((loc) => loc.is_primary) ||
+    salonLocations[0] ||
+    null;
+  const fallbackAreaLocation = locations.find((loc) => loc.city || loc.state || loc.country) || locations[0] || null;
 
   return (
     <div className="max-w-[2340px] mx-auto px-4 md:px-10 py-8">
@@ -96,8 +159,8 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
           </div>
         </div>
 
-        {/* Address */}
-        {primaryLocation && (
+        {/* Address / location privacy */}
+        {publicLocation ? (
           <div>
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <MapPin className="h-5 w-5" />
@@ -105,17 +168,17 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
             </h3>
             <p className="text-gray-700 mb-2">
               {[
-                primaryLocation.address_line1,
-                primaryLocation.address_line2,
-                primaryLocation.city,
-                primaryLocation.state,
-                primaryLocation.postal_code,
-                primaryLocation.country
+                publicLocation.address_line1,
+                publicLocation.address_line2,
+                publicLocation.city,
+                publicLocation.state,
+                publicLocation.postal_code,
+                publicLocation.country
               ].filter(Boolean).join(", ")}
             </p>
-            {primaryLocation.latitude && primaryLocation.longitude && (
+            {publicLocation.latitude != null && publicLocation.longitude != null && (
               <Link
-                href={`https://www.mapbox.com/directions/?destination=${primaryLocation.longitude},${primaryLocation.latitude}`}
+                href={`https://www.mapbox.com/directions/?destination=${publicLocation.longitude},${publicLocation.latitude}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:text-blue-800 underline text-sm"
@@ -124,7 +187,20 @@ const PartnerAbout: React.FC<PartnerAboutProps> = ({
               </Link>
             )}
           </div>
-        )}
+        ) : fallbackAreaLocation ? (
+          <div>
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <MapPin className="h-5 w-5" />
+              Location
+            </h3>
+            <p className="text-gray-700 mb-2">
+              Service area: {[fallbackAreaLocation.city, fallbackAreaLocation.state, fallbackAreaLocation.country].filter(Boolean).join(", ")}
+            </p>
+            <p className="text-sm text-gray-500">
+              Exact address is shared after booking confirmation.
+            </p>
+          </div>
+        ) : null}
       </div>
     </div>
   );

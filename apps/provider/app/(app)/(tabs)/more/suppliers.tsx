@@ -17,9 +17,12 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { Colors } from "@/constants/colors";
+import { E164PhoneField } from "@/components/E164PhoneField";
+import { validateE164Phone } from "@/lib/phone-country-codes";
 
 interface Supplier {
   id: string;
@@ -96,7 +99,7 @@ export default function SuppliersScreen() {
   const [editMode, setEditMode] = useState(false);
   const [form, setForm] = useState<SupplierForm>(EMPTY_FORM);
 
-  const { data: suppliers, loading, refresh } = useApi<Supplier[]>("/api/provider/suppliers");
+  const { data: suppliers, loading, error: suppliersError, refresh } = useApi<Supplier[]>("/api/provider/suppliers");
   const { execute: createSupplier, loading: creating } = useApiPost<SupplierForm, Supplier>("/api/provider/suppliers");
   const { execute: updateSupplier, loading: updating } = useApiMutation<Supplier>("patch");
   const { execute: deleteSupplier } = useApiMutation<void>("delete");
@@ -164,6 +167,13 @@ export default function SuppliersScreen() {
     if (!form.name.trim()) {
       Alert.alert("Required", "Supplier name is required");
       return;
+    }
+    if (form.phone.trim()) {
+      const pe = validateE164Phone(form.phone);
+      if (pe) {
+        Alert.alert("Invalid phone", pe);
+        return;
+      }
     }
 
     if (editMode && selectedSupplier) {
@@ -378,6 +388,8 @@ export default function SuppliersScreen() {
 
       {loading && !suppliers ? (
         <SkeletonList rows={5} />
+      ) : suppliersError && !suppliers ? (
+        <ErrorState message={suppliersError} onRetry={refresh} />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon="business-outline"
@@ -548,15 +560,16 @@ export default function SuppliersScreen() {
             autoCapitalize="none"
           />
 
-          <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Phone</Text>
-          <TextInput
-            style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
-            value={form.phone}
-            onChangeText={(t) => updateForm("phone", t)}
-            placeholder="+27 ..."
-            placeholderTextColor="#9ca3af"
-            keyboardType="phone-pad"
-          />
+          <View style={{ marginBottom: 12 }}>
+            <E164PhoneField
+              label="Phone"
+              valueE164={form.phone}
+              onChangeE164={(e164) => updateForm("phone", e164)}
+              compact
+              muted
+              accessibilityLabel="Supplier phone"
+            />
+          </View>
 
           <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Address</Text>
           <TextInput

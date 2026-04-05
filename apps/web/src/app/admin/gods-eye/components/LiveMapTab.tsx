@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
+import type mapboxgl from "mapbox-gl";
 import { fetcher } from "@/lib/http/fetcher";
 import { Activity, Settings, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
 
 const POLL_INTERVAL_MS = 10000;
 const DEFAULT_CENTER: [number, number] = [28.0473, -26.2041];
@@ -94,7 +94,21 @@ export default function LiveMapTab() {
   const [configOpen, setConfigOpen] = useState(false);
   const [configSaving, setConfigSaving] = useState(false);
   const [configForm, setConfigForm] = useState({ arrivalRadius: 100, retentionDays: 30 });
-  const token = typeof window !== "undefined" ? process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN : undefined;
+  const [mapboxAccessToken, setMapboxAccessToken] = useState<string | null | undefined>(undefined);
+  const [mapboxStyleUrl, setMapboxStyleUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const cfg = await fetchMapboxPublicMapConfig();
+      if (cancelled) return;
+      setMapboxAccessToken(cfg.accessToken ?? null);
+      setMapboxStyleUrl(cfg.styleUrl);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadConfig = useCallback(async () => {
     try {
@@ -149,23 +163,36 @@ export default function LiveMapTab() {
   }, []);
 
   useEffect(() => {
-    if (!token || !containerRef.current) return;
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      accessToken: token,
-      style: "mapbox://styles/mapbox/streets-v12",
-      center: DEFAULT_CENTER,
-      zoom: DEFAULT_ZOOM,
-    });
-    map.addControl(new mapboxgl.NavigationControl(), "top-right");
-    map.on("load", () => setMapReady(true));
-    mapRef.current = map;
+    if (mapboxAccessToken == null || !mapboxAccessToken || !containerRef.current) return;
+    let cancelled = false;
+
+    (async () => {
+      const [mapboxModule] = await Promise.all([
+        import("mapbox-gl"),
+        import("mapbox-gl/dist/mapbox-gl.css"),
+      ]);
+      const mb = mapboxModule.default;
+      if (cancelled || !containerRef.current) return;
+
+      const map = new mb.Map({
+        container: containerRef.current,
+        accessToken: mapboxAccessToken,
+        style: mapboxStyleUrl?.trim() || "mapbox://styles/mapbox/streets-v12",
+        center: DEFAULT_CENTER,
+        zoom: DEFAULT_ZOOM,
+      });
+      map.addControl(new mb.NavigationControl(), "top-right");
+      map.on("load", () => setMapReady(true));
+      mapRef.current = map;
+    })();
+
     return () => {
-      map.remove();
+      cancelled = true;
+      mapRef.current?.remove();
       mapRef.current = null;
       setMapReady(false);
     };
-  }, [token]);
+  }, [mapboxAccessToken, mapboxStyleUrl]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -362,10 +389,27 @@ export default function LiveMapTab() {
     }
   };
 
-  if (!token) {
+  if (mapboxAccessToken === undefined) {
     return (
-      <div className="rounded-lg border bg-gray-50 p-8 text-center text-gray-600">
-        Set NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN to enable the Live Map.
+      <div className="rounded-lg border bg-gray-50 p-8 text-center text-gray-600 text-sm">
+        Loading map configuration…
+      </div>
+    );
+  }
+
+  if (!mapboxAccessToken) {
+    return (
+      <div className="rounded-lg border bg-gray-50 p-8 text-center text-gray-600 text-sm space-y-2">
+        <p>Live Map needs a Mapbox <strong>public</strong> token.</p>
+        <p className="text-gray-500">
+          Configure it under{" "}
+          <a href="/admin/mapbox" className="text-primary font-medium underline">
+            Admin → Mapbox
+          </a>{" "}
+          (enable Mapbox and save the pk.… token), or set{" "}
+          <code className="text-xs bg-gray-100 px-1 rounded">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> for local
+          development.
+        </p>
       </div>
     );
   }

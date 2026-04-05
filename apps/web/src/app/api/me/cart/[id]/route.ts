@@ -6,6 +6,7 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -29,16 +30,26 @@ export async function PATCH(
     const body = await request.json();
     const parsed = updateSchema.parse(body);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     // Get the cart item + product/variant stock
     const { data: cartItem, error: cartErr } = await (supabase.from("cart_items") as any)
-      .select("id, product_id, product_variant_id, user_id")
+      .select("id, product_id, product_variant_id, user_id, provider_id")
       .eq("id", id)
       .eq("user_id", user.id)
       .single();
 
     if (cartErr || !cartItem) {
       return errorResponse("Cart item not found", "NOT_FOUND", 404);
+    }
+    const { data: cartProvider } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("id", cartItem.provider_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!cartProvider?.id) {
+      return errorResponse("Cart item not available in this market", "TENANT_MISMATCH", 404);
     }
 
     let maxQty = 999;
@@ -94,6 +105,25 @@ export async function DELETE(
       request,
     );
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+
+    const { data: item } = await (supabase.from("cart_items") as any)
+      .select("id, provider_id")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!item) {
+      return errorResponse("Cart item not found", "NOT_FOUND", 404);
+    }
+    const { data: provider } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("id", item.provider_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!provider?.id) {
+      return errorResponse("Cart item not available in this market", "TENANT_MISMATCH", 404);
+    }
 
     const { error } = await (supabase.from("cart_items") as any)
       .delete()

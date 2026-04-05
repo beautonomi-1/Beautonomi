@@ -48,6 +48,8 @@ export const BOOKING_ZONE_GAP = "16px";
 export const PLATFORM_NAME = "Beautonomi";
 
 /** Spring-like motion (stiffness ~300, damping ~30 → ease-out-expo feel) */
-export const BOOKING_TRANSITION = "transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]";
+/** Arbitrary timing function avoids Tailwind `ease-[...]` ambiguity warning */
+export const BOOKING_TRANSITION =
+  "transition-all duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)]";
 /** Button press tactile */
 export const BOOKING_ACTIVE_SCALE = "active:scale-[0.98]";

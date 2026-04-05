@@ -3,6 +3,9 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { YOCO_WEBHOOK_EVENTS } from "@/lib/payments/yoco";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 
 /**
  * POST /api/provider/yoco/webhook
@@ -46,37 +49,48 @@ export async function POST(request: Request) {
       .single();
 
     if (!webhookConfig) {
-      // Try to verify with global webhook secret from env
       const globalWebhookSecret = process.env.YOCO_WEBHOOK_SECRET;
-      if (globalWebhookSecret) {
-        const hash = crypto
-          .createHmac("sha256", globalWebhookSecret)
-          .update(body)
-          .digest("hex");
-
-        if (hash !== signature) {
-          console.error("Invalid Yoco webhook signature");
-          return NextResponse.json(
-            { error: "Invalid signature" },
-            { status: 401 }
-          );
-        }
-      } else {
-        console.error("No webhook secret configured");
+      if (!globalWebhookSecret) {
+        console.error("No webhook secret configured for Yoco");
         return NextResponse.json(
           { error: "Webhook not configured" },
-          { status: 500 }
+          { status: 503 }
+        );
+      }
+
+      const hash = crypto
+        .createHmac("sha256", globalWebhookSecret)
+        .update(body)
+        .digest("hex");
+
+      const sigBuf = Buffer.from(signature, "hex");
+      const hashBuf = Buffer.from(hash, "hex");
+      if (sigBuf.length !== hashBuf.length || !crypto.timingSafeEqual(sigBuf, hashBuf)) {
+        console.error("Invalid Yoco webhook signature");
+        return NextResponse.json(
+          { error: "Invalid signature" },
+          { status: 401 }
         );
       }
     } else {
       type WebhookConfigRow = { webhook_secret?: string; provider_id?: string };
-      const secret = (webhookConfig as WebhookConfigRow).webhook_secret ?? "";
+      const secret = (webhookConfig as WebhookConfigRow).webhook_secret;
+      if (!secret) {
+        console.error("Yoco webhook secret is empty in database — rejecting");
+        return NextResponse.json(
+          { error: "Webhook secret not configured" },
+          { status: 503 }
+        );
+      }
+
       const hash = crypto
         .createHmac("sha256", secret)
         .update(body)
         .digest("hex");
 
-      if (hash !== signature) {
+      const sigBuf = Buffer.from(signature, "hex");
+      const hashBuf = Buffer.from(hash, "hex");
+      if (sigBuf.length !== hashBuf.length || !crypto.timingSafeEqual(sigBuf, hashBuf)) {
         console.error("Invalid Yoco webhook signature");
         return NextResponse.json(
           { error: "Invalid signature" },
@@ -199,7 +213,7 @@ async function handlePaymentNotification(
     // Get booking details
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, booking_number, provider_id, total_amount, payment_status, location_id, location_type")
+      .select("id, tenant_id, booking_number, provider_id, total_amount, payment_status, location_id, location_type")
       .eq("id", bookingId)
       .single();
     
@@ -245,10 +259,12 @@ async function handlePaymentNotification(
       console.log(`Creating booking_payment for booking ${booking.booking_number} via Yoco terminal`);
       
       // Create booking_payment record (this will trigger finance_transactions creation via migration 169)
+      const yocoBookingTenantId = (booking as { tenant_id?: string | null }).tenant_id;
       const { error: paymentError } = await supabase
         .from("booking_payments")
         .insert({
           booking_id: bookingId,
+          ...(yocoBookingTenantId ? { tenant_id: yocoBookingTenantId } : {}),
           amount: amountInCurrency,
           payment_method: "card",
           payment_provider: "yoco",
@@ -323,7 +339,6 @@ async function handleRefundSuccess(
 ) {
   const id = data.id as string | undefined;
   const amount = (data.amount as number) ?? 0;
-  const currency = (data.currency as string) ?? "ZAR";
   const metadata = (data.metadata ?? {}) as Record<string, unknown>;
   const originalAmount = data.original_amount as number | undefined;
   const yocoPaymentId = metadata?.payment_id as string | undefined;
@@ -342,6 +357,21 @@ async function handleRefundSuccess(
     bookingId = row?.appointment_id ?? null;
   }
 
+  let lastResortCurrency: string = LAST_RESORT_CURRENCY;
+  if (providerId) {
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const tid = (prow as { tenant_id?: string | null } | null)?.tenant_id;
+    if (tid) {
+      lastResortCurrency = (await getTenantRegionConfig(tid))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    }
+  }
+
+  const currency = (data.currency as string) ?? lastResortCurrency;
+
   await supabase
     .from("provider_yoco_refunds")
     .insert({
@@ -349,7 +379,7 @@ async function handleRefundSuccess(
       yoco_refund_id: id,
       payment_id: yocoPaymentId,
       amount,
-      currency: currency || "ZAR",
+      currency: currency || lastResortCurrency,
       status: "successful",
       created_at: new Date().toISOString(),
     });
@@ -405,6 +435,33 @@ async function handleRefundSuccess(
       console.error("Yoco webhook: failed to create booking_refund:", refundError);
     } else {
       console.log(`Yoco refund ${id} synced to booking ${bookingId} (booking_refund created).`);
+
+      const { data: bookingRow } = await supabaseAdmin
+        .from("bookings")
+        .select("tenant_id, provider_id")
+        .eq("id", bookingId)
+        .maybeSingle();
+      const yocoRefundFinanceTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
+        tenant_id: (bookingRow as { tenant_id?: string | null } | null)?.tenant_id,
+        provider_id:
+          (bookingRow as { provider_id?: string | null } | null)?.provider_id ?? providerId,
+      });
+      const { error: yocoFinanceErr } = await supabaseAdmin.from("finance_transactions").insert({
+        tenant_id: yocoRefundFinanceTenantId,
+        booking_id: bookingId,
+        provider_id:
+          (bookingRow as { provider_id?: string | null } | null)?.provider_id ?? providerId,
+        transaction_type: "refund",
+        amount: -amountInCurrency,
+        fees: 0,
+        commission: 0,
+        net: -amountInCurrency,
+        description: `Yoco card refund (${id})`,
+        created_at: new Date().toISOString(),
+      });
+      if (yocoFinanceErr) {
+        console.error("Yoco webhook: finance ledger insert after booking_refund:", yocoFinanceErr);
+      }
     }
   }
 }

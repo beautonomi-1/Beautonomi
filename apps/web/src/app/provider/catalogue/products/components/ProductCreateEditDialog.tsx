@@ -29,6 +29,7 @@ import {
   DialogFooter as QuickDialogFooter,
 } from "@/components/ui/dialog";
 import { ChipCombobox } from "@/components/ui/chip-combobox";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface ProductCreateEditDialogProps {
   open: boolean;
@@ -43,6 +44,7 @@ export function ProductCreateEditDialog({
   product,
   onSave,
 }: ProductCreateEditDialogProps) {
+  const { currencyCode } = useReportCurrency();
   const { getOptions } = useReferenceData(["product_unit", "tax_rate"]);
   const [brands, setBrands] = useState<{ name: string }[]>([]);
   const [suppliers, setSuppliers] = useState<{ name: string }[]>([]);
@@ -138,20 +140,22 @@ export function ProductCreateEditDialog({
         hasVariants: Boolean(productHasVariants.has_variants),
         variantOptionTypes: Array.isArray(productHasVariants.variant_option_types) ? (productHasVariants.variant_option_types as ProductVariantOptionType[]) : [],
         variantRows: Array.isArray(productHasVariants.variants)
-          ? productHasVariants.variants.map((v: ProductVariantItem) => ({
-              option_values: v.option_values || {},
-              sku: v.sku ?? "",
-              barcode: v.barcode ?? "",
-              measure: v.measure ?? "",
-              amount: v.amount ?? 0,
-              quantity: v.quantity ?? 0,
-              low_stock_level: v.low_stock_level ?? 5,
-              reorder_quantity: v.reorder_quantity ?? 0,
-              supply_price: v.supply_price ?? 0,
-              retail_price: v.retail_price ?? 0,
-              markup: v.markup ?? 0,
-              image_url: v.image_url ?? "",
-            }))
+          ? [...productHasVariants.variants]
+              .sort((a: ProductVariantItem, b: ProductVariantItem) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+              .map((v: ProductVariantItem) => ({
+                option_values: v.option_values || {},
+                sku: v.sku ?? "",
+                barcode: v.barcode ?? "",
+                measure: v.measure ?? "",
+                amount: v.amount ?? 0,
+                quantity: v.quantity ?? 0,
+                low_stock_level: v.low_stock_level ?? 5,
+                reorder_quantity: v.reorder_quantity ?? 0,
+                supply_price: v.supply_price ?? 0,
+                retail_price: v.retail_price ?? 0,
+                markup: v.markup ?? 0,
+                image_url: v.image_url ?? "",
+              }))
           : [],
       });
     } else {
@@ -406,6 +410,21 @@ export function ProductCreateEditDialog({
     });
   };
 
+  const readImageDimensions = (file: File): Promise<{ w: number; h: number }> =>
+    new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new window.Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Could not read image"));
+      };
+      img.src = url;
+    });
+
   const handleImageUpload = async (file: File, isMain: boolean) => {
     try {
       setUploadingImages(true);
@@ -422,6 +441,22 @@ export function ProductCreateEditDialog({
       if (file.size > maxSize) {
         toast.error("File size exceeds 5MB limit");
         return;
+      }
+
+      try {
+        const { w, h } = await readImageDimensions(file);
+        if (w < 500 || h < 500) {
+          toast.warning(
+            "Image is quite small for product grids. Prefer at least 1000×1000px (1600×1600px is ideal), on a white or neutral background."
+          );
+        } else {
+          const ratio = w / Math.max(h, 1);
+          if (ratio < 0.9 || ratio > 1.1) {
+            toast.info("Tip: Square (1:1) images display most consistently in shop grids.");
+          }
+        }
+      } catch {
+        // ignore dimension read failures
       }
 
       // Upload to Supabase Storage
@@ -457,6 +492,48 @@ export function ProductCreateEditDialog({
     } catch (error) {
       console.error("Error uploading image:", error);
       toast.error(error instanceof Error ? error.message : "Failed to upload image");
+    } finally {
+      setUploadingImages(false);
+    }
+  };
+
+  const handleVariantImageUpload = async (rowIndex: number, file: File) => {
+    try {
+      setUploadingImages(true);
+      const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
+      if (!allowedTypes.includes(file.type)) {
+        toast.error("Invalid file type. Only images are allowed.");
+        return;
+      }
+      const maxSize = 5 * 1024 * 1024;
+      if (file.size > maxSize) {
+        toast.error("File size exceeds 5MB limit");
+        return;
+      }
+      try {
+        const { w, h } = await readImageDimensions(file);
+        if (w < 400 || h < 400) {
+          toast.warning("Variant photos look best at 800×800px or larger on a white background.");
+        }
+      } catch {
+        // ignore
+      }
+      const uploadFormData = new FormData();
+      uploadFormData.append("file", file);
+      uploadFormData.append("folder", "products");
+      const data = await fetcher.post<{ data?: { url: string } }>("/api/upload", uploadFormData);
+      const imageUrl = data.data?.url;
+      if (!imageUrl) throw new Error("No URL returned from upload");
+      setFormData((prev) => {
+        const next = [...prev.variantRows];
+        if (!next[rowIndex]) return prev;
+        next[rowIndex] = { ...next[rowIndex], image_url: imageUrl };
+        return { ...prev, variantRows: next };
+      });
+      toast.success("Variant image saved");
+    } catch (error) {
+      console.error("Variant image upload:", error);
+      toast.error(error instanceof Error ? error.message : "Upload failed");
     } finally {
       setUploadingImages(false);
     }
@@ -831,11 +908,12 @@ export function ProductCreateEditDialog({
                           <thead>
                             <tr className="border-b bg-gray-100">
                               <th className="text-left p-2 font-medium">Variant</th>
+                              <th className="text-left p-2 font-medium min-w-[88px]">Photo</th>
                               <th className="text-left p-2 font-medium">SKU</th>
                               <th className="text-left p-2 font-medium">Barcode</th>
                               <th className="text-left p-2 font-medium">Qty</th>
-                              <th className="text-left p-2 font-medium">Supply (ZAR)</th>
-                              <th className="text-left p-2 font-medium">Retail (ZAR)</th>
+                              <th className="text-left p-2 font-medium">Supply ({currencyCode})</th>
+                              <th className="text-left p-2 font-medium">Retail ({currencyCode})</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -845,6 +923,38 @@ export function ProductCreateEditDialog({
                                   {Object.entries(row.option_values)
                                     .map(([k, v]) => `${k}: ${v}`)
                                     .join(", ")}
+                                </td>
+                                <td className="p-2 align-middle">
+                                  <div className="flex flex-col items-start gap-1">
+                                    {row.image_url ? (
+                                      <div className="relative h-12 w-12 rounded-xl overflow-hidden bg-white border border-gray-200 shrink-0">
+                                        <Image src={row.image_url} alt="" fill className="object-contain p-0.5" unoptimized />
+                                      </div>
+                                    ) : (
+                                      <span className="text-[10px] text-gray-400">—</span>
+                                    )}
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      id={`variant-photo-${idx}`}
+                                      onChange={async (e) => {
+                                        const f = e.target.files?.[0];
+                                        if (f) await handleVariantImageUpload(idx, f);
+                                        e.target.value = "";
+                                      }}
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 text-[10px] px-2"
+                                      onClick={() => document.getElementById(`variant-photo-${idx}`)?.click()}
+                                      disabled={uploadingImages}
+                                    >
+                                      {row.image_url ? "Replace" : "Add photo"}
+                                    </Button>
+                                  </div>
                                 </td>
                                 <td className="p-2">
                                   <Input
@@ -928,7 +1038,7 @@ export function ProductCreateEditDialog({
                 <div>
                   <Label htmlFor="supplyPrice">Supply price</Label>
                   <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-gray-500 text-sm">ZAR</span>
+                    <span className="absolute left-3 top-2.5 text-gray-500 text-sm">{currencyCode}</span>
                     <Input
                       id="supplyPrice"
                       type="number"
@@ -958,7 +1068,7 @@ export function ProductCreateEditDialog({
                     <div>
                       <Label htmlFor="retailPrice">Retail price</Label>
                       <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-gray-500 text-sm">ZAR</span>
+                        <span className="absolute left-3 top-2.5 text-gray-500 text-sm">{currencyCode}</span>
                         <Input
                           id="retailPrice"
                           type="number"
@@ -1213,17 +1323,21 @@ export function ProductCreateEditDialog({
 
             {/* Right Column - Photos */}
             <div className="space-y-6">
-               <div className="bg-pink-50 rounded-xl p-6 text-center border-2 border-dashed border-pink-200 min-h-[400px] flex flex-col">
-                  <h4 className="font-medium mb-4">Product Photo</h4>
+               <div className="bg-pink-50 rounded-xl p-4 sm:p-6 text-center border-2 border-dashed border-pink-200 min-h-[min(400px,70vh)] flex flex-col">
+                  <h4 className="font-medium mb-1">Product Photo</h4>
+                  <p className="text-xs text-gray-600 mb-4 max-w-sm mx-auto leading-snug">
+                    Use a <strong>square</strong> image where possible: <strong>1600×1600px</strong> (minimum 1000×1000px) for sharp catalog tiles.
+                    A <strong>white or very light background</strong> matches what buyers expect on major marketplaces (max 5MB).
+                  </p>
                   
                   {/* Main Photo */}
                   {formData.mainImageUrl ? (
-                    <div className="relative mb-4 w-full h-64 rounded-lg overflow-hidden">
+                    <div className="relative mb-4 w-full h-64 rounded-2xl overflow-hidden bg-white ring-1 ring-gray-100">
                       <Image
                         src={formData.mainImageUrl}
                         alt="Main product"
                         fill
-                        className="object-cover rounded-lg"
+                        className="object-contain p-2 rounded-2xl"
                         unoptimized
                       />
                       <Button

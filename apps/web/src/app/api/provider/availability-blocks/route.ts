@@ -8,7 +8,7 @@ import {
   notFoundResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 const createSchema = z.object({
@@ -63,8 +63,9 @@ export async function GET(request: NextRequest) {
       query = query.eq("provider_id", providerId);
     }
 
-    if (from) query = query.gte("start_at", from);
-    if (to) query = query.lte("end_at", to);
+    // Overlap window: block intersects [from, to] ⇔ end_at > from AND start_at < to
+    if (from) query = query.gt("end_at", from);
+    if (to) query = query.lt("start_at", to);
 
     const { data, error } = await query;
     if (error) throw error;
@@ -79,8 +80,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    // Check permission to edit settings
-    const permissionCheck = await requirePermission('edit_settings', request);
+    const permissionCheck = await requireAnyPermission(["edit_settings", "edit_appointments"], request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

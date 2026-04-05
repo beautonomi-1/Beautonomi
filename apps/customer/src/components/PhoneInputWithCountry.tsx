@@ -130,6 +130,16 @@ export function PhoneInputWithCountry({
             accessibilityRole="none"
           />
         </View>
+        <Text
+          style={{
+            fontSize: 12,
+            color: Colors.gray[500],
+            marginTop: 6,
+            lineHeight: 18,
+          }}
+        >
+          Enter your national number without repeating the country code. Leading 0 is optional.
+        </Text>
       </View>
 
       <Modal

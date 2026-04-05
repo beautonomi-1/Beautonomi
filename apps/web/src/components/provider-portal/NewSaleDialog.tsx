@@ -61,6 +61,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface Client {
   id: string;
@@ -118,6 +119,7 @@ export function NewSaleDialog({
   onOpenChange,
   onSuccess,
 }: NewSaleDialogProps) {
+  const { currencyCode } = useReportCurrency();
   const [isLoading, setIsLoading] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [serviceCategories, setServiceCategories] = useState<ServiceCategory[]>([]);
@@ -1753,7 +1755,7 @@ export function NewSaleDialog({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="service_price">Price (ZAR) *</Label>
+                <Label htmlFor="service_price">Price ({currencyCode}) *</Label>
                 <Input
                   id="service_price"
                   type="number"

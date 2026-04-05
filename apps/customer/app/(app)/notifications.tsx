@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
@@ -10,6 +9,7 @@ import {
   Platform,
   StyleSheet,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { Stack } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNotifications } from "@/providers/NotificationsContext";
@@ -93,7 +93,7 @@ export default function NotificationsScreen() {
     };
   }, [user?.id, refetchUnreadCount]);
 
-  const markRead = async (id: string) => {
+  const markRead = useCallback(async (id: string) => {
     try {
       await api.post(`/api/me/notifications/${id}/read`);
       setList((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
@@ -101,7 +101,7 @@ export default function NotificationsScreen() {
     } catch {
       // ignore
     }
-  };
+  }, [refetchUnreadCount]);
 
   const markAllRead = async () => {
     try {
@@ -113,10 +113,31 @@ export default function NotificationsScreen() {
     }
   };
 
-  const onPress = (n: Notification) => {
+  const onPress = useCallback((n: Notification) => {
     if (!n.is_read) markRead(n.id);
     navigateFromNotification(n);
-  };
+  }, [markRead]);
+
+  const notifKeyExtractor = useCallback((n: Notification) => n.id, []);
+
+  const renderNotificationItem = useCallback(
+    ({ item }: { item: Notification }) => (
+      <Pressable
+        onPress={() => onPress(item)}
+        style={{
+          paddingVertical: 16,
+          borderBottomWidth: 1,
+          borderBottomColor: Colors.gray[100],
+          backgroundColor: !item.is_read ? Colors.primaryLight : undefined,
+        }}
+      >
+        <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.title}</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 4 }}>{item.message}</Text>
+        <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 8 }}>{formatNotificationTime(item.created_at)}</Text>
+      </Pressable>
+    ),
+    [onPress],
+  );
 
   if (!user) {
     return (
@@ -158,9 +179,10 @@ export default function NotificationsScreen() {
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
       ) : (
-        <FlatList
+        <FlashList
           data={list}
-          keyExtractor={(n) => n.id}
+          keyExtractor={notifKeyExtractor}
+          renderItem={renderNotificationItem}
           contentContainerStyle={{ padding: contentPadding, paddingTop: 8, paddingBottom: 48, ...constraint }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />}
           ListEmptyComponent={
@@ -170,21 +192,6 @@ export default function NotificationsScreen() {
               </Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() => onPress(item)}
-              style={{
-                paddingVertical: 16,
-                borderBottomWidth: 1,
-                borderBottomColor: Colors.gray[100],
-                backgroundColor: !item.is_read ? Colors.primaryLight : undefined,
-              }}
-            >
-              <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.title}</Text>
-              <Text style={{ color: Colors.gray[600], marginTop: 4 }}>{item.message}</Text>
-              <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 8 }}>{formatNotificationTime(item.created_at)}</Text>
-            </Pressable>
-          )}
         />
       )}
     </>

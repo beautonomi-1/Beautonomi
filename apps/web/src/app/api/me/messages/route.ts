@@ -279,14 +279,14 @@ async function sendMessageNotification(
   } catch {}
 
   try {
-    await supabase.from("notifications").insert({
+    const { insertNotification } = await import("@/lib/notifications/insert-notification");
+    await insertNotification({
       user_id: recipientUserId,
       type: "new_message",
       title: isCustomer ? "New message" : "New message from provider",
       message: messagePreview,
       data: { conversation_id: conv.id, message_id: messageId },
-      is_read: false,
-      created_at: new Date().toISOString(),
+      action_url: isCustomer ? `/provider/messaging` : `/account-settings/messages?conversation=${conv.id}`,
     });
   } catch {}
 }

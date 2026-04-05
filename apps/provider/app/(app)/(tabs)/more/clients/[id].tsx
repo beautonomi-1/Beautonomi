@@ -1,14 +1,18 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   RefreshControl,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -61,10 +65,25 @@ const STATUS_COLORS: Record<string, string> = {
   no_show: "text-red-600",
 };
 
+const STATUS_BG: Record<string, string> = {
+  completed: "bg-green-50",
+  confirmed: "bg-blue-50",
+  booked: "bg-amber-50",
+  pending: "bg-amber-50",
+  started: "bg-pink-50",
+  in_progress: "bg-pink-50",
+  cancelled: "bg-red-50",
+  no_show: "bg-red-50",
+};
+
 export default function ClientDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const clientId = typeof id === "string" ? id : Array.isArray(id) ? id[0] : undefined;
+
+  const [notesEditing, setNotesEditing] = useState(false);
+  const [notesDraft, setNotesDraft] = useState("");
+  const [notesSaving, setNotesSaving] = useState(false);
 
   const {
     data: client,
@@ -97,6 +116,27 @@ export default function ClientDetailScreen() {
     [clientId, patchClient, refresh]
   );
 
+  const openNotesEdit = useCallback(() => {
+    setNotesDraft(client?.notes ?? "");
+    setNotesEditing(true);
+  }, [client?.notes]);
+
+  const handleSaveNotes = useCallback(async () => {
+    if (!clientId) return;
+    setNotesSaving(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const { error: err } = await patchClient(`/api/provider/clients/${clientId}`, {
+      notes: notesDraft.trim() || null,
+    });
+    setNotesSaving(false);
+    if (err) {
+      Alert.alert("Error", err);
+      return;
+    }
+    setNotesEditing(false);
+    refresh();
+  }, [clientId, notesDraft, patchClient, refresh]);
+
   if (loading && !client) {
     return (
       <ScreenContainer scrollable={false}>
@@ -127,134 +167,263 @@ export default function ClientDetailScreen() {
   const clientTags = client.tags ?? [];
 
   return (
-    <ScreenContainer
-      scrollable={false}
-      refreshing={false}
-      onRefresh={onRefresh}
-    >
+    <ScreenContainer scrollable={false}>
       <ScreenHeader title="Client" showBack onBack={goBackToClients} />
 
-      <ScrollView
-        style={twStyle("flex-1")}
-        contentContainerStyle={{ paddingBottom: 32 }}
-        refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor="#1a1f3c" />
-        }
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        {/* Client info */}
-        <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
-          <View style={twStyle("flex-row items-center")}>
-            <Avatar name={name} size="lg" />
-            <View style={twStyle("ml-4 flex-1")}>
-              <Text style={twStyle("text-lg font-semibold text-gray-900")}>{name}</Text>
-              {customer.phone ? (
-                <Text style={twStyle("text-sm text-gray-500")}>{customer.phone}</Text>
-              ) : null}
-              {customer.email ? (
-                <Text style={twStyle("text-sm text-gray-500")}>{customer.email}</Text>
-              ) : null}
+        <ScrollView
+          style={twStyle("flex-1")}
+          contentContainerStyle={{ paddingBottom: 40 }}
+          refreshControl={
+            <RefreshControl refreshing={loading} onRefresh={onRefresh} tintColor="#1a1f3c" />
+          }
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* ── Client info card ── */}
+          <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+            <View style={twStyle("flex-row items-center")}>
+              <Avatar name={name} size="lg" />
+              <View style={twStyle("ml-4 flex-1")}>
+                <Text style={twStyle("text-lg font-bold text-gray-900")}>{name}</Text>
+                {customer.phone ? (
+                  <Text style={twStyle("text-sm text-gray-500 mt-0.5")}>{customer.phone}</Text>
+                ) : null}
+                {customer.email ? (
+                  <Text style={twStyle("text-sm text-gray-500")}>{customer.email}</Text>
+                ) : null}
+              </View>
+            </View>
+
+            {/* Stats row */}
+            <View style={twStyle("mt-3 flex-row rounded-xl bg-gray-50 px-3 py-3")}>
+              <View style={{ flex: 1 }}>
+                <Text style={twStyle("text-xs text-gray-400")}>Bookings</Text>
+                <Text style={twStyle("text-base font-bold text-gray-900")}>
+                  {client.total_bookings}
+                </Text>
+              </View>
+              <View style={twStyle("h-10 w-px bg-gray-200")} />
+              <View style={{ flex: 1, paddingLeft: 16 }}>
+                <Text style={twStyle("text-xs text-gray-400")}>Total spent</Text>
+                <Text style={twStyle("text-base font-bold text-gray-900")}>
+                  {formatCurrency(client.total_spent)}
+                </Text>
+              </View>
+            </View>
+
+            {/* Tags */}
+            <View style={twStyle("mt-3 border-t border-gray-100 pt-3")}>
+              <Text style={twStyle("mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400")}>
+                Tags
+              </Text>
+              <ChipCombobox
+                value={clientTags}
+                onChange={handleTagsChange}
+                staticSuggestions={[
+                  { value: "VIP", label: "VIP" },
+                  { value: "Regular", label: "Regular" },
+                  { value: "New", label: "New" },
+                  { value: "At risk", label: "At risk" },
+                  { value: "Loyal", label: "Loyal" },
+                ]}
+                placeholder="Add tags (e.g. VIP, Regular)"
+                accessibilityLabel="Client tags"
+              />
+            </View>
+
+            {/* Notes */}
+            <View style={twStyle("mt-3 border-t border-gray-100 pt-3")}>
+              <View style={twStyle("flex-row items-center justify-between mb-1.5")}>
+                <Text style={twStyle("text-xs font-semibold uppercase tracking-wide text-gray-400")}>
+                  Private notes
+                </Text>
+                {!notesEditing ? (
+                  <TouchableOpacity
+                    onPress={openNotesEdit}
+                    style={twStyle("flex-row items-center rounded-lg bg-gray-100 px-2.5 py-1")}
+                    accessibilityLabel="Edit notes"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="pencil-outline" size={13} color="#6b7280" />
+                    <Text style={twStyle("ml-1 text-xs font-medium text-gray-600")}>Edit</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+
+              {notesEditing ? (
+                <View>
+                  <TextInput
+                    value={notesDraft}
+                    onChangeText={setNotesDraft}
+                    placeholder="Add private notes about this client..."
+                    placeholderTextColor="#9ca3af"
+                    multiline
+                    numberOfLines={4}
+                    style={{
+                      borderWidth: 1.5,
+                      borderColor: "#6366f1",
+                      borderRadius: 12,
+                      padding: 12,
+                      fontSize: 14,
+                      color: "#111827",
+                      backgroundColor: "#fafafa",
+                      minHeight: 96,
+                      textAlignVertical: "top",
+                    }}
+                    accessibilityLabel="Client notes"
+                  />
+                  <View style={twStyle("mt-2 flex-row gap-2")}>
+                    <TouchableOpacity
+                      onPress={() => setNotesEditing(false)}
+                      style={[
+                        twStyle("flex-1 items-center justify-center rounded-xl border border-gray-200 py-3"),
+                      ]}
+                      accessibilityLabel="Cancel editing notes"
+                    >
+                      <Text style={twStyle("text-sm font-medium text-gray-600")}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleSaveNotes}
+                      disabled={notesSaving}
+                      style={[
+                        twStyle("flex-1 items-center justify-center rounded-xl bg-gray-900 py-3"),
+                        notesSaving ? { opacity: 0.6 } : undefined,
+                      ]}
+                      accessibilityLabel="Save notes"
+                    >
+                      <Text style={twStyle("text-sm font-semibold text-white")}>
+                        {notesSaving ? "Saving…" : "Save"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : client.notes ? (
+                <TouchableOpacity onPress={openNotesEdit} activeOpacity={0.7}>
+                  <Text style={twStyle("text-sm text-gray-600 leading-relaxed")}>
+                    {client.notes}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={openNotesEdit}
+                  style={twStyle(
+                    "flex-row items-center rounded-xl border border-dashed border-gray-200 px-3 py-3"
+                  )}
+                  accessibilityLabel="Add notes"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="document-text-outline" size={16} color="#9ca3af" />
+                  <Text style={twStyle("ml-2 text-sm text-gray-400")}>
+                    Tap to add private notes…
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
-          <View style={twStyle("mt-3 flex-row border-t border-gray-100 pt-3")}>
-            <View style={{ marginRight: 16 }}>
-              <Text style={twStyle("text-xs text-gray-400")}>Bookings</Text>
-              <Text style={twStyle("text-sm font-semibold text-gray-900")}>{client.total_bookings}</Text>
-            </View>
-            <View>
-              <Text style={twStyle("text-xs text-gray-400")}>Total spent</Text>
-              <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                {formatCurrency(client.total_spent, "ZAR")}
+
+          {/* ── Booking & sale history ── */}
+          <View style={twStyle("rounded-2xl border border-gray-100 bg-white overflow-hidden")}>
+            <View style={twStyle("border-b border-gray-100 px-4 py-3")}>
+              <Text style={twStyle("text-sm font-semibold text-gray-900")}>History</Text>
+              <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>
+                {history.length} {history.length === 1 ? "item" : "items"}
               </Text>
             </View>
-          </View>
+            {history.length === 0 ? (
+              <View style={twStyle("items-center justify-center py-12 px-4")}>
+                <Ionicons name="calendar-outline" size={40} color="#d1d5db" />
+                <Text style={twStyle("mt-3 text-sm font-medium text-gray-400")}>No history yet</Text>
+              </View>
+            ) : (
+              history.map((item) => {
+                const isAppointment = item.type === "appointment";
+                const statusColor = item.status
+                  ? STATUS_COLORS[item.status] ?? "text-gray-600"
+                  : "text-gray-600";
+                const statusBg = item.status
+                  ? STATUS_BG[item.status] ?? "bg-gray-50"
+                  : "bg-gray-50";
 
-          <View style={twStyle("mt-3 border-t border-gray-100 pt-3")}>
-            <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Tags</Text>
-            <ChipCombobox
-              value={clientTags}
-              onChange={handleTagsChange}
-              staticSuggestions={[
-                { value: "VIP", label: "VIP" },
-                { value: "Regular", label: "Regular" },
-                { value: "New", label: "New" },
-              ]}
-              placeholder="Add tags (e.g. VIP, Regular)"
-              accessibilityLabel="Client tags"
-            />
-          </View>
-        </View>
-
-        {/* Booking history */}
-        <View style={twStyle("rounded-2xl border border-gray-100 bg-white")}>
-          <View style={twStyle("border-b border-gray-100 px-4 py-3")}>
-            <Text style={twStyle("text-sm font-semibold text-gray-900")}>Booking history</Text>
-            <Text style={twStyle("text-xs text-gray-500")}>
-              {history.length} {history.length === 1 ? "item" : "items"}
-            </Text>
-          </View>
-          {history.length === 0 ? (
-            <View style={twStyle("items-center justify-center py-12 px-4")}>
-              <Ionicons name="calendar-outline" size={40} color="#9ca3af" />
-              <Text style={twStyle("mt-2 text-sm text-gray-500")}>No bookings yet</Text>
-            </View>
-          ) : (
-            history.map((item) => {
-              const isAppointment = item.type === "appointment";
-              const statusColor = item.status ? STATUS_COLORS[item.status] ?? "text-gray-600" : "text-gray-600";
-              return (
-                <TouchableOpacity
-                  key={`${item.type}-${item.id}`}
-                  onPress={() => {
-                    if (isAppointment) {
-                      router.push(`/(app)/(tabs)/more/bookings/${item.id}` as never);
-                    }
-                  }}
-                  disabled={!isAppointment}
-                  activeOpacity={isAppointment ? 0.7 : 1}
-                  style={twStyle("flex-row items-center border-b border-gray-50 px-4 py-3 last:border-b-0")}
-                >
-                  <View
-                    style={twStyle(`mr-3 h-10 w-10 items-center justify-center rounded-full ${
-                      isAppointment ? "bg-indigo-50" : "bg-emerald-50"
-                    }`)}
+                return (
+                  <TouchableOpacity
+                    key={`${item.type}-${item.id}`}
+                    onPress={() => {
+                      if (isAppointment) {
+                        router.push(`/(app)/(tabs)/more/bookings/${item.id}` as never);
+                      }
+                    }}
+                    disabled={!isAppointment}
+                    activeOpacity={isAppointment ? 0.7 : 1}
+                    style={twStyle(
+                      "flex-row items-center border-b border-gray-50 px-4 py-3 last:border-b-0"
+                    )}
                   >
-                    <Ionicons
-                      name={isAppointment ? "calendar" : "receipt"}
-                      size={20}
-                      color={isAppointment ? "#6366f1" : "#10b981"}
-                    />
-                  </View>
-                  <View style={twStyle("flex-1 min-w-0")}>
-                    <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={1}>
-                      {item.description}
-                    </Text>
-                    <View style={twStyle("mt-0.5 flex-row flex-wrap items-center")}>
-                      <Text style={[twStyle("text-xs text-gray-500"), { marginRight: 8 }]}>
-                        {formatDate(item.scheduled_at ?? item.date, "MMM d, yyyy")}
-                        {item.scheduled_at ? ` at ${formatTime(item.scheduled_at)}` : ""}
-                      </Text>
-                      {item.status ? (
-                        <Text style={[twStyle(`text-xs font-medium capitalize ${statusColor}`), { marginRight: 8 }]}>
-                          {item.status.replace(/_/g, " ")}
-                        </Text>
-                      ) : null}
-                      {item.team_member_name ? (
-                        <Text style={twStyle("text-xs text-gray-500")}>with {item.team_member_name}</Text>
-                      ) : null}
+                    <View
+                      style={twStyle(
+                        `mr-3 h-10 w-10 items-center justify-center rounded-xl ${
+                          isAppointment ? "bg-indigo-50" : "bg-emerald-50"
+                        }`
+                      )}
+                    >
+                      <Ionicons
+                        name={isAppointment ? "calendar" : "receipt"}
+                        size={19}
+                        color={isAppointment ? "#6366f1" : "#10b981"}
+                      />
                     </View>
-                  </View>
-                  <Text style={twStyle("ml-2 text-sm font-semibold text-gray-900")}>
-                    {formatCurrency(item.amount, "ZAR")}
-                  </Text>
-                  {isAppointment ? (
-                    <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
-                  ) : null}
-                </TouchableOpacity>
-              );
-            })
-          )}
-        </View>
-      </ScrollView>
+                    <View style={twStyle("flex-1 min-w-0")}>
+                      <Text
+                        style={twStyle("text-sm font-medium text-gray-900")}
+                        numberOfLines={1}
+                      >
+                        {item.description}
+                      </Text>
+                      <View style={twStyle("mt-0.5 flex-row flex-wrap items-center gap-x-2")}>
+                        <Text style={twStyle("text-xs text-gray-500")}>
+                          {formatDate(item.scheduled_at ?? item.date, "MMM d, yyyy")}
+                          {item.scheduled_at ? ` · ${formatTime(item.scheduled_at)}` : ""}
+                        </Text>
+                        {item.status ? (
+                          <View
+                            style={[
+                              twStyle(`rounded-full px-2 py-0.5 ${statusBg}`),
+                            ]}
+                          >
+                            <Text
+                              style={twStyle(`text-xs font-medium capitalize ${statusColor}`)}
+                            >
+                              {item.status.replace(/_/g, " ")}
+                            </Text>
+                          </View>
+                        ) : null}
+                        {item.team_member_name ? (
+                          <Text style={twStyle("text-xs text-gray-400")}>
+                            with {item.team_member_name}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                    <View style={twStyle("items-end ml-2")}>
+                      <Text style={twStyle("text-sm font-semibold text-gray-900")}>
+                        {formatCurrency(item.amount)}
+                      </Text>
+                      {isAppointment ? (
+                        <Ionicons name="chevron-forward" size={14} color="#d1d5db" style={{ marginTop: 4 }} />
+                      ) : (
+                        <Text style={twStyle("text-xs text-gray-400 mt-1")}>Sale</Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </ScreenContainer>
   );
 }

@@ -5,7 +5,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { Colors } from "@/constants/colors";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, isScreenshotMode } from "@/config/public-env";
 
 const PORTAL_CACHE_MS = 10 * 60 * 1000; // 10 minutes
 const PROFILE_CHECK_DELAY_MS = 400;
@@ -195,6 +195,10 @@ export default function Index() {
         }}
       />
     );
+  }
+
+  if (portalState === "ok" && session && isScreenshotMode()) {
+    return <Redirect href="/(app)/(tabs)/dashboard" />;
   }
 
   if (profileLoadError && hasProfile === null) {

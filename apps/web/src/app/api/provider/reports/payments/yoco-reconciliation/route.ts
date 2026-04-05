@@ -48,6 +48,14 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
 
+    const { data: providerRow } = await supabaseAdmin
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const providerTenantId =
+      (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+
     const searchParams = request.nextUrl.searchParams;
     const fromStr = searchParams.get("from");
     const toStr = searchParams.get("to");
@@ -83,11 +91,15 @@ export async function GET(request: NextRequest) {
 
     let syncedSet = new Set<string>();
     if (yocoIdsWithBooking.length > 0) {
-      const { data: bpRows } = await supabaseAdmin
+      let bpSyncQuery = supabaseAdmin
         .from("booking_payments")
         .select("payment_provider_id")
         .eq("payment_provider", "yoco")
         .in("payment_provider_id", yocoIdsWithBooking);
+      if (providerTenantId) {
+        bpSyncQuery = bpSyncQuery.eq("tenant_id", providerTenantId);
+      }
+      const { data: bpRows } = await bpSyncQuery;
       for (const r of bpRows || []) {
         const id = (r as { payment_provider_id?: string }).payment_provider_id;
         if (id) syncedSet.add(id);

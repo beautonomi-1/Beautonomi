@@ -8,28 +8,46 @@ import EmptyState from "@/components/ui/empty-state";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import ProviderCard from "./provider-card-dynamic";
 import { useUserLocation } from "@/hooks/useUserLocation";
+import { PUBLIC_HOME_CLIENT_TIMEOUT_MS } from "@/app/home/home-public-api";
 
-const UpcomingTalentSection = () => {
-  const [providers, setProviders] = useState<PublicProviderCard[]>([]);
-  const [isLoading, setIsLoading] = useState(false); // Start false to render immediately
+type UpcomingTalentSectionProps = {
+  categorySlug?: string;
+  initialProviders?: PublicProviderCard[];
+  initialHydrated?: boolean;
+};
+
+const UpcomingTalentSection = ({
+  categorySlug = "all",
+  initialProviders,
+  initialHydrated = false,
+}: UpcomingTalentSectionProps) => {
+  const [providers, setProviders] = useState<PublicProviderCard[]>(() =>
+    initialHydrated ? (initialProviders ?? []) : [],
+  );
+  const [isLoading, setIsLoading] = useState(() => !initialHydrated);
   const [error, setError] = useState<string | null>(null);
   const { location: userLocation } = useUserLocation();
 
   useEffect(() => {
-    const loadData = async () => {
+    const loadData = async (silent: boolean) => {
       try {
-        setIsLoading(true);
+        if (!silent) setIsLoading(true);
         setError(null);
         const params = new URLSearchParams();
         if (userLocation?.latitude != null && userLocation?.longitude != null) {
           params.set("lat", String(userLocation.latitude));
           params.set("lng", String(userLocation.longitude));
         }
+        if (categorySlug && categorySlug !== "all") {
+          params.set("category", categorySlug);
+        }
         const query = params.toString();
         const response = await fetcher.get<{
           data: { upcoming: PublicProviderCard[] };
           error: null;
-        }>(`/api/public/home${query ? `?${query}` : ""}`, { timeoutMs: 10000 });
+        }>(`/api/public/home${query ? `?${query}` : ""}`, {
+          timeoutMs: PUBLIC_HOME_CLIENT_TIMEOUT_MS,
+        });
         setProviders(response.data.upcoming || []);
       } catch (err) {
         // Only set error for actual failures, not empty data
@@ -38,8 +56,14 @@ const UpcomingTalentSection = () => {
             err instanceof FetchTimeoutError
               ? "Request timed out. Please try again."
               : err.message;
-          setError(errorMessage);
-          console.error("Error loading rising stars:", err);
+          if (!silent) {
+            setError(errorMessage);
+          } else {
+            console.warn("Home upcoming refetch failed (keeping SSR data):", err);
+          }
+          if (!silent) {
+            console.error("Error loading rising stars:", err);
+          }
         } else {
           // For other errors, just log and show empty state
           console.error("Error loading rising stars:", err);
@@ -50,8 +74,19 @@ const UpcomingTalentSection = () => {
       }
     };
 
-    loadData();
-  }, [userLocation?.latitude, userLocation?.longitude]);
+    if (!initialHydrated) {
+      void loadData(false);
+      return;
+    }
+    if (userLocation?.latitude != null && userLocation?.longitude != null) {
+      void loadData(true);
+    }
+  }, [
+    userLocation?.latitude,
+    userLocation?.longitude,
+    categorySlug,
+    initialHydrated,
+  ]);
 
   const handleRetry = () => {
     setError(null);

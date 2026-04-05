@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { z } from "zod";
+import { fetchScopedListMerged, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
 
 const pricingPlanSchema = z.object({
   id: z.string().uuid().optional(),
@@ -25,19 +26,19 @@ const pricingPlanSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = await getSupabaseServer(request);
+    const { currentTenantId } = await resolveAdminTenantContext(request, undefined, user.role ?? null);
 
-    const { data: plans, error } = await supabase
-      .from("pricing_plans")
-      .select("*")
-      .order("display_order", { ascending: true });
-
-    if (error) {
-      return handleApiError(error, "Failed to fetch pricing plans");
-    }
-
-    return successResponse(plans || []);
+    const scopedPlans = await fetchScopedListMerged<Record<string, unknown>>({
+      supabase,
+      table: "pricing_plans",
+      tenantId: currentTenantId,
+      select: "*",
+      dedupeKey: (row) => String(row.name ?? row.id ?? ""),
+      orderBy: { column: "display_order", ascending: true },
+    });
+    return successResponse(scopedPlans.data || []);
   } catch (error) {
     return handleApiError(error, "Failed to fetch pricing plans");
   }
@@ -49,9 +50,11 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
+    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(request, body as Record<string, unknown>, user.role ?? null);
+    const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
 
     const validationResult = pricingPlanSchema.safeParse(body);
     if (!validationResult.success) {
@@ -65,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     const { data: plan, error } = await supabase
       .from("pricing_plans")
-      .insert(validationResult.data)
+      .insert({ ...validationResult.data, tenant_id: scopeTenantId })
       .select()
       .single();
 
@@ -85,9 +88,11 @@ export async function POST(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
+    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(request, body as Record<string, unknown>, user.role ?? null);
+    const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
 
     const validationResult = pricingPlanSchema.safeParse(body);
     if (!validationResult.success) {
@@ -109,6 +114,7 @@ export async function PUT(request: NextRequest) {
       .from("pricing_plans")
       .update(updateData)
       .eq("id", id)
+      .or(`tenant_id.eq.${scopeTenantId},tenant_id.is.null`)
       .select()
       .single();
 

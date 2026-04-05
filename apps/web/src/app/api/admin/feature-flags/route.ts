@@ -4,6 +4,8 @@ import { requireAdminSection, handleApiError  } from "@/lib/supabase/api-helpers
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 
+// @admin-global Superadmin feature flag registry: rows include global defaults and per-tenant overrides; list endpoints intentionally return all.
+
 /**
  * GET /api/admin/feature-flags
  * Get all feature flags (superadmin only). Returns { data, error }.
@@ -42,11 +44,25 @@ export async function POST(request: NextRequest) {
     const supabase = getSupabaseAdmin();
 
     const body = await request.json();
-    const { feature_key, feature_name, description, enabled, category, metadata } = body;
+    const { feature_key, feature_name, description, enabled, category, metadata, tenant_id } = body;
 
     if (!feature_key || !feature_name) {
       return NextResponse.json(
         { data: null, error: { message: 'feature_key and feature_name are required', code: 'VALIDATION_ERROR' } },
+        { status: 400 }
+      );
+    }
+
+    const tenantId =
+      tenant_id === null || tenant_id === undefined || tenant_id === ""
+        ? null
+        : typeof tenant_id === "string" && /^[0-9a-f-]{36}$/i.test(tenant_id)
+          ? tenant_id
+          : null;
+
+    if (tenant_id != null && tenant_id !== "" && !tenantId) {
+      return NextResponse.json(
+        { data: null, error: { message: "tenant_id must be a valid UUID when provided", code: "VALIDATION_ERROR" } },
         { status: 400 }
       );
     }
@@ -60,6 +76,7 @@ export async function POST(request: NextRequest) {
         enabled: enabled ?? false,
         category: category ?? null,
         metadata: metadata ?? {},
+        tenant_id: tenantId,
         created_by: user.id,
         updated_by: user.id,
       })
@@ -79,7 +96,7 @@ export async function POST(request: NextRequest) {
       action: "admin.feature_flag.create",
       entity_type: "feature_flag",
       entity_id: featureFlag.id,
-      metadata: { feature_key, enabled: enabled ?? false },
+      metadata: { feature_key, enabled: enabled ?? false, tenant_id: tenantId },
     });
 
     return NextResponse.json({ data: featureFlag, error: null }, { status: 201 });

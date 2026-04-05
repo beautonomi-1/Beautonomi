@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { fetcher } from "@/lib/http/fetcher";
 import { Undo2, ChevronLeft, ChevronRight, X } from "lucide-react";
 
@@ -49,6 +50,7 @@ interface ActionDialog {
 }
 
 export default function ProviderReturnsPage() {
+  const { format: formatMoney } = useProviderMoneyFormat();
   const [returns, setReturns] = useState<ReturnRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
@@ -115,7 +117,7 @@ export default function ProviderReturnsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 max-w-full overflow-x-hidden px-1 sm:px-0">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Returns & Refunds</h1>
         <p className="text-sm text-gray-500 mt-1">Manage customer return requests and process refunds</p>
@@ -159,10 +161,10 @@ export default function ProviderReturnsPage() {
             {returns.map((r) => {
               const actions = ACTIONS[r.status] ?? [];
               return (
-                <div key={r.id} className="p-5 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-start justify-between gap-4">
+                <div key={r.id} className="p-4 sm:p-5 hover:bg-gray-50 transition-colors">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
                         <span className="font-semibold text-gray-900">{r.order?.order_number}</span>
                         <span
                           className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[r.status]}`}
@@ -170,8 +172,8 @@ export default function ProviderReturnsPage() {
                           {r.status.replace(/_/g, " ")}
                         </span>
                       </div>
-                      <p className="text-sm text-gray-700">{r.product_name}</p>
-                      <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+                      <p className="text-sm text-gray-700 break-words">{r.product_name}</p>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-gray-500">
                         <span>{r.customer?.full_name}</span>
                         <span>Reason: {r.reason.replace(/_/g, " ")}</span>
                         <span>Qty: {r.quantity}</span>
@@ -183,13 +185,13 @@ export default function ProviderReturnsPage() {
                         <p className="text-xs text-blue-600 mt-1">Notes: {r.provider_notes}</p>
                       )}
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-lg font-bold text-gray-900">R{Number(r.refund_amount).toFixed(2)}</p>
+                    <div className="text-left sm:text-right shrink-0 w-full sm:w-auto border-t sm:border-t-0 border-gray-100 pt-3 sm:pt-0">
+                      <p className="text-lg font-bold text-gray-900">{formatMoney(Number(r.refund_amount))}</p>
                       <p className="text-xs text-gray-500">
                         {new Date(r.created_at).toLocaleDateString()}
                       </p>
                       {actions.length > 0 && (
-                        <div className="flex gap-2 mt-2 justify-end">
+                        <div className="flex flex-wrap gap-2 mt-2 justify-start sm:justify-end">
                           {actions.map((a) => (
                             <button
                               key={a.action}
@@ -232,7 +234,7 @@ export default function ProviderReturnsPage() {
             {dialog.action === "approve" && (
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Return Method</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {[
                     { value: "drop_off", label: "Drop Off" },
                     { value: "courier", label: "Courier" },

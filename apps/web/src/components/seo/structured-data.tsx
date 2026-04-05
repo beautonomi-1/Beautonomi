@@ -1,13 +1,15 @@
-export function OrganizationSchema() {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://beautonomi.com";
-  
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
+export function OrganizationSchema({ baseUrl }: { baseUrl: string }) {
+  const origin = baseUrl.replace(/\/$/, "");
+
   const organizationSchema = {
     "@context": "https://schema.org",
     "@type": "Organization",
     name: "Beautonomi",
     description: "Beauty Service Marketplace connecting customers with verified beauty professionals",
-    url: baseUrl,
-    logo: `${baseUrl}/logo.svg`,
+    url: origin,
+    logo: `${origin}/images/logo.svg`,
     sameAs: [
       // Add your social media URLs here when available
       // "https://www.facebook.com/beautonomi",
@@ -32,9 +34,15 @@ export function OrganizationSchema() {
   );
 }
 
-export function BreadcrumbSchema({ items }: { items: Array<{ name: string; url: string }> }) {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://beautonomi.com";
-  
+export function BreadcrumbSchema({
+  baseUrl,
+  items,
+}: {
+  baseUrl: string;
+  items: Array<{ name: string; url: string }>;
+}) {
+  const origin = baseUrl.replace(/\/$/, "");
+
   const breadcrumbSchema = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -42,7 +50,7 @@ export function BreadcrumbSchema({ items }: { items: Array<{ name: string; url: 
       "@type": "ListItem",
       position: index + 1,
       name: item.name,
-      item: `${baseUrl}${item.url}`,
+      item: item.url.startsWith("http") ? item.url : `${origin}${item.url.startsWith("/") ? "" : "/"}${item.url}`,
     })),
   };
 
@@ -61,7 +69,7 @@ export function ServiceSchema({
   description, 
   provider, 
   price,
-  currency = "ZAR"
+  currency = LAST_RESORT_CURRENCY
 }: {
   name: string;
   description: string;

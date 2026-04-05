@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import type { MaintenanceScope, PublicMaintenanceResponse } from "@/lib/maintenance-types";
 import { MAINTENANCE_SCOPES, defaultMaintenanceConfig } from "@/lib/maintenance-types";
+import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
  * GET /api/public/maintenance?scope=public_site|provider_web|customer_app|provider_app
@@ -20,12 +21,44 @@ export async function GET(request: NextRequest) {
 
   try {
     const supabase = await getSupabaseServer();
-    const { data: row, error } = await supabase
+    const tenant = await resolveTenantFromRequest(request as Request);
+    const tenantId = tenant?.id ?? "";
+    let tenantRow: { settings?: unknown } | null = null;
+    let tenantError: unknown = null;
+    if (tenantId) {
+      const tenantRes = await supabase
+        .from("platform_settings")
+        .select("settings")
+        .eq("is_active", true)
+        .eq("tenant_id", tenantId)
+        .limit(1)
+        .maybeSingle();
+      tenantRow = (tenantRes.data as { settings?: unknown } | null) ?? null;
+      tenantError = tenantRes.error ?? null;
+    }
+    const { data: globalRow, error: globalError } = await supabase
       .from("platform_settings")
       .select("settings")
       .eq("is_active", true)
+      .is("tenant_id", null)
       .limit(1)
       .maybeSingle();
+    let row = tenantRow ?? globalRow;
+    let error: unknown = tenantError ?? globalError;
+
+    // DBs without migration 354 (platform_settings.tenant_id): fall back to legacy single active row.
+    const missingColumn = (e: unknown) =>
+      Boolean(e && typeof e === "object" && "code" in e && (e as { code: string }).code === "42703");
+    if (missingColumn(tenantError) || missingColumn(globalError)) {
+      const legacy = await supabase
+        .from("platform_settings")
+        .select("settings")
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      row = legacy.data as { settings?: unknown } | null;
+      error = legacy.error ?? null;
+    }
 
     if (error) {
       console.error("Error fetching platform_settings for maintenance:", error);

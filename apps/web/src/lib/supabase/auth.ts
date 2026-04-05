@@ -78,13 +78,25 @@ export async function signIn(data: SignInData) {
   const supabase = getSupabaseClient();
   const trimmedEmail = data.email.trim();
   const password = data.password;
-
-  const res = await fetch('/api/auth/sign-in', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: trimmedEmail, password }),
-    credentials: 'same-origin',
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  let res: Response;
+  try {
+    res = await fetch('/api/auth/sign-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: trimmedEmail, password }),
+      credentials: 'same-origin',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Login timed out. Please try again.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const json = await res.json().catch(() => ({}));
   const message = typeof json?.error === 'string' ? json.error : 'Sign-in failed. Please try again.';

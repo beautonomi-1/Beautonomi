@@ -365,9 +365,6 @@ export default function SignupPage() {
                 <InlineSignupForm
                   redirectContext={selectedPersona === "provider" ? "provider" : "customer"}
                   referralCode={searchParams.get("ref") ?? undefined}
-                  onAuthSuccess={() => {
-                    setSelectedPersona(null);
-                  }}
                 />
               </motion.div>
             )}
@@ -479,7 +476,7 @@ export default function SignupPage() {
       <LoginModal
         open={isLoginModalOpen}
         setOpen={setIsLoginModalOpen}
-        initialMode="signup"
+        initialMode="login"
         redirectContext="customer"
       />
     </div>

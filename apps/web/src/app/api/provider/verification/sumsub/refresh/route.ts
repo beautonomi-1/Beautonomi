@@ -18,17 +18,17 @@ export async function GET(request: NextRequest) {
     }
 
     const parsed = verifyEmbedRefreshToken(refreshToken);
-    if (!parsed) {
+    if (!parsed || parsed.type !== "provider") {
       return errorResponse("Invalid or expired refresh token", "UNAUTHORIZED", 401);
     }
 
-    const { token } = await getSumsubAccessToken(parsed.providerId, parsed.environment);
+    const { token } = await getSumsubAccessToken(parsed.entityId, parsed.environment);
     if (!token) {
       return errorResponse("Failed to get new token", "SUMSUB_ERROR", 502);
     }
 
     return successResponse({ access_token: token });
-  } catch (error) {
+  } catch {
     return errorResponse("Refresh failed", "INTERNAL", 500);
   }
 }

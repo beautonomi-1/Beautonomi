@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { User, Mail, Phone, FileText } from "lucide-react";
+import { useState, useEffect } from "react";
+import { User, Mail, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useTranslation } from "@beautonomi/i18n";
 import { BookingState } from "../booking-flow";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
 
 interface StepYourInfoProps {
   bookingState: BookingState;
@@ -16,12 +18,6 @@ interface StepYourInfoProps {
 
 // Email validation regex
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-// Phone validation - basic check for digits and length
-const validatePhone = (phone: string): boolean => {
-  const digitsOnly = phone.replace(/\D/g, "");
-  return digitsOnly.length >= 10 && digitsOnly.length <= 15;
-};
 
 export default function StepYourInfo({
   bookingState,
@@ -45,6 +41,13 @@ export default function StepYourInfo({
     phone?: string;
   }>({});
 
+  // Keep parent bookingState in sync so the sticky Continue bar's canProceed() sees the same data.
+  useEffect(() => {
+    updateBookingState({ clientInfo });
+    // updateBookingState is recreated each parent render; omitting avoids effect loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientInfo]);
+
   const validate = (): boolean => {
     const newErrors: typeof errors = {};
 
@@ -64,8 +67,8 @@ export default function StepYourInfo({
 
     if (!clientInfo.phone.trim()) {
       newErrors.phone = "Phone number is required";
-    } else if (!validatePhone(clientInfo.phone)) {
-      newErrors.phone = "Please enter a valid phone number";
+    } else if (!isCompleteE164(clientInfo.phone)) {
+      newErrors.phone = "Please enter a valid phone number with country code";
     }
 
     setErrors(newErrors);
@@ -166,22 +169,18 @@ export default function StepYourInfo({
 
         {/* Phone */}
         <div>
-          <Label htmlFor="phone" className="flex items-center gap-2">
-            <Phone className="w-4 h-4" />
-            {t("auth.phone")} *
-          </Label>
-          <Input
-            id="phone"
-            type="tel"
+          <PhoneInput
+            inputId="booking-step-your-info-phone"
+            label={`${t("auth.phone")} *`}
             value={clientInfo.phone}
-            onChange={(e) => {
-              setClientInfo({ ...clientInfo, phone: e.target.value });
+            onChange={(e164) => {
+              setClientInfo({ ...clientInfo, phone: e164 });
               if (errors.phone) {
                 setErrors({ ...errors, phone: undefined });
               }
             }}
-            className={`mt-1 touch-target ${errors.phone ? "border-red-500" : ""}`}
-            placeholder="+971 50 123 4567"
+            className={errors.phone ? "[&_input]:border-red-500" : ""}
+            placeholder="Phone number"
             required
           />
           {errors.phone && (
@@ -234,14 +233,21 @@ export default function StepYourInfo({
       {/* Continue as Guest Option */}
       <div className="pt-4 border-t">
         <p className="text-sm text-gray-600 text-center">
-          Don't have an account?{" "}
+          You can continue this booking as a guest. We only ask you to sign in at payment to secure your booking.
+        </p>
+        <p className="text-xs text-center text-gray-500 mt-2">
+          Want to sign in now?{" "}
           <button
             onClick={() => {
-              window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+              const redirect =
+                typeof window !== "undefined"
+                  ? `${window.location.pathname}${window.location.search}`
+                  : "/";
+              window.location.href = `/login?redirect=${encodeURIComponent(redirect)}`;
             }}
             className="text-primary underline font-medium"
           >
-            Continue as guest
+            Sign in
           </button>
         </p>
       </div>

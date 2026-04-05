@@ -1,0 +1,19 @@
+# Provider — login / welcome (run while signed OUT).
+# EXPO_PUBLIC_SCREENSHOT_MODE=1 in apps/provider/.env.local
+#
+appId: com.beautonomi.partner
+---
+- launchApp:
+    clearState: false
+    stopApp: false
+
+- openLink: provider://screenshot/auth/login
+- waitForAnimationToEnd:
+    timeout: 8000
+- extendedWaitUntil:
+    visible: "Welcome back to Beautonomi"
+    timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot:
+    path: pr_01_login_welcome

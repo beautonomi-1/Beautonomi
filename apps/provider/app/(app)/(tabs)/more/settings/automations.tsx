@@ -1,7 +1,7 @@
 /**
  * Automations – list and manage marketing automations.
  * GET /api/provider/automations, PATCH/DELETE /api/provider/automations/[id]
- * Create new automations in the provider portal.
+ * Create new automations in-app.
  */
 import { useState, useCallback } from "react";
 import { View, Text, TouchableOpacity, FlatList, Alert, Switch } from "react-native";
@@ -120,7 +120,7 @@ export default function AutomationsScreen() {
         <EmptyState
           icon="flash-outline"
           title="No automations"
-          description="Create automations in the provider portal to send follow-ups and marketing messages."
+          description="Create automations to send follow-ups and marketing messages."
         />
       ) : (
         <FlatList

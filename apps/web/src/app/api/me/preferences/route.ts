@@ -3,6 +3,9 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAuthInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 import type { SupportedLanguage } from "@/lib/i18n/config";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const preferencesSchema = z.object({
   language: z.enum(["en", "af", "zu", "xh", "nso", "tn", "ts", "ve", "ss"]).optional(),
@@ -27,10 +30,14 @@ export async function GET(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     return successResponse({
       preferences: {
         language: (userData?.language as SupportedLanguage) || "en",
-        currency: userData?.currency || "ZAR",
+        currency: userData?.currency || lastResortCurrency,
         timezone: userData?.timezone || "Africa/Johannesburg",
       },
     });

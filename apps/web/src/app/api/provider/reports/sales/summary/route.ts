@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 import { getProviderRevenue, getPreviousPeriodRevenue } from "@/lib/reports/revenue-helpers";
-import { MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -52,11 +52,11 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const locationId = searchParams.get("location_id");
     let fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 30);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 30));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
 
     const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysDiff > MAX_REPORT_DAYS) {
@@ -133,17 +133,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get provider revenue from finance_transactions (actual earnings)
+    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+
+    // Get provider revenue — same net as main dashboard revenue cards
     const { totalRevenue, revenueByBooking, revenueByDate } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       fromDate,
       toDate,
-      locationId || undefined
+      locationId || undefined,
+      dashOpts
     );
 
     const totalBookings = bookings?.length || 0;
-    const averageBookingValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
+    const bookingsWithLedgerRevenue = [...revenueByBooking.values()].filter((v) => v > 0).length;
+    const averageBookingValue =
+      bookingsWithLedgerRevenue > 0 ? totalRevenue / bookingsWithLedgerRevenue : 0;
 
     // Get previous period for comparison
     const prevRevenue = await getPreviousPeriodRevenue(
@@ -151,7 +156,8 @@ export async function GET(request: NextRequest) {
       providerId,
       fromDate,
       toDate,
-      locationId || undefined
+      locationId || undefined,
+      dashOpts
     );
 
     const periodDays = Math.ceil(
@@ -190,7 +196,7 @@ export async function GET(request: NextRequest) {
     // Revenue by service (use booking revenue from finance_transactions)
     const revenueByServiceMap = new Map<
       string,
-      { revenue: number; bookings: number }
+      { revenue: number; bookingIds: Set<string> }
     >();
     // Safely process bookings - use finance_transactions revenue per booking
     (bookings || []).forEach((booking) => {
@@ -212,23 +218,26 @@ export async function GET(request: NextRequest) {
         const serviceRevenue = bookingRevenue * serviceProportion;
         const existing = revenueByServiceMap.get(serviceName) || {
           revenue: 0,
-          bookings: 0,
+          bookingIds: new Set<string>(),
         };
-        revenueByServiceMap.set(serviceName, {
-          revenue: existing.revenue + serviceRevenue,
-          bookings: existing.bookings + 1,
-        });
+        existing.revenue += serviceRevenue;
+        existing.bookingIds.add(booking.id);
+        revenueByServiceMap.set(serviceName, existing);
       });
     });
 
     const revenueByService = Array.from(revenueByServiceMap.entries())
-      .map(([serviceName, data]) => ({ serviceName, ...data }))
+      .map(([serviceName, data]) => ({
+        serviceName,
+        revenue: data.revenue,
+        bookings: data.bookingIds.size,
+      }))
       .sort((a, b) => b.revenue - a.revenue);
 
     // Revenue by staff (use booking revenue from finance_transactions)
     const revenueByStaffMap = new Map<
       string,
-      { revenue: number; bookings: number }
+      { revenue: number; bookingIds: Set<string> }
     >();
     // Safely process bookings for staff revenue
     (bookings || []).forEach((booking) => {
@@ -252,17 +261,20 @@ export async function GET(request: NextRequest) {
         const staffRevenue = bookingRevenue * serviceProportion;
         const existing = revenueByStaffMap.get(staffName) || {
           revenue: 0,
-          bookings: 0,
+          bookingIds: new Set<string>(),
         };
-        revenueByStaffMap.set(staffName, {
-          revenue: existing.revenue + staffRevenue,
-          bookings: existing.bookings + 1,
-        });
+        existing.revenue += staffRevenue;
+        existing.bookingIds.add(booking.id);
+        revenueByStaffMap.set(staffName, existing);
       });
     });
 
     const revenueByStaff = Array.from(revenueByStaffMap.entries())
-      .map(([staffName, data]) => ({ staffName, ...data }))
+      .map(([staffName, data]) => ({
+        staffName,
+        revenue: data.revenue,
+        bookings: data.bookingIds.size,
+      }))
       .sort((a, b) => b.revenue - a.revenue);
 
     return successResponse({

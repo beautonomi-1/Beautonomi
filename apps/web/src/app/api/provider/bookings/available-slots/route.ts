@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { addMinutes } from "date-fns";
+import { resolveWorkingHoursDayForSingleStaffOrSyntheticSolo } from "@/lib/provider-booking/resolve-working-hours-single-staff-or-synthetic";
 
 const SLOT_START_H = 6;
 const SLOT_END_H = 22;
@@ -92,13 +93,13 @@ export async function GET(request: NextRequest) {
     let closeMin = (SLOT_END_H + 1) * 60 - 1;
     const breakRanges: Array<{ start: number; end: number }> = [];
     if (staffIds.length === 1) {
-      const { data: staff } = await supabaseAdmin
-        .from("provider_staff")
-        .select("id, working_hours")
-        .eq("id", staffIds[0])
-        .eq("provider_id", providerId)
-        .single();
-      const wh = (staff?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKey];
+      const wh = await resolveWorkingHoursDayForSingleStaffOrSyntheticSolo(
+        supabaseAdmin,
+        providerId,
+        staffIds[0],
+        dayKey
+      );
+
       if (wh && wh.is_open !== false && wh.open_time && wh.close_time) {
         const o = parseTimeToMinutes(wh.open_time);
         const c = parseTimeToMinutes(wh.close_time);

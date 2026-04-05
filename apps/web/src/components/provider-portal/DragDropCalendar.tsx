@@ -151,38 +151,22 @@ export function DragDropProvider({
   // Time increment for snapping (15 min default)
   const timeIncrement = 15;
 
+  const dragStateRef = React.useRef<DragState | null>(null);
+  dragStateRef.current = dragState;
+
   const startDrag = useCallback((appointment: Appointment) => {
-    setDragState({
+    const next: DragState = {
       appointment,
       originalDate: appointment.scheduled_date,
       originalTime: appointment.scheduled_time,
       originalStaffId: appointment.team_member_id,
-    });
+    };
+    dragStateRef.current = next;
+    setDragState(next);
     setIsDragging(true);
     setConflictError(null);
     setValidationState(null);
   }, []);
-
-  const updateDropTarget = useCallback((target: DropTarget | null) => {
-    setDropTarget(target);
-    setConflictError(null);
-    
-    // Real-time validation when drop target changes
-    if (target && dragState && enableConflictValidation) {
-      // Snap the time to nearest increment
-      const snappedTime = snapToIncrement(target.time, timeIncrement);
-      setSnapTime(snappedTime);
-      
-      const result = validatePlacement(dragState.appointment, {
-        ...target,
-        time: snappedTime,
-      });
-      setValidationState(result);
-    } else {
-      setValidationState(null);
-      setSnapTime(null);
-    }
-  }, [dragState, enableConflictValidation]);
 
   // Check if placement is valid using canPlace()
   const validatePlacement = useCallback((
@@ -224,7 +208,31 @@ export function DragDropProvider({
     return result;
   }, [enableConflictValidation, allAppointments, timeBlocks]);
 
+  const updateDropTarget = useCallback((target: DropTarget | null) => {
+    setDropTarget(target);
+    setConflictError(null);
+
+    const currentDrag = dragStateRef.current;
+    // Real-time validation when drop target changes (use ref so touch-drag works on the
+    // same frame as startDrag before React re-renders).
+    if (target && currentDrag && enableConflictValidation) {
+      const snappedTime = snapToIncrement(target.time, timeIncrement);
+      setSnapTime(snappedTime);
+
+      const result = validatePlacement(currentDrag.appointment, {
+        ...target,
+        time: snappedTime,
+      });
+      setValidationState(result);
+    } else {
+      setValidationState(null);
+      setSnapTime(null);
+    }
+  }, [enableConflictValidation, validatePlacement, timeIncrement]);
+
   const endDrag = useCallback(() => {
+    let confirmation: RescheduleConfirmation | null = null;
+
     if (dragState && dropTarget) {
       const hasChanged =
         dropTarget.date !== dragState.originalDate ||
@@ -232,33 +240,36 @@ export function DragDropProvider({
         dropTarget.staffId !== dragState.originalStaffId;
 
       if (hasChanged) {
-        // Validate placement before showing confirmation
-        const validation = validatePlacement(dragState.appointment, dropTarget);
-        
+        const snappedTime = snapToIncrement(dropTarget.time, timeIncrement);
+        const effectiveTarget: DropTarget = { ...dropTarget, time: snappedTime };
+        const validation = validatePlacement(dragState.appointment, effectiveTarget);
+
         if (!validation.valid) {
           setConflictError(validation.reason || "Cannot place appointment here");
           toast.error(validation.reason || "Cannot place appointment here - conflicts detected");
-          // Don't clear dragState yet so user can try a different slot
-          setDropTarget(null);
-          return;
+        } else {
+          const newStaff = teamMembers.find((m) => m.id === effectiveTarget.staffId);
+          confirmation = {
+            appointment: dragState.appointment,
+            newDate: effectiveTarget.date,
+            newTime: snappedTime,
+            newStaffId: effectiveTarget.staffId,
+            newStaffName: newStaff?.name || "Unknown",
+          };
         }
-
-        const newStaff = teamMembers.find((m) => m.id === dropTarget.staffId);
-        setRescheduleConfirmation({
-          appointment: dragState.appointment,
-          newDate: dropTarget.date,
-          newTime: dropTarget.time,
-          newStaffId: dropTarget.staffId,
-          newStaffName: newStaff?.name || "Unknown",
-        });
       }
     }
 
+    if (confirmation) {
+      setRescheduleConfirmation(confirmation);
+    }
+
+    dragStateRef.current = null;
     setIsDragging(false);
     setDragState(null);
     setDropTarget(null);
     setConflictError(null);
-  }, [dragState, dropTarget, teamMembers, validatePlacement]);
+  }, [dragState, dropTarget, teamMembers, validatePlacement, timeIncrement]);
 
   const confirmReschedule = useCallback(async () => {
     if (!rescheduleConfirmation) return;
@@ -371,8 +382,17 @@ export function DragDropProvider({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [focusedAppointmentId, moveWithKeyboard]);
 
+  const parseTimeParts = (time?: string): { hour: number; minute: number } => {
+    if (typeof time !== "string") return { hour: 0, minute: 0 };
+    const [hourRaw, minuteRaw] = time.split(":").map(Number);
+    return {
+      hour: Number.isFinite(hourRaw) ? Math.max(0, Math.min(23, hourRaw)) : 0,
+      minute: Number.isFinite(minuteRaw) ? Math.max(0, Math.min(59, minuteRaw)) : 0,
+    };
+  };
+
   const formatTime12h = (time: string) => {
-    const [hour, minute] = time.split(":").map(Number);
+    const { hour, minute } = parseTimeParts(time);
     const ampm = hour >= 12 ? "PM" : "AM";
     const hour12 = hour % 12 || 12;
     return `${hour12}:${minute.toString().padStart(2, "0")} ${ampm}`;
@@ -383,7 +403,7 @@ export function DragDropProvider({
   };
 
   const getEndTime = (startTime: string, durationMinutes: number) => {
-    const [hour, minute] = startTime.split(":").map(Number);
+    const { hour, minute } = parseTimeParts(startTime);
     const endDate = addMinutes(new Date(2000, 0, 1, hour, minute), durationMinutes);
     return format(endDate, "HH:mm");
   };
@@ -528,14 +548,24 @@ const LONG_PRESS_MS = 450;
 const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
 
 function findDropTargetFromPoint(clientX: number, clientY: number): { date: string; time: string; staffId: string } | null {
-  const el = document.elementFromPoint(clientX, clientY);
-  let current: Element | null = el;
-  while (current) {
-    const date = current.getAttribute("data-droppable-date");
-    const time = current.getAttribute("data-droppable-time");
-    const staffId = current.getAttribute("data-droppable-staff-id");
-    if (date && time && staffId) return { date, time, staffId };
-    current = current.parentElement;
+  // Prefer elementsFromPoint: on touch devices the finger covers the slot, so the topmost
+  // node is often the appointment/card — not the droppable wrapper.
+  const list =
+    typeof document.elementsFromPoint === "function"
+      ? document.elementsFromPoint(clientX, clientY)
+      : document.elementFromPoint(clientX, clientY)
+        ? [document.elementFromPoint(clientX, clientY)!]
+        : [];
+
+  for (const el of list) {
+    let current: Element | null = el;
+    while (current) {
+      const date = current.getAttribute("data-droppable-date");
+      const time = current.getAttribute("data-droppable-time");
+      const staffId = current.getAttribute("data-droppable-staff-id");
+      if (date && time && staffId) return { date, time, staffId };
+      current = current.parentElement;
+    }
   }
   return null;
 }
@@ -572,6 +602,7 @@ export function DraggableAppointment({
 
   const handleTouchStart = React.useCallback((e: React.TouchEvent) => {
     if (e.targetTouches.length !== 1) return;
+    e.stopPropagation();
     const touch = e.targetTouches[0];
     touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
     clearLongPressTimer();
@@ -584,6 +615,9 @@ export function DraggableAppointment({
 
   const handleTouchMove = React.useCallback((e: React.TouchEvent) => {
     if (e.targetTouches.length !== 1) return;
+    if (touchDragActiveRef.current) {
+      e.stopPropagation();
+    }
     const touch = e.targetTouches[0];
     if (longPressTimerRef.current) {
       const start = touchStartPosRef.current;
@@ -600,7 +634,10 @@ export function DraggableAppointment({
     }
   }, [updateDropTarget, clearLongPressTimer]);
 
-  const handleTouchEnd = React.useCallback(() => {
+  const handleTouchEnd = React.useCallback((e: React.TouchEvent) => {
+    if (touchDragActiveRef.current) {
+      e.stopPropagation();
+    }
     clearLongPressTimer();
     if (touchDragActiveRef.current) {
       touchDragActiveRef.current = false;
@@ -609,7 +646,10 @@ export function DraggableAppointment({
     touchStartPosRef.current = null;
   }, [endDrag, clearLongPressTimer]);
 
-  const handleTouchCancel = React.useCallback(() => {
+  const handleTouchCancel = React.useCallback((e: React.TouchEvent) => {
+    if (touchDragActiveRef.current) {
+      e.stopPropagation();
+    }
     clearLongPressTimer();
     if (touchDragActiveRef.current) {
       touchDragActiveRef.current = false;
@@ -677,7 +717,8 @@ export function DraggableAppointment({
       className={cn(
         "cursor-grab active:cursor-grabbing",
         "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1",
-        isDraggingThis && "opacity-50",
+        "select-none",
+        isDraggingThis && "opacity-50 pointer-events-none",
         isFocused && "ring-2 ring-primary ring-offset-1",
         className
       )}
@@ -817,8 +858,17 @@ interface DragIndicatorProps {
 }
 
 export function DragIndicator({ time, duration, className }: DragIndicatorProps) {
+  const parseTimeParts = (timeStr?: string): { hour: number; minute: number } => {
+    if (typeof timeStr !== "string") return { hour: 0, minute: 0 };
+    const [hourRaw, minuteRaw] = timeStr.split(":").map(Number);
+    return {
+      hour: Number.isFinite(hourRaw) ? Math.max(0, Math.min(23, hourRaw)) : 0,
+      minute: Number.isFinite(minuteRaw) ? Math.max(0, Math.min(59, minuteRaw)) : 0,
+    };
+  };
+
   const formatTime12h = (timeStr: string) => {
-    const [hour, minute] = timeStr.split(":").map(Number);
+    const { hour, minute } = parseTimeParts(timeStr);
     const ampm = hour >= 12 ? "PM" : "AM";
     const hour12 = hour % 12 || 12;
     return `${hour12}:${minute.toString().padStart(2, "0")} ${ampm}`;
@@ -867,14 +917,22 @@ export function DragGhostOverlay({
 
   const appointment = dragState.appointment;
   const displayTime = snapTime || dropTarget.time;
+  const parseTimeParts = (timeStr?: string): { hour: number; minute: number } => {
+    if (typeof timeStr !== "string") return { hour: 0, minute: 0 };
+    const [hourRaw, minuteRaw] = timeStr.split(":").map(Number);
+    return {
+      hour: Number.isFinite(hourRaw) ? Math.max(0, Math.min(23, hourRaw)) : 0,
+      minute: Number.isFinite(minuteRaw) ? Math.max(0, Math.min(59, minuteRaw)) : 0,
+    };
+  };
   
   // Calculate position
-  const [hour, min] = displayTime.split(":").map(Number);
+  const { hour, minute: min } = parseTimeParts(displayTime);
   const top = ((hour - startHour) * hourHeight) + ((min / 60) * hourHeight);
   const height = Math.max((appointment.duration_minutes / 60) * hourHeight, 36);
 
   const formatTime12h = (timeStr: string) => {
-    const [h, m] = timeStr.split(":").map(Number);
+    const { hour: h, minute: m } = parseTimeParts(timeStr);
     const ampm = h >= 12 ? "PM" : "AM";
     const hour12 = h % 12 || 12;
     return `${hour12}:${m.toString().padStart(2, "0")} ${ampm}`;
@@ -946,7 +1004,9 @@ export function SnapLineIndicator({
     return null;
   }
 
-  const [hour, min] = snapTime.split(":").map(Number);
+  const [hourRaw, minRaw] = snapTime.split(":").map(Number);
+  const hour = Number.isFinite(hourRaw) ? Math.max(0, Math.min(23, hourRaw)) : 0;
+  const min = Number.isFinite(minRaw) ? Math.max(0, Math.min(59, minRaw)) : 0;
   const top = ((hour - startHour) * hourHeight) + ((min / 60) * hourHeight);
 
   return (

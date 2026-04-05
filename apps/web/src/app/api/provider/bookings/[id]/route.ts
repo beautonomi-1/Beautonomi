@@ -1,3 +1,5 @@
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -11,7 +13,14 @@ import {
   type ProviderBookingStatus,
 } from "@/lib/utils/booking-status";
 import { checkBookingConflict } from "@/lib/bookings/conflict-check";
+import { invalidateProviderBookingsReadCache } from "@/lib/bookings/provider-bookings-read-cache";
 import { awardPointsForBooking } from "@/lib/services/provider-gamification";
+import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
+import { isOTPExpired } from "@/lib/otp/generator";
+import { isQRCodeExpired } from "@/lib/qr/generator";
 
 function mapStatusToDatabase(frontendStatus: string): string {
   return mapStatusFromProvider(frontendStatus as ProviderBookingStatus);
@@ -19,6 +28,29 @@ function mapStatusToDatabase(frontendStatus: string): string {
 
 function mapStatusFromDatabase(dbStatus: string): string {
   return mapStatusToProvider(dbStatus as BookingStatus);
+}
+
+function resolveLoyaltyBaseAmount(booking: {
+  subtotal?: number | null;
+  total_amount?: number | null;
+  tax_amount?: number | null;
+  service_fee_amount?: number | null;
+  tip_amount?: number | null;
+  travel_fee?: number | null;
+  discount_amount?: number | null;
+}): number {
+  const subtotal = Number(booking.subtotal ?? 0);
+  if (subtotal > 0) return subtotal;
+
+  const total = Number(booking.total_amount ?? 0);
+  if (total <= 0) return 0;
+
+  const tax = Number(booking.tax_amount ?? 0);
+  const serviceFee = Number(booking.service_fee_amount ?? 0);
+  const tip = Number(booking.tip_amount ?? 0);
+  const travel = Number(booking.travel_fee ?? 0);
+  const discount = Number(booking.discount_amount ?? 0);
+  return Math.max(0, total - tax - serviceFee - tip - travel + discount);
 }
 
 /** Raw booking row from DB with joined booking_services, booking_products, group_bookings */
@@ -100,6 +132,7 @@ type BookingDbRow = Record<string, unknown> & {
     products?: { name?: string } | Array<{ name?: string }>;
   }>;
   group_bookings?: { ref_number?: string; booking_participants?: Array<{ id?: string; participant_name?: string; participant_email?: string; participant_phone?: string; is_primary_contact?: boolean }> } | Array<{ ref_number?: string; booking_participants?: unknown[] }>;
+  service_packages?: { id?: string; name?: string } | Array<{ id?: string; name?: string }>;
 };
 
 /** Booking response with optional provider-only fields */
@@ -168,6 +201,10 @@ export async function GET(
       return notFoundResponse("Provider not found");
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     // Use admin client for the booking read (same as GET list) so RLS doesn't block
     // provider portal reads; we already scope by provider_id.
     // Match list endpoint: use explicit FK for group_bookings and same relation shape.
@@ -180,6 +217,7 @@ export async function GET(
         customers:users!bookings_customer_id_fkey(id, full_name, email, phone, rating_average, review_count),
         locations:provider_locations(id, name, address_line1, city),
         group_bookings!bookings_group_booking_id_fkey(ref_number, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact)),
+        service_packages!bookings_package_id_fkey(id, name),
         booking_services(
           id,
           offering_id,
@@ -213,6 +251,17 @@ export async function GET(
       return notFoundResponse("Booking not found");
     }
 
+    const branchAccess = await assertProviderUserCanAccessBookingBranch(
+      supabaseAdmin,
+      user.id,
+      user.role,
+      providerId,
+      (booking as BookingDbRow).location_id ?? null
+    );
+    if (branchAccess.allowed === false) {
+      return errorResponse(branchAccess.message, "FORBIDDEN", 403);
+    }
+
     const bookingData = booking as BookingDbRow;
     const transformedBooking = {
       id: bookingData.id,
@@ -220,6 +269,7 @@ export async function GET(
       customer_id: bookingData.customer_id,
       provider_id: bookingData.provider_id,
       status: mapStatusFromDatabase(bookingData.status ?? "") as BookingResponse["status"],
+      db_status: bookingData.status as BookingResponse["db_status"],
       location_type: (bookingData.location_type ?? "at_salon") as BookingResponse["location_type"],
       location_id: bookingData.location_id,
       // Construct address object from individual columns (including house call specific fields)
@@ -282,6 +332,11 @@ export async function GET(
       }),
       addons: [], // Would need separate fetch from booking_addons
       package_id: bookingData.package_id || null,
+      package_name: (() => {
+        const sp = bookingData.service_packages;
+        const one = Array.isArray(sp) ? sp[0] : sp;
+        return typeof one?.name === "string" ? one.name : null;
+      })(),
       subtotal: bookingData.subtotal || 0,
       discount_amount: bookingData.discount_amount || 0,
       discount_code: bookingData.discount_code || null,
@@ -295,7 +350,7 @@ export async function GET(
       total_amount: bookingData.total_amount || 0,
       total_paid: bookingData.total_paid || 0,
       total_refunded: bookingData.total_refunded || 0,
-      currency: bookingData.currency || "ZAR",
+      currency: bookingData.currency || lastResortCurrency,
       payment_status: (bookingData.payment_status ?? "pending") as BookingResponse["payment_status"],
       payment_method: null, // payment_method_id is the actual column
       special_requests: bookingData.special_requests || null,
@@ -329,7 +384,38 @@ export async function GET(
           is_primary_contact: p.is_primary_contact,
         }));
       })(),
-    } as BookingResponse;
+      // At-home arrival verification (no raw OTP / QR secrets exposed to provider)
+      arrival_otp_verified: Boolean((bookingData as { arrival_otp_verified?: boolean }).arrival_otp_verified),
+      qr_code_verified: Boolean((bookingData as { qr_code_verified?: boolean }).qr_code_verified),
+      arrival_otp_expires_at: (bookingData as { arrival_otp_expires_at?: string | null }).arrival_otp_expires_at ?? null,
+      qr_code_expires_at: (bookingData as { qr_code_expires_at?: string | null }).qr_code_expires_at ?? null,
+      arrival_otp_pending: (() => {
+        const row = bookingData as {
+          location_type?: string;
+          arrival_otp?: string | null;
+          arrival_otp_expires_at?: string | null;
+          arrival_otp_verified?: boolean | null;
+        };
+        if (row.location_type !== "at_home") return false;
+        if (!row.arrival_otp) return false;
+        if (row.arrival_otp_verified) return false;
+        if (row.arrival_otp_expires_at && isOTPExpired(row.arrival_otp_expires_at)) return false;
+        return true;
+      })(),
+      qr_arrival_pending: (() => {
+        const row = bookingData as {
+          location_type?: string;
+          qr_code_data?: unknown;
+          qr_code_expires_at?: string | null;
+          qr_code_verified?: boolean | null;
+        };
+        if (row.location_type !== "at_home") return false;
+        if (row.qr_code_data == null) return false;
+        if (row.qr_code_verified) return false;
+        if (row.qr_code_expires_at && isQRCodeExpired(row.qr_code_expires_at)) return false;
+        return true;
+      })(),
+    } as unknown as BookingResponse;
 
     // Load booking custom field values (provider can read their bookings' values via RLS)
     const { data: valueRows } = await supabase
@@ -464,6 +550,10 @@ export async function PATCH(
       return notFoundResponse("Provider not found");
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     // Verify booking belongs to provider
     const { data: booking } = await supabase
       .from("bookings")
@@ -485,6 +575,18 @@ export async function PATCH(
 
     if (!currentBooking) {
       return notFoundResponse("Booking not found");
+    }
+
+    const supabaseAdminPatch = getSupabaseAdmin();
+    const branchAccessPatch = await assertProviderUserCanAccessBookingBranch(
+      supabaseAdminPatch,
+      user.id,
+      user.role,
+      providerId,
+      (currentBooking as { location_id?: string | null }).location_id ?? null
+    );
+    if (branchAccessPatch.allowed === false) {
+      return errorResponse(branchAccessPatch.message, "FORBIDDEN", 403);
     }
 
     // Conflict detection: Check if booking was modified by another user
@@ -742,7 +844,9 @@ export async function PATCH(
       }
     }
 
-    const { error: updateError } = await supabase
+    // Use service role: RLS only allows the provider *owner* to UPDATE bookings; staff with
+    // edit_appointments already passed requirePermission + branch checks above.
+    const { error: updateError } = await supabaseAdminPatch
       .from("bookings")
       .update(updateData)
       .eq("id", id);
@@ -888,7 +992,7 @@ export async function PATCH(
             staff_id: staff_id ?? (currentBooking as BookingRow).staff_id ?? null,
             duration_minutes: duration,
             price: service.price || 0,
-            currency: service.currency || "ZAR",
+            currency: service.currency || lastResortCurrency,
             scheduled_start_at: start.toISOString(),
             scheduled_end_at: end.toISOString(),
           };
@@ -1038,12 +1142,12 @@ export async function PATCH(
           );
         } else if (dbStatus === "completed") {
           // Award customer loyalty points for completed booking
-          const subtotal = (currentBooking as BookingRow).subtotal || 0;
+          const loyaltyBaseAmount = resolveLoyaltyBaseAmount(currentBooking as BookingRow);
           
-          if (subtotal > 0 && customerId) {
+          if (loyaltyBaseAmount > 0 && customerId) {
             try {
               const { calculateLoyaltyPoints } = await import("@/lib/loyalty/calculate-points");
-              const { data: existingTransaction } = await supabase
+              const { data: existingTransaction } = await supabaseAdmin
                 .from("loyalty_point_transactions")
                 .select("id")
                 .eq("reference_id", id)
@@ -1052,12 +1156,12 @@ export async function PATCH(
                 .maybeSingle();
 
               if (!existingTransaction) {
-                const currency = (currentBooking as BookingRow).currency || "ZAR";
-                const pointsEarned = await calculateLoyaltyPoints(subtotal, supabase, currency);
+                const currency = (currentBooking as BookingRow).currency || lastResortCurrency;
+                const pointsEarned = await calculateLoyaltyPoints(loyaltyBaseAmount, supabaseAdmin, currency);
 
                 if (pointsEarned > 0) {
                   // Create loyalty transaction for customer
-                  const { error: loyaltyError } = await supabase
+                  const { error: loyaltyError } = await supabaseAdmin
                     .from("loyalty_point_transactions")
                     .insert({
                       user_id: customerId,
@@ -1071,7 +1175,7 @@ export async function PATCH(
 
                   if (!loyaltyError) {
                     // Update booking with loyalty_points_earned
-                    await supabase
+                    await supabaseAdmin
                       .from("bookings")
                       .update({ loyalty_points_earned: pointsEarned })
                       .eq("id", id);
@@ -1191,25 +1295,33 @@ export async function PATCH(
         }
 
         // Insert notification into database
-        await supabase.from("notifications").insert({
+        const { insertNotification } = await import("@/lib/notifications/insert-notification");
+        await insertNotification({
           user_id: customerId,
           type: notificationType,
           title: notificationTitle,
           message: notificationMessage,
-          metadata: {
+          data: {
             booking_id: id,
             booking_number: bookingNumber,
             status: newStatus,
             previous_status: previousStatus,
             was_rescheduled: wasRescheduled,
           },
-          link: `/account-settings/bookings/${id}`,
+          action_url: `/account-settings/bookings/${id}`,
         });
 
         // Also send push notification via OneSignal using templates
         try {
           const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
-          
+
+          const bookingTenantForMoney =
+            (updatedBooking as RefetchedBookingRow & { tenant_id?: string | null })?.tenant_id ??
+            (currentBooking as BookingRow & { tenant_id?: string | null })?.tenant_id ??
+            tenantId;
+          const { format: formatBookingMoney } =
+            await getTenantMoneyFormatter(bookingTenantForMoney);
+
           // Get booking details for template variables
           const bookingScheduledAt = (updatedBooking as RefetchedBookingRow)?.scheduled_at || (currentBooking as BookingRow)?.scheduled_at;
           const previousScheduledAt = (currentBooking as BookingRow)?.scheduled_at;
@@ -1250,7 +1362,11 @@ export async function PATCH(
               booking_date: scheduledDate || "your appointment",
               booking_time: scheduledTime || "",
               services: (updatedBooking as RefetchedBookingRow)?.service_name || (currentBooking as BookingRow)?.service_name || "service",
-              total_amount: `R${((updatedBooking as RefetchedBookingRow)?.total_amount || (currentBooking as BookingRow)?.total_amount || 0).toFixed(2)}`,
+              total_amount: formatBookingMoney(
+                (updatedBooking as RefetchedBookingRow)?.total_amount ||
+                  (currentBooking as BookingRow)?.total_amount ||
+                  0,
+              ),
               booking_number: bookingNumber || "",
               booking_id: id,
             };
@@ -1314,6 +1430,7 @@ export async function PATCH(
       customer_id: bookingData.customer_id,
       provider_id: bookingData.provider_id,
       status: mapStatusFromDatabase(bookingData.status),
+      db_status: bookingData.status as BookingStatus,
       location_type: bookingData.location_type,
       location_id: bookingData.location_id,
       address: bookingData.address_line1 ? {
@@ -1380,7 +1497,7 @@ export async function PATCH(
       total_amount: bookingData.total_amount || 0,
       total_paid: bookingData.total_paid || 0,
       total_refunded: bookingData.total_refunded || 0,
-      currency: bookingData.currency || "ZAR",
+      currency: bookingData.currency || lastResortCurrency,
       payment_status: bookingData.payment_status,
       payment_method: null,
       special_requests: bookingData.special_requests || null,
@@ -1390,6 +1507,7 @@ export async function PATCH(
       version: bookingData.version || 0,
     } as unknown as Booking & { version: number };
 
+    invalidateProviderBookingsReadCache(providerId);
     return successResponse({ booking: transformedBooking });
   } catch (error) {
     return handleApiError(error, "Failed to update booking");

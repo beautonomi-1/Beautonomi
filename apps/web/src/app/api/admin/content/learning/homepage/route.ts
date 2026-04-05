@@ -9,6 +9,8 @@ import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,6 +18,7 @@ export async function GET(request: NextRequest) {
     if (!user) return unauthorizedResponse("Authentication required");
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     if (!supabase) {
       return NextResponse.json({
         data: {
@@ -29,10 +32,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const { data: sections } = await supabase
-      .from("learning_homepage_sections")
-      .select("section_key, payload")
-      .in("section_key", ["hero", "cta_cards", "featured_articles", "video_library", "platform_updates"]);
+    const scoped = await fetchScopedListMerged<{ section_key: string; payload?: Record<string, unknown> }>({
+      supabase,
+      table: "learning_homepage_sections",
+      tenantId,
+      select: "section_key, payload",
+      apply: (q) => q.in("section_key", ["hero", "cta_cards", "featured_articles", "video_library", "platform_updates"]),
+      dedupeKey: (row) => row.section_key,
+    });
+    const sections = scoped.data;
 
     const out: Record<string, unknown> = {
       hero: { title: "", subtitle: "" },
@@ -63,6 +71,7 @@ export async function PATCH(request: NextRequest) {
     if (!user) return unauthorizedResponse("Authentication required");
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     if (typeof body !== "object" || body === null) {
@@ -86,10 +95,25 @@ export async function PATCH(request: NextRequest) {
       display_order: orderMap[section_key] ?? 99,
     }));
 
-    const { data: updated, error } = await supabase
-      .from("learning_homepage_sections")
-      .upsert(rows, { onConflict: "section_key" })
-      .select();
+    for (const row of rows) {
+      const { data: existing } = await supabase
+        .from("learning_homepage_sections")
+        .select("id")
+        .eq("section_key", row.section_key)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (existing?.id) {
+        await supabase
+          .from("learning_homepage_sections")
+          .update({ payload: row.payload, display_order: row.display_order, updated_at: new Date().toISOString() })
+          .eq("id", existing.id);
+      } else {
+        await supabase
+          .from("learning_homepage_sections")
+          .insert({ ...row, tenant_id: tenantId });
+      }
+    }
+    const error = null;
 
     if (error) {
       console.error("Error updating learning homepage:", error);

@@ -1,15 +1,15 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, Calendar, Plus, MapPin, Clock } from "lucide-react";
+import { Calendar, Plus, MapPin, Clock, Download, ExternalLink, Smartphone } from "lucide-react";
 import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
 
 /** Beautonomi primary (use CSS var in styles for single source) */
 const ACCENT = "var(--primary, #FF0077)";
-const BG = "#F7F7F7";
-const TEXT_PRIMARY = "#222222";
+const BG = "#F3F4F6";
+const TEXT_PRIMARY = "#111827";
 const TEXT_SECONDARY = "#6B7280";
 
 const POLL_INTERVAL_MS = 2000;
@@ -26,11 +26,51 @@ function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
   const bookingId = searchParams?.get("booking_id");
   const bookingNumber = searchParams?.get("booking_number");
+  /** Paystack appends reference (or trxref) when redirecting after card payment */
+  const paystackReference =
+    searchParams?.get("reference") || searchParams?.get("trxref");
   const isWaitlist = searchParams?.get("waitlist") === "1" || searchParams?.get("source") === "waitlist";
   const isCustomOffer = searchParams?.get("payment_type") === "custom_offer";
   const offerId = searchParams?.get("offer_id");
 
   const [customOfferBookingId, setCustomOfferBookingId] = useState<string | null>(null);
+
+  /** Local dev / no webhook: finalize payment via Paystack verify (records booking_payments + confirms booking). */
+  const paystackVerifyStarted = useRef(false);
+
+  useEffect(() => {
+    if (isWaitlist || isCustomOffer) return;
+    if (paystackVerifyStarted.current) return;
+    const run = async () => {
+      let ref = paystackReference?.trim() || "";
+      if (!ref && bookingId) {
+        try {
+          const r = await fetch(`/api/me/bookings/${encodeURIComponent(bookingId)}`, {
+            credentials: "include",
+            headers: { Accept: "application/json" },
+          });
+          if (r.ok) {
+            const json = await r.json();
+            const data = json?.data;
+            ref = typeof data?.payment_reference === "string" ? data.payment_reference : "";
+          }
+        } catch {
+          // ignore
+        }
+      }
+      if (!ref) return;
+      paystackVerifyStarted.current = true;
+      try {
+        await fetch(
+          `/api/paystack/verify?reference=${encodeURIComponent(ref)}`,
+          { credentials: "include", headers: { Accept: "application/json" } },
+        );
+      } catch {
+        paystackVerifyStarted.current = false;
+      }
+    };
+    void run();
+  }, [isWaitlist, isCustomOffer, paystackReference, bookingId]);
 
   useEffect(() => {
     if (!isCustomOffer || !offerId) return;
@@ -136,191 +176,300 @@ function CheckoutSuccessContent() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center px-4 py-12"
+      className="min-h-screen flex items-start justify-center px-4 py-10"
       style={{ backgroundColor: BG }}
     >
-      <div
-        className="w-full max-w-[430px] rounded-[2rem] p-8 text-center border shadow-[0_24px_64px_rgba(0,0,0,0.08)]"
-        style={{
-          background: "rgba(255,255,255,0.9)",
-          backdropFilter: "blur(16px) saturate(180%)",
-          borderColor: "rgba(0,0,0,0.05)",
-        }}
-      >
-        {isWaitlist ? (
-          <>
-            <div
-              className="mx-auto w-20 h-20 rounded-full flex items-center justify-center mb-6 animate-pulse"
-              style={{ backgroundColor: `${ACCENT}20`, border: `3px solid ${ACCENT}` }}
-            >
-              <span className="text-2xl font-black" style={{ color: ACCENT }}>
-                ✓
-              </span>
-            </div>
-            <h1 className="text-2xl font-semibold mb-2" style={{ color: TEXT_PRIMARY }}>
-              You're on the list
-            </h1>
-            <p className="text-sm mb-6" style={{ color: TEXT_SECONDARY }}>
-              We'll notify you when a slot becomes available.
-            </p>
-          </>
-        ) : isCustomOffer ? (
-          <>
-            <div
-              className="mx-auto w-20 h-20 rounded-full flex items-center justify-center mb-6"
-              style={{ backgroundColor: `${ACCENT}15`, color: ACCENT }}
-            >
-              <CheckCircle2 className="w-12 h-12" strokeWidth={2} />
-            </div>
-            <h1 className="text-2xl font-semibold mb-2" style={{ color: TEXT_PRIMARY }}>
-              {showBookingLink ? "You're all set" : "Payment received"}
-            </h1>
-            <p className="text-sm mb-6" style={{ color: TEXT_SECONDARY }}>
-              {showBookingLink
-                ? "Your custom service booking is confirmed. We'll send you a reminder before your visit."
-                : "Your custom service payment is being confirmed. Your booking will appear in My Bookings shortly."}
-            </p>
-          </>
-        ) : (
-          <>
-            <div
-              className="mx-auto w-20 h-20 rounded-full flex items-center justify-center mb-6"
-              style={{ backgroundColor: `${ACCENT}15`, color: ACCENT }}
-            >
-              <CheckCircle2 className="w-12 h-12" strokeWidth={2} />
-            </div>
-            <h1 className="text-2xl font-semibold mb-2" style={{ color: TEXT_PRIMARY }}>
-              {showBookingLink ? "You're all set" : "Payment received"}
-            </h1>
-            {bookingNumber && (
-              <p className="text-sm font-medium mb-2" style={{ color: ACCENT }}>
-                Booking #{bookingNumber}
-              </p>
-            )}
-            <p className="text-sm mb-4" style={{ color: TEXT_SECONDARY }}>
-              {showBookingLink
-                ? "Your appointment is confirmed. We'll send you a reminder before your visit."
-                : "Thanks—your payment is being confirmed. You can check your bookings or payments below."}
-            </p>
+      {/* Confetti-style radial gradient behind the card */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
+        <div
+          className="absolute -top-24 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full opacity-30 blur-3xl"
+          style={{ background: `radial-gradient(ellipse, ${ACCENT}40 0%, transparent 70%)` }}
+        />
+      </div>
 
-            {bookingForCalendar && !isWaitlist && (
-              <div
-                className="mb-6 rounded-xl border p-4 text-left"
-                style={{ borderColor: "rgba(0,0,0,0.08)", backgroundColor: "rgba(249,250,251,0.8)" }}
-              >
-                <p className="text-sm font-semibold mb-3" style={{ color: TEXT_PRIMARY }}>
-                  Booking summary
+      <div className="relative w-full max-w-[430px] space-y-4">
+
+        {/* ── SUCCESS HERO CARD ── */}
+        <div
+          className="rounded-3xl p-8 text-center border shadow-[0_20px_60px_rgba(0,0,0,0.09)] animate-in fade-in slide-in-from-bottom-4 duration-500"
+          style={{
+            background: "rgba(255,255,255,0.95)",
+            backdropFilter: "blur(20px) saturate(180%)",
+            borderColor: "rgba(0,0,0,0.05)",
+          }}
+        >
+          {/* Animated success icon */}
+          <div className="relative mx-auto mb-6 w-24 h-24">
+            {/* Outer pulse ring */}
+            <div
+              className="absolute inset-0 rounded-full animate-ping opacity-20"
+              style={{ backgroundColor: ACCENT }}
+            />
+            {/* Inner circle */}
+            <div
+              className="relative w-24 h-24 rounded-full flex items-center justify-center shadow-lg"
+              style={{ background: `linear-gradient(135deg, ${ACCENT}25 0%, ${ACCENT}10 100%)`, border: `2px solid ${ACCENT}30` }}
+            >
+              {isWaitlist ? (
+                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+              ) : (
+                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+              )}
+            </div>
+          </div>
+
+          {/* Title & subtitle */}
+          {isWaitlist ? (
+            <>
+              <h1 className="text-2xl font-bold mb-2" style={{ color: TEXT_PRIMARY }}>You&apos;re on the list!</h1>
+              <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
+                We&apos;ll notify you as soon as a slot opens up. You&apos;ll receive an email or push notification.
+              </p>
+            </>
+          ) : isCustomOffer ? (
+            <>
+              <h1 className="text-2xl font-bold mb-2" style={{ color: TEXT_PRIMARY }}>
+                {showBookingLink ? "You&apos;re all set!" : "Payment received"}
+              </h1>
+              <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
+                {showBookingLink
+                  ? "Your custom service booking is confirmed. We\u2019ll send you a reminder before your visit."
+                  : "Your payment is being processed. Your booking will appear in My Bookings shortly."}
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold mb-2" style={{ color: TEXT_PRIMARY }}>
+                {showBookingLink ? "Booking confirmed!" : "Payment received"}
+              </h1>
+              {bookingNumber && (
+                <p className="text-xs font-bold tracking-wider uppercase mb-2" style={{ color: ACCENT }}>
+                  Booking #{bookingNumber}
                 </p>
-                {bookingForCalendar.provider?.business_name && (
-                  <p className="text-sm mb-1" style={{ color: TEXT_PRIMARY }}>
+              )}
+              <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
+                {showBookingLink
+                  ? "Your appointment is confirmed. You\u2019ll receive a reminder before your visit."
+                  : "Thanks\u2014your payment is being processed. Check your bookings shortly."}
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* ── BOOKING SUMMARY CARD ── */}
+        {bookingForCalendar && !isWaitlist && (
+          <div
+            className="rounded-3xl border overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100"
+            style={{ background: "#fff", borderColor: "rgba(0,0,0,0.06)", boxShadow: "0 4px 20px rgba(0,0,0,0.05)" }}
+          >
+            <div className="px-6 py-4 border-b" style={{ borderColor: "rgba(0,0,0,0.06)", background: `${ACCENT}06` }}>
+              <p className="text-xs font-bold uppercase tracking-wider" style={{ color: ACCENT }}>
+                Appointment details
+              </p>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              {bookingForCalendar.provider?.business_name && (
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${ACCENT}12` }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 7H4a2 2 0 0 0-2 2v6c0 1.1.9 2 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                    </svg>
+                  </div>
+                  <p className="text-sm font-semibold" style={{ color: TEXT_PRIMARY }}>
                     {bookingForCalendar.provider.business_name}
                   </p>
-                )}
-                {calendarStart && (
-                  <p className="text-sm mb-2 flex items-center gap-2" style={{ color: TEXT_SECONDARY }}>
-                    <Clock className="w-3.5 h-3.5 shrink-0" />
-                    {calendarStart.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
-                    {" · "}
-                    {calendarStart.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
-                    {totalDurationMinutes > 0 && ` (${totalDurationMinutes} min)`}
-                  </p>
-                )}
-                {(bookingForCalendar.services?.length ?? 0) > 0 && (
-                  <ul className="text-sm mb-2 list-disc list-inside" style={{ color: TEXT_SECONDARY }}>
-                    {(bookingForCalendar.services ?? []).map((s: { offering_name?: string; title?: string; duration_minutes?: number; duration?: number }, i: number) => (
-                      <li key={i}>
+                </div>
+              )}
+
+              {calendarStart && (
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${ACCENT}12` }}>
+                    <Clock className="w-4 h-4" style={{ color: ACCENT }} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: TEXT_PRIMARY }}>
+                      {calendarStart.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: TEXT_SECONDARY }}>
+                      {calendarStart.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                      {totalDurationMinutes > 0 && ` · ${totalDurationMinutes} min`}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {(bookingForCalendar.services?.length ?? 0) > 0 && (
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5" style={{ background: `${ACCENT}12` }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                    </svg>
+                  </div>
+                  <div className="space-y-1">
+                    {(bookingForCalendar.services ?? []).map((s, i) => (
+                      <p key={i} className="text-sm" style={{ color: TEXT_PRIMARY }}>
                         {s.offering_name ?? s.title ?? "Service"}
-                        {(s.duration_minutes ?? s.duration) != null && ` (${s.duration_minutes ?? s.duration} min)`}
-                      </li>
+                        <span className="ml-1.5 text-xs" style={{ color: TEXT_SECONDARY }}>
+                          {(s.duration_minutes ?? s.duration) != null && `${s.duration_minutes ?? s.duration} min`}
+                        </span>
+                      </p>
                     ))}
-                  </ul>
-                )}
-                {locationStr && (
-                  <p className="text-sm flex items-start gap-2" style={{ color: TEXT_SECONDARY }}>
-                    <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    <span>{locationStr}</span>
-                  </p>
-                )}
-              </div>
-            )}
-          </>
+                  </div>
+                </div>
+              )}
+
+              {locationStr && (
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5" style={{ background: `${ACCENT}12` }}>
+                    <MapPin className="w-4 h-4" style={{ color: ACCENT }} />
+                  </div>
+                  <p className="text-sm" style={{ color: TEXT_PRIMARY }}>{locationStr}</p>
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
+        {/* ── ADD TO CALENDAR ── */}
         {calendarEvent && !isWaitlist && (
-          <div className="mb-6 text-left">
-            <p className="text-sm font-medium mb-2" style={{ color: TEXT_PRIMARY }}>
-              Add to calendar
+          <div
+            className="rounded-3xl border p-5 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-150"
+            style={{ background: "#fff", borderColor: "rgba(0,0,0,0.06)", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}
+          >
+            <p className="text-sm font-bold mb-1" style={{ color: TEXT_PRIMARY }}>
+              Save to your calendar
             </p>
-            <p className="text-xs mb-2" style={{ color: TEXT_SECONDARY }}>
-              Save the appointment to Google Calendar, Outlook, or download an .ics file for Apple Calendar or other apps.
+            <p className="text-xs mb-4" style={{ color: TEXT_SECONDARY }}>
+              Never miss your appointment — add it now.
             </p>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <a
                 href={getGoogleCalendarUrl(calendarEvent)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-xl font-medium border transition-transform active:scale-[0.98]"
-                style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB" }}
+                className="flex flex-col items-center justify-center gap-1.5 rounded-2xl py-3.5 border transition-all active:scale-[0.97] hover:shadow-sm"
+                style={{ borderColor: "#E5E7EB", color: TEXT_PRIMARY }}
               >
-                <Plus className="w-4 h-4 mr-1" />
-                Google
+                <Plus className="w-4 h-4" style={{ color: "#4285F4" }} />
+                <span className="text-xs font-semibold">Google</span>
               </a>
               <a
                 href={getOutlookCalendarUrl(calendarEvent)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-xl font-medium border transition-transform active:scale-[0.98]"
-                style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB" }}
+                className="flex flex-col items-center justify-center gap-1.5 rounded-2xl py-3.5 border transition-all active:scale-[0.97] hover:shadow-sm"
+                style={{ borderColor: "#E5E7EB", color: TEXT_PRIMARY }}
               >
-                Outlook
+                <Calendar className="w-4 h-4" style={{ color: "#0072C6" }} />
+                <span className="text-xs font-semibold">Outlook</span>
               </a>
-              <a
-                href={`/api/me/bookings/${resolvedBookingId}/calendar.ics`}
-                download
-                className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-xl font-medium border transition-transform active:scale-[0.98]"
-                style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB" }}
-              >
-                <Calendar className="w-4 h-4 mr-1" />
-                .ICS file
-              </a>
+              {resolvedBookingId && (
+                <a
+                  href={`/api/me/bookings/${resolvedBookingId}/calendar.ics`}
+                  download
+                  className="flex flex-col items-center justify-center gap-1.5 rounded-2xl py-3.5 border transition-all active:scale-[0.97] hover:shadow-sm"
+                  style={{ borderColor: "#E5E7EB", color: TEXT_PRIMARY }}
+                >
+                  <Download className="w-4 h-4" style={{ color: "#6B7280" }} />
+                  <span className="text-xs font-semibold">Apple</span>
+                </a>
+              )}
             </div>
           </div>
         )}
 
-        <div className="flex flex-col gap-3">
+        {/* ── CTA BUTTONS ── */}
+        <div
+          className="rounded-3xl border p-5 space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500 delay-200"
+          style={{ background: "#fff", borderColor: "rgba(0,0,0,0.06)", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}
+        >
           {showBookingLink && (
             <Link
               href="/account-settings/bookings"
-              className="inline-flex items-center justify-center min-h-[44px] px-5 py-3 rounded-2xl font-semibold text-white transition-transform active:scale-[0.98]"
-              style={{ backgroundColor: ACCENT }}
+              className="flex items-center justify-center gap-2 w-full min-h-[50px] rounded-2xl font-bold text-white transition-all active:scale-[0.98] text-sm"
+              style={{ backgroundColor: ACCENT, boxShadow: `0 8px 20px ${ACCENT}40` }}
             >
               View my bookings
             </Link>
           )}
-          <Link
-            href={showBookingLink ? "/account-settings/payments" : "/account-settings/bookings"}
-            className="inline-flex items-center justify-center min-h-[44px] px-5 py-3 rounded-2xl font-medium border transition-transform active:scale-[0.98]"
-            style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB" }}
-          >
-            {showBookingLink ? "View payments" : "View bookings"}
-          </Link>
           {isCustomOffer && (
             <Link
               href="/account-settings/custom-requests"
-              className="inline-flex items-center justify-center min-h-[44px] px-5 py-3 rounded-2xl font-medium border transition-transform active:scale-[0.98]"
+              className="flex items-center justify-center gap-2 w-full min-h-[50px] rounded-2xl font-semibold border transition-all active:scale-[0.98] text-sm"
               style={{ color: TEXT_PRIMARY, borderColor: "#E5E7EB" }}
             >
               View custom requests
             </Link>
           )}
+          {!showBookingLink && (
+            <Link
+              href="/account-settings/bookings"
+              className="flex items-center justify-center gap-2 w-full min-h-[50px] rounded-2xl font-bold text-white transition-all active:scale-[0.98] text-sm"
+              style={{ backgroundColor: ACCENT, boxShadow: `0 8px 20px ${ACCENT}40` }}
+            >
+              View bookings
+            </Link>
+          )}
           <a
             href={openInAppUrl}
-            className="inline-flex items-center justify-center min-h-[44px] px-5 py-3 rounded-2xl font-medium border transition-transform active:scale-[0.98]"
-            style={{ color: TEXT_SECONDARY, borderColor: "#E5E7EB", fontSize: "0.875rem" }}
+            className="flex items-center justify-center gap-2 w-full min-h-[44px] rounded-2xl font-medium border transition-all active:scale-[0.98] text-sm"
+            style={{ color: TEXT_SECONDARY, borderColor: "#E5E7EB" }}
           >
-            Open in app
+            <ExternalLink className="w-4 h-4" />
+            Open in Beautonomi app
           </a>
         </div>
+
+        {/* ── APP DOWNLOAD BANNER ── */}
+        <div
+          className="rounded-3xl border p-5 text-center animate-in fade-in slide-in-from-bottom-4 duration-500 delay-300"
+          style={{
+            background: `linear-gradient(135deg, ${ACCENT}08 0%, transparent 100%)`,
+            borderColor: `${ACCENT}20`,
+            boxShadow: "0 2px 12px rgba(0,0,0,0.04)"
+          }}
+        >
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <Smartphone className="w-5 h-5" style={{ color: ACCENT }} />
+            <p className="text-sm font-bold" style={{ color: TEXT_PRIMARY }}>
+              Get the Beautonomi app
+            </p>
+          </div>
+          <p className="text-xs mb-4" style={{ color: TEXT_SECONDARY }}>
+            Manage bookings, track loyalty points, and book again in seconds.
+          </p>
+          <div className="flex gap-2 justify-center">
+            <a
+              href="https://apps.apple.com/app/beautonomi"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border transition-all active:scale-[0.97]"
+              style={{ borderColor: "rgba(0,0,0,0.12)", color: TEXT_PRIMARY, background: "#fff" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ color: TEXT_PRIMARY }}>
+                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+              </svg>
+              App Store
+            </a>
+            <a
+              href="https://play.google.com/store/apps/beautonomi"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border transition-all active:scale-[0.97]"
+              style={{ borderColor: "rgba(0,0,0,0.12)", color: TEXT_PRIMARY, background: "#fff" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ color: "#34a853" }}>
+                <path d="m3 20.5v-17c0-.83 1.01-1.31 1.63-.78l14.84 8.5c.57.33.57 1.13 0 1.46L4.63 21.28C4.01 21.81 3 21.33 3 20.5z"/>
+              </svg>
+              Google Play
+            </a>
+          </div>
+        </div>
+
       </div>
     </div>
   );

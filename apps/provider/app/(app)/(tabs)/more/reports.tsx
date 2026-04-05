@@ -8,6 +8,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 type BookingSummary = {
   totalBookings?: number;
@@ -19,6 +20,7 @@ type BookingSummary = {
 
 export default function ReportsScreen() {
   const router = useRouter();
+  const tenantCurrency = getTenantDefaultCurrency();
   const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
   const summaryUrl = selectedLocationId
@@ -82,13 +84,13 @@ export default function ReportsScreen() {
             </View>
             <View style={{ marginRight: 24, marginBottom: 24 }}>
               <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>
-                ZAR {(totalRevenue || 0).toLocaleString()}
+                {tenantCurrency} {(totalRevenue || 0).toLocaleString()}
               </Text>
               <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Revenue</Text>
             </View>
             <View style={{ marginBottom: 24 }}>
               <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>
-                ZAR {(avgValue || 0).toLocaleString()}
+                {tenantCurrency} {(avgValue || 0).toLocaleString()}
               </Text>
               <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Avg. booking</Text>
             </View>
@@ -109,7 +111,7 @@ export default function ReportsScreen() {
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <Text style={{ fontSize: 14, color: Colors.gray[500], marginRight: 12 }}>{s.bookings} bookings</Text>
                   <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
-                    ZAR {(s.revenue || 0).toLocaleString()}
+                    {tenantCurrency} {(s.revenue || 0).toLocaleString()}
                   </Text>
                 </View>
               </View>

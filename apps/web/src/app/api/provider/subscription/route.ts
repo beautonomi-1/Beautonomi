@@ -4,7 +4,7 @@ import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser
 
 /**
  * GET /api/provider/subscription
- * 
+ *
  * Get provider's subscription information
  */
 export async function GET(request: NextRequest) {

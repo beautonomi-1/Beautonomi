@@ -10,12 +10,6 @@ import { useEffect } from "react";
  */
 export default function SuppressConsoleWarnings() {
   useEffect(() => {
-    // #region agent log (only when NEXT_PUBLIC_DEBUG_INGEST_URL is set)
-    const url = typeof process !== "undefined" ? process.env?.NEXT_PUBLIC_DEBUG_INGEST_URL : undefined;
-    if (url) {
-      fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "50ed8b" }, body: JSON.stringify({ sessionId: "50ed8b", location: "suppress-console-warnings.tsx:useEffect", message: "SuppressConsoleWarnings mounted", data: {}, timestamp: Date.now(), hypothesisId: "H2" }) }).catch(() => {});
-    }
-    // #endregion
     // Store original console methods
     const originalError = console.error;
     const originalWarn = console.warn;
@@ -55,7 +49,18 @@ export default function SuppressConsoleWarnings() {
         // Browser uses Google as network location provider for navigator.geolocation (not our API call)
         (lowerMessage.includes("network location provider") && lowerMessage.includes("googleapis")) ||
         // Next.js LCP image suggestion (noise in dev when using external images)
-        (lowerMessage.includes("largest contentful paint") && lowerMessage.includes("loading"))
+        (lowerMessage.includes("largest contentful paint") && lowerMessage.includes("loading")) ||
+        // Amplitude engagement lifecycle warnings (optional surface; noisy during dev/HMR)
+        lowerMessage.includes("engagement sdk not booted. ignoring identity change") ||
+        lowerMessage.includes("user already booted, ignoring additional boot call") ||
+        lowerMessage.includes("engagement sdk has already been initialized") ||
+        lowerMessage.includes("no destination plugins on the instance") ||
+        // Amplitude decide endpoint can fail on strict network/proxy/privacy setups
+        // and is non-critical for app functionality.
+        (lowerMessage.includes("failed to fetch decide data") && lowerMessage.includes("amplitude")) ||
+        lowerMessage.includes("gs.amplitude.com") ||
+        // Legacy identify-client errors from stale dev chunks should not surface.
+        (lowerMessage.includes("identify api failed") && lowerMessage.includes("401"))
       );
     };
     

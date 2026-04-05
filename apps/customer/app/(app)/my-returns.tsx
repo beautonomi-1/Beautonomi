@@ -15,6 +15,8 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatMoney } from "@beautonomi/utils";
 
 interface ReturnItem {
   id: string;
@@ -25,6 +27,13 @@ interface ReturnItem {
   status: string;
   created_at: string;
   order?: { order_number?: string; provider?: { business_name?: string } };
+}
+
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
 }
 
 const STATUS_LABELS: Record<string, { label: string; bg: string; text: string }> = {
@@ -57,6 +66,7 @@ export default function MyReturnsScreen() {
 
   const returnsUrl = APP_URL ? `${APP_URL}/account-settings/returns` : null;
   const ordersUrl = APP_URL ? `${APP_URL}/account-settings/orders` : null;
+  const fb = getTenantDefaultCurrency();
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -201,8 +211,10 @@ export default function MyReturnsScreen() {
                       <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9999, ...statusSt }}>
                         <Text style={{ fontSize: 11, fontWeight: "600", ...statusSt }}>{formatStatus(r.status)}</Text>
                       </View>
-                      <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900], marginTop: 8 }}>R{Number(r.refund_amount).toFixed(2)}</Text>
-                      <Text style={{ fontSize: 11, color: Colors.gray[400] }}>{new Date(r.created_at).toLocaleDateString()}</Text>
+                      <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900], marginTop: 8 }}>
+                        {formatMoney(Number(r.refund_amount), fb)}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: Colors.gray[400] }}>{formatDateSafe(r.created_at)}</Text>
                     </View>
                   </View>
                   <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>

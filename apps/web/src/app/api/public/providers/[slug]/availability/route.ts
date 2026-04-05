@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import type { AvailabilitySlot } from "@/types/beautonomi";
 
 type WorkingHoursDay = {
@@ -47,7 +48,10 @@ function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string) {
  *
  * Get available time slots for the public book flow (express/online booking).
  * Accepts duration_minutes and buffer_minutes so multi-service and group
- * bookings can pass total span. Reschedule/portal use a separate pipeline:
+ * bookings can pass total span. Optional `service_ids` (comma-separated UUIDs)
+ * unions required resources across offerings for multi-service carts; when omitted,
+ * `service_id` alone is used for resource rules.
+ * Reschedule/portal use a separate pipeline:
  * loadAvailabilityConstraints + calculateAvailableSlots (see /api/portal/availability).
  */
 export async function GET(
@@ -55,6 +59,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+
     const supabase = await getSupabaseServer();
     const { slug } = await params;
     const { searchParams } = new URL(request.url);
@@ -67,6 +75,7 @@ export async function GET(
     const paramBuffer = searchParams.get("buffer_minutes");
     const minNoticeMinutes = parseInt(searchParams.get("min_notice_minutes") || "0");
     const maxAdvanceDays = parseInt(searchParams.get("max_advance_days") || "365");
+    const excludeHoldId = searchParams.get("excludeHoldId")?.trim() || undefined;
 
     if (!date) {
       return NextResponse.json(
@@ -90,6 +99,7 @@ export async function GET(
       .select("id")
       .eq("slug", slug)
       .eq("status", "active")
+      .eq("tenant_id", tenantId)
       .single();
 
     if (providerError || !provider) {
@@ -216,6 +226,34 @@ export async function GET(
       }));
     }
 
+    // Active slot holds (not yet booking_services) — block the same windows for every shopper.
+    // Callers pass excludeHoldId so the holder still sees their reserved slot while choosing times.
+    const supabaseAdminHolds = getSupabaseAdmin();
+    const nowIso = new Date().toISOString();
+    let holdsQuery = supabaseAdminHolds
+      .from("booking_holds")
+      .select("start_at, end_at, staff_id, id")
+      .eq("provider_id", provider.id)
+      .eq("hold_status", "active")
+      .gt("expires_at", nowIso)
+      .gt("end_at", startOfDayIso)
+      .lt("start_at", endOfDayIso);
+    if (excludeHoldId) {
+      holdsQuery = holdsQuery.neq("id", excludeHoldId);
+    }
+    const { data: holdRows, error: holdsError } = await holdsQuery;
+    if (holdsError) {
+      console.error("booking_holds fetch for public availability:", holdsError);
+    } else {
+      for (const h of holdRows || []) {
+        busyIntervals.push({
+          start: h.start_at as string,
+          end: h.end_at as string,
+          staff_id: h.staff_id,
+        });
+      }
+    }
+
     // Fetch availability blocks that overlap this day (block.end_at > startOfDay AND block.start_at < endOfDay)
     const { data: blocks, error: blocksError } = await supabase
       .from("availability_blocks")
@@ -252,6 +290,46 @@ export async function GET(
           }
         }
       }
+
+      // Days off from portal (staff_days_off) — same as time off: block the whole day for that staff
+      const { data: daysOffRows, error: daysOffError } = await supabaseAdmin
+        .from("staff_days_off")
+        .select("staff_id, is_approved")
+        .eq("provider_id", provider.id)
+        .eq("date", date)
+        .in("staff_id", staffIdsToCheck);
+      if (!daysOffError && daysOffRows?.length) {
+        for (const row of daysOffRows) {
+          if (row.staff_id && row.is_approved !== false) {
+            busyIntervals.push({
+              start: startOfDayIso,
+              end: endOfDayIso,
+              staff_id: row.staff_id,
+            });
+          }
+        }
+      }
+    }
+
+    // Provider time blocks (same source as /api/provider/bookings/available-slots) — block customer slots
+    const supabaseAdminBlocks = getSupabaseAdmin();
+    const { data: timeBlocks } = await supabaseAdminBlocks
+      .from("time_blocks")
+      .select("staff_id, date, start_time, end_time")
+      .eq("provider_id", provider.id)
+      .eq("date", date)
+      .eq("is_active", true);
+    for (const tb of timeBlocks || []) {
+      const d = typeof tb.date === "string" ? tb.date : date;
+      const startPart = typeof tb.start_time === "string" ? tb.start_time.slice(0, 5) : "00:00";
+      const endPart = typeof tb.end_time === "string" ? tb.end_time.slice(0, 5) : "23:59";
+      const blockStart = new Date(`${d}T${startPart}:00`).toISOString();
+      const blockEnd = new Date(`${d}T${endPart}:00`).toISOString();
+      busyIntervals.push({
+        start: blockStart,
+        end: blockEnd,
+        staff_id: tb.staff_id ?? undefined,
+      });
     }
 
     const step = 15;
@@ -369,35 +447,57 @@ export async function GET(
       return NextResponse.json({ data: { slots: [] }, error: null });
     }
 
-    // Filter by min_notice_minutes: exclude slots starting before now + min notice
-    if (effectiveMinNotice > 0 && date === today.toISOString().split("T")[0]) {
+    // Filter by min_notice_minutes: exclude any slot that starts before now + lead time
+    // (must apply on every calendar date — e.g. tomorrow 8am can be invalid if it is <12h away)
+    if (effectiveMinNotice > 0) {
       const cutoff = new Date(Date.now() + effectiveMinNotice * 60 * 1000);
       slots = slots.filter((s) => new Date(s.start) >= cutoff);
     }
 
-    // Filter by resource availability when service requires resources
-    if (serviceId && slots.length > 0) {
-      const { data: offeringRes } = await supabase
-        .from("offering_resources")
-        .select("resource_id")
-        .eq("offering_id", serviceId)
-        .eq("required", true);
-      const resourceIds = [...new Set((offeringRes || []).map((r: any) => r.resource_id))];
-      if (resourceIds.length > 0) {
-        const { checkResourceAvailability } = await import("@/lib/resources/assignment");
-        const slotDurationMs = durationMinutes * 60 * 1000;
-        const availableSlots: AvailabilitySlot[] = [];
-        for (const slot of slots) {
-          const startAt = new Date(slot.start);
-          const endAt = new Date(startAt.getTime() + slotDurationMs);
-          const check = await checkResourceAvailability(supabase, resourceIds, startAt, endAt);
-          if (check.available) {
-            availableSlots.push(slot);
-          } else {
-            availableSlots.push({ ...slot, is_available: false });
+    // Filter by resource availability: union required resources across offerings (multi-service).
+    // Use slot.end for the occupancy window — same as duration_minutes + buffer_minutes used for staff conflicts.
+    const serviceIdsParam = searchParams.get("service_ids");
+    const offeringIdsForResources =
+      serviceIdsParam
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean) ?? [];
+    const resourceCheckOfferingIds =
+      offeringIdsForResources.length > 0
+        ? offeringIdsForResources
+        : serviceId
+          ? [serviceId]
+          : [];
+
+    if (resourceCheckOfferingIds.length > 0 && slots.length > 0) {
+      const { data: ownedOfferings } = await supabase
+        .from("offerings")
+        .select("id")
+        .eq("provider_id", provider.id)
+        .in("id", resourceCheckOfferingIds);
+      const validOfferingIds = (ownedOfferings || []).map((o: { id: string }) => o.id);
+      if (validOfferingIds.length > 0) {
+        const { data: offeringRes } = await supabase
+          .from("offering_resources")
+          .select("resource_id")
+          .in("offering_id", validOfferingIds)
+          .eq("required", true);
+        const resourceIds = [...new Set((offeringRes || []).map((r: { resource_id: string }) => r.resource_id))];
+        if (resourceIds.length > 0) {
+          const { checkResourceAvailability } = await import("@/lib/resources/assignment");
+          const availableSlots: AvailabilitySlot[] = [];
+          for (const slot of slots) {
+            const startAt = new Date(slot.start);
+            const endAt = new Date(slot.end);
+            const check = await checkResourceAvailability(supabase, resourceIds, startAt, endAt);
+            if (check.available) {
+              availableSlots.push(slot);
+            } else {
+              availableSlots.push({ ...slot, is_available: false });
+            }
           }
+          slots = availableSlots;
         }
-        slots = availableSlots;
       }
     }
 

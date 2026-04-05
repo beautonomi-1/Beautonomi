@@ -2,7 +2,6 @@
 export { CalendarMobileView } from "./CalendarMobileView";
 export { CalendarDesktopView } from "./CalendarDesktopView";
 export { CalendarGrid } from "./CalendarGrid";
-export { CalendarMobileGrid } from "./CalendarMobileGrid";
 export { CalendarList } from "./CalendarList";
 export { CalendarLegend } from "./CalendarLegend";
 export { CalendarColorSchemeDialog } from "./CalendarColorSchemeDialog";

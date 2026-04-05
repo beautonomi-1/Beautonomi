@@ -19,10 +19,25 @@ export default function ProviderLayout({ children }: { children: React.ReactNode
   const isOnboardingPage = pathname === "/provider/onboarding";
   const isEmbedPage = pathname === "/provider/embed";
   const isSubscriptionCheckout = pathname === "/provider/subscription-checkout";
+  const isGetStartedPage =
+    pathname === "/provider/get-started" ||
+    (pathname?.startsWith("/provider/get-started/") ?? false);
 
   // Onboarding allows customers; embed is for WebView; subscription-checkout is minimal layout (no shell)
   if (isOnboardingPage || isEmbedPage || isSubscriptionCheckout) {
     return <>{children}</>;
+  }
+
+  // Setup wizard: authenticated provider role but no ProviderPortalProvider (no providers row yet — profile API 404s)
+  if (isGetStartedPage) {
+    return (
+      <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
+        <ProviderPortalGate>
+          <RouteTracker />
+          {children}
+        </ProviderPortalGate>
+      </RoleGuard>
+    );
   }
 
   // All other provider pages require provider role.

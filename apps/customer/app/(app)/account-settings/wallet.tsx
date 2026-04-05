@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
 import { useFocusEffect } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 const PRESET_AMOUNTS = [100, 200, 500, 1000];
 
@@ -34,11 +35,11 @@ export default function WalletScreen() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  // useFocusEffect covers both initial mount and re-focus — no need for a separate useEffect
   useFocusEffect(useCallback(() => { load(); }, []));
 
   const balance = wallet?.balance ?? 0;
-  const currency = wallet?.currency ?? "ZAR";
+  const currency = wallet?.currency ?? getTenantDefaultCurrency();
 
   const startTopup = async () => {
     const amount = Number(topupAmount?.replace(/,/g, "."));

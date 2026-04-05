@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import React, { useState, useEffect, useCallback } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +22,7 @@ import EmptyState from "@/components/ui/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import Link from "next/link";
+import { VirtualList } from "@/components/ui/virtual-list";
 
 interface Provider {
   id: string;
@@ -180,22 +180,15 @@ export default function AdminProviders() {
     <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="min-h-screen bg-zinc-50/50">
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
+          <div
             className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-8"
           >
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
-              >
+              <div>
                 <h1 className="text-2xl md:text-3xl font-semibold tracking-tighter mb-2 text-gray-900">Provider Management</h1>
                 <p className="text-sm md:text-base font-light text-gray-600">Manage provider accounts and approvals</p>
-              </motion.div>
+              </div>
             </div>
 
             {/* Search and Filters */}
@@ -210,23 +203,18 @@ export default function AdminProviders() {
                     className="pl-10 backdrop-blur-xl bg-white/80 border border-white/40 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
                   />
                 </div>
-                <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowFilters(!showFilters)}
-                    className="border-white/40 backdrop-blur-xl bg-white/80 hover:bg-white/90 rounded-xl"
-                  >
-                    <Filter className="w-4 h-4 mr-2" />
-                    Filters
-                  </Button>
-                </motion.div>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="border-white/40 backdrop-blur-xl bg-white/80 hover:bg-white/90 rounded-xl"
+                >
+                  <Filter className="w-4 h-4 mr-2" />
+                  Filters
+                </Button>
               </div>
 
               {showFilters && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
+                <div
                   className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4"
                 >
                   <div>
@@ -243,7 +231,7 @@ export default function AdminProviders() {
                       <option value="rejected">Rejected</option>
                     </select>
                   </div>
-                </motion.div>
+                </div>
               )}
             </div>
 
@@ -337,12 +325,14 @@ export default function AdminProviders() {
             </TabsContent>
           </Tabs>
         )}
-          </motion.div>
+          </div>
         </div>
       </div>
     </RoleGuard>
   );
 }
+
+const PROVIDER_CARD_HEIGHT = 200;
 
 function ProvidersList({
   providers,
@@ -363,6 +353,21 @@ function ProvidersList({
 }) {
   void isSelectAll;
   void onSelectAll;
+
+  const renderProvider = useCallback(
+    (provider: Provider) => (
+      <ProviderCard
+        key={provider.id}
+        provider={provider}
+        onStatusChange={onStatusChange}
+        onVerification={onVerification}
+        selected={selectedIds.has(provider.id)}
+        onSelect={(checked) => onSelect(provider.id, checked)}
+      />
+    ),
+    [onStatusChange, onVerification, selectedIds, onSelect],
+  );
+
   if (providers.length === 0) {
     return (
       <EmptyState
@@ -373,18 +378,14 @@ function ProvidersList({
   }
 
   return (
-    <div className="space-y-4">
-      {providers.map((provider) => (
-        <ProviderCard
-          key={provider.id}
-          provider={provider}
-          onStatusChange={onStatusChange}
-          onVerification={onVerification}
-          selected={selectedIds.has(provider.id)}
-          onSelect={(checked) => onSelect(provider.id, checked)}
-        />
-      ))}
-    </div>
+    <VirtualList
+      items={providers}
+      itemHeight={PROVIDER_CARD_HEIGHT}
+      renderItem={renderProvider}
+      containerHeight={Math.min(providers.length * PROVIDER_CARD_HEIGHT, 800)}
+      overscan={5}
+      itemClassName="pb-4"
+    />
   );
 }
 
@@ -428,11 +429,7 @@ function ProviderCard({
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      whileHover={{ scale: 1.01 }}
-      whileTap={{ scale: 0.99 }}
+    <div
       className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all"
     >
       <div className="flex items-start gap-3">
@@ -442,139 +439,125 @@ function ProviderCard({
         <div className="flex-1">
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
             <div className="flex-1">
-          <div className="flex items-center gap-3 mb-3 flex-wrap">
-            <div className="p-2 bg-pink-50 rounded-lg border border-pink-100">
-              <Building2 className="w-5 h-5 text-[#FF0077]" />
-            </div>
-            <h3 className="text-lg font-semibold tracking-tight text-gray-900">{provider.business_name}</h3>
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor()}`}>
-              {provider.status}
-            </span>
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getVerificationColor()}`}>
-              {provider.verification_status}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600 mb-4">
-            <div>
-              <p className="font-medium text-gray-900 mb-1">Owner</p>
-              <p>{provider.owner_name}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Mail className="w-4 h-4" />
-              <span>{provider.owner_email}</span>
-            </div>
-            {provider.owner_phone && (
-              <div className="flex items-center gap-2">
-                <Phone className="w-4 h-4" />
-                <span>{provider.owner_phone}</span>
+              <div className="flex items-center gap-3 mb-3 flex-wrap">
+                <div className="p-2 bg-pink-50 rounded-lg border border-pink-100">
+                  <Building2 className="w-5 h-5 text-[#FF0077]" />
+                </div>
+                <h3 className="text-lg font-semibold tracking-tight text-gray-900">{provider.business_name}</h3>
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor()}`}>
+                  {provider.status}
+                </span>
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getVerificationColor()}`}>
+                  {provider.verification_status}
+                </span>
               </div>
-            )}
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4" />
-              <span>{provider.city}, {provider.country}</span>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-4 text-sm">
-            {provider.rating && (
-              <div>
-                <span className="font-medium">Rating: </span>
-                <span>{provider.rating.toFixed(1)} ⭐</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600 mb-4">
+                <div>
+                  <p className="font-medium text-gray-900 mb-1">Owner</p>
+                  <p>{provider.owner_name}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Mail className="w-4 h-4" />
+                  <span>{provider.owner_email}</span>
+                </div>
+                {provider.owner_phone && (
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-4 h-4" />
+                    <span>{provider.owner_phone}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />
+                  <span>{provider.city}, {provider.country}</span>
+                </div>
               </div>
-            )}
-            {provider.review_count !== undefined && (
-              <div>
-                <span className="font-medium">Reviews: </span>
-                <span>{provider.review_count}</span>
-              </div>
-            )}
-            <div>
-              <span className="font-medium">Type: </span>
-              <span className="capitalize">{provider.business_type}</span>
-            </div>
-          </div>
-        </div>
 
-        <div className="flex flex-col gap-2">
-          {provider.status === "pending" && (
-            <>
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+              <div className="flex items-center gap-4 text-sm">
+                {provider.rating && (
+                  <div>
+                    <span className="font-medium">Rating: </span>
+                    <span>{provider.rating.toFixed(1)} ⭐</span>
+                  </div>
+                )}
+                {provider.review_count !== undefined && (
+                  <div>
+                    <span className="font-medium">Reviews: </span>
+                    <span>{provider.review_count}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="font-medium">Type: </span>
+                  <span className="capitalize">{provider.business_type}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {provider.status === "pending" && (
+                <>
+                  <Button
+                    onClick={() => onStatusChange(provider.id, "active")}
+                    className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-600 text-white shadow-lg"
+                  >
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    Approve
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => onStatusChange(provider.id, "rejected")}
+                    className="shadow-lg"
+                  >
+                    <XCircle className="w-4 h-4 mr-2" />
+                    Reject
+                  </Button>
+                </>
+              )}
+              {provider.status === "active" && (
+                <>
+                  <Button
+                    variant="destructive"
+                    onClick={() => onStatusChange(provider.id, "suspended")}
+                    className="shadow-lg"
+                  >
+                    Suspend
+                  </Button>
+                  {provider.verification_status !== "verified" ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => onVerification(provider.id, true)}
+                      className="border-[#FF0077] text-[#FF0077] hover:bg-pink-50"
+                    >
+                      Verify
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => onVerification(provider.id, false)}
+                      className="border-gray-400 text-gray-600 hover:bg-gray-50"
+                    >
+                      Unverify
+                    </Button>
+                  )}
+                </>
+              )}
+              {provider.status === "suspended" && (
                 <Button
                   onClick={() => onStatusChange(provider.id, "active")}
                   className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-600 text-white shadow-lg"
                 >
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Approve
+                  Reactivate
                 </Button>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Button
-                  variant="destructive"
-                  onClick={() => onStatusChange(provider.id, "rejected")}
-                  className="shadow-lg"
-                >
-                  <XCircle className="w-4 h-4 mr-2" />
-                  Reject
-                </Button>
-              </motion.div>
-            </>
-          )}
-          {provider.status === "active" && (
-            <>
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Button
-                  variant="destructive"
-                  onClick={() => onStatusChange(provider.id, "suspended")}
-                  className="shadow-lg"
-                >
-                  Suspend
-                </Button>
-              </motion.div>
-              {provider.verification_status !== "verified" ? (
-                <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                  <Button
-                    variant="outline"
-                    onClick={() => onVerification(provider.id, true)}
-                    className="border-[#FF0077] text-[#FF0077] hover:bg-pink-50"
-                  >
-                    Verify
-                  </Button>
-                </motion.div>
-              ) : (
-                <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                  <Button
-                    variant="outline"
-                    onClick={() => onVerification(provider.id, false)}
-                    className="border-gray-400 text-gray-600 hover:bg-gray-50"
-                  >
-                    Unverify
-                  </Button>
-                </motion.div>
               )}
-            </>
-          )}
-          {provider.status === "suspended" && (
-            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-              <Button
-                onClick={() => onStatusChange(provider.id, "active")}
-                className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-600 text-white shadow-lg"
-              >
-                Reactivate
-              </Button>
-            </motion.div>
-          )}
-          <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-            <Link href={`/admin/providers/${provider.id}`}>
-              <Button variant="outline" className="mt-2 border-white/40 backdrop-blur-sm bg-white/60 hover:bg-white/80">
-                View Details
-              </Button>
-            </Link>
-          </motion.div>
-        </div>
+              <Link href={`/admin/providers/${provider.id}`}>
+                <Button variant="outline" className="mt-2 border-white/40 backdrop-blur-sm bg-white/60 hover:bg-white/80">
+                  View Details
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

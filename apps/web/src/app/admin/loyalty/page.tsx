@@ -10,6 +10,8 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { Gift, Award, TrendingUp, Save, Edit, Trash2, RefreshCw, Loader2 } from "lucide-react";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 type LoyaltyRule = {
   id: string;
@@ -32,6 +34,8 @@ type LoyaltyMilestone = {
 };
 
 export default function AdminLoyaltyPage() {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [rules, setRules] = useState<LoyaltyRule[]>([]);
   const [milestones, setMilestones] = useState<LoyaltyMilestone[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,7 +46,7 @@ export default function AdminLoyaltyPage() {
 
   const [newRule, setNewRule] = useState({
     points_per_currency_unit: 1,
-    currency: "ZAR",
+    currency: tenantCurrency,
     redemption_rate: 100,
   });
 
@@ -51,7 +55,7 @@ export default function AdminLoyaltyPage() {
     description: "",
     points_threshold: 100,
     reward_amount: 10,
-    reward_currency: "ZAR",
+    reward_currency: tenantCurrency,
     is_active: true,
   });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -89,7 +93,7 @@ export default function AdminLoyaltyPage() {
       await fetcher.post("/api/admin/loyalty/rules", newRule);
       toast.success("Loyalty rule created successfully");
       await load();
-      setNewRule({ points_per_currency_unit: 1, currency: "ZAR", redemption_rate: 100 });
+      setNewRule({ points_per_currency_unit: 1, currency: tenantCurrency, redemption_rate: 100 });
     } catch (err: any) {
       toast.error(err.message || "Failed to create loyalty rule");
     } finally {
@@ -111,7 +115,7 @@ export default function AdminLoyaltyPage() {
         points_threshold: Number(milestoneForm.points_threshold),
         reward_type: "wallet_credit" as const,
         reward_amount: Number(milestoneForm.reward_amount),
-        reward_currency: milestoneForm.reward_currency || "ZAR",
+        reward_currency: milestoneForm.reward_currency || tenantCurrency,
         is_active: Boolean(milestoneForm.is_active),
       };
 
@@ -128,7 +132,7 @@ export default function AdminLoyaltyPage() {
         description: "",
         points_threshold: 100,
         reward_amount: 10,
-        reward_currency: "ZAR",
+        reward_currency: tenantCurrency,
         is_active: true,
       });
       await load();
@@ -253,7 +257,7 @@ export default function AdminLoyaltyPage() {
                         className="backdrop-blur-sm bg-white/60 border-white/40"
                         placeholder="1"
                       />
-                      <p className="text-xs text-gray-500 mt-1">e.g., 1 point per 1 ZAR spent</p>
+                      <p className="text-xs text-gray-500 mt-1">e.g., 1 point per 1 {tenantCurrency} spent</p>
                     </div>
                     <div>
                       <Label htmlFor="currency" className="text-sm font-medium text-gray-700 mb-2 block">
@@ -264,7 +268,7 @@ export default function AdminLoyaltyPage() {
                         value={newRule.currency}
                         onChange={(e) => setNewRule((s) => ({ ...s, currency: e.target.value.toUpperCase() }))}
                         className="backdrop-blur-sm bg-white/60 border-white/40"
-                        placeholder="ZAR"
+                        placeholder={tenantCurrency}
                         maxLength={3}
                       />
                     </div>
@@ -393,10 +397,10 @@ export default function AdminLoyaltyPage() {
                       </Label>
                       <Input
                         id="reward_currency"
-                        value={milestoneForm.reward_currency || "ZAR"}
+                        value={milestoneForm.reward_currency || tenantCurrency}
                         onChange={(e) => setMilestoneForm((s) => ({ ...s, reward_currency: e.target.value.toUpperCase() }))}
                         className="backdrop-blur-sm bg-white/60 border-white/40"
-                        placeholder="ZAR"
+                        placeholder={tenantCurrency}
                         maxLength={3}
                       />
                     </div>
@@ -445,7 +449,7 @@ export default function AdminLoyaltyPage() {
                             description: "",
                             points_threshold: 100,
                             reward_amount: 10,
-                            reward_currency: "ZAR",
+                            reward_currency: tenantCurrency,
                             is_active: true,
                           });
                         }}

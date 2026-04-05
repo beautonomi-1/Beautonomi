@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import {
   TextInput,
 } from "react-native";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
@@ -29,6 +30,9 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
 import { Colors, Shadows } from "@/constants/colors";
 import { Skeleton } from "@/components/Skeleton";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatMoney } from "@beautonomi/utils";
+import { useTranslation } from "@beautonomi/i18n";
 import { haptic } from "@/lib/haptics";
 import type {
   PublicProviderDetail,
@@ -45,7 +49,23 @@ interface Review {
   rating: number;
   comment: string | null;
   created_at: string;
+  // Compatibility with web-formatted response payload.
+  text?: string;
+  date?: string;
+  reviewerName?: string;
+  avatar_url?: string;
   author?: { full_name?: string | null; avatar_url?: string | null };
+}
+
+function isAnonymousDisplayName(name?: string | null) {
+  if (!name) return true;
+  return /anon/i.test(name.trim());
+}
+
+function getReviewerDisplayName(review: Review) {
+  const preferred = review.author?.full_name ?? review.reviewerName;
+  if (!isAnonymousDisplayName(preferred)) return preferred!.trim();
+  return "Verified customer";
 }
 
 /* ─── Membership plan type ─── */
@@ -139,11 +159,12 @@ function TrustModule({ distance_km, rating, review_count }: {
 }
 
 /* ─── Section Tabs ─── */
-const TAB_KEYS = ["services", "products", "photos", "locations", "team", "reviews", "memberships", "giftcard"] as const;
+const TAB_KEYS = ["services", "packages", "products", "photos", "locations", "team", "reviews", "memberships", "giftcard", "about"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 const TAB_LABELS: Record<TabKey, string> = {
   services: "Services",
+  packages: "Packages",
   products: "Products",
   photos: "Photos",
   locations: "Locations",
@@ -151,46 +172,134 @@ const TAB_LABELS: Record<TabKey, string> = {
   reviews: "Reviews",
   memberships: "Memberships",
   giftcard: "Giftcard",
+  about: "About",
 };
 
-/* ─── Service Card ─── */
+/* ─── Service Card (variants: expandable picker + tenant money formatting) ─── */
 function ServiceCard({ service, currency, onBook, onDetails, contentPadding }: {
   service: ProviderService;
   currency: string;
-  onBook: () => void;
+  onBook: (offeringId: string) => void;
   onDetails: () => void;
   contentPadding: number;
 }) {
-  const displayPrice = service.variants?.length
-    ? Math.min(...service.variants.map((v) => v.price))
-    : service.price;
+  const fb = getTenantDefaultCurrency();
+  const fc = (amount: number, cur = currency) => formatMoney(amount, cur ?? fb);
+  const variants = service.variants ?? [];
+  const hasVariants = Boolean(service.has_variants && variants.length > 0);
+  const [expanded, setExpanded] = useState(false);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(
+    hasVariants ? variants[0]?.id ?? null : null,
+  );
+
+  const prices = hasVariants ? variants.map((v) => v.price) : [service.price];
+  const minP = Math.min(...prices);
+  const maxP = Math.max(...prices);
+  const priceLabel =
+    hasVariants && minP !== maxP
+      ? `${fc(minP)} – ${fc(maxP)}`
+      : hasVariants
+        ? `From ${fc(minP)}`
+        : fc(service.price);
+
+  const selected = variants.find((v) => v.id === selectedVariantId);
+  const durationShown = selected?.duration_minutes ?? service.duration_minutes;
+
+  const handlePrimaryBook = () => {
+    const oid = hasVariants ? selectedVariantId || variants[0]?.id : service.id;
+    if (oid) onBook(oid);
+  };
 
   return (
     <View style={{
-      backgroundColor: "#fff", borderRadius: 12, padding: contentPadding, marginBottom: 12,
+      backgroundColor: "#fff", borderRadius: 20, padding: contentPadding, marginBottom: 12,
       borderWidth: 1, borderColor: "#F3F4F6",
       ...Shadows.cardSmall,
     }}>
-      <Text style={{ fontSize: 16, fontWeight: "600", color: "#111827" }}>{service.title}</Text>
-      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+      <Pressable
+        onPress={handlePrimaryBook}
+        accessibilityRole="button"
+        accessibilityLabel={`Book ${service.title}`}
+        style={({ pressed }) => ({ opacity: pressed ? 0.92 : 1 })}
+      >
+      <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+        <Text style={{ fontSize: 16, fontWeight: "600", color: "#111827", flex: 1 }}>{service.title}</Text>
+        {hasVariants ? (
+          <View style={{ backgroundColor: "#F5F3FF", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 }}>
+            <Text style={{ fontSize: 11, fontWeight: "700", color: "#5B21B6" }}>{variants.length} options</Text>
+          </View>
+        ) : null}
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6, flexWrap: "wrap" }}>
         <View style={{ flexDirection: "row", alignItems: "center", marginRight: 8 }}>
           <Ionicons name="time-outline" size={14} color="#9CA3AF" style={{ marginRight: 3 }} />
-          <Text style={{ fontSize: 13, color: "#6B7280" }}>{service.duration_minutes} min</Text>
+          <Text style={{ fontSize: 13, color: "#6B7280" }}>{durationShown} min</Text>
         </View>
-        <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>
-          {currency} {displayPrice.toFixed(2)}
-        </Text>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>{priceLabel}</Text>
       </View>
+      {hasVariants && selected ? (
+        <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 6 }}>
+          Selected:{" "}
+          <Text style={{ fontWeight: "600", color: "#111827" }}>
+            {selected.title || selected.variant_name || "Option"}
+          </Text>
+          {" · "}
+          {fc(selected.price)}
+        </Text>
+      ) : null}
       {service.description ? (
         <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 6, lineHeight: 18 }} numberOfLines={2}>
           {service.description}
         </Text>
       ) : null}
+      </Pressable>
+
+      {hasVariants ? (
+        <TouchableOpacity
+          onPress={() => { setExpanded((e) => !e); haptic.selection(); }}
+          style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10, paddingVertical: 6 }}
+          accessibilityRole="button"
+          accessibilityLabel={expanded ? "Hide service options" : "Show service options"}
+        >
+          <Text style={{ fontSize: 13, fontWeight: "600", color: "#111827" }}>Choose a specific option</Text>
+          <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={20} color="#6B7280" />
+        </TouchableOpacity>
+      ) : null}
+
+      {hasVariants && expanded ? (
+        <View style={{ marginTop: 4, marginBottom: 4 }}>
+          {variants.map((v) => {
+            const isSel = selectedVariantId === v.id;
+            return (
+              <TouchableOpacity
+                key={v.id}
+                onPress={() => { setSelectedVariantId(v.id); haptic.selection(); }}
+                style={{
+                  borderWidth: 2,
+                  borderColor: isSel ? "#111827" : "#E5E7EB",
+                  borderRadius: 12,
+                  padding: 12,
+                  marginBottom: 8,
+                  backgroundColor: isSel ? "#F9FAFB" : "#fff",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`${v.title || v.variant_name || "Option"}, ${v.duration_minutes} minutes, ${fc(v.price)}`}
+              >
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{v.title || v.variant_name || "Option"}</Text>
+                <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>
+                  {v.duration_minutes} min · {fc(v.price)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
+
       <View style={{ flexDirection: "row", marginTop: 14 }}>
         <TouchableOpacity
           onPress={onDetails}
           style={{
-            flex: 1, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 10, paddingVertical: 10,
+            flex: 1, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 999, paddingVertical: 10,
             alignItems: "center", flexDirection: "row", justifyContent: "center", marginRight: 10,
           }}
         >
@@ -198,8 +307,8 @@ function ServiceCard({ service, currency, onBook, onDetails, contentPadding }: {
           <Text style={{ fontWeight: "500", color: "#374151", fontSize: 14 }}>Details</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={onBook}
-          style={{ flex: 2, backgroundColor: "#111827", borderRadius: 10, paddingVertical: 10, alignItems: "center" }}
+          onPress={handlePrimaryBook}
+          style={{ flex: 2, backgroundColor: "#111827", borderRadius: 999, paddingVertical: 10, alignItems: "center" }}
         >
           <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Book</Text>
         </TouchableOpacity>
@@ -225,9 +334,12 @@ function CategoryPill({ label, active, onPress, contentPadding }: { label: strin
 
 /* ─── Location Card ─── */
 function LocationCard({ loc }: { loc: ProviderLocation }) {
+  const isPublicSalon = loc.location_type === "salon";
   const fullAddress = [loc.address_line1, loc.address_line2, loc.city, loc.state, loc.country].filter(Boolean).join(", ");
+  const serviceArea = [loc.city, loc.state, loc.country].filter(Boolean).join(", ");
 
   const openDirections = () => {
+    if (!isPublicSalon) return;
     if (loc.latitude != null && loc.longitude != null) {
       Linking.openURL(`https://www.mapbox.com/directions/?destination=${loc.longitude},${loc.latitude}`).catch(() => {});
     } else if (fullAddress) {
@@ -239,14 +351,22 @@ function LocationCard({ loc }: { loc: ProviderLocation }) {
   return (
     <View style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 14, marginBottom: 10 }}>
       <Text style={{ fontWeight: "600", color: "#111827" }}>{loc.name}</Text>
-      <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>
-        {loc.address_line1}{loc.address_line2 ? `, ${loc.address_line2}` : ""}
-      </Text>
-      <Text style={{ fontSize: 13, color: "#6B7280" }}>
-        {loc.city}{loc.state ? `, ${loc.state}` : ""} {loc.country}
-      </Text>
+      {isPublicSalon ? (
+        <>
+          <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>
+            {loc.address_line1}{loc.address_line2 ? `, ${loc.address_line2}` : ""}
+          </Text>
+          <Text style={{ fontSize: 13, color: "#6B7280" }}>
+            {loc.city}{loc.state ? `, ${loc.state}` : ""} {loc.country}
+          </Text>
+        </>
+      ) : (
+        <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 4 }}>
+          {serviceArea ? `Service area: ${serviceArea}` : "Service area available after booking"}
+        </Text>
+      )}
       <View style={{ flexDirection: "row", marginTop: 10 }}>
-        {(loc.latitude != null || fullAddress) && (
+        {isPublicSalon && (loc.latitude != null || fullAddress) && (
           <TouchableOpacity onPress={openDirections} style={{ flexDirection: "row", alignItems: "center", marginRight: 16 }}>
             <Ionicons name="navigate-outline" size={16} color={Colors.primary} style={{ marginRight: 4 }} />
             <Text style={{ color: Colors.primary, fontWeight: "500", fontSize: 13 }}>Directions</Text>
@@ -269,14 +389,36 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook, conte
   currency: string;
   visible: boolean;
   onClose: () => void;
-  onBook: (svc: ProviderService) => void;
+  onBook: (svc: ProviderService, offeringId?: string) => void;
   contentPadding: number;
 }) {
+  const variants = service?.variants ?? [];
+  const hasVariants = Boolean(service?.has_variants && variants.length > 0);
+  const [pickedVariantId, setPickedVariantId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!visible || !service) return;
+    const vs = service.variants ?? [];
+    if (service.has_variants && vs[0]) setPickedVariantId(vs[0].id);
+    else setPickedVariantId(null);
+  }, [visible, service]);
+
   if (!service) return null;
-  const displayPrice = service.variants?.length
-    ? Math.min(...service.variants.map((v) => v.price))
-    : service.price;
-  const hasVariants = service.variants && service.variants.length > 1;
+  const fb = getTenantDefaultCurrency();
+  const fc = (amount: number) => formatMoney(amount, currency ?? fb);
+  const prices = hasVariants ? variants.map((v) => v.price) : [service.price];
+  const minP = Math.min(...prices);
+  const maxP = Math.max(...prices);
+  const displayPriceLabel =
+    hasVariants && minP !== maxP
+      ? `${fc(minP)} – ${fc(maxP)}`
+      : hasVariants
+        ? `From ${fc(minP)}`
+        : fc(service.price);
+  const durationMins = hasVariants ? variants.map((v) => v.duration_minutes) : [service.duration_minutes];
+  const dMin = Math.min(...durationMins);
+  const dMax = Math.max(...durationMins);
+  const durationLabel = hasVariants && dMin !== dMax ? `${dMin}–${dMax} min` : `${dMin} min`;
 
   return (
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
@@ -292,14 +434,12 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook, conte
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
               <View style={{ flex: 1, marginRight: 12 }}>
                 <Text style={{ fontSize: 22, fontWeight: "700", color: "#111827" }}>{service.title}</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
                   <View style={{ flexDirection: "row", alignItems: "center", marginRight: 8 }}>
                     <Ionicons name="time-outline" size={16} color="#6B7280" style={{ marginRight: 4 }} />
-                    <Text style={{ fontSize: 14, color: "#6B7280" }}>{service.duration_minutes} min</Text>
+                    <Text style={{ fontSize: 14, color: "#6B7280" }}>{durationLabel}</Text>
                   </View>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>
-                    {hasVariants ? "from " : ""}{currency} {displayPrice.toFixed(2)}
-                  </Text>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{displayPriceLabel}</Text>
                 </View>
               </View>
               <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
@@ -338,26 +478,29 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook, conte
             {hasVariants && (
               <View style={{ marginBottom: 20 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>Options</Text>
-                {service.variants!.map((v) => (
-                  <TouchableOpacity
-                    key={v.id}
-                    onPress={() => { onBook(service); onClose(); }}
-                    style={{
-                      flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-                      backgroundColor: "#F9FAFB", borderRadius: 12, padding: 14, marginBottom: 8,
-                      borderWidth: 1, borderColor: "#E5E7EB",
-                    }}
-                  >
-                    <View>
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{v.title || v.variant_name || `${v.duration_minutes} min`}</Text>
-                      <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{v.duration_minutes} min</Text>
-                    </View>
-                    <View style={{ alignItems: "flex-end" }}>
-                      <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }}>{currency} {v.price.toFixed(2)}</Text>
-                      <Text style={{ fontSize: 11, color: Colors.primary, fontWeight: "500", marginTop: 2 }}>Book</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+                <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 10 }}>
+                  Tap an option, then confirm below — your booking uses the highlighted option.
+                </Text>
+                {variants.map((v) => {
+                  const sel = pickedVariantId === v.id;
+                  return (
+                    <TouchableOpacity
+                      key={v.id}
+                      onPress={() => { setPickedVariantId(v.id); haptic.selection(); }}
+                      style={{
+                        flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+                        backgroundColor: sel ? "#FFF1F3" : "#F9FAFB", borderRadius: 999, paddingVertical: 14, paddingHorizontal: 16, marginBottom: 8,
+                        borderWidth: 2, borderColor: sel ? Colors.primary : "#E5E7EB",
+                      }}
+                    >
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{v.title || v.variant_name || `${v.duration_minutes} min`}</Text>
+                        <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{v.duration_minutes} min</Text>
+                      </View>
+                      <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827", marginLeft: 8 }}>{fc(v.price)}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )}
           </ScrollView>
@@ -365,11 +508,24 @@ function ServiceDetailModal({ service, currency, visible, onClose, onBook, conte
           {/* Bottom CTA */}
           <View style={{ paddingHorizontal: contentPadding }}>
             <TouchableOpacity
-              onPress={() => { onBook(service); onClose(); }}
-              style={{ backgroundColor: "#111827", borderRadius: 12, paddingVertical: 16, alignItems: "center" }}
+              onPress={() => {
+                if (hasVariants) {
+                  const oid = pickedVariantId ?? variants[0]?.id;
+                  if (!oid) return;
+                  onBook(service, oid);
+                } else {
+                  onBook(service, service.id);
+                }
+                onClose();
+              }}
+              style={{ backgroundColor: "#111827", borderRadius: 999, paddingVertical: 16, alignItems: "center" }}
             >
               <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
-                Book — {currency} {displayPrice.toFixed(2)}
+                {(() => {
+                  if (!hasVariants) return `Book — ${displayPriceLabel}`;
+                  const pv = pickedVariantId ? variants.find((x) => x.id === pickedVariantId) : null;
+                  return pv ? `Book — ${fc(pv.price)}` : `Book — ${displayPriceLabel}`;
+                })()}
               </Text>
             </TouchableOpacity>
           </View>
@@ -448,27 +604,37 @@ function StarRow({ rating, size = 14 }: { rating: number; size?: number }) {
 function ReviewCard({ review }: { review: Review }) {
   const date = new Date(review.created_at);
   const timeAgo = getRelativeTime(date);
-  const name = review.author?.full_name || "Customer";
+  const name = getReviewerDisplayName(review);
   const initial = name.charAt(0).toUpperCase();
 
   return (
-    <View style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 14, marginBottom: 10 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-        {review.author?.avatar_url ? (
-          <Image source={{ uri: review.author.avatar_url }} style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }} contentFit="cover" />
-        ) : (
-          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
-            <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 15 }}>{initial}</Text>
+    <View style={{ backgroundColor: "#FFFFFF", borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: "#E5E7EB" }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", flex: 1, minWidth: 0 }}>
+          {review.author?.avatar_url ? (
+            <Image source={{ uri: review.author.avatar_url }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 10 }} contentFit="cover" />
+          ) : (
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+              <Text style={{ color: Colors.primary, fontWeight: "700", fontSize: 15 }}>{initial}</Text>
+            </View>
+          )}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827" }} numberOfLines={1}>{name}</Text>
+            <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{timeAgo}</Text>
           </View>
-        )}
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{name}</Text>
-          <Text style={{ fontSize: 11, color: "#9CA3AF" }}>{timeAgo}</Text>
         </View>
-        <StarRow rating={review.rating} />
+        <View style={{ backgroundColor: "#FEF3C7", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons name="star" size={12} color="#D97706" style={{ marginRight: 4 }} />
+            <Text style={{ fontSize: 12, fontWeight: "700", color: "#B45309" }}>{review.rating.toFixed(1)}</Text>
+          </View>
+        </View>
+      </View>
+      <View style={{ marginBottom: review.comment ? 8 : 0 }}>
+        <StarRow rating={review.rating} size={15} />
       </View>
       {review.comment ? (
-        <Text style={{ fontSize: 13, color: "#374151", lineHeight: 20 }}>{review.comment}</Text>
+        <Text style={{ fontSize: 14, color: "#374151", lineHeight: 22 }}>{review.comment}</Text>
       ) : null}
     </View>
   );
@@ -529,6 +695,8 @@ function StaffCard({ member, contentPadding }: { member: StaffMember; contentPad
 
 /* ─── Membership Plan Card ─── */
 function MembershipCard({ plan, onJoin, contentPadding }: { plan: MembershipPlan; onJoin: () => void; contentPadding: number }) {
+  const fb = getTenantDefaultCurrency();
+  const priceLabel = formatMoney(plan.price, plan.currency ?? fb);
   return (
     <View style={{
       backgroundColor: "#fff", borderRadius: 16, padding: contentPadding, marginBottom: 12,
@@ -545,7 +713,7 @@ function MembershipCard({ plan, onJoin, contentPadding }: { plan: MembershipPlan
           )}
         </View>
         <View style={{ alignItems: "flex-end" }}>
-          <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{plan.currency} {plan.price.toFixed(0)}</Text>
+          <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{priceLabel}</Text>
           <Text style={{ fontSize: 11, color: "#9CA3AF" }}>/{plan.interval}</Text>
         </View>
       </View>
@@ -569,11 +737,18 @@ function MembershipCard({ plan, onJoin, contentPadding }: { plan: MembershipPlan
   );
 }
 
+const PROFILE_PRODUCT_PAGE = 12;
+const PROFILE_PACKAGE_PAGE = 10;
+const PROFILE_MANY_PRODUCTS = 12;
+const PROFILE_MANY_PACKAGES = 8;
+const PROFILE_MANY_CAT_PILLS = 10;
+
 /* ═══════════════════════════════════════════
    Main Screen
    ═══════════════════════════════════════════ */
 export default function PartnerProfileScreen() {
   useScreenTracking("Partner Profile");
+  const { t } = useTranslation();
   const { slug, campaign_id: paramCampaignId, provider_id: paramProviderId } = useLocalSearchParams<{
     slug: string;
     campaign_id?: string;
@@ -615,6 +790,15 @@ export default function PartnerProfileScreen() {
   const [membershipsLoading, setMembershipsLoading] = useState(false);
   const [providerProducts, setProviderProducts] = useState<PublicProviderProduct[]>([]);
   const [providerProductsLoading, setProviderProductsLoading] = useState(false);
+  const [providerPackages, setProviderPackages] = useState<
+    { id: string; name: string; description?: string | null; price: number; currency: string; discount_percentage?: number | null }[]
+  >([]);
+  const [productListCategory, setProductListCategory] = useState<string>("All");
+  const [productListSearch, setProductListSearch] = useState("");
+  const [productCategoryQuery, setProductCategoryQuery] = useState("");
+  const [productListVisible, setProductListVisible] = useState(PROFILE_PRODUCT_PAGE);
+  const [packageListSearch, setPackageListSearch] = useState("");
+  const [packageListVisible, setPackageListVisible] = useState(PROFILE_PACKAGE_PAGE);
 
   const { selectedAddress } = useSelectedAddress();
   const { coords } = useLocation();
@@ -628,9 +812,10 @@ export default function PartnerProfileScreen() {
     const lng = selectedAddress?.longitude ?? coords?.longitude;
     const qs = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : "";
     try {
-      const [provRes, svcRes] = await Promise.all([
+      const [provRes, svcRes, pkRes] = await Promise.all([
         api.get<PublicProviderDetail>(`/api/public/providers/${encodeURIComponent(slug)}${qs}`),
         api.get<ProviderServicesResponse>(`/api/public/providers/${encodeURIComponent(slug)}/services`),
+        api.get<{ data?: unknown } | unknown[]>(`/api/public/providers/${encodeURIComponent(slug)}/packages`),
       ]);
       if (provRes.error) {
         setError(provRes.error.message || "Provider not found");
@@ -641,6 +826,26 @@ export default function PartnerProfileScreen() {
       if (!svcRes.error) {
         setServices(svcRes.data);
         if (svcRes.data?.categories?.[0]) setActiveCategory(svcRes.data.categories[0].id);
+      }
+      if (!pkRes.error && pkRes.data != null) {
+        const raw = pkRes.data as { data?: unknown } | unknown;
+        const inner =
+          raw && typeof raw === "object" && "data" in raw && !Array.isArray(raw)
+            ? (raw as { data: unknown }).data
+            : raw;
+        const arr = Array.isArray(inner) ? inner : [];
+        setProviderPackages(
+          arr.map((p: Record<string, unknown>) => ({
+            id: String(p.id ?? ""),
+            name: String(p.name ?? "Package"),
+            description: (p.description as string | null | undefined) ?? null,
+            price: Number(p.price) || 0,
+            currency: String(p.currency ?? getTenantDefaultCurrency()),
+            discount_percentage: p.discount_percentage != null ? Number(p.discount_percentage) : null,
+          })).filter((p) => p.id),
+        );
+      } else {
+        setProviderPackages([]);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -662,11 +867,36 @@ export default function PartnerProfileScreen() {
   useEffect(() => {
     if (activeTab !== "reviews" || !slug || reviews.length > 0) return;
     setReviewsLoading(true);
-    api.get<{ data?: Review[]; reviews?: Review[] }>(`/api/public/providers/${encodeURIComponent(slug)}/reviews`)
+    api.get<{ data?: { reviews?: Review[] } | Review[]; reviews?: Review[] }>(`/api/public/providers/${encodeURIComponent(slug)}/reviews`)
       .then((res) => {
         const raw = res.data as Record<string, unknown> | null;
-        const list = (raw?.data ?? raw?.reviews ?? (Array.isArray(raw) ? raw : [])) as Review[];
-        setReviews(list);
+        const nestedData = raw?.data;
+        const list = (
+          (nestedData && typeof nestedData === "object" && "reviews" in nestedData
+            ? (nestedData as { reviews?: Review[] }).reviews
+            : undefined) ??
+          raw?.reviews ??
+          (Array.isArray(nestedData) ? nestedData : []) ??
+          (Array.isArray(raw) ? raw : [])
+        ) as Review[];
+
+        const normalized = list.map((r) => {
+          const preferredName = r.author?.full_name ?? r.reviewerName ?? null;
+          const normalizedName = !isAnonymousDisplayName(preferredName)
+            ? preferredName!.trim()
+            : "Verified customer";
+          return {
+            id: r.id,
+            rating: Number(r.rating) || 5,
+            comment: r.comment ?? r.text ?? null,
+            created_at: r.created_at ?? (r.date ? new Date(r.date).toISOString() : new Date().toISOString()),
+            author: {
+              full_name: normalizedName,
+              avatar_url: r.author?.avatar_url ?? r.avatar_url ?? null,
+            },
+          } as Review;
+        });
+        setReviews(normalized);
       })
       .catch(() => {})
       .finally(() => setReviewsLoading(false));
@@ -858,10 +1088,11 @@ export default function PartnerProfileScreen() {
   );
 
   const handleBookService = useCallback(
-    (svc: ProviderService) => {
+    (svc: ProviderService, offeringId?: string) => {
       haptic.medium();
-      const sid = svc.variants?.[0]?.id || svc.id;
-      const dur = svc.variants?.[0]?.duration_minutes || svc.duration_minutes;
+      const sid = offeringId ?? svc.variants?.[0]?.id ?? svc.id;
+      const variant = svc.variants?.find((v) => v.id === sid);
+      const dur = variant?.duration_minutes ?? svc.duration_minutes;
       router.push({ pathname: "/(app)/book", params: bookParams({ service_id: sid, duration_minutes: String(dur) }) });
     },
     [bookParams]
@@ -887,6 +1118,89 @@ export default function PartnerProfileScreen() {
   }, [screenWidth]);
 
   const heroHeight = screenWidth * 1.25;
+
+  const productCategoryPills = useMemo(() => {
+    const named = new Set<string>();
+    let hasUncat = false;
+    for (const p of providerProducts) {
+      const c = p.category?.trim();
+      if (c) named.add(c);
+      else hasUncat = true;
+    }
+    const sorted = [...named].sort((a, b) => a.localeCompare(b));
+    return ["All", ...sorted, ...(hasUncat ? ["Other"] : [])] as string[];
+  }, [providerProducts]);
+
+  useEffect(() => {
+    if (productCategoryPills.length <= 1) return;
+    if (!productCategoryPills.includes(productListCategory)) {
+      setProductListCategory("All");
+    }
+  }, [productCategoryPills, productListCategory]);
+
+  useEffect(() => {
+    setProductListVisible(PROFILE_PRODUCT_PAGE);
+  }, [productListCategory, productListSearch]);
+
+  useEffect(() => {
+    setPackageListVisible(PROFILE_PACKAGE_PAGE);
+  }, [packageListSearch]);
+
+  const filteredProfileProducts = useMemo(() => {
+    let list =
+      productListCategory === "All"
+        ? providerProducts
+        : productListCategory === "Other"
+          ? providerProducts.filter((p) => !p.category?.trim())
+          : providerProducts.filter((p) => (p.category || "").trim() === productListCategory);
+    const q = productListSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          (p.description && p.description.toLowerCase().includes(q)),
+      );
+    }
+    return list;
+  }, [providerProducts, productListCategory, productListSearch]);
+
+  const displayedProductCategoryPills = useMemo(() => {
+    const q = productCategoryQuery.trim().toLowerCase();
+    let list = productCategoryPills;
+    if (q && productCategoryPills.length >= PROFILE_MANY_CAT_PILLS) {
+      list = productCategoryPills.filter((label) => label.toLowerCase().includes(q));
+    }
+    if (productListCategory !== "All" && !list.includes(productListCategory)) {
+      list = [productListCategory, ...list];
+    }
+    return list;
+  }, [productCategoryPills, productCategoryQuery, productListCategory]);
+
+  const visibleProfileProducts = useMemo(
+    () => filteredProfileProducts.slice(0, productListVisible),
+    [filteredProfileProducts, productListVisible],
+  );
+
+  const filteredProfilePackages = useMemo(() => {
+    const q = packageListSearch.trim().toLowerCase();
+    if (!q) return providerPackages;
+    return providerPackages.filter(
+      (pkg) =>
+        pkg.name.toLowerCase().includes(q) ||
+        (pkg.description && String(pkg.description).toLowerCase().includes(q)),
+    );
+  }, [providerPackages, packageListSearch]);
+
+  const visibleProfilePackages = useMemo(
+    () => filteredProfilePackages.slice(0, packageListVisible),
+    [filteredProfilePackages, packageListVisible],
+  );
+
+  const showProductSearch =
+    providerProducts.length >= PROFILE_MANY_PRODUCTS || filteredProfileProducts.length >= PROFILE_MANY_PRODUCTS;
+  const showProductCategoryFilter = productCategoryPills.length >= PROFILE_MANY_CAT_PILLS;
+  const showPackageSearch =
+    providerPackages.length >= PROFILE_MANY_PACKAGES || filteredProfilePackages.length >= PROFILE_MANY_PACKAGES;
 
   /* ═══ Loading state ═══ */
   if (loading && !provider) {
@@ -925,14 +1239,18 @@ export default function PartnerProfileScreen() {
 
   if (!provider) return null;
 
+  const tenantFb = getTenantDefaultCurrency();
+
   /* ── Derived state ── */
   const activeCat = services?.categories?.find((c) => c.id === activeCategory);
   const visibleTabs = TAB_KEYS.filter((t) => {
     if (t === "services") return (services?.total_services ?? 0) > 0;
+    if (t === "packages") return true;
     if (t === "products") return true;
     if (t === "photos") return images.length > 1;
     if (t === "locations") return (provider.locations?.length ?? 0) > 0;
     if (t === "team") return provider.business_type === "salon" && (provider.staff_count ?? 0) > 0;
+    if (t === "about") return true;
     return true;
   });
 
@@ -1013,47 +1331,87 @@ export default function PartnerProfileScreen() {
               }} />
             </View>
 
+            {/* Bottom scrim + avatar on gallery (verified pill stays top-left; no duplicate check on avatar) */}
+            <LinearGradient
+              colors={["transparent", "rgba(0,0,0,0.2)", "rgba(0,0,0,0.55)"]}
+              locations={[0, 0.45, 1]}
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 120,
+                zIndex: 4,
+              }}
+              pointerEvents="none"
+            />
+            <View style={{ position: "absolute", bottom: 16, left: 16, zIndex: 5 }}>
+              <View
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: 36,
+                  borderWidth: 3,
+                  borderColor: "#fff",
+                  overflow: "hidden",
+                  backgroundColor: "#E5E7EB",
+                  ...Shadows.card,
+                }}
+              >
+                {(provider.avatar_url || provider.thumbnail_url) ? (
+                  <Image
+                    source={{ uri: provider.avatar_url || provider.thumbnail_url! }}
+                    style={{ width: "100%", height: "100%" }}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
+                ) : (
+                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#D1D5DB" }}>
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 22 }}>
+                      {(provider.business_name || "P").charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
             {/* Photo counter */}
             {images.length > 1 && (
-              <View style={{ position: "absolute", bottom: 16, right: 16, backgroundColor: "rgba(0,0,0,0.65)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+              <View style={{ position: "absolute", bottom: 16, right: 16, backgroundColor: "rgba(0,0,0,0.65)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, zIndex: 5 }}>
                 <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>{galleryIndex + 1}/{images.length}</Text>
               </View>
             )}
           </View>
 
           {/* ═══════════ PROVIDER INFO CARD ═══════════ */}
-          <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: -24, paddingTop: 0 }}>
+          <View style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, marginTop: -16, paddingTop: 16, paddingBottom: 4 }}>
 
-            {/* Floating avatar */}
-            <View style={{ position: "absolute", top: -32, left: 16, zIndex: 10 }}>
-              <View style={{
-                width: 72, height: 72, borderRadius: 36, borderWidth: 3, borderColor: "#fff", overflow: "hidden", backgroundColor: "#E5E7EB",
-                ...Shadows.card,
-              }}>
-                {(provider.avatar_url || provider.thumbnail_url) ? (
-                  <Image source={{ uri: provider.avatar_url || provider.thumbnail_url! }} style={{ width: 66, height: 66 }} contentFit="cover" cachePolicy="memory-disk" />
-                ) : (
-                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#D1D5DB" }}>
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 22 }}>{(provider.business_name || "P").charAt(0).toUpperCase()}</Text>
-                  </View>
-                )}
-              </View>
-              {provider.is_verified && (
-                <View style={{ position: "absolute", bottom: -2, right: -2, backgroundColor: "#fff", borderRadius: 999, padding: 2, elevation: 3 }}>
-                  <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: "#F59E0B", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="checkmark" size={13} color="#fff" />
-                  </View>
+            <View style={{ paddingHorizontal: contentPadding, paddingBottom: 4 }}>
+              <Text style={{ fontSize: 22, fontWeight: "700", color: "#111827" }} numberOfLines={4}>
+                {provider.business_name}
+              </Text>
+              {provider.current_badge?.name ? (
+                <View
+                  style={{
+                    alignSelf: "flex-start",
+                    marginTop: 10,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 999,
+                    backgroundColor: provider.current_badge.color ?? "#CA8A04",
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }} numberOfLines={1}>
+                    {provider.current_badge.name}
+                  </Text>
                 </View>
-              )}
-            </View>
-
-            {/* Name, location */}
-            <View style={{ paddingHorizontal: contentPadding, paddingTop: 48 }}>
-              <Text style={{ fontSize: 24, fontWeight: "700", color: "#111827", marginBottom: 6 }}>{provider.business_name}</Text>
+              ) : null}
               {(provider.city || provider.country) && (
-                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-                  <Ionicons name="location-outline" size={14} color="#6B7280" style={{ marginRight: 4 }} />
-                  <Text style={{ fontSize: 13, color: "#6B7280" }}>{[provider.city, provider.country].filter(Boolean).join(", ")}</Text>
+                <View style={{ flexDirection: "row", alignItems: "flex-start", marginTop: 10, marginBottom: 4 }}>
+                  <Ionicons name="location-outline" size={14} color="#6B7280" style={{ marginRight: 4, marginTop: 2 }} />
+                  <Text style={{ flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 18 }}>
+                    {[provider.city, provider.country].filter(Boolean).join(", ")}
+                  </Text>
                 </View>
               )}
             </View>
@@ -1105,15 +1463,144 @@ export default function PartnerProfileScreen() {
                       key={svc.id}
                       service={svc}
                       currency={provider.currency}
-                      onBook={() => handleBookService(svc)}
+                      onBook={(offeringId) => handleBookService(svc, offeringId)}
                       onDetails={() => { setDetailService(svc); setDetailVisible(true); }}
                       contentPadding={contentPadding}
                     />
                   ))}
                   {services.total_services > (activeCat ?? services.categories[0]).services.length && (
-                    <TouchableOpacity style={{ paddingVertical: 10 }}>
+                    <TouchableOpacity
+                      onPress={() => setActiveCategory(null)}
+                      style={{ paddingVertical: 10 }}
+                    >
                       <Text style={{ color: Colors.primary, fontWeight: "500", fontSize: 14 }}>View all services</Text>
                     </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              {/* ── PACKAGES (bundles — same order as web: next to Services) ── */}
+              {activeTab === "packages" && (
+                <View>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 8 }}>Packages</Text>
+                  <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 16 }}>
+                    Book a bundle at a set price.
+                  </Text>
+                  {providerPackages.length === 0 ? (
+                    <View style={{ alignItems: "center", paddingVertical: 28 }}>
+                      <Ionicons name="gift-outline" size={40} color="#D1D5DB" />
+                      <Text style={{ fontSize: 14, color: "#9CA3AF", marginTop: 10, textAlign: "center" }}>
+                        No packages published yet.
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      {showPackageSearch && (
+                        <TextInput
+                          value={packageListSearch}
+                          onChangeText={setPackageListSearch}
+                          placeholder={t("booking.searchPackagesPlaceholder")}
+                          placeholderTextColor="#9CA3AF"
+                          style={{
+                            backgroundColor: "#FFF",
+                            borderWidth: 1,
+                            borderColor: "#E5E7EB",
+                            borderRadius: 10,
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            fontSize: 14,
+                            color: "#111827",
+                            marginBottom: 12,
+                          }}
+                        />
+                      )}
+                      {filteredProfilePackages.length === 0 ? (
+                        <Text style={{ fontSize: 13, color: "#6B7280", paddingVertical: 8 }}>{t("checkout.noMatchingPackages")}</Text>
+                      ) : (
+                        <>
+                          {visibleProfilePackages.length < filteredProfilePackages.length && (
+                            <Text style={{ fontSize: 11, color: "#6B7280", marginBottom: 8 }}>
+                              {t("booking.servicesPaginationSummary", { shown: visibleProfilePackages.length, total: filteredProfilePackages.length })}
+                            </Text>
+                          )}
+                          {visibleProfilePackages.map((pkg) => (
+                            <View
+                              key={pkg.id}
+                              style={{
+                                backgroundColor: "#fff",
+                                borderRadius: 14,
+                                borderWidth: 1,
+                                borderColor: "#E5E7EB",
+                                padding: 14,
+                                marginBottom: 12,
+                                ...Shadows.cardSmall,
+                              }}
+                            >
+                              <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>{pkg.name}</Text>
+                              {pkg.description ? (
+                                <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 6 }} numberOfLines={3}>
+                                  {pkg.description}
+                                </Text>
+                              ) : null}
+                              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 }}>
+                                <Text style={{ fontSize: 17, fontWeight: "800", color: Colors.primary }}>
+                                  {formatMoney(pkg.price, pkg.currency ?? tenantFb)}
+                                  {pkg.discount_percentage != null && pkg.discount_percentage > 0 ? (
+                                    <Text style={{ fontSize: 12, fontWeight: "600", color: "#16A34A" }}> · Save {pkg.discount_percentage}%</Text>
+                                  ) : null}
+                                </Text>
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    haptic.medium();
+                                    router.push({
+                                      pathname: "/(app)/book",
+                                      params: {
+                                        slug: slug as string,
+                                        package: pkg.id,
+                                        package_name: pkg.name,
+                                        package_price: String(pkg.price),
+                                        package_currency: pkg.currency,
+                                        package_discount: pkg.discount_percentage != null ? String(pkg.discount_percentage) : "",
+                                      },
+                                    } as never);
+                                  }}
+                                  style={{
+                                    backgroundColor: Colors.primary,
+                                    paddingHorizontal: 16,
+                                    paddingVertical: 10,
+                                    borderRadius: 10,
+                                  }}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Book package ${pkg.name}`}
+                                >
+                                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Book</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          ))}
+                          {packageListVisible < filteredProfilePackages.length && (
+                            <TouchableOpacity
+                              onPress={() => {
+                                haptic.selection();
+                                setPackageListVisible((c) => Math.min(c + PROFILE_PACKAGE_PAGE, filteredProfilePackages.length));
+                              }}
+                              style={{
+                                paddingVertical: 12,
+                                paddingHorizontal: 16,
+                                borderRadius: 12,
+                                borderWidth: 1,
+                                borderColor: "#E5E7EB",
+                                backgroundColor: "#FFF",
+                                alignItems: "center",
+                                marginBottom: 8,
+                              }}
+                            >
+                              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{t("booking.loadMorePackages")}</Text>
+                            </TouchableOpacity>
+                          )}
+                        </>
+                      )}
+                    </>
                   )}
                 </View>
               )}
@@ -1138,51 +1625,169 @@ export default function PartnerProfileScreen() {
                       <Text style={{ fontSize: 14, color: "#9CA3AF", marginTop: 8 }}>No products available</Text>
                     </View>
                   ) : (
-                    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                      {providerProducts.map((prod) => (
-                        <TouchableOpacity
-                          key={prod.id}
-                          onPress={() => router.push(`/(app)/product-detail?id=${prod.id}` as any)}
+                    <>
+                      {productCategoryPills.length > 1 && (
+                        <View style={{ marginBottom: 12 }}>
+                          {showProductCategoryFilter && (
+                            <TextInput
+                              value={productCategoryQuery}
+                              onChangeText={setProductCategoryQuery}
+                              placeholder={t("booking.filterCategoriesPlaceholder")}
+                              placeholderTextColor="#9CA3AF"
+                              style={{
+                                backgroundColor: "#FFF",
+                                borderWidth: 1,
+                                borderColor: "#E5E7EB",
+                                borderRadius: 10,
+                                paddingHorizontal: 12,
+                                paddingVertical: 10,
+                                fontSize: 14,
+                                color: "#111827",
+                                marginBottom: 10,
+                              }}
+                            />
+                          )}
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", paddingVertical: 4 }}>
+                            {displayedProductCategoryPills.map((label) => {
+                              const active = productListCategory === label;
+                              return (
+                                <TouchableOpacity
+                                  key={label}
+                                  onPress={() => {
+                                    haptic.selection();
+                                    setProductListCategory(label);
+                                    setProductListSearch("");
+                                  }}
+                                  style={{
+                                    paddingHorizontal: 16,
+                                    paddingVertical: 8,
+                                    borderRadius: 999,
+                                    marginRight: 8,
+                                    backgroundColor: active ? Colors.primary : "#FFF",
+                                    borderWidth: 1,
+                                    borderColor: active ? Colors.primary : "#E5E7EB",
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 13, fontWeight: "600", color: active ? "#FFF" : "#374151" }}>{label}</Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </ScrollView>
+                        </View>
+                      )}
+                      {showProductSearch && (
+                        <TextInput
+                          value={productListSearch}
+                          onChangeText={setProductListSearch}
+                          placeholder={t("booking.searchProductsPlaceholder")}
+                          placeholderTextColor="#9CA3AF"
                           style={{
-                            width: (screenWidth - 44) / 2,
-                            borderRadius: 14,
-                            backgroundColor: "#fff",
-                            overflow: "hidden",
+                            backgroundColor: "#FFF",
                             borderWidth: 1,
-                            borderColor: "#F3F4F6",
-                            marginRight: 12,
+                            borderColor: "#E5E7EB",
+                            borderRadius: 10,
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            fontSize: 14,
+                            color: "#111827",
                             marginBottom: 12,
-                            ...Shadows.cardSmall,
                           }}
-                          activeOpacity={0.85}
-                        >
-                          <View style={{ aspectRatio: 1, backgroundColor: "#F3F4F6" }}>
-                            {prod.imageUrl ? (
-                              <Image
-                                source={{ uri: prod.imageUrl }}
-                                style={{ width: "100%", height: "100%" }}
-                                contentFit="cover"
-                              />
-                            ) : (
-                              <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                                <Ionicons name="cube-outline" size={32} color="#D1D5DB" />
-                              </View>
-                            )}
-                            {!prod.inStock && (
-                              <View style={{ position: "absolute", top: 8, right: 8, backgroundColor: "#EF4444", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
-                                <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>Sold Out</Text>
-                              </View>
-                            )}
-                          </View>
-                          <View style={{ padding: 12 }}>
-                            <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }} numberOfLines={2}>{prod.name}</Text>
-                            <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.primary, marginTop: 6 }}>
-                              {prod.hasVariants ? "From " : ""}R{Number(prod.price).toFixed(2)}
+                        />
+                      )}
+                      {filteredProfileProducts.length === 0 ? (
+                        <Text style={{ fontSize: 13, color: "#6B7280", paddingVertical: 8 }}>{t("checkout.noMatchingProducts")}</Text>
+                      ) : (
+                        <>
+                          {visibleProfileProducts.length < filteredProfileProducts.length && (
+                            <Text style={{ fontSize: 11, color: "#6B7280", marginBottom: 8 }}>
+                              {t("booking.servicesPaginationSummary", { shown: visibleProfileProducts.length, total: filteredProfileProducts.length })}
                             </Text>
+                          )}
+                          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                            {visibleProfileProducts.map((prod) => (
+                              <TouchableOpacity
+                                key={prod.id}
+                                onPress={() => router.push(`/(app)/product-detail?id=${prod.id}` as any)}
+                                style={{
+                                  width: (screenWidth - 44) / 2,
+                                  borderRadius: 14,
+                                  backgroundColor: "#fff",
+                                  overflow: "hidden",
+                                  borderWidth: 1,
+                                  borderColor: "#F3F4F6",
+                                  marginRight: 12,
+                                  marginBottom: 12,
+                                  ...Shadows.cardSmall,
+                                }}
+                                activeOpacity={0.85}
+                              >
+                                <View style={{ aspectRatio: 1, backgroundColor: "#F3F4F6" }}>
+                                  {prod.imageUrl ? (
+                                    <Image
+                                      source={{ uri: prod.imageUrl }}
+                                      style={{ width: "100%", height: "100%" }}
+                                      contentFit="cover"
+                                    />
+                                  ) : (
+                                    <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                                      <Ionicons name="cube-outline" size={32} color="#D1D5DB" />
+                                    </View>
+                                  )}
+                                  {!prod.inStock && (
+                                    <View style={{ position: "absolute", top: 8, right: 8, backgroundColor: "#EF4444", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
+                                      <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>Sold Out</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                <View style={{ padding: 12 }}>
+                                  {prod.category?.trim() ? (
+                                    <Text style={{ fontSize: 10, fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }} numberOfLines={1}>
+                                      {prod.category.trim()}
+                                    </Text>
+                                  ) : null}
+                                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }} numberOfLines={2}>{prod.name}</Text>
+                                  <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.primary, marginTop: 6 }}>
+                                    {(() => {
+                                      const cur = prod.currency;
+                                      if (prod.hasVariants && prod.variants?.length) {
+                                        const pv = prod.variants.map((v) => v.retail_price);
+                                        const lo = Math.min(...pv);
+                                        const hi = Math.max(...pv);
+                                        if (lo !== hi) {
+                                          return `${formatMoney(lo, cur ?? tenantFb)} – ${formatMoney(hi, cur ?? tenantFb)}`;
+                                        }
+                                        return `From ${formatMoney(lo, cur ?? tenantFb)}`;
+                                      }
+                                      return formatMoney(Number(prod.price), cur ?? tenantFb);
+                                    })()}
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
+                            ))}
                           </View>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
+                          {productListVisible < filteredProfileProducts.length && (
+                            <TouchableOpacity
+                              onPress={() => {
+                                haptic.selection();
+                                setProductListVisible((c) => Math.min(c + PROFILE_PRODUCT_PAGE, filteredProfileProducts.length));
+                              }}
+                              style={{
+                                paddingVertical: 12,
+                                paddingHorizontal: 16,
+                                borderRadius: 12,
+                                borderWidth: 1,
+                                borderColor: "#E5E7EB",
+                                backgroundColor: "#FFF",
+                                alignItems: "center",
+                                marginTop: 4,
+                              }}
+                            >
+                              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{t("booking.loadMoreProducts")}</Text>
+                            </TouchableOpacity>
+                          )}
+                        </>
+                      )}
+                    </>
                   )}
                 </View>
               )}
@@ -1259,12 +1864,17 @@ export default function PartnerProfileScreen() {
                   {provider.review_count > 0 && (
                     <View style={{
                       flexDirection: "row", alignItems: "center", marginBottom: 16,
-                      backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding,
+                      backgroundColor: "#F9FAFB", borderRadius: 18, padding: contentPadding,
+                      borderWidth: 1, borderColor: "#E5E7EB",
                     }}>
-                      <View style={{ alignItems: "center", marginRight: 12 }}>
-                        <Text style={{ fontSize: 36, fontWeight: "800", color: "#111827" }}>{provider.rating.toFixed(1)}</Text>
-                        <StarRow rating={provider.rating} size={16} />
-                        <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>{provider.review_count} {provider.review_count === 1 ? "review" : "reviews"}</Text>
+                      <View style={{ alignItems: "center", marginRight: 14, minWidth: 96 }}>
+                        <Text style={{ fontSize: 34, fontWeight: "800", color: "#111827", lineHeight: 36 }}>{provider.rating.toFixed(1)}</Text>
+                        <View style={{ marginTop: 4 }}>
+                          <StarRow rating={provider.rating} size={16} />
+                        </View>
+                        <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 6, textAlign: "center" }}>
+                          {provider.review_count} {provider.review_count === 1 ? "review" : "reviews"}
+                        </Text>
                       </View>
                       <View style={{ flex: 1, paddingLeft: 12 }}>
                         {[5, 4, 3, 2, 1].map((star) => {
@@ -1302,11 +1912,14 @@ export default function PartnerProfileScreen() {
                     <>
                       {reviews.map((r) => <ReviewCard key={r.id} review={r} />)}
                       <TouchableOpacity
-                        onPress={() => router.push({ pathname: "/(app)/review-write", params: { provider_id: provider.id, provider_name: provider.business_name } })}
+                        onPress={() => {
+                          const s = typeof slug === "string" ? slug : provider.slug;
+                          if (s) router.push({ pathname: "/(app)/book", params: { slug: s } });
+                        }}
                         style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12 }}
                       >
-                        <Ionicons name="create-outline" size={16} color={Colors.primary} style={{ marginRight: 6 }} />
-                        <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>Write a Review</Text>
+                        <Ionicons name="calendar-outline" size={16} color={Colors.primary} style={{ marginRight: 6 }} />
+                        <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 14 }}>Book again — review after your visit</Text>
                       </TouchableOpacity>
                     </>
                   ) : (
@@ -1314,10 +1927,13 @@ export default function PartnerProfileScreen() {
                       <Ionicons name="chatbubbles-outline" size={36} color="#D1D5DB" />
                       <Text style={{ color: "#6B7280", fontSize: 14, marginTop: 8 }}>No reviews yet.</Text>
                       <TouchableOpacity
-                        onPress={() => router.push({ pathname: "/(app)/review-write", params: { provider_id: provider.id, provider_name: provider.business_name } })}
+                        onPress={() => {
+                          const s = typeof slug === "string" ? slug : provider.slug;
+                          if (s) router.push({ pathname: "/(app)/book", params: { slug: s } });
+                        }}
                         style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: contentPadding, paddingVertical: 10, marginTop: 12 }}
                       >
-                        <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Be the first to review</Text>
+                        <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Book a visit — then leave a review</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -1378,6 +1994,175 @@ export default function PartnerProfileScreen() {
                     <Ionicons name="gift-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
                     <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Buy a Gift Card</Text>
                   </TouchableOpacity>
+                </View>
+              )}
+
+              {/* ── ABOUT ── */}
+              {activeTab === "about" && (
+                <View>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 16 }}>About</Text>
+
+                  {/* Business description */}
+                  {provider.description?.trim() ? (
+                    <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+                        <Ionicons name="information-circle-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Overview</Text>
+                      </View>
+                      <Text style={{ fontSize: 13, color: "#374151", lineHeight: 20 }}>{provider.description}</Text>
+                    </View>
+                  ) : null}
+
+                  {/* Key stats row */}
+                  <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
+                    {provider.years_in_business != null && provider.years_in_business > 0 && (
+                      <View style={{ flex: 1, backgroundColor: "#EFF6FF", borderRadius: 12, padding: 14, alignItems: "center" }}>
+                        <Text style={{ fontSize: 22, fontWeight: "800", color: Colors.primary }}>{provider.years_in_business}</Text>
+                        <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2, textAlign: "center" }}>
+                          {provider.years_in_business === 1 ? "Year in\nbusiness" : "Years in\nbusiness"}
+                        </Text>
+                      </View>
+                    )}
+                    {provider.response_rate != null && (
+                      <View style={{ flex: 1, backgroundColor: "#F0FDF4", borderRadius: 12, padding: 14, alignItems: "center" }}>
+                        <Text style={{ fontSize: 22, fontWeight: "800", color: "#16A34A" }}>{provider.response_rate}%</Text>
+                        <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2, textAlign: "center" }}>Response{"\n"}rate</Text>
+                      </View>
+                    )}
+                    {provider.response_time_hours != null && (
+                      <View style={{ flex: 1, backgroundColor: "#FFF7ED", borderRadius: 12, padding: 14, alignItems: "center" }}>
+                        <Text style={{ fontSize: 22, fontWeight: "800", color: "#D97706" }}>
+                          {provider.response_time_hours < 1 ? "<1h" : `${provider.response_time_hours}h`}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2, textAlign: "center" }}>Response{"\n"}time</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Service mode */}
+                  <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+                      <Ionicons name="briefcase-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
+                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>How they work</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                      {provider.supports_salon && (
+                        <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#E0F2FE", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+                          <Ionicons name="storefront-outline" size={15} color="#0369A1" style={{ marginRight: 6 }} />
+                          <Text style={{ fontSize: 12, color: "#0369A1", fontWeight: "600" }}>At the salon</Text>
+                        </View>
+                      )}
+                      {provider.supports_house_calls && (
+                        <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F0FDF4", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+                          <Ionicons name="home-outline" size={15} color="#15803D" style={{ marginRight: 6 }} />
+                          <Text style={{ fontSize: 12, color: "#15803D", fontWeight: "600" }}>At your home</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Specialties / categories */}
+                  {provider.categories?.length > 0 && (
+                    <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+                        <Ionicons name="sparkles-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Specialties</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                        {provider.categories.map((cat) => (
+                          <View key={cat} style={{ backgroundColor: "#E0E7FF", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
+                            <Text style={{ fontSize: 12, color: "#3730A3", fontWeight: "500" }}>{cat}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Languages */}
+                  {provider.languages_spoken && provider.languages_spoken.length > 0 && (
+                    <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
+                        <Ionicons name="language-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Languages spoken</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                        {provider.languages_spoken.map((lang) => (
+                          <View key={lang} style={{ backgroundColor: "#F3F4F6", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
+                            <Text style={{ fontSize: 12, color: "#374151", fontWeight: "500" }}>{lang}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Booking policies */}
+                  {provider.policies && (
+                    <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+                        <Ionicons name="document-text-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Booking policies</Text>
+                      </View>
+                      {provider.policies.cancellation_window_hours != null && (
+                        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 10 }}>
+                          <Ionicons name="time-outline" size={15} color="#6B7280" style={{ marginRight: 8, marginTop: 1 }} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Cancellation window</Text>
+                            <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                              Free cancellation up to {provider.policies.cancellation_window_hours} hour{provider.policies.cancellation_window_hours !== 1 ? "s" : ""} before appointment
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+                      {provider.policies.requires_deposit && (
+                        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 10 }}>
+                          <Ionicons name="card-outline" size={15} color="#6B7280" style={{ marginRight: 8, marginTop: 1 }} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>Deposit required</Text>
+                            <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                              {provider.policies.deposit_percentage != null
+                                ? `${provider.policies.deposit_percentage}% deposit to confirm booking`
+                                : "A deposit is required to confirm your booking"}
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+                      {provider.policies.no_show_fee_enabled && (
+                        <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                          <Ionicons name="alert-circle-outline" size={15} color="#6B7280" style={{ marginRight: 8, marginTop: 1 }} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151" }}>No-show fee</Text>
+                            <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                              {provider.policies.no_show_fee_amount != null
+                                ? `A no-show fee of ${formatMoney(provider.policies.no_show_fee_amount, provider.policies.currency ?? provider.currency ?? tenantFb)} applies`
+                                : "A no-show fee applies if you miss your appointment"}
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Website */}
+                  {provider.website?.trim() ? (
+                    <TouchableOpacity
+                      onPress={() => Linking.openURL(provider.website!.startsWith("http") ? provider.website! : `https://${provider.website}`)}
+                      style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}
+                    >
+                      <Ionicons name="globe-outline" size={18} color={Colors.primary} style={{ marginRight: 10 }} />
+                      <Text style={{ flex: 1, fontSize: 13, color: Colors.primary, fontWeight: "500" }} numberOfLines={1}>{provider.website}</Text>
+                      <Ionicons name="open-outline" size={15} color={Colors.primary} />
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {/* Location summary */}
+                  {(provider.city || provider.country) && (
+                    <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
+                      <Ionicons name="location-outline" size={18} color={Colors.primary} style={{ marginRight: 10 }} />
+                      <Text style={{ fontSize: 13, color: "#374151" }}>
+                        {[provider.city, provider.country].filter(Boolean).join(", ")}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               )}
             </View>

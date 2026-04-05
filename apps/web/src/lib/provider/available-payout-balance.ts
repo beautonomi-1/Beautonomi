@@ -3,12 +3,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type GetAvailablePayoutBalanceOptions = {
   /** Earnings created before (now - holdDays) are available. Default 0 = all available. */
   holdDays?: number;
+  /** When set, restricts booking_payments lookup to this tenant (multi-tenant defense in depth). */
+  tenantId?: string | null;
 };
 
 /**
  * Compute available balance for payout (ledger-based):
  * - Sum provider_earnings (net) excluding direct walk-in (cash/Yoco) — platform doesn't hold that money.
- * - Optionally exclude earnings newer than holdDays (payout hold period).
+ * - Add refund rows (net is negative), with the same walk-in exclusion when tied to a booking.
+ * - Optionally exclude earnings newer than holdDays (payout hold period). Refunds always apply (clawback).
  * - Subtract completed payouts (finance_transactions type 'payout').
  * - Subtract pending/processing payout requests (payouts table).
  */
@@ -43,12 +46,17 @@ export async function getAvailablePayoutBalance(
       .from("bookings")
       .select("id, booking_source")
       .in("id", bookingIds);
-    const { data: bookingPayments } = await supabase
+    let bookingPaymentsQuery = supabase
       .from("booking_payments")
       .select("booking_id, payment_provider")
       .in("booking_id", bookingIds)
       .eq("status", "completed")
       .order("created_at", { ascending: false });
+    const tid = options?.tenantId;
+    if (typeof tid === "string" && tid.trim()) {
+      bookingPaymentsQuery = bookingPaymentsQuery.eq("tenant_id", tid.trim());
+    }
+    const { data: bookingPayments } = await bookingPaymentsQuery;
 
     if (bookings) {
       bookingMap = bookings.reduce((acc: any, b: any) => {
@@ -65,18 +73,27 @@ export async function getAvailablePayoutBalance(
   let onlineEarnings = 0;
   let completedPayouts = 0;
 
+  const excludeWalkInNotOnPlatform = (bookingId: string | null | undefined): boolean => {
+    if (!bookingId) return false;
+    const meta = bookingMap[bookingId];
+    if (!meta) return false;
+    return meta.booking_source === "walk_in" && meta.payment_provider !== "paystack";
+  };
+
   for (const r of rows) {
     const row = r as any;
     if (row.transaction_type === "payout") {
       completedPayouts += Number(row.amount || 0);
       continue;
     }
+    if (row.transaction_type === "refund") {
+      if (excludeWalkInNotOnPlatform(row.booking_id)) continue;
+      onlineEarnings += Number(row.net ?? row.amount ?? 0);
+      continue;
+    }
     if (row.transaction_type !== "provider_earnings") continue;
     if (holdDays > 0 && row.created_at && row.created_at > availableFrom) continue;
-    // Exclude direct walk-in (platform doesn't hold the money)
-    if (row.booking_id && bookingMap[row.booking_id]?.booking_source === "walk_in") {
-      if (bookingMap[row.booking_id]?.payment_provider !== "paystack") continue;
-    }
+    if (excludeWalkInNotOnPlatform(row.booking_id)) continue;
     onlineEarnings += Number(row.net ?? row.amount ?? 0);
   }
 

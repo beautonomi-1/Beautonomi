@@ -23,12 +23,14 @@ test-report.json
 .env
 .env.local
 .env.*.local
+**/.env.*
 **/.env
 **/.env.local
 **/.env.*.local
 apps/**/.env
 apps/**/.env.local
-!.env.example
+!**/.env.example
+!**/.env*.example
 *.pem
 *.key
 *.p8
@@ -39,6 +41,14 @@ apps/**/.env.local
 credentials.json
 secrets.*
 **/secrets/**
+
+# --- Store screenshots (generated; keep folders via .gitkeep) ---
+screenshots/**/*.png
+
+# Maestro CLI download (pnpm screenshots:setup); keep README only
+tooling/screenshots/.tools/**
+!tooling/screenshots/.tools/
+!tooling/screenshots/.tools/README.md
 
 # --- Mobile / Expo ---
 .expo/

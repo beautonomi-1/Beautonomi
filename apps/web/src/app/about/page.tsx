@@ -1,10 +1,9 @@
-"use client";
-
-import React, { useEffect, useState } from "react";
+import React from "react";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
-import { fetcher } from "@/lib/http/fetcher";
+import { getSupabaseServer } from "@/lib/supabase/server";
+import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 import { Mail, Phone, HelpCircle } from "lucide-react";
 
 export interface AboutSection {
@@ -14,41 +13,33 @@ export interface AboutSection {
   image_url?: string | null;
 }
 
-export default function AboutPage() {
-  const [sections, setSections] = useState<AboutSection[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+function helpCentreHref(raw: string): string {
+  const c = raw.trim();
+  if (/^https?:\/\//i.test(c)) return c;
+  if (c.startsWith("/")) return c;
+  return PLATFORM_CONTACT_HREF;
+}
 
-  useEffect(() => {
-    const loadContent = async () => {
-      try {
-        const response = await fetcher.get<{ data: AboutSection[] }>("/api/public/about-us");
-        setSections(response.data ?? []);
-      } catch (error) {
-        console.error("Failed to load about page content:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadContent();
-  }, []);
+export const revalidate = 300;
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-white pb-20 md:pb-0">
-        <BeautonomiHeader />
-        <div className="container mx-auto px-4 py-24">
-          <div className="animate-pulse space-y-6 max-w-2xl">
-            <div className="h-12 bg-gray-200 rounded w-3/4" />
-            <div className="h-4 bg-gray-200 rounded w-full" />
-            <div className="h-4 bg-gray-200 rounded w-5/6" />
-            <div className="h-4 bg-gray-200 rounded w-4/6" />
-          </div>
-        </div>
-        <Footer />
-        <BottomNav />
-      </div>
-    );
+async function getAboutSections(): Promise<AboutSection[]> {
+  try {
+    const supabase = await getSupabaseServer();
+    const { data, error } = await supabase
+      .from("about_us_content")
+      .select("section_key, title, content, image_url")
+      .eq("is_active", true)
+      .order("display_order", { ascending: true });
+    if (error) throw error;
+    return (data || []) as AboutSection[];
+  } catch (error) {
+    console.error("Failed to load about page content:", error);
+    return [];
   }
+}
+
+export default async function AboutPage() {
+  const sections = await getAboutSections();
 
   const hero = sections[0];
   const storySections = sections.filter(
@@ -186,17 +177,19 @@ export default function AboutPage() {
                   : isPhone
                     ? `tel:${item.content.replace(/\s/g, "")}`
                     : isHelp
-                      ? (item.content.startsWith("http")
-                          ? item.content
-                          : `https://${item.content.replace(/^\/+/, "")}`)
+                      ? helpCentreHref(item.content)
                       : undefined;
+                const helpOpensExternal =
+                  isHelp &&
+                  href &&
+                  (href.startsWith("http://") || href.startsWith("https://"));
                 const Icon = isEmail ? Mail : isPhone ? Phone : HelpCircle;
                 return (
                   <a
                     key={item.section_key}
                     href={href}
-                    target={isHelp ? "_blank" : undefined}
-                    rel={isHelp ? "noopener noreferrer" : undefined}
+                    target={helpOpensExternal ? "_blank" : undefined}
+                    rel={helpOpensExternal ? "noopener noreferrer" : undefined}
                     className="flex flex-col items-center text-center p-6 rounded-2xl border border-gray-200 hover:border-[#FF0077]/40 hover:bg-[#FF0077]/5 transition-all group"
                   >
                     <div className="w-12 h-12 rounded-full bg-[#FF0077]/10 flex items-center justify-center mb-4 group-hover:bg-[#FF0077]/20 transition-colors">

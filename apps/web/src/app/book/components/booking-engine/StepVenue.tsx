@@ -34,9 +34,18 @@ interface StepVenueProps {
   onChange: (patch: Partial<BookingData>) => void;
   onNext: () => void;
   providerName?: string;
+  /** ISO 3166-1 alpha-2 from tenant config (config-bundle). Defaults to ZA for legacy flows. */
+  defaultCountryCode?: string;
 }
 
-export function StepVenue({ data, locations, onChange, onNext, providerName }: StepVenueProps) {
+export function StepVenue({
+  data,
+  locations,
+  onChange,
+  onNext,
+  providerName,
+  defaultCountryCode = "ZA",
+}: StepVenueProps) {
   const venueType = data.venueType;
   const atSalonOk = venueType === "at_salon" && (locations.length === 0 || data.selectedLocation != null);
   const atHomeOk =
@@ -196,14 +205,14 @@ export function StepVenue({ data, locations, onChange, onNext, providerName }: S
           </Label>
           <AddressAutocomplete
             value={data.atHomeAddress.line1}
-            country={data.atHomeAddress.country || "ZA"}
+            country={data.atHomeAddress.country || defaultCountryCode}
             onChange={(addr) =>
               onChange({
                 atHomeAddress: {
                   line1: addr.address_line1 || data.atHomeAddress.line1,
                   city: addr.city || data.atHomeAddress.city,
                   state: addr.state,
-                  country: addr.country || data.atHomeAddress.country || "ZA",
+                  country: addr.country || data.atHomeAddress.country || defaultCountryCode,
                   postal_code: addr.postal_code,
                   latitude: addr.latitude,
                   longitude: addr.longitude,

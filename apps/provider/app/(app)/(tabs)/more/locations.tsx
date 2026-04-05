@@ -26,7 +26,9 @@ type LocationItem = {
 export default function LocationsScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const { data, loading, error, refresh } = useApi<LocationItem[]>("/api/provider/locations");
+  const { data, loading, error, refresh } = useApi<LocationItem[]>(
+    "/api/provider/locations?include_inactive=true"
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -150,6 +152,11 @@ export default function LocationsScreen() {
                         {loc.is_primary && (
                           <View style={{ borderRadius: 4, backgroundColor: "#ccfbf1", paddingHorizontal: 8, paddingVertical: 2 }}>
                             <Text style={{ fontSize: 12, fontWeight: "500", color: "#115e59" }}>Primary</Text>
+                          </View>
+                        )}
+                        {loc.is_active === false && (
+                          <View style={{ borderRadius: 4, backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 2, marginLeft: 6 }}>
+                            <Text style={{ fontSize: 12, fontWeight: "500", color: "#92400e" }}>Inactive</Text>
                           </View>
                         )}
                       </View>

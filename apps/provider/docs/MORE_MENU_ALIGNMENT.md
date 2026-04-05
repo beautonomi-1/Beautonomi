@@ -6,9 +6,9 @@ This document tracks alignment between the provider **mobile app** More menu, th
 
 ## 0. No route to web (native-first)
 
-**The provider app does not route users to the web.** All features use native screens and APIs. There is no in-app link to open the web dashboard; providers stay in the mobile app. Do not add "Open on web" or portal links. The in-app portal screen (`more/portal`) exists for direct/deep links only and is not linked from any menu.
+**The provider app does not route users to the web dashboard.** Core features use native screens and APIs. Do not add "Open on web" links in menu flows. The portal route (`more/portal`) exists only for explicit deep-link compatibility and opens external browser URLs.
 
-**Quick reference:** Finance & billing → `finance-billing-hub` (Earnings, Payroll, Invoices, Payouts, Billing history, Gift cards). Invoice/document and other web URLs (subscription payment, onboarding, setup, verification, express-booking, packages) open in the **in-app browser** (`more/in-app-browser`) so the user stays in the app and authenticated. Native screens preferred where possible (e.g. setup-status routes to native when the API returns app routes).
+**Quick reference:** Finance & billing → `finance-billing-hub` (Earnings, Payroll, Invoices, Payouts, Billing history, Gift cards). External checkout/compliance/document URLs (subscription payment, invoice docs, verification links) open in the **device browser**. Native screens are used for all core workflows.
 
 ---
 
@@ -113,9 +113,9 @@ This document tracks alignment between the provider **mobile app** More menu, th
 - **APIs:** Payroll: `GET /api/provider/pay-runs`, `POST /api/provider/pay-runs`, approve, mark-paid. Gift cards: `GET/PATCH /api/provider/settings/sales/gift-cards`. All native; no web.
 - **Finance & billing hub:** Native links to Earnings, Payroll, Invoices, Payouts, Billing history, Gift cards. Providers never leave the app.
 
-### Billing history & in-app browser
-- **Billing history** (`more/billing-history.tsx`): `GET /api/provider/billing-history`; list of billing items. Invoice links open in the **in-app browser** (`more/in-app-browser`) so providers stay in the app and authenticated for PDFs/payment pages.
-- **Setup status** (`more/settings/setup-status.tsx`): Steps from API use **native routes** where we have a screen (business, locations, gallery, operating hours, verification, Yoco, payouts, catalogue); other steps open in in-app browser. **Onboarding** screen offers "Complete setup in app" → navigates to Setup status so users can complete steps natively first.
+### Billing history & external links
+- **Billing history** (`more/billing-history.tsx`): `GET /api/provider/billing-history`; list of billing items. Invoice links open in the **device browser** for PDF/document viewing.
+- **Setup status** (`more/settings/setup-status.tsx`): Steps from API use **native routes** where available (business, locations, gallery, operating hours, verification, Yoco, payouts, catalogue). Unmapped steps show native guidance; no WebView fallback.
 
 ### Activity (`more/activity.tsx`)
 - **APIs:** `GET /api/provider/dashboard`.
@@ -175,7 +175,7 @@ No "Open on web" links for these flows; no in-app link to the web dashboard.
 
 ## 6. Native-first update (in-app experience)
 
-All features use native screens; the app uses in-app WebView for web-only flows (payment, onboarding, invoices, etc.) so the user stays authenticated. Settings & account: every item opens a native screen. Calendar display → `more/settings/calendar-preferences`; Calendar colors & icons → `more/settings/calendar-colors-icons` (native + optional "Open on web"); Calendar links → `more/settings/calendar-links` (native + optional "Open on web"); Waitlist settings → `more/settings/waitlist-settings` (full native, GET/PATCH waitlist API). Products & e-commerce, Catalogue, Finance (hub → earnings, payroll, invoices, payouts, billing history, gift cards; VAT reports, Team totals, My earnings are native). Resources & forms: native only (Forms create and Automations create open native screens). Billing invoice links, subscription payment, onboarding, setup-status links, verification, express-booking (“Manage links on web”), and packages (“Open web”) open in the **in-app browser** (`more/in-app-browser`). Subscription success uses postMessage to auto-return to native. Native flows preferred where possible.
+All core features use native screens and APIs. Settings & account: every item opens a native screen. Calendar display → `more/settings/calendar-preferences`; Calendar colors & icons → `more/settings/calendar-colors-icons`; Calendar links → `more/settings/calendar-links`; Waitlist settings → `more/settings/waitlist-settings` (GET/PATCH waitlist API). Products & e-commerce, Catalogue, Finance (hub → earnings, payroll, invoices, payouts, billing history, gift cards; VAT reports, Team totals, My earnings) are native. Resources, Forms, and Automations create flows are native. For unavoidable external flows (payments, invoice docs, verification hosted pages), the app launches the **device browser**.
 
 ---
 
@@ -194,4 +194,4 @@ All features use native screens; the app uses in-app WebView for web-only flows 
 
 - **Activity:** Dashboard uses GET /api/provider/dashboard natively. All flows are now native.
 - **Products:** Mobile has core fields (name, price, category, sku, quantity, variants, supply_price, etc.); web has more (measure, tax_rate, image_urls). Mobile subset is valid; optionally add more fields later if needed.
-- **No web entry:** No "Open dashboard in browser" in Settings; all flows are native so providers never leave the app. Billing/invoice links open in the in-app browser (WebView); user stays authenticated.
+- **No web dashboard entry:** No "Open dashboard in browser" in Settings. Core flows are native; external payment/document/compliance links open in the device browser.

@@ -1,7 +1,8 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import { checkPublicMutationRateLimit } from "@/lib/rate-limit/public-mutation";
 
 const createCityWaitlistSchema = z.object({
   city_name: z.string().min(1, "City name is required"),
@@ -19,6 +20,14 @@ const createCityWaitlistSchema = z.object({
  * Join city waitlist (public endpoint, no auth required)
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await checkPublicMutationRateLimit(request);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds ?? 60) } },
+    );
+  }
+
   try {
     const body = await request.json();
     const validationResult = createCityWaitlistSchema.safeParse(body);

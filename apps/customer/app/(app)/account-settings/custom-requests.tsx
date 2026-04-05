@@ -16,6 +16,7 @@ import { api } from "@/lib/api-client";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import * as Haptics from "expo-haptics";
 
 // ---------------------------------------------------------------------------
@@ -64,8 +65,16 @@ interface CustomRequest {
 // Helpers
 // ---------------------------------------------------------------------------
 
+function parseValidDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", {
+  const parsed = parseValidDate(iso);
+  if (!parsed) return "—";
+  return parsed.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -73,7 +82,9 @@ function formatDate(iso: string): string {
 }
 
 function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
+  const parsed = parseValidDate(iso);
+  if (!parsed) return "—";
+  return parsed.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -94,7 +105,7 @@ function formatLocationLabel(type?: LocationType | null): string | null {
 function formatBudget(
   min?: number | null,
   max?: number | null,
-  currency = "ZAR"
+  currency = getTenantDefaultCurrency()
 ): string | null {
   if (min == null && max == null) return null;
   if (min != null && max != null) return `${currency} ${min} – ${max}`;
@@ -136,7 +147,7 @@ function RequestCard({
   cancellingRequestId: string | null;
 }) {
   const locationLabel = formatLocationLabel(item.location_type);
-  const budget = formatBudget(item.budget_min, item.budget_max, "ZAR");
+  const budget = formatBudget(item.budget_min, item.budget_max);
   const hasPaidOffer = item.offers?.some((o) => o.status === "paid");
   const hasPendingOffer = item.offers?.some(canAcceptOffer);
   const isCancelled = item.status === "cancelled";

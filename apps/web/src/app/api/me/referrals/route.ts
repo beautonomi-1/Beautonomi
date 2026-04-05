@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/me/referrals
@@ -11,6 +14,9 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Get user profile to find referral code (handle or id) – select id first in case handle column is missing
     let referralCode = user.id?.slice(0, 8).toUpperCase() || "BEAUTY";
@@ -59,7 +65,7 @@ export async function GET(request: NextRequest) {
 
     // Load referral settings from DB so mobile and web get same is_enabled and amount
     const REFERRAL_SETTINGS_ID = "00000000-0000-0000-0000-000000000001";
-    let referralSettings = { referral_amount: 50, referral_currency: "ZAR", is_enabled: true };
+    let referralSettings = { referral_amount: 50, referral_currency: lastResortCurrency, is_enabled: true };
     try {
       const { data: rs } = await supabase
         .from("referral_settings")
@@ -69,7 +75,7 @@ export async function GET(request: NextRequest) {
       if (rs) {
         referralSettings = {
           referral_amount: Number(rs.referral_amount) ?? 50,
-          referral_currency: rs.referral_currency || "ZAR",
+          referral_currency: rs.referral_currency || lastResortCurrency,
           is_enabled: rs.is_enabled !== false,
         };
       }

@@ -28,6 +28,9 @@ import type { GroupBooking, GroupBookingParticipant, TeamMember, ServiceItem, Ap
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
 interface GroupBookingDialogProps {
   open: boolean;
@@ -50,6 +53,7 @@ export function GroupBookingDialog({
   defaultTeamMemberId,
   existingAppointments = [],
 }: GroupBookingDialogProps) {
+  const { format: formatMoney } = useProviderMoneyFormat();
   const [isLoading, setIsLoading] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -208,6 +212,15 @@ export function GroupBookingDialog({
     setIsLoading(true);
 
     try {
+      for (let i = 0; i < participants.length; i++) {
+        const ph = participants[i].client_phone?.trim();
+        if (ph && !isCompleteE164(ph)) {
+          toast.error(`Participant ${i + 1}: enter a valid phone number or leave it blank.`);
+          setIsLoading(false);
+          return;
+        }
+      }
+
       const bookingData: Partial<GroupBooking> = {
         scheduled_date: formData.scheduled_date,
         scheduled_time: formData.scheduled_time,
@@ -513,7 +526,7 @@ export function GroupBookingDialog({
                 </div>
                 {formData.travel_fee > 0 && (
                   <div className="p-2 bg-white rounded border">
-                    <div className="text-xs text-gray-600">Travel Fee: R{formData.travel_fee.toFixed(2)}</div>
+                    <div className="text-xs text-gray-600">Travel Fee: {formatMoney(formData.travel_fee)}</div>
                   </div>
                 )}
               </div>
@@ -597,15 +610,12 @@ export function GroupBookingDialog({
                         />
                       </div>
                       <div>
-                        <Label className="text-xs sm:text-sm">Phone</Label>
-                        <Input
-                          type="tel"
+                        <PhoneInput
+                          label="Phone"
+                          inputId={`group-booking-participant-phone-${index}`}
                           value={participant.client_phone || ""}
-                          onChange={(e) =>
-                            handleParticipantChange(index, "client_phone", e.target.value)
-                          }
-                          placeholder="+27 82 123 4567"
-                          className="mt-1.5 min-h-[44px] touch-manipulation text-sm sm:text-base"
+                          onChange={(e164) => handleParticipantChange(index, "client_phone", e164)}
+                          className="mt-1.5 space-y-1"
                         />
                       </div>
                       <div>

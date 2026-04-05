@@ -13,7 +13,7 @@ export async function PATCH(
 ) {
   try {
     const { user } = await requireAuthInApi(request);
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const { id: reviewId } = await params;
     const body = await request.json();
 
@@ -47,8 +47,11 @@ export async function PATCH(
       .eq('id', review.booking_id)
       .single();
 
-    if (!booking || booking.status !== 'completed') {
-      return handleApiError(new Error('Invalid booking status'), 'You can only rate customers for completed bookings');
+    if (!booking || !['completed', 'no_show'].includes(booking.status)) {
+      return handleApiError(
+        new Error('Invalid booking status'),
+        'You can only rate customers for completed or no-show bookings'
+      );
     }
 
     // Prepare update data
@@ -94,8 +97,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireRoleInApi(['superadmin']);
-    const supabase = await getSupabaseServer();
+    await requireRoleInApi(['superadmin'], request);
+    const supabase = await getSupabaseServer(request);
     const { id: reviewId } = await params;
 
     // Verify review exists

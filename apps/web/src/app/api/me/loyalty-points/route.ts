@@ -1,17 +1,27 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { handleApiError, successResponse, requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/me/loyalty-points
  * Get current user's loyalty points balance and transaction history.
  * Uses ledger (loyalty_points_ledger) when available; falls back to legacy
  * (loyalty_point_transactions + get_user_loyalty_balance) so balance is always correct.
+ *
+ * TODO: Consolidate to loyalty_points_ledger as sole source of truth.
+ * Migration plan: 1) Backfill ledger from legacy transactions 2) Remove legacy reads
+ * 3) Drop loyalty_point_transactions table. See SOFT_DELETE_STRATEGY.md.
  */
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const url = new URL(request.url);
     const limit = parseInt(url.searchParams.get("limit") || "20");
@@ -22,7 +32,7 @@ export async function GET(request: NextRequest) {
     let total_redeemed = 0;
     let last_transaction_at: string | null = null;
     let redemption_rate = 100;
-    let currency = "ZAR";
+    let currency = lastResortCurrency;
     let min_redemption_points = 50;
     let recent_transactions: { id: string; type: string; points: number; description: string; created_at: string }[] = [];
 
@@ -98,7 +108,7 @@ export async function GET(request: NextRequest) {
 
         if (activeRule) {
           redemption_rate = Number(activeRule.redemption_rate) || 100;
-          currency = activeRule.currency || "ZAR";
+          currency = activeRule.currency || lastResortCurrency;
         }
 
         const { data: history } = await supabase

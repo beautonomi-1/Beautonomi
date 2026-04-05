@@ -15,9 +15,11 @@ export const ADMIN_SECTION_MARKETING_COMMS = "marketing_comms" as const;
 export const ADMIN_SECTION_INTEGRATIONS_DEV = "integrations_dev" as const;
 export const ADMIN_SECTION_OPERATIONS = "operations" as const;
 export const ADMIN_SECTION_PLATFORM_CONFIG = "platform_config" as const;
+export const ADMIN_SECTION_SUPPORT = "support" as const;
 
 export type AdminSection =
   | typeof ADMIN_SECTION_OVERVIEW
+  | typeof ADMIN_SECTION_SUPPORT
   | typeof ADMIN_SECTION_PROVIDERS_OPERATIONS
   | typeof ADMIN_SECTION_FINANCE
   | typeof ADMIN_SECTION_USERS_TRUST
@@ -31,6 +33,7 @@ export type AdminSection =
 /** Roles that can access the admin shell at all (layout allowedRoles). */
 export const ALL_ADMIN_ROLES: UserRole[] = [
   "superadmin",
+  "support_agent",
   "admin_support",
   "admin_finance",
   "admin_trust",
@@ -45,6 +48,7 @@ export const ALL_ADMIN_ROLES: UserRole[] = [
 /** Section -> roles that can access that section. Superadmin is implied everywhere. */
 export const ADMIN_SECTION_ROLES: Record<AdminSection, UserRole[]> = {
   [ADMIN_SECTION_OVERVIEW]: ["superadmin", "admin_support"],
+  [ADMIN_SECTION_SUPPORT]: ["superadmin", "support_agent", "admin_support"],
   [ADMIN_SECTION_PROVIDERS_OPERATIONS]: ["superadmin", "admin_support"],
   [ADMIN_SECTION_FINANCE]: ["superadmin", "admin_finance"],
   [ADMIN_SECTION_USERS_TRUST]: ["superadmin", "admin_trust"],
@@ -59,6 +63,7 @@ export const ADMIN_SECTION_ROLES: Record<AdminSection, UserRole[]> = {
 /** Ordered list of sections (for UI). */
 export const ALL_SECTIONS: AdminSection[] = [
   ADMIN_SECTION_OVERVIEW,
+  ADMIN_SECTION_SUPPORT,
   ADMIN_SECTION_PROVIDERS_OPERATIONS,
   ADMIN_SECTION_FINANCE,
   ADMIN_SECTION_USERS_TRUST,
@@ -73,6 +78,7 @@ export const ALL_SECTIONS: AdminSection[] = [
 /** Display labels for sections (for UI). */
 export const SECTION_LABELS: Record<AdminSection, string> = {
   [ADMIN_SECTION_OVERVIEW]: "Overview",
+  [ADMIN_SECTION_SUPPORT]: "Support",
   [ADMIN_SECTION_PROVIDERS_OPERATIONS]: "Providers & operations",
   [ADMIN_SECTION_FINANCE]: "Finance",
   [ADMIN_SECTION_USERS_TRUST]: "Users & trust",
@@ -99,6 +105,7 @@ export const ADMIN_ROLES_FOR_SECTIONS: UserRole[] = [
 
 /** Display labels for admin roles (for UI). */
 export const ROLE_LABELS: Record<string, string> = {
+  support_agent: "Support agent",
   admin_support: "Support",
   admin_finance: "Finance",
   admin_trust: "Trust",

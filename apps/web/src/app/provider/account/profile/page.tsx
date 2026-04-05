@@ -12,6 +12,9 @@ import { toast } from "sonner";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { uploadAvatar, validateFileType, validateFileSize, IMAGE_CONSTRAINTS } from "@/lib/supabase/storage-client";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { useRefreshAmplitudeIdentify } from "@/hooks/useAmplitude";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
 
 interface ProfileData {
   email: string;
@@ -29,6 +32,7 @@ interface ProfileData {
 }
 
 export default function ProfilePage() {
+  const refreshIdentify = useRefreshAmplitudeIdentify("provider");
   const [formData, setFormData] = useState<ProfileData>({
     email: "",
     phone: "",
@@ -176,7 +180,7 @@ export default function ProfilePage() {
       fetcher.patch("/api/me/profile", {
         avatar_url: newAvatarUrl,
       }).then(() => {
-        // Dispatch custom event to notify other components (like topbar) to refresh
+        refreshIdentify();
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('profile-updated', { 
             detail: { avatar_url: newAvatarUrl } 
@@ -214,6 +218,10 @@ export default function ProfilePage() {
   };
 
   const handleSave = async () => {
+    if (formData.phone?.trim() && !isCompleteE164(formData.phone)) {
+      toast.error("Enter a valid phone number or leave the field blank.");
+      return;
+    }
     try {
       setIsSaving(true);
       
@@ -224,12 +232,13 @@ export default function ProfilePage() {
       
       await fetcher.patch("/api/me/profile", {
         email: formData.email,
-        phone: formData.phone,
+        phone: formData.phone?.trim() || null,
         ...(addressToSend && { address: addressToSend }),
       });
 
       toast.success("Profile updated successfully");
-      await loadProfile(); // Reload to get latest data
+      await loadProfile();
+      refreshIdentify();
     } catch (error) {
       console.error("Error saving profile:", error);
       const errorMessage =
@@ -334,12 +343,12 @@ export default function ProfilePage() {
             />
           </div>
           <div>
-            <Label htmlFor="phone">Phone</Label>
-            <Input
-              id="phone"
-              type="tel"
+            <PhoneInput
+              inputId="provider-account-profile-phone"
+              label="Phone"
               value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              onChange={(e164) => setFormData({ ...formData, phone: e164 })}
+              placeholder="Phone number"
             />
           </div>
         </div>

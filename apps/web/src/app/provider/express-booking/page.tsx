@@ -23,6 +23,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { RADIX_SELECT_ANY } from "@/lib/ui/select-radix-sentinels";
+import { copyTextToClipboard } from "@/lib/browser/clipboard";
 
 export default function ExpressBookingLinksPage() {
   const [links, setLinks] = useState<ExpressBookingLink[]>([]);
@@ -70,9 +72,13 @@ export default function ExpressBookingLinksPage() {
     }
   };
 
-  const handleCopyLink = (link: ExpressBookingLink) => {
-    navigator.clipboard.writeText(link.full_url);
-    toast.success("Link copied to clipboard");
+  const handleCopyLink = async (link: ExpressBookingLink) => {
+    const copied = await copyTextToClipboard(link.full_url);
+    if (copied) {
+      toast.success("Link copied to clipboard");
+      return;
+    }
+    toast.error("Unable to copy link on this browser");
   };
 
   const handleViewLink = (link: ExpressBookingLink) => {
@@ -113,7 +119,93 @@ export default function ExpressBookingLinksPage() {
         </SectionCard>
       ) : (
         <SectionCard className="p-0 overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Mobile card layout */}
+          <div className="md:hidden divide-y">
+            {links.map((link) => (
+              <div key={link.id} className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">{link.name}</p>
+                    <code className="text-xs px-1.5 py-0.5 bg-gray-100 rounded mt-1 inline-block">
+                      {link.short_code}
+                    </code>
+                  </div>
+                  {!link.is_active ? (
+                    <Badge className="bg-gray-100 text-gray-800 shrink-0">Inactive</Badge>
+                  ) : isExpired(link) ? (
+                    <Badge className="bg-red-100 text-red-800 shrink-0">Expired</Badge>
+                  ) : (
+                    <Badge className="bg-green-100 text-green-800 shrink-0">Active</Badge>
+                  )}
+                </div>
+
+                <p className="text-sm text-gray-500 truncate" title={link.full_url}>
+                  {link.full_url}
+                </p>
+
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
+                  <span className="flex items-center gap-1">
+                    <Eye className="w-3.5 h-3.5 text-gray-400" />
+                    {link.usage_count} clicks
+                  </span>
+                  {link.expires_at && (
+                    <span
+                      className={
+                        isExpired(link)
+                          ? "text-red-600"
+                          : new Date(link.expires_at) <
+                            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                          ? "text-yellow-600"
+                          : ""
+                      }
+                    >
+                      Expires {new Date(link.expires_at).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="min-h-[44px] flex-1"
+                    onClick={() => handleCopyLink(link)}
+                  >
+                    <Copy className="w-4 h-4 mr-1" />
+                    Copy
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="min-h-[44px] flex-1"
+                    onClick={() => handleViewLink(link)}
+                  >
+                    <ExternalLink className="w-4 h-4 mr-1" />
+                    Open
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="min-h-[44px]"
+                    onClick={() => handleEdit(link)}
+                  >
+                    <Edit className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="min-h-[44px] text-red-600 hover:text-red-700"
+                    onClick={() => handleDelete(link.id)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table layout */}
+          <div className="hidden md:block overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -214,10 +306,14 @@ export default function ExpressBookingLinksPage() {
                           variant="ghost"
                           size="sm"
                           className="h-8 px-2"
-                          onClick={() => {
+                          onClick={async () => {
                             const embedUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/book/l/${encodeURIComponent(link.short_code)}?embed=1`;
-                            navigator.clipboard.writeText(embedUrl);
-                            toast.success("Embed URL copied");
+                            const copied = await copyTextToClipboard(embedUrl);
+                            if (copied) {
+                              toast.success("Embed URL copied");
+                              return;
+                            }
+                            toast.error("Unable to copy embed URL on this browser");
                           }}
                           title="Copy embed URL"
                         >
@@ -495,16 +591,19 @@ function ExpressBookingLinkDialog({
             <div>
               <Label htmlFor="team_member_id">Pre-select Team Member (Optional)</Label>
               <Select
-                value={formData.team_member_id}
+                value={formData.team_member_id || RADIX_SELECT_ANY}
                 onValueChange={(value) =>
-                  setFormData({ ...formData, team_member_id: value })
+                  setFormData({
+                    ...formData,
+                    team_member_id: value === RADIX_SELECT_ANY ? "" : value,
+                  })
                 }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Any team member" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any team member</SelectItem>
+                  <SelectItem value={RADIX_SELECT_ANY}>Any team member</SelectItem>
                   {teamMembers.map((member) => (
                     <SelectItem key={member.id} value={member.id}>
                       {member.name}
@@ -548,27 +647,26 @@ function ExpressBookingLinkDialog({
                   }
                 />
                 <Label htmlFor="venue_at_salon" className="cursor-pointer font-normal">At salon</Label>
-                {formData.location_type === "at_salon" && (
-                  <Select
-                    value={formData.location_id}
-                    onValueChange={(value) => setFormData({ ...formData, location_id: value })}
-                  >
-                    <SelectTrigger className="w-[200px] ml-2">
-                      <SelectValue placeholder="Choose branch" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {locations.length === 0 ? (
-                        <SelectItem value="" disabled>No locations</SelectItem>
-                      ) : (
-                        locations.map((loc) => (
+                {formData.location_type === "at_salon" &&
+                  (locations.length === 0 ? (
+                    <span className="text-sm text-gray-500 ml-2 self-center">No locations</span>
+                  ) : (
+                    <Select
+                      value={formData.location_id}
+                      onValueChange={(value) => setFormData({ ...formData, location_id: value })}
+                    >
+                      <SelectTrigger className="w-[200px] ml-2">
+                        <SelectValue placeholder="Choose branch" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {locations.map((loc) => (
                           <SelectItem key={loc.id} value={loc.id}>
                             {loc.name}
                           </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                )}
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ))}
               </div>
             </div>
           </div>

@@ -6,6 +6,7 @@ import { requireAdminSection,
   errorResponse,
  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { z } from "zod";
 
 /**
@@ -34,6 +35,7 @@ export async function PATCH(
   try {
     await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
     const body = await request.json();
 
@@ -53,6 +55,7 @@ export async function PATCH(
       .from("promotions")
       .select("id")
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (!existingPromotion) {
@@ -88,6 +91,7 @@ export async function PATCH(
       .from("promotions")
       .update(updateData)
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .select()
       .single();
 
@@ -130,6 +134,7 @@ export async function DELETE(
   try {
     await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
 
     // Verify promotion exists
@@ -137,6 +142,7 @@ export async function DELETE(
       .from("promotions")
       .select("id")
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (!existingPromotion) {
@@ -147,7 +153,8 @@ export async function DELETE(
     const { error: deleteError } = await supabase
       .from("promotions")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .eq("tenant_id", tenantId);
 
     if (deleteError) {
       return handleApiError(deleteError, "Failed to delete promotion");

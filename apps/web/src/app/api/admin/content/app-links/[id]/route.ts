@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 export async function GET(
   request: NextRequest,
@@ -12,11 +13,13 @@ export async function GET(
     const { id } = await params;
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { data, error } = await supabase
       .from("footer_app_links")
       .select("*")
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .single();
 
     if (error) {
@@ -50,6 +53,7 @@ export async function PUT(
     const { id } = await params;
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     const { platform, title, href, display_order, is_active } = body;
@@ -65,6 +69,7 @@ export async function PUT(
       .from("footer_app_links")
       .update(updateData)
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
       .single();
 
@@ -99,11 +104,13 @@ export async function DELETE(
     const { id } = await params;
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { error } = await supabase
       .from("footer_app_links")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
 
     if (error) {
       console.error("Error deleting app link:", error);

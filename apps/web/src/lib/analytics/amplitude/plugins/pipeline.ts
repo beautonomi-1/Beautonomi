@@ -15,12 +15,15 @@ export class PluginPipeline {
   private plugins: AmplitudePlugin[] = [];
 
   constructor(context: PluginContext) {
+    const enableDebugPlugin =
+      process.env.NODE_ENV !== "production" && Boolean(context.config?.debug_mode);
+
     // Initialize plugins in order
     this.plugins = [
       new EnrichmentPlugin(context),
       new PrivacyPlugin(context),
       new ReliabilityPlugin(context),
-      new DebugPlugin(context),
+      ...(enableDebugPlugin ? [new DebugPlugin(context)] : []),
     ];
   }
 

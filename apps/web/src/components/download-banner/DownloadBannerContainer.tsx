@@ -5,6 +5,7 @@ import { useRef, useEffect, useCallback, useState } from "react";
 import { useAmplitude } from "@/hooks/useAmplitude";
 import { fetcher } from "@/lib/http/fetcher";
 import DownloadBanner from "./DownloadBanner";
+import type { DownloadBannerStore } from "./DownloadBanner";
 import type { OsType } from "@/lib/utils/os-type";
 
 const DISMISS_KEY = "download_banner_dismissed";
@@ -42,10 +43,24 @@ function getStoreLinkFromAppsData(
 ): string | null {
   if (!data) return null;
   const platform = data[osType];
-  if (!platform?.enabled) return null;
+  if (!platform || platform.enabled === false) return null;
   if (osType === "ios") return platform.app_store_url ?? null;
   if (osType === "android") return platform.download_url ?? null;
   return platform.app_gallery_url ?? null;
+}
+
+function resolveStoreUrl(
+  data: Record<string, AppPlatformConfig> | null | undefined,
+  appContext: "customer" | "provider",
+  osType: "ios" | "android" | "huawei"
+): string | null {
+  return getStoreLinkFromAppsData(data, osType) ?? getStoreLinkFromEnv(appContext, osType);
+}
+
+interface ResolvedLinks {
+  ios: string | null;
+  android: string | null;
+  huawei: string | null;
 }
 
 interface DownloadBannerContainerProps {
@@ -59,16 +74,16 @@ export function DownloadBannerContainer({ osType }: DownloadBannerContainerProps
 
   const appContext = pathname?.startsWith("/become-a-partner") ? "provider" : "customer";
 
-  const mobileOs = osType === "ios" || osType === "android" || osType === "huawei" ? osType : null;
+  useEffect(() => {
+    viewedSentRef.current = false;
+  }, [appContext]);
 
-  // Prefer admin/CMS (platform_settings.apps) from /api/public/apps; fallback to env
-  const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  const mobileOs = osType === "ios" || osType === "android" || osType === "huawei" ? osType : null;
+  const isDesktopLike = osType === "desktop" || osType === "other";
+
+  const [links, setLinks] = useState<ResolvedLinks>({ ios: null, android: null, huawei: null });
 
   useEffect(() => {
-    if (!mobileOs) {
-      setLinkUrl(null);
-      return;
-    }
     let cancelled = false;
     (async () => {
       try {
@@ -76,24 +91,40 @@ export function DownloadBannerContainer({ osType }: DownloadBannerContainerProps
           `/api/public/apps?type=${appContext}`
         );
         if (cancelled) return;
-        const fromCms = getStoreLinkFromAppsData(res?.data, mobileOs);
-        if (fromCms) {
-          setLinkUrl(fromCms);
-          return;
-        }
+        const d = res?.data;
+        setLinks({
+          ios: resolveStoreUrl(d, appContext, "ios"),
+          android: resolveStoreUrl(d, appContext, "android"),
+          huawei: resolveStoreUrl(d, appContext, "huawei"),
+        });
       } catch {
-        // ignore, use env fallback
+        if (cancelled) return;
+        setLinks({
+          ios: getStoreLinkFromEnv(appContext, "ios"),
+          android: getStoreLinkFromEnv(appContext, "android"),
+          huawei: getStoreLinkFromEnv(appContext, "huawei"),
+        });
       }
-      if (cancelled) return;
-      setLinkUrl(getStoreLinkFromEnv(appContext, mobileOs));
     })();
     return () => {
       cancelled = true;
     };
-  }, [appContext, mobileOs]);
+  }, [appContext]);
 
-  const ctaLabel = mobileOs ? CTA_LABELS[mobileOs] : "";
-  const destination = mobileOs ? DESTINATION[mobileOs] : null;
+  const mobileLink = mobileOs
+    ? mobileOs === "ios"
+      ? links.ios
+      : mobileOs === "android"
+        ? links.android
+        : links.huawei
+    : null;
+
+  const desktopHeadline =
+    appContext === "provider"
+      ? "Get the Beautonomi Partner app on your phone"
+      : "Get the Beautonomi app on your phone";
+
+  const hasAnyDesktopLink = Boolean(links.ios || links.android || links.huawei);
 
   const [dismissed, setDismissed] = useState(false);
 
@@ -125,39 +156,102 @@ export function DownloadBannerContainer({ osType }: DownloadBannerContainerProps
     setDismissed(true);
   }, [appContext]);
 
-  useEffect(() => {
-    if (!linkUrl || dismissed || viewedSentRef.current) return;
-    viewedSentRef.current = true;
-    track("download_banner_viewed", {
-      app_context: appContext,
-      os_type: osType,
-      destination: destination ?? undefined,
-      pathname: pathname ?? "",
-      link_url: linkUrl,
-    });
-  }, [linkUrl, dismissed, appContext, osType, destination, pathname, track]);
+  const showMobile = Boolean(mobileOs && mobileLink && !dismissed);
+  const showDesktop = Boolean(isDesktopLike && hasAnyDesktopLink && !dismissed);
 
-  const handleTrackClick = useCallback(() => {
-    if (!linkUrl) return;
+  useEffect(() => {
+    if (dismissed || viewedSentRef.current) return;
+    if (!showMobile && !showDesktop) return;
+    viewedSentRef.current = true;
+    if (showMobile && mobileOs && mobileLink) {
+      track("download_banner_viewed", {
+        app_context: appContext,
+        variant: "mobile",
+        os_type: osType,
+        destination: DESTINATION[mobileOs],
+        pathname: pathname ?? "",
+        link_url: mobileLink,
+      });
+    } else if (showDesktop) {
+      track("download_banner_viewed", {
+        app_context: appContext,
+        variant: "desktop",
+        os_type: osType,
+        pathname: pathname ?? "",
+        ios_url: links.ios ?? undefined,
+        android_url: links.android ?? undefined,
+        huawei_url: links.huawei ?? undefined,
+      });
+    }
+  }, [
+    dismissed,
+    showMobile,
+    showDesktop,
+    mobileOs,
+    mobileLink,
+    appContext,
+    osType,
+    pathname,
+    track,
+    links.ios,
+    links.android,
+    links.huawei,
+  ]);
+
+  const handleMobileTrackClick = useCallback(() => {
+    if (!mobileLink || !mobileOs) return;
     track("download_banner_clicked", {
       app_context: appContext,
+      variant: "mobile",
       os_type: osType,
-      destination: destination ?? undefined,
+      destination: DESTINATION[mobileOs],
       pathname: pathname ?? "",
-      link_url: linkUrl,
+      link_url: mobileLink,
     });
-  }, [linkUrl, appContext, osType, destination, pathname, track]);
+  }, [mobileLink, mobileOs, appContext, osType, pathname, track]);
 
-  if (osType === "desktop" || osType === "other" || !linkUrl || dismissed) {
-    return null;
+  const handleDesktopStoreClick = useCallback(
+    (store: DownloadBannerStore, url: string) => {
+      track("download_banner_clicked", {
+        app_context: appContext,
+        variant: "desktop",
+        os_type: osType,
+        destination: DESTINATION[store],
+        pathname: pathname ?? "",
+        link_url: url,
+      });
+    },
+    [appContext, osType, pathname, track]
+  );
+
+  if (dismissed) return null;
+
+  if (showMobile && mobileOs && mobileLink) {
+    return (
+      <DownloadBanner
+        variant="mobile"
+        linkUrl={mobileLink}
+        ctaLabel={CTA_LABELS[mobileOs]}
+        store={mobileOs}
+        onDismiss={handleDismiss}
+        onTrackClick={handleMobileTrackClick}
+      />
+    );
   }
 
-  return (
-    <DownloadBanner
-      linkUrl={linkUrl}
-      ctaLabel={ctaLabel}
-      onDismiss={handleDismiss}
-      onTrackClick={handleTrackClick}
-    />
-  );
+  if (showDesktop) {
+    return (
+      <DownloadBanner
+        variant="desktop"
+        headline={desktopHeadline}
+        iosUrl={links.ios}
+        androidUrl={links.android}
+        huaweiUrl={links.huawei}
+        onDismiss={handleDismiss}
+        onStoreClick={handleDesktopStoreClick}
+      />
+    );
+  }
+
+  return null;
 }

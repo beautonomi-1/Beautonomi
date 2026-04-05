@@ -1,6 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { mergeCurrencyChoiceCodes, currencySelectLabel } from "@/lib/locale/currency";
+
+import React, { useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/auth/auth-guard";
 import BackButton from "../components/back-button";
 import Breadcrumb from "../components/breadcrumb";
@@ -10,6 +13,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import {
   Dialog,
   DialogContent,
@@ -80,6 +84,8 @@ type Client = {
 
 export default function CustomRequestsPage() {
   const { role } = useAuth();
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const isProvider = role === "provider_owner" || role === "provider_staff";
   
   const [items, setItems] = useState<CustomRequest[]>([]);
@@ -100,7 +106,7 @@ export default function CustomRequestsPage() {
     description: "",
     location_type: "at_salon" as "at_home" | "at_salon",
     price: "",
-    currency: "ZAR",
+    currency: tenantCurrency,
     duration_minutes: "60",
     expiration_days: "7",
     notes: "",
@@ -112,7 +118,7 @@ export default function CustomRequestsPage() {
   // Form state for creating offer for existing request
   const [offerFormData, setOfferFormData] = useState({
     price: "",
-    currency: "ZAR",
+    currency: tenantCurrency,
     duration_minutes: "60",
     expiration_days: "7",
     notes: "",
@@ -121,6 +127,11 @@ export default function CustomRequestsPage() {
     scheduled_at: "",
     travel_fee: "",
   });
+
+  const currencySelectOptions = useMemo(
+    () => mergeCurrencyChoiceCodes(tenantCurrency, formData.currency, offerFormData.currency),
+    [tenantCurrency, formData.currency, offerFormData.currency]
+  );
 
   const load = async () => {
     try {
@@ -225,7 +236,7 @@ export default function CustomRequestsPage() {
         description: "",
         location_type: "at_salon",
         price: "",
-        currency: "ZAR",
+        currency: tenantCurrency,
         duration_minutes: "60",
         expiration_days: "7",
         notes: "",
@@ -245,7 +256,7 @@ export default function CustomRequestsPage() {
     setSelectedRequestId(requestId);
     setOfferFormData({
       price: "",
-      currency: "ZAR",
+      currency: tenantCurrency,
       duration_minutes: "60",
       expiration_days: "7",
       notes: "",
@@ -573,9 +584,11 @@ export default function CustomRequestsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ZAR">ZAR</SelectItem>
-                      <SelectItem value="USD">USD</SelectItem>
-                      <SelectItem value="EUR">EUR</SelectItem>
+                      {currencySelectOptions.map((code) => (
+                        <SelectItem key={code} value={code}>
+                          {currencySelectLabel(code)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -726,9 +739,11 @@ export default function CustomRequestsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ZAR">ZAR</SelectItem>
-                      <SelectItem value="USD">USD</SelectItem>
-                      <SelectItem value="EUR">EUR</SelectItem>
+                      {currencySelectOptions.map((code) => (
+                        <SelectItem key={code} value={code}>
+                          {currencySelectLabel(code)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

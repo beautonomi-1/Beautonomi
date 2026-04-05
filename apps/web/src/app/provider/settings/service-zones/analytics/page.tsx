@@ -12,6 +12,8 @@ import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Calendar, TrendingUp, DollarSign, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface ZoneAnalytics {
   zone_id: string;
@@ -44,6 +46,8 @@ interface AnalyticsData {
 }
 
 export default function ServiceZoneAnalyticsPage() {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [startDate, setStartDate] = useState(() => {
@@ -75,9 +79,9 @@ export default function ServiceZoneAnalyticsPage() {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-ZA", {
+    return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: "ZAR",
+      currency: tenantCurrency,
     }).format(amount);
   };
 

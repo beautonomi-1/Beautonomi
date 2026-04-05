@@ -5,8 +5,8 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
 /**
  * POST /api/me/reactivate-account
  *
- * Reactivate the current user's account if they self-deactivated (deactivated_by = 'user').
- * Does nothing if deactivated by admin (must contact support).
+ * Reactivate if deactivated_by is 'user' (self-service) or 'inactive_retention' (lapsed inactivity policy).
+ * Admin-deactivated accounts must contact support.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -26,7 +26,9 @@ export async function POST(request: NextRequest) {
       return successResponse({ reactivated: false, message: "Account is not deactivated" });
     }
 
-    if (row.deactivated_by !== "user") {
+    const selfServe =
+      row.deactivated_by === "user" || row.deactivated_by === "inactive_retention";
+    if (!selfServe) {
       return successResponse({
         reactivated: false,
         message: "Account was deactivated by support. Contact support to reactivate.",

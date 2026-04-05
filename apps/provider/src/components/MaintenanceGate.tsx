@@ -3,7 +3,7 @@
  */
 import React, { useEffect, useState } from "react";
 import { Platform } from "react-native";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, isScreenshotMode, withWebApiTenantHeaders } from "@/config/public-env";
 import MaintenanceScreen from "./MaintenanceScreen";
 import type { MaintenanceConfig } from "./MaintenanceScreen";
 
@@ -24,13 +24,17 @@ export default function MaintenanceGate({ children }: { children: React.ReactNod
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (isScreenshotMode()) {
+      setLoading(false);
+      return;
+    }
     const baseUrl = getBaseUrl();
     if (!baseUrl) {
       setLoading(false);
       return;
     }
     let cancelled = false;
-    fetch(`${baseUrl}/api/public/maintenance?scope=${SCOPE}`, { cache: "no-store" })
+    fetch(`${baseUrl}/api/public/maintenance?scope=${SCOPE}`, withWebApiTenantHeaders({ cache: "no-store" }))
       .then((r) => r.json())
       .then((data: MaintenanceConfig) => {
         if (!cancelled) setConfig(data);

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   getProviderIdForUser,
@@ -8,7 +9,9 @@ import {
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { isValidOTPFormat, isOTPExpired } from "@/lib/otp/generator";
+import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
+import { ARRIVAL_OTP_FORMAT_MESSAGE } from "@beautonomi/utils";
+import { isOTPExpired } from "@/lib/otp/generator";
 import type { Booking } from "@/types/beautonomi";
 import { z } from "zod";
 
@@ -38,19 +41,12 @@ export async function POST(
 
     const validationResult = verifyArrivalSchema.safeParse(body);
     if (!validationResult.success) {
-      return errorResponse(
-        "Invalid OTP format",
-        "VALIDATION_ERROR",
-        400,
-        validationResult.error.issues
-      );
+      const message =
+        validationResult.error.issues[0]?.message ?? ARRIVAL_OTP_FORMAT_MESSAGE;
+      return errorResponse(message, "VALIDATION_ERROR", 400, validationResult.error.issues);
     }
 
     const { otp } = validationResult.data;
-
-    if (!isValidOTPFormat(otp)) {
-      return errorResponse("OTP must be 4 or 6 digits", "INVALID_OTP_FORMAT", 400);
-    }
 
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
@@ -66,6 +62,18 @@ export async function POST(
 
     if (bookingError || !booking) {
       return notFoundResponse("Booking not found");
+    }
+
+    const supabaseAdminVerify = getSupabaseAdmin();
+    const branchAccess = await assertProviderUserCanAccessBookingBranch(
+      supabaseAdminVerify,
+      user.id,
+      user.role,
+      providerId,
+      (booking as { location_id?: string | null }).location_id ?? null
+    );
+    if (branchAccess.allowed === false) {
+      return errorResponse(branchAccess.message, "FORBIDDEN", 403);
     }
 
     const bookingData = booking as any;

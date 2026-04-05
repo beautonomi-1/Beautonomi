@@ -7,6 +7,8 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export interface AuctionParams {
+  /** Active market / host — only campaigns for providers in this tenant compete */
+  tenantId: string;
   /** Search category (global_service_categories slug or id) – used for relevance */
   categorySlug?: string | null;
   categoryId?: string | null;
@@ -37,8 +39,9 @@ export const COST_PER_IMPRESSION_RATIO = 0.05;
  */
 export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinner[]> {
   const supabase = getSupabaseAdmin();
-  const { categoryId, categorySlug, maxSlots, excludeProviderIds = [] } = params;
+  const { tenantId, categoryId, categorySlug, maxSlots, excludeProviderIds = [] } = params;
   if (maxSlots <= 0) return [];
+  if (!tenantId) return [];
 
   const env = process.env.NODE_ENV === "production" ? "production" : "development";
   const { data: config } = await supabase
@@ -69,9 +72,12 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
   // Active campaigns with budget remaining (and optional daily cap; pack campaigns cap by impression count)
   const { data: campaigns } = await supabase
     .from("ads_campaigns")
-    .select("id, provider_id, budget, spent, daily_budget, bid_cpc, targeting, pack_impressions")
+    .select(
+      "id, provider_id, budget, spent, daily_budget, bid_cpc, targeting, pack_impressions, providers!inner(tenant_id)"
+    )
     .eq("status", "active")
-    .gt("budget", 0);
+    .gt("budget", 0)
+    .eq("providers.tenant_id", tenantId);
 
   if (!campaigns?.length) return [];
 

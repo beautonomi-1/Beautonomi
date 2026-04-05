@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, Platform } from "react-native";
 import NetInfo from "@react-native-community/netinfo";
+import { isScreenshotMode } from "@/config/public-env";
 
 /**
  * Offline indicator bar that appears at the top of the screen when the device
@@ -8,16 +9,19 @@ import NetInfo from "@react-native-community/netinfo";
  */
 export function OfflineBar() {
   const [isOffline, setIsOffline] = useState(false);
+  const screenshot = isScreenshotMode();
 
   useEffect(() => {
+    if (screenshot) return;
     const unsubscribe = NetInfo.addEventListener((state) => {
       const offline = !(state.isConnected && state.isInternetReachable !== false);
       setIsOffline(offline);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [screenshot]);
 
+  if (screenshot) return null;
   if (!isOffline) return null;
 
   return (

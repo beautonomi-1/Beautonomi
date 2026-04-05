@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole } from "@/lib/auth/requireRole";
+import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
+import type { UserRole } from "@/types/beautonomi";
+import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
 import { notifySupportTicketUpdated } from "@/lib/notifications/notification-service";
 
 export async function POST(
@@ -9,21 +11,7 @@ export async function POST(
 ) {
   try {
     const supabase = await getSupabaseServer(request);
-    const result = await requireRole([
-      "superadmin",
-      "support_agent",
-      "customer",
-      "provider_owner",
-    ]);
-
-    if (!result) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    const { user } = result;
+    const { user } = await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
     const { id } = await params;
 
     const body = await request.json();
@@ -53,7 +41,7 @@ export async function POST(
     }
 
     // Check access
-    const isAdmin = user.role === "superadmin" || user.role === "support_agent";
+    const isAdmin = (SUPPORT_TICKET_STAFF_ROLES as readonly string[]).includes(user.role);
     const isOwner = ticket.user_id === user.id;
 
     if (!isAdmin && !isOwner) {
@@ -100,11 +88,6 @@ export async function POST(
 
     return NextResponse.json({ message: data });
   } catch (error: unknown) {
-    console.error("Error creating ticket message:", error);
-    const message = error instanceof Error ? error.message : "Failed to create message";
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to create message");
   }
 }

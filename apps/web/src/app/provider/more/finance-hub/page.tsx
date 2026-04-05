@@ -36,6 +36,8 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Lock } from "lucide-react";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 
 interface EarningsData {
   total_earnings: number;
@@ -69,6 +71,8 @@ interface Payout {
 
 export default function FinanceHubPage() {
   const { hasPermission } = usePermissions();
+  const { currencyCode, format: fmt } = useReportCurrency();
+  const locale = useTenantLocaleTag();
   const canRequestPayout = hasPermission("process_payments");
 
   const [earnings, setEarnings] = useState<EarningsData | null>(null);
@@ -123,7 +127,7 @@ export default function FinanceHubPage() {
       return;
     }
     if (amount < minimumPayout) {
-      toast.error(`Minimum payout is ZAR ${minimumPayout.toLocaleString()}`);
+      toast.error(`Minimum payout is ${fmt(minimumPayout)}`);
       return;
     }
     if (amount > availableBalance) {
@@ -198,19 +202,19 @@ export default function FinanceHubPage() {
             Available for payout
           </h2>
           <p className="text-3xl font-semibold text-green-600">
-            ZAR {(earnings?.available_balance ?? 0).toLocaleString()}
+            {fmt(earnings?.available_balance ?? 0)}
           </p>
           <p className="text-sm text-gray-500 mt-1">
-            This is the amount you can request to be paid out to your bank account. Minimum payout: ZAR {minimumPayout.toLocaleString()}.
+            This is the amount you can request to be paid out to your bank account. Minimum payout: {fmt(minimumPayout)}.
           </p>
           {pendingPayouts > 0 && (
             <p className="text-sm text-amber-600 mt-2">
-              Pending payout requests: ZAR {pendingPayouts.toLocaleString()}
+              Pending payout requests: {fmt(pendingPayouts)}
             </p>
           )}
           {((earnings?.walk_in_additional_charges_this_period ?? earnings?.walk_in_additional_charges_total ?? 0) > 0) && (
             <p className="text-sm text-gray-500 mt-2">
-              Walk-in add-ons (this period): ZAR {(earnings?.walk_in_additional_charges_this_period ?? earnings?.walk_in_additional_charges_total ?? 0).toLocaleString()} — not in payout balance
+              Walk-in add-ons (this period): {fmt(earnings?.walk_in_additional_charges_this_period ?? earnings?.walk_in_additional_charges_total ?? 0)} — not in payout balance
             </p>
           )}
           <div className="mt-4 flex flex-wrap gap-2 items-center">
@@ -308,7 +312,7 @@ export default function FinanceHubPage() {
                       {p.currency} {p.amount.toLocaleString()}
                     </p>
                     <p className="text-sm text-gray-500">
-                      {new Date(p.requested_at).toLocaleDateString("en-ZA", {
+                      {new Date(p.requested_at).toLocaleDateString(locale, {
                         dateStyle: "medium",
                       })}
                     </p>
@@ -349,13 +353,13 @@ export default function FinanceHubPage() {
             <div>
               <Label>Available for payout</Label>
               <Input
-                value={`ZAR ${availableBalance.toLocaleString()}`}
+                value={fmt(availableBalance)}
                 disabled
                 className="mt-1 bg-gray-50"
               />
             </div>
             <div>
-              <Label htmlFor="payout-amount">Amount (ZAR) * — min ZAR {minimumPayout.toLocaleString()}</Label>
+              <Label htmlFor="payout-amount">Amount ({currencyCode}) * — min {fmt(minimumPayout)}</Label>
               <Input
                 id="payout-amount"
                 type="number"
@@ -368,7 +372,7 @@ export default function FinanceHubPage() {
                 className="mt-1"
               />
               {payoutAmount && parseFloat(payoutAmount) < minimumPayout && (
-                <p className="text-sm text-red-600 mt-1">Below minimum payout (ZAR {minimumPayout.toLocaleString()})</p>
+                <p className="text-sm text-red-600 mt-1">Below minimum payout ({fmt(minimumPayout)})</p>
               )}
               {payoutAmount && parseFloat(payoutAmount) > availableBalance && (
                 <p className="text-sm text-red-600 mt-1">Amount exceeds available balance</p>

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, handleApiError, getPaginationParams  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchFinanceLedgerExportRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 
 /**
  * GET /api/admin/finance/transactions
@@ -11,7 +13,8 @@ import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_FINANCE, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     if (!supabase) {
       return NextResponse.json({
@@ -33,30 +36,22 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get("end_date");
     const type = searchParams.get("type"); // payment, refund, payout, fee
 
-    // Get transactions from finance_transactions table
-    let query = supabase
-      .from("finance_transactions")
-      .select("*", { count: "exact" });
+    const nowISO = new Date().toISOString();
+    const defaultStart = new Date();
+    defaultStart.setUTCDate(defaultStart.getUTCDate() - 365);
+    const rangeStart = startDate || defaultStart.toISOString();
+    const rangeEnd = endDate || nowISO;
 
-    // Apply filters
-    if (startDate) {
-      query = query.gte("created_at", startDate);
-    }
-    if (endDate) {
-      query = query.lte("created_at", endDate);
-    }
-    if (type && type !== "all") {
-      query = query.eq("transaction_type", type);
-    }
-
-    // Apply pagination
-    const { data: transactions, error, count } = await query
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (error) {
-      console.error("Error fetching transactions:", error);
-      // Return empty array instead of error to prevent crashes
+    let merged: Awaited<ReturnType<typeof fetchFinanceLedgerExportRowsForTenant>>;
+    try {
+      merged = await fetchFinanceLedgerExportRowsForTenant(
+        supabase,
+        tenantId,
+        { start: rangeStart, end: rangeEnd },
+        { transactionType: type && type !== "all" ? type : null }
+      );
+    } catch (err) {
+      console.error("Error fetching transactions:", err);
       return NextResponse.json({
         data: [],
         error: null,
@@ -69,38 +64,39 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Fetch related booking data separately if needed
-    type TxRow = { id: string; booking_id?: string; transaction_type?: string; amount?: number; fees?: number; commission?: number; net?: number; created_at?: string };
-    type BookingRef = { id: string; booking_number?: string };
-    const bookingIds = [
-      ...new Set(
-        (transactions || []).map((t: TxRow) => t.booking_id).filter(Boolean)
-      ),
-    ];
+    const total = merged.length;
+    const pageRows = merged.slice(offset, offset + limit);
 
-    let bookingMap = new Map<string, BookingRef>();
-    if (bookingIds.length > 0) {
-      const { data: bookings } = await supabase
-        .from("bookings")
-        .select("id, booking_number")
-        .in("id", bookingIds);
-      if (bookings) {
-        bookingMap = new Map(bookings.map((b: BookingRef) => [b.id, b]));
-      }
-    }
+    type TxRow = {
+      id: string;
+      booking_id?: string;
+      transaction_type?: string;
+      amount?: number;
+      fees?: number;
+      commission?: number;
+      net?: number;
+      created_at?: string;
+      booking?: { booking_number?: string } | null;
+    };
 
-    const transformedTransactions = (transactions || []).map((tx: TxRow) => ({
-      id: tx.id,
-      transaction_type: tx.transaction_type || "unknown",
-      amount: Number(tx.amount ?? 0),
-      fees: Number(tx.fees ?? 0),
-      commission: Number(tx.commission ?? 0),
-      net: Number(tx.net ?? tx.amount ?? 0),
-      created_at: tx.created_at,
-      booking: tx.booking_id
-        ? bookingMap.get(tx.booking_id) || null
-        : null,
-    }));
+    const transformedTransactions = pageRows.map((tx) => {
+      const row = tx as TxRow;
+      return {
+        id: row.id,
+        transaction_type: row.transaction_type || "unknown",
+        amount: Number(row.amount ?? 0),
+        fees: Number(row.fees ?? 0),
+        commission: Number(row.commission ?? 0),
+        net: Number(row.net ?? row.amount ?? 0),
+        created_at: row.created_at,
+        booking: row.booking_id
+          ? {
+              id: row.booking_id,
+              booking_number: row.booking?.booking_number,
+            }
+          : null,
+      };
+    });
 
     return NextResponse.json({
       data: transformedTransactions,
@@ -108,8 +104,8 @@ export async function GET(request: NextRequest) {
       meta: {
         page,
         limit,
-        total: count || 0,
-        has_more: (count || 0) > offset + limit,
+        total,
+        has_more: total > offset + limit,
       },
     });
   } catch (error) {

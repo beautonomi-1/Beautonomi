@@ -4,6 +4,7 @@ import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { fetchScopedListMerged, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
 
 /**
  * GET /api/admin/notification-templates
@@ -18,29 +19,30 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const { currentTenantId } = await resolveAdminTenantContext(request, undefined, user.role ?? null);
     const { searchParams } = new URL(request.url);
     const enabled = searchParams.get("enabled");
     const channel = searchParams.get("channel");
 
-    let query = supabase
-      .from("notification_templates")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (enabled !== null) {
-      query = query.eq("enabled", enabled === "true");
-    }
-
-    if (channel) {
-      query = query.contains("channels", [channel]);
-    }
-
-    const { data: rows, error } = await query;
-
-    if (error) throw error;
+    const scoped = await fetchScopedListMerged<Record<string, unknown>>({
+      supabase,
+      table: "notification_templates",
+      tenantId: currentTenantId,
+      select: "*",
+      apply: (q) => {
+        let r = q;
+        if (enabled !== null) r = r.eq("enabled", enabled === "true");
+        if (channel) r = r.contains("channels", [channel]);
+        return r;
+      },
+      dedupeKey: (row) => String(row.key ?? row.id ?? ""),
+      orderBy: { column: "created_at", ascending: false },
+    });
+    const rows = scoped.data;
 
     type TemplateRow = { id: string; key?: string; title?: string; body?: string; channels?: unknown[]; enabled?: boolean; variables?: unknown[]; created_at?: string; updated_at?: string; email_subject?: string; email_body?: string; sms_body?: string; url?: string; description?: string };
-    const templates = (rows || []).map((row: TemplateRow) => ({
+    const typedRows = (rows || []) as TemplateRow[];
+    const templates = typedRows.map((row) => ({
       id: row.id,
       name: row.key,
       type: row.key,
@@ -85,6 +87,12 @@ export async function POST(request: NextRequest) {
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
+    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(
+      request,
+      body as Record<string, unknown>,
+      user.role ?? null
+    );
+    const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
     const key = (body.key || body.type || (body.name && String(body.name).trim()) || "").trim();
     if (!key) {
       return errorResponse("key is required (e.g. my_notification_type)", "VALIDATION_ERROR", 400);
@@ -93,6 +101,7 @@ export async function POST(request: NextRequest) {
     const { data: template, error } = await supabase
       .from("notification_templates")
       .insert({
+        tenant_id: scopeTenantId,
         key: key.replace(/\s+/g, "_").toLowerCase(),
         title: body.title ?? body.title_template ?? body.name ?? "",
         body: body.body ?? body.message_template ?? "",

@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -34,6 +35,7 @@ interface BusinessOverviewData {
 }
 
 export default function BusinessOverviewReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [period, setPeriod] = useState("month");
   const [data, setData] = useState<BusinessOverviewData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -72,7 +74,7 @@ export default function BusinessOverviewReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "business-overview");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "business-overview", exportCurrency);
     exportToCSV(exportData, "business-overview-report");
   };
 
@@ -180,7 +182,7 @@ export default function BusinessOverviewReport() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-2xl font-semibold text-gray-900">
-                    ZAR {data.totalRevenue.toLocaleString()}
+                    {fmt(data.totalRevenue)}
                   </p>
                   {data.revenueGrowth !== 0 && (
                     <div className="flex items-center gap-1 mt-1">
@@ -231,7 +233,7 @@ export default function BusinessOverviewReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.averageBookingValue.toLocaleString()}
+                  {fmt(data.averageBookingValue)}
                 </p>
                 <TrendingUp className="w-5 h-5 text-orange-600" />
               </div>
@@ -297,13 +299,13 @@ export default function BusinessOverviewReport() {
               <div className="p-3 rounded-lg border border-gray-200">
                 <p className="text-sm text-gray-600 mb-1">Net Revenue</p>
                 <p className="text-xl font-semibold text-gray-900">
-                  ZAR {data.netRevenue.toLocaleString()}
+                  {fmt(data.netRevenue)}
                 </p>
               </div>
               <div className="p-3 rounded-lg border border-gray-200">
                 <p className="text-sm text-gray-600 mb-1">Total Refunded</p>
                 <p className="text-xl font-semibold text-red-600">
-                  ZAR {data.totalRefunded.toLocaleString()}
+                  {fmt(data.totalRefunded)}
                 </p>
               </div>
               <div className="p-3 rounded-lg border border-gray-200">

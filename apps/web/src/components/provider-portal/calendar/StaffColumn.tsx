@@ -1,0 +1,146 @@
+"use client";
+
+import React, { memo, useMemo } from "react";
+import { cn } from "@/lib/utils";
+import { format, isToday } from "date-fns";
+import type { Appointment, TeamMember, TimeBlock } from "@/lib/provider-portal/types";
+import { GestureLayer } from "./GestureLayer";
+import { BookingBlock } from "./BookingBlock";
+import { TimeBlockElement } from "./TimeBlockElement";
+import type { CalendarBlock } from "./utils";
+
+interface StaffColumnProps {
+  member: TeamMember;
+  date: Date;
+  appointments: Appointment[];
+  blocks: CalendarBlock[];
+  timeSlots: string[];
+  startHour: number;
+  useMangomintMode: boolean;
+  colorBy: "status" | "service" | "team_member";
+  showCanceled: boolean;
+  showPrices: boolean;
+  highContrast: boolean;
+  workStart: number;
+  workEnd: number;
+  locationOperatingHours?: Record<string, { open: string; close: string; closed: boolean }> | null;
+  onAppointmentClick: (apt: Appointment) => void;
+  onTimeSlotClick: (date: Date, time: string, staffId: string) => void;
+  onTimeBlockClick?: (block: TimeBlock) => void;
+}
+
+function StaffColumnComponent({
+  member,
+  date,
+  appointments,
+  blocks,
+  timeSlots,
+  startHour,
+  useMangomintMode,
+  colorBy,
+  showCanceled,
+  showPrices,
+  highContrast,
+  workStart,
+  workEnd,
+  locationOperatingHours,
+  onAppointmentClick,
+  onTimeSlotClick,
+  onTimeBlockClick,
+}: StaffColumnProps) {
+  const hasContent = appointments.length > 0 || blocks.length > 0;
+  const dateStr = format(date, "yyyy-MM-dd");
+
+  const visibleAppointments = useMemo(() => {
+    if (useMangomintMode && !showCanceled) {
+      return appointments.filter((a) => a.status !== "cancelled");
+    }
+    return appointments;
+  }, [appointments, useMangomintMode, showCanceled]);
+
+  return (
+    <div
+      className={cn(
+        "border-r border-gray-200 last:border-r-0 relative transition-all",
+        hasContent
+          ? "flex-[2] min-w-[180px] max-w-[400px]"
+          : "flex-1 min-w-[120px] max-w-[200px]",
+      )}
+    >
+      <GestureLayer
+        timeSlots={timeSlots}
+        date={date}
+        dateStr={dateStr}
+        staffId={member.id}
+        useMangomintMode={useMangomintMode}
+        highContrast={highContrast}
+        workStart={workStart}
+        workEnd={workEnd}
+        locationOperatingHours={locationOperatingHours}
+        staffWorkingHours={member.working_hours ?? undefined}
+        onTimeSlotClick={onTimeSlotClick}
+      />
+
+      {blocks.map((block) => (
+        <TimeBlockElement
+          key={`block-${block.id}`}
+          block={block}
+          startHour={startHour}
+          useMangomintMode={useMangomintMode}
+          onTimeBlockClick={onTimeBlockClick}
+          variant="day"
+        />
+      ))}
+
+      {visibleAppointments.map((apt) => (
+        <BookingBlock
+          key={apt.id}
+          appointment={apt}
+          startHour={startHour}
+          useMangomintMode={useMangomintMode}
+          colorBy={colorBy}
+          showCanceled={showCanceled}
+          showPrices={showPrices}
+          onClick={onAppointmentClick}
+          variant="day"
+        />
+      ))}
+    </div>
+  );
+}
+
+export const StaffColumn = memo(StaffColumnComponent, (prev, next) => {
+  if (prev.member.id !== next.member.id) return false;
+  if (prev.date.getTime() !== next.date.getTime()) return false;
+  if (prev.startHour !== next.startHour) return false;
+  if (prev.useMangomintMode !== next.useMangomintMode) return false;
+  if (prev.colorBy !== next.colorBy) return false;
+  if (prev.showCanceled !== next.showCanceled) return false;
+  if (prev.showPrices !== next.showPrices) return false;
+  if (prev.highContrast !== next.highContrast) return false;
+  if (prev.workStart !== next.workStart) return false;
+  if (prev.workEnd !== next.workEnd) return false;
+  if (prev.timeSlots.length !== next.timeSlots.length) return false;
+  if (prev.blocks.length !== next.blocks.length) return false;
+
+  if (prev.appointments.length !== next.appointments.length) return false;
+  for (let i = 0; i < prev.appointments.length; i++) {
+    const a = prev.appointments[i];
+    const b = next.appointments[i];
+    if (
+      a.id !== b.id ||
+      a.status !== b.status ||
+      a.scheduled_time !== b.scheduled_time ||
+      a.duration_minutes !== b.duration_minutes
+    )
+      return false;
+  }
+
+  if (prev.onAppointmentClick !== next.onAppointmentClick) return false;
+  if (prev.onTimeSlotClick !== next.onTimeSlotClick) return false;
+  if (prev.locationOperatingHours !== next.locationOperatingHours) return false;
+
+  return true;
+});
+
+StaffColumn.displayName = "StaffColumn";

@@ -1,7 +1,14 @@
 import { NextRequest } from "next/server";
-import { requireAdminSection, successResponse, handleApiError, errorResponse, notFoundResponse  } from "@/lib/supabase/api-helpers";
+import {
+  requireAdminSection,
+  successResponse,
+  handleApiError,
+  errorResponse,
+  notFoundResponse,
+} from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { z } from "zod";
 
 const updateGiftCardSchema = z.object({
@@ -13,40 +20,41 @@ const updateGiftCardSchema = z.object({
 
 /**
  * GET /api/admin/gift-cards/[id]
- * Get gift card details with redemptions (superadmin only)
+ * Gift card in the resolved admin tenant, with redemptions on bookings in that tenant.
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
+    const { id } = await params;
 
-    const { id } = params;
-
-    // Get gift card with redemptions
     const { data: giftCard, error: giftCardError } = await supabaseAdmin
       .from("gift_cards")
       .select("*")
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (giftCardError || !giftCard) {
       return notFoundResponse("Gift card not found");
     }
 
-    // Get redemptions
     const { data: redemptions, error: redemptionsError } = await supabaseAdmin
       .from("gift_card_redemptions")
-      .select("id, booking_id, amount, currency, status, created_at, captured_at, voided_at")
+      .select(
+        "id, booking_id, amount, currency, status, created_at, captured_at, voided_at, bookings!inner(tenant_id)"
+      )
       .eq("gift_card_id", id)
+      .eq("bookings.tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
     if (redemptionsError) {
       console.error("Error fetching redemptions:", redemptionsError);
-      // Don't fail, just return gift card without redemptions
     }
 
     return successResponse({
@@ -62,18 +70,17 @@ export async function GET(
 
 /**
  * PATCH /api/admin/gift-cards/[id]
- * Update gift card (superadmin only)
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
-
-    const { id } = params;
+    const tenantId = await resolveAdminApiTenantId(request);
+    const { id } = await params;
     const body = await request.json();
     const validationResult = updateGiftCardSchema.safeParse(body);
 
@@ -101,6 +108,7 @@ export async function PATCH(
       .from("gift_cards")
       .update(updateData)
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .select()
       .single();
 
@@ -119,26 +127,31 @@ export async function PATCH(
 
 /**
  * DELETE /api/admin/gift-cards/[id]
- * Delete gift card (superadmin only)
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
+    const { id } = await params;
 
-    const { id } = params;
-
-    const { error } = await supabaseAdmin.from("gift_cards").delete().eq("id", id);
+    const { data: deleted, error } = await supabaseAdmin
+      .from("gift_cards")
+      .delete()
+      .eq("id", id)
+      .eq("tenant_id", tenantId)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
-      if (error.code === "PGRST116") {
-        return notFoundResponse("Gift card not found");
-      }
       throw error;
+    }
+    if (!deleted) {
+      return notFoundResponse("Gift card not found");
     }
 
     return successResponse({ message: "Gift card deleted successfully" });

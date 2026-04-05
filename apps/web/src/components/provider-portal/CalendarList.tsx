@@ -17,6 +17,15 @@ interface CalendarListProps {
   endHour?: number;
 }
 
+const parseTimeParts = (time?: string): { hour: number; minute: number } => {
+  if (typeof time !== "string") return { hour: 0, minute: 0 };
+  const [h, m] = time.split(":").map(Number);
+  return {
+    hour: Number.isFinite(h) ? h : 0,
+    minute: Number.isFinite(m) ? m : 0,
+  };
+};
+
 // Appointment status colors and icons (Mangomint-inspired)
 const getAppointmentStyle = (status: Appointment["status"]) => {
   switch (status) {
@@ -114,8 +123,8 @@ export function CalendarList({
       const memberAppointments = dateAppointments
         .filter((apt) => apt.team_member_id === member.id)
         .sort((a, b) => {
-          const [aHour, aMin] = a.scheduled_time.split(":").map(Number);
-          const [bHour, bMin] = b.scheduled_time.split(":").map(Number);
+          const { hour: aHour, minute: aMin } = parseTimeParts(a.scheduled_time);
+          const { hour: bHour, minute: bMin } = parseTimeParts(b.scheduled_time);
           return aHour * 60 + aMin - (bHour * 60 + bMin);
         });
 
@@ -133,7 +142,7 @@ export function CalendarList({
   });
 
   const formatTime = (time: string) => {
-    const [hour, min] = time.split(":").map(Number);
+    const { hour, minute: min } = parseTimeParts(time);
     const period = hour >= 12 ? "PM" : "AM";
     const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
     return `${displayHour}:${min.toString().padStart(2, "0")} ${period}`;
@@ -217,12 +226,10 @@ export function CalendarList({
                         {memberAppts.map((apt) => {
                           const style = getAppointmentStyle(apt.status);
                           const StatusIcon = style.icon;
-                          const [_startHour, _startMin] = apt.scheduled_time
-                            .split(":")
-                            .map(Number);
-                          const endTime = new Date(
-                            parseISO(`${apt.scheduled_date}T${apt.scheduled_time}`)
-                          );
+                          const normalizedTime = typeof apt.scheduled_time === "string" && apt.scheduled_time.trim().length > 0
+                            ? apt.scheduled_time
+                            : "09:00";
+                          const endTime = new Date(parseISO(`${apt.scheduled_date}T${normalizedTime}`));
                           endTime.setMinutes(
                             endTime.getMinutes() + apt.duration_minutes
                           );

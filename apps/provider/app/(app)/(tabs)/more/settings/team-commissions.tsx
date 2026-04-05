@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
 
 interface CommissionTier {
@@ -279,7 +280,7 @@ export default function TeamCommissionsScreen() {
                           style={[twStyle("rounded-full bg-gray-100 px-2 py-0.5"), { marginRight: 4, marginBottom: 4 }]}
                         >
                           <Text style={twStyle("text-[10px] text-gray-600")}>
-                            R{tier.minRevenue}+ → {tier.commissionRate}%
+                            {`${getTenantDefaultCurrency()} ${tier.minRevenue}+ → ${tier.commissionRate}%`}
                           </Text>
                         </View>
                       ))}
@@ -358,7 +359,7 @@ export default function TeamCommissionsScreen() {
               >
                 <View style={[twStyle("flex-1"), { marginRight: 8 }]}>
                   <Text style={twStyle("text-[10px] text-gray-500")}>
-                    Min Revenue (R)
+                    {`Min Revenue (${getTenantDefaultCurrency()})`}
                   </Text>
                   <TextInput
                     style={twStyle("rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900")}

@@ -13,6 +13,7 @@ import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { labelForSupportTicketCategory } from "@/lib/support/ticket-categories";
 
 type Ticket = {
   id: string;
@@ -110,15 +111,22 @@ export default function MyTicketsPage() {
               {tickets.map((t) => (
                 <li key={t.id}>
                   <Link href={`/help/my-tickets/${t.id}`}>
-                    <Card className="hover:bg-gray-50 transition-colors">
+                    <Card className="rounded-2xl border-zinc-200/90 transition-colors hover:border-[#FF0077]/20 hover:bg-zinc-50/80">
                       <CardHeader className="py-4">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <span className="font-mono text-sm text-gray-500">{t.ticket_number}</span>
                           <Badge className={statusColor(t.status)}>{t.status.replace("_", " ")}</Badge>
                         </div>
                         <CardTitle className="text-base mt-1">{t.subject}</CardTitle>
-                        <CardDescription>
-                          Updated {new Date(t.updated_at).toLocaleDateString()}
+                        <CardDescription className="space-y-1">
+                          {t.category ? (
+                            <span className="block text-zinc-600">
+                              {labelForSupportTicketCategory(t.category)}
+                            </span>
+                          ) : null}
+                          <span className="block">
+                            Updated {new Date(t.updated_at).toLocaleDateString()}
+                          </span>
                         </CardDescription>
                       </CardHeader>
                     </Card>

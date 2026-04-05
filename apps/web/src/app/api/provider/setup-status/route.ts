@@ -4,8 +4,41 @@ import {
   requireAuthInApi,
   successResponse,
   handleApiError,
-  getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getPlatformSalesDefaults } from "@/lib/platform-sales-settings";
+
+/** True if JSON working_hours has at least one day marked open (matches OperatingHoursEditor shape + legacy keys). */
+function locationHasOperatingHours(workingHours: unknown): boolean {
+  if (!workingHours || typeof workingHours !== "object" || Array.isArray(workingHours)) {
+    return false;
+  }
+  for (const day of Object.values(workingHours as Record<string, unknown>)) {
+    if (!day || typeof day !== "object") continue;
+    const d = day as Record<string, unknown>;
+    if (d.closed === true) continue;
+    if (d.closed === false) return true;
+    if (d.is_open === true) return true;
+    if (
+      d.is_open !== false &&
+      typeof d.open_time === "string" &&
+      typeof d.close_time === "string" &&
+      d.open_time.trim().length > 0 &&
+      d.close_time.trim().length > 0
+    ) {
+      return true;
+    }
+    if (
+      typeof d.open === "string" &&
+      d.open.trim().length > 0 &&
+      typeof d.close === "string" &&
+      d.close.trim().length > 0
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 
 interface SetupStatus {
   isComplete: boolean;
@@ -22,8 +55,11 @@ interface SetupStatus {
 
 /**
  * GET /api/provider/setup-status
- * Check provider setup completion status for quick start wizard
- * Uses service role client to bypass RLS (provider_staff may not have direct location access)
+ * Check provider setup completion status.
+ * Completion % is based on required steps only.
+ * Optional steps (gallery) are shown but do not affect the %.
+ * Website, social media, years-in-business, and languages are intentionally
+ * excluded — they are not needed to start accepting bookings.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -31,16 +67,50 @@ export async function GET(request: NextRequest) {
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
+      { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
+    // Resolve provider in a tenant-aware, multi-row-safe way.
+    // Do NOT use single-row helpers here because many accounts can have
+    // multiple provider links across tenants.
+    let providerId: string | null = null;
+    const { data: ownerProviders } = await supabaseAdmin
+      .from("providers")
+      .select("id, tenant_id, status, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+
+    if (ownerProviders && ownerProviders.length > 0) {
+      const tenantMatchedOwner =
+        (tenantId
+          ? ownerProviders.find((p: any) => p.tenant_id === tenantId)
+          : null) ?? null;
+      providerId = (tenantMatchedOwner ?? ownerProviders[0])?.id ?? null;
+    }
+
+    if (!providerId) {
+      const { data: staffRows } = await supabaseAdmin
+        .from("provider_staff")
+        .select("provider_id, providers:provider_id(tenant_id)")
+        .eq("user_id", user.id)
+        .eq("is_active", true)
+        .order("created_at", { ascending: false });
+
+      if (staffRows && staffRows.length > 0) {
+        const tenantMatchedStaff =
+          (tenantId
+            ? staffRows.find((r: any) => {
+                const provider = Array.isArray(r.providers)
+                  ? r.providers[0]
+                  : r.providers;
+                return provider?.tenant_id === tenantId;
+              })
+            : null) ?? null;
+        providerId = (tenantMatchedStaff ?? staffRows[0])?.provider_id ?? null;
+      }
+    }
     if (!providerId) {
       return successResponse<SetupStatus>({
         isComplete: false,
@@ -49,10 +119,11 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Check provider status
     const { data: provider } = await supabaseAdmin
       .from("providers")
-      .select("id, status, business_name, description, gallery, thumbnail_url, avatar_url, business_type, website, years_in_business, languages_spoken, social_media_links")
+      .select(
+        "id, status, business_name, description, gallery, thumbnail_url, avatar_url, business_type, accept_cash, accept_card, accept_online, phone, email"
+      )
       .eq("id", providerId)
       .single();
 
@@ -64,272 +135,239 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Determine if provider is a freelancer or salon
-    const isFreelancer = provider.business_type === "freelancer" || !provider.business_type;
+    const isFreelancer =
+      provider.business_type === "freelancer" || !provider.business_type;
 
-    // Check if provider has profile details (name and description) - REQUIRED for public visibility
-    // For freelancers: personal profile, for salons: business details
-    // Check both business_name and description exist and are not empty
-    // More lenient: allow if either field is filled OR if business_name has at least 2 characters
-    const hasBusinessName = provider.business_name && 
-                           typeof provider.business_name === 'string' && 
-                           provider.business_name.trim().length > 1; // Allow names with 2+ chars
-    const _hasDescription = provider.description && 
-                           typeof provider.description === 'string' && 
-                           provider.description.trim().length > 0;
-    // Consider complete if business name exists (description is helpful but not strictly required)
-    const hasProfileDetails = !!hasBusinessName;
+    const { data: accountUser } = await supabaseAdmin
+      .from("users")
+      .select("email, phone")
+      .eq("id", user.id)
+      .maybeSingle();
 
-    // Check if provider has at least one location - REQUIRED for search and discovery
-    // Use service role to bypass RLS; include inactive locations (user may have deactivated)
+    // ── Checks ───────────────────────────────────────────────────────────────
+
+    const hasBusinessName =
+      typeof provider.business_name === "string" &&
+      provider.business_name.trim().length > 1;
+    const hasDescription =
+      typeof provider.description === "string" &&
+      provider.description.trim().length >= 10;
+    const hasContactInfo =
+      (typeof provider.phone === "string" && provider.phone.trim().length > 0) ||
+      (typeof provider.email === "string" && provider.email.trim().length > 0) ||
+      (typeof accountUser?.email === "string" && accountUser.email.trim().length > 0) ||
+      (typeof accountUser?.phone === "string" && accountUser.phone.trim().length > 0);
+    const hasProfileDetails = hasBusinessName && hasDescription && hasContactInfo;
+
     const { data: locations } = await supabaseAdmin
       .from("provider_locations")
-      .select("id, address, address_line1, address_line2, city, state, country, postal_code, working_hours, latitude, longitude, name, is_active")
+      .select("id, is_active, address_line1, city, working_hours")
       .eq("provider_id", providerId);
 
-    const hasServiceAddress = !!(locations && locations.length > 0);
-
-    // Check if provider has profile photo (listing image, profile circle, or gallery) - REQUIRED for public pages
-    const avatarUrl = (provider as { avatar_url?: string | null }).avatar_url;
-    const hasProfilePhoto = !!(
-      (provider.thumbnail_url && typeof provider.thumbnail_url === 'string' && provider.thumbnail_url.trim().length > 0) ||
-      (avatarUrl && typeof avatarUrl === 'string' && avatarUrl.trim().length > 0) ||
-      (provider.gallery && Array.isArray(provider.gallery) && provider.gallery.length > 0)
+    const activeLocations = (locations || []).filter((loc) => loc.is_active !== false);
+    const hasServiceAddress = activeLocations.some(
+      (loc) =>
+        typeof loc.address_line1 === "string" &&
+        loc.address_line1.trim().length > 0 &&
+        typeof loc.city === "string" &&
+        loc.city.trim().length > 0
+    );
+    const hasOperatingHours = activeLocations.some((loc) =>
+      locationHasOperatingHours(loc.working_hours)
     );
 
-    // Check if provider has operating hours / availability set
-    // Availability is tied to locations - booking system uses defaults when working_hours is null
-    // If provider has at least one location, consider availability complete (defaults apply)
-    const hasOperatingHours = !!(locations && locations.length > 0);
+    const avatarUrl = (provider as { avatar_url?: string | null }).avatar_url;
+    const hasProfilePhoto = !!(
+      (provider.thumbnail_url &&
+        typeof provider.thumbnail_url === "string" &&
+        provider.thumbnail_url.trim().length > 0) ||
+      (avatarUrl &&
+        typeof avatarUrl === "string" &&
+        avatarUrl.trim().length > 0) ||
+      (Array.isArray(provider.gallery) && provider.gallery.length > 0)
+    );
 
-    // Check if provider has gallery images
-    const hasGallery = provider.gallery && 
-      Array.isArray(provider.gallery) && 
-      provider.gallery.length > 0;
+    const hasGallery =
+      Array.isArray(provider.gallery) && provider.gallery.length > 0;
 
-    // Check if provider has website URL (optional but recommended for SEO)
-    const hasWebsite = !!(provider.website && 
-      typeof provider.website === 'string' && 
-      provider.website.trim().length > 0);
-
-    // Check if provider has years in business (optional but builds trust)
-    const hasYearsInBusiness = provider.years_in_business !== null && 
-      provider.years_in_business !== undefined;
-
-    // Check if provider has languages spoken (optional but helps with client matching)
-    const hasLanguagesSpoken = provider.languages_spoken && 
-      Array.isArray(provider.languages_spoken) && 
-      provider.languages_spoken.length > 0;
-
-    // Check if provider has social media links (optional but helps with marketing)
-    const hasSocialMediaLinks = provider.social_media_links && 
-      typeof provider.social_media_links === 'object' && 
-      provider.social_media_links !== null &&
-      Object.values(provider.social_media_links).some((link: any) => 
-        link && typeof link === 'string' && link.trim().length > 0
-      );
-
-    // Run parallel queries for better performance
-    const [servicesResult, _categoriesResult, yocoResult, bankAccountResult] = await Promise.all([
-      // Check if provider has at least one active service/offering
+    const [servicesResult, yocoResult, bankAccountResult] = await Promise.all([
       supabaseAdmin
         .from("offerings")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
         .eq("is_active", true),
-      // Check if provider has categories (which may contain services)
-      // Categories themselves don't count as services, but we check if they exist
-      // The actual services are in offerings table with category_id
-      supabaseAdmin
-        .from("provider_categories")
-        .select("*", { count: "exact", head: true })
-        .eq("provider_id", providerId)
-        .eq("is_active", true),
-      // Check if provider has Yoco integration (payment setup)
       supabaseAdmin
         .from("provider_yoco_integrations")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
-        .eq("is_active", true),
-      // Check if provider has bank account/payout setup
+        .eq("is_enabled", true),
       supabaseAdmin
         .from("provider_payout_accounts")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .eq("provider_id", providerId)
         .eq("active", true),
     ]);
 
-    // Check if provider has services (offerings table)
-    // Note: Categories alone don't count - must have actual services
-    const hasServices = (servicesResult.count || 0) > 0;
-    
-    const hasPaymentSetup = (yocoResult.count || 0) > 0;
-    const hasPayoutSetup = (bankAccountResult.count || 0) > 0;
+    const hasServices = (servicesResult.count ?? 0) > 0;
+    const hasPaymentSetup = (yocoResult.count ?? 0) > 0;
+    const hasPayoutSetup = (bankAccountResult.count ?? 0) > 0;
+    const platformSalesDefaults = await getPlatformSalesDefaults();
+    const effectiveGiftCardsEnabled = platformSalesDefaults.gift_cards_enabled ?? false;
 
-    // Check if user has completed their personal profile (user_profiles table)
-    // This is especially important for freelancers who represent themselves personally
+    const acceptCash = provider.accept_cash ?? true;
+    const acceptCard = provider.accept_card ?? true;
+    const acceptOnline = provider.accept_online ?? false;
+    const hasPaymentMethods =
+      acceptCash === true ||
+      acceptCard === true ||
+      acceptOnline === true ||
+      effectiveGiftCardsEnabled === true;
+
+    // Personal profile — required for freelancers only
     const { data: userProfile } = await supabaseAdmin
       .from("user_profiles")
-      .select("id, about, school, work, location, languages, interests, decade_born, favorite_song, obsessed_with, fun_fact, useless_skill, biography_title, spend_time, pets")
+      .select(
+        "about, school, work, location, languages, interests, decade_born, favorite_song, obsessed_with, fun_fact, useless_skill, biography_title, spend_time, pets"
+      )
       .eq("user_id", user.id)
       .maybeSingle();
 
-    // Consider personal profile complete if user has:
-    // - About/bio filled, OR
-    // - At least 2 profile questions answered (more lenient), OR
-    // - Any languages or interests filled
-    const hasPersonalProfile = userProfile ? (
-      (userProfile.about && typeof userProfile.about === 'string' && userProfile.about.trim().length > 0) ||
-      ([
-        userProfile.school,
-        userProfile.work,
-        userProfile.location,
-        userProfile.decade_born,
-        userProfile.favorite_song,
-        userProfile.obsessed_with,
-        userProfile.fun_fact,
-        userProfile.useless_skill,
-        userProfile.biography_title,
-        userProfile.spend_time,
-        userProfile.pets,
-      ].filter(field => field && (typeof field === 'string' ? field.trim().length > 0 : true)).length >= 2) ||
-      (userProfile.languages && Array.isArray(userProfile.languages) && userProfile.languages.length > 0) ||
-      (userProfile.interests && Array.isArray(userProfile.interests) && userProfile.interests.length > 0)
-    ) : false;
+    const hasPersonalProfile = userProfile
+      ? !!(
+          (typeof userProfile.about === "string" &&
+            userProfile.about.trim().length > 0) ||
+          [
+            userProfile.school,
+            userProfile.work,
+            userProfile.location,
+            userProfile.decade_born,
+            userProfile.favorite_song,
+            userProfile.obsessed_with,
+            userProfile.fun_fact,
+            userProfile.useless_skill,
+            userProfile.biography_title,
+            userProfile.spend_time,
+            userProfile.pets,
+          ].filter(
+            (f) =>
+              f && (typeof f === "string" ? f.trim().length > 0 : true)
+          ).length >= 2 ||
+          (Array.isArray(userProfile.languages) &&
+            userProfile.languages.length > 0) ||
+          (Array.isArray(userProfile.interests) &&
+            userProfile.interests.length > 0)
+        )
+      : false;
 
-    // Define setup steps - language differs for freelancers vs salons
+    // ── Step definitions ──────────────────────────────────────────────────────
+    // Only include steps that are genuinely needed to start accepting bookings.
+    // Website, social media, languages, and years-in-business are profile
+    // enhancements — they do not gate bookings and are not shown here.
+
     const steps = [
       {
         id: "profile-details",
-        title: isFreelancer ? "Complete Your Business Profile" : "Complete Business Details",
-        description: isFreelancer 
-          ? "Add your business name and description so customers can find and connect with you"
-          : "Add your business name and description so customers can find and learn about your business",
+        title: isFreelancer ? "Business Profile" : "Business Details",
+        description: isFreelancer
+          ? "Business name (Business details), description (Business Description), and phone or email on your business or account profile"
+          : "Business name (Business details), description (Business Description), and phone or email on your business or account profile",
         completed: hasProfileDetails,
         required: true,
-        link: "/provider/settings/appointment-activity/business-details",
+        link: "/provider/settings",
       },
-      {
-        id: "personal-profile",
-        title: "Complete Personal Profile",
-        description: isFreelancer
-          ? "Add your personal information (about, work, location, etc.) to help customers get to know you better"
-          : "Add your personal information to build trust with customers",
-        completed: hasPersonalProfile,
-        required: isFreelancer, // Required for freelancers, optional for salons
-        link: "/profile/create-profile",
-      },
+      ...(isFreelancer
+        ? [
+            {
+              id: "personal-profile",
+              title: "Personal Profile",
+              description:
+                "Add a short bio so customers know who they're booking with",
+              completed: hasPersonalProfile,
+              required: true,
+              link: "/profile/create-profile",
+            },
+          ]
+        : []),
       {
         id: "service-address",
-        title: isFreelancer ? "Add Your Service Address" : "Add Your Business Location",
+        title: isFreelancer ? "Service Address" : "Business Location",
         description: isFreelancer
-          ? "Set the address where you provide services from (like your home or studio) so customers can find you"
-          : "Set your business location so customers can find you in search results",
+          ? "Set the address where you provide services"
+          : "Set your business location so customers can find you",
         completed: hasServiceAddress,
         required: true,
         link: "/provider/settings/locations",
       },
       {
         id: "profile-photo",
-        title: "Add Profile Photo",
-        description: isFreelancer
-          ? "Upload your photo to help customers recognize and trust you"
-          : "Upload a profile photo to help customers recognize your business",
+        title: "Profile Photo",
+        description: "Upload a photo so customers can recognise you",
         completed: hasProfilePhoto,
         required: true,
         link: "/provider/settings/gallery",
       },
       {
         id: "services",
-        title: "Add Your Services",
-        description: "Add at least one service with pricing so customers can book",
+        title: "Services & Pricing",
+        description:
+          "Add at least one service with pricing so customers can book",
         completed: hasServices,
         required: true,
         link: "/provider/catalogue/services",
       },
       {
         id: "availability",
-        title: "Set Your Availability",
-        description: isFreelancer
-          ? "Set when you're available so customers know when they can book with you"
-          : "Configure your operating hours so customers know when you're available",
+        title: "Availability",
+        description: "Set your working hours so customers know when to book",
         completed: hasOperatingHours,
         required: true,
         link: "/provider/settings/operating-hours",
       },
       {
-        id: "gallery",
-        title: isFreelancer ? "Add Portfolio Photos" : "Add Work Photos",
-        description: isFreelancer
-          ? "Upload photos of your completed work to showcase your skills and attract more customers"
-          : "Upload photos of your completed work to attract more customers",
-        completed: hasGallery,
-        required: false,
-        link: "/provider/settings/gallery",
-      },
-      {
-        id: "website",
-        title: "Add Website URL",
-        description: "Add your website to improve SEO and help customers learn more about you",
-        completed: hasWebsite,
-        required: false,
-        link: "/provider/settings/appointment-activity/business-details",
-      },
-      {
-        id: "years-in-business",
-        title: "Add Years in Business",
-        description: "Share your experience to build trust with customers",
-        completed: hasYearsInBusiness,
-        required: false,
-        link: "/provider/settings/appointment-activity/business-details",
-      },
-      {
-        id: "languages",
-        title: "Add Languages You Speak",
-        description: "List the languages you can communicate in to help customers find you",
-        completed: hasLanguagesSpoken,
-        required: false,
-        link: "/provider/settings/appointment-activity/business-details",
-      },
-      {
-        id: "social-media",
-        title: "Add Social Media Links",
-        description: "Connect your social media accounts to increase visibility and engagement",
-        completed: hasSocialMediaLinks,
-        required: false,
-        link: "/provider/settings/appointment-activity/business-details",
-      },
-      {
         id: "payment",
-        title: "Set Up Payment Processing",
-        description: "Connect Yoco to accept payments from customers",
+        title: "Payment Processing",
+        description:
+          "Optional: connect Yoco for in-person card payments (not required if you only use cash or online)",
         completed: hasPaymentSetup,
-        required: true,
+        required: false,
         link: "/provider/settings/sales/yoco-integration",
       },
       {
+        id: "payment-methods",
+        title: "Payment Methods",
+        description:
+          "Choose accepted methods (cash, online, in-person card, and gift cards)",
+        completed: hasPaymentMethods,
+        required: true,
+        link: "/provider/settings/payments",
+      },
+      {
         id: "payout",
-        title: "Set Up Payouts",
-        description: "Add your bank account to receive payments",
+        title: "Payout Account",
+        description: "Add your bank account to receive earnings",
         completed: hasPayoutSetup,
         required: true,
         link: "/provider/settings/payout-accounts",
       },
+      {
+        id: "gallery",
+        title: "Portfolio Photos",
+        description:
+          "Add photos of your work to attract more customers",
+        completed: hasGallery,
+        required: false,
+        link: "/provider/settings/gallery",
+      },
     ];
 
-    const requiredSteps = steps.filter((step) => step.required);
-    const completedRequiredSteps = requiredSteps.filter((step) => step.completed).length;
-    const _totalSteps = steps.length;
-    const _completedSteps = steps.filter((step) => step.completed).length;
-    
-    // Calculate percentage based on required steps only (for progress bar)
-    // This ensures accuracy: if 3 of 7 required steps are done, it's 43% (rounded)
-    const completionPercentage = requiredSteps.length > 0 
-      ? Math.round((completedRequiredSteps / requiredSteps.length) * 100)
-      : 0;
-    
-    // Setup is complete when all required steps are done
-    const isComplete = completedRequiredSteps === requiredSteps.length && requiredSteps.length > 0;
+    const requiredSteps = steps.filter((s) => s.required);
+    const completedRequired = requiredSteps.filter((s) => s.completed).length;
+    const completionPercentage =
+      requiredSteps.length > 0
+        ? Math.round((completedRequired / requiredSteps.length) * 100)
+        : 0;
+    const isComplete =
+      completedRequired === requiredSteps.length && requiredSteps.length > 0;
 
     return successResponse<SetupStatus>({
       isComplete,

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { addMinutes } from "date-fns";
+import { resolveWorkingHoursDayForSingleStaffOrSyntheticSolo } from "@/lib/provider-booking/resolve-working-hours-single-staff-or-synthetic";
 
 const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 function dayKeyFromDate(dateStr: string): (typeof DAY_KEYS)[number] {
@@ -110,13 +111,14 @@ export async function GET(request: NextRequest) {
     const startMin = startTime.getHours() * 60 + startTime.getMinutes();
     const endMin = endTime.getHours() * 60 + endTime.getMinutes();
     if (staffIds.length === 1) {
-      const { data: staff } = await supabaseAdmin
-        .from("provider_staff")
-        .select("id, working_hours")
-        .eq("id", staffIds[0])
-        .eq("provider_id", providerId)
-        .single();
-      const wh = (staff?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKeyFromDate(dateStr)];
+      const dayKey = dayKeyFromDate(dateStr);
+      const wh = await resolveWorkingHoursDayForSingleStaffOrSyntheticSolo(
+        supabaseAdmin,
+        providerId,
+        staffIds[0],
+        dayKey
+      );
+
       if (wh && wh.is_open !== false && wh.open_time && wh.close_time) {
         const openMin = parseTimeToMinutes(wh.open_time);
         const closeMin = parseTimeToMinutes(wh.close_time);

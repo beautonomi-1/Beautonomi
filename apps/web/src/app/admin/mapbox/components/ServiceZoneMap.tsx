@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
+import type mapboxgl from "mapbox-gl";
+import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
+
+const DEFAULT_MAP_STYLE = "mapbox://styles/mapbox/streets-v12";
 
 export type MapCoordinate = { longitude: number; latitude: number };
 export type MapCoordinates =
@@ -24,8 +26,11 @@ export default function ServiceZoneMap({
 }: ServiceZoneMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const mbRef = useRef<typeof mapboxgl | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [publicToken, setPublicToken] = useState<string>("");
+  const [styleUrl, setStyleUrl] = useState<string | null>(null);
+  const [configError, setConfigError] = useState(false);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const circleRef = useRef<boolean>(false);
   const polygonRef = useRef<boolean>(false);
@@ -34,21 +39,28 @@ export default function ServiceZoneMap({
     let cancelled = false;
     (async () => {
       try {
-        const envToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
-        if (envToken && !cancelled) setPublicToken(envToken);
-        else if (!envToken) console.warn("NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN not set. Please configure it in your .env file.");
+        const cfg = await fetchMapboxPublicMapConfig();
+        if (cancelled) return;
+        if (cfg.accessToken) {
+          setPublicToken(cfg.accessToken);
+          setStyleUrl(cfg.styleUrl);
+        } else {
+          setConfigError(true);
+        }
       } catch {
-        console.error("Error loading Mapbox token");
+        if (!cancelled) setConfigError(true);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (publicToken && mapContainer.current && !map.current) {
       initializeMap();
     }
-  }, [publicToken]);
+  }, [publicToken, styleUrl]);
 
   useEffect(() => {
     if (map.current && mapLoaded) {
@@ -56,13 +68,23 @@ export default function ServiceZoneMap({
     }
   }, [type, coordinates, radiusKm, mapLoaded]);
 
-  const initializeMap = () => {
+  const initializeMap = async () => {
     if (!mapContainer.current || !publicToken) return;
 
-    map.current = new mapboxgl.Map({
+    if (!mbRef.current) {
+      const [mapboxModule] = await Promise.all([
+        import("mapbox-gl"),
+        import("mapbox-gl/dist/mapbox-gl.css"),
+      ]);
+      mbRef.current = mapboxModule.default;
+    }
+    const mb = mbRef.current;
+    if (!mapContainer.current) return;
+
+    map.current = new mb.Map({
       container: mapContainer.current,
       accessToken: publicToken,
-      style: "mapbox://styles/mapbox/streets-v12",
+      style: styleUrl?.trim() || DEFAULT_MAP_STYLE,
       center: coordinates && type === "radius" && !Array.isArray(coordinates) && coordinates.longitude != null
         ? [coordinates.longitude, coordinates.latitude]
         : [28.0473, -26.2041], // Default to Johannesburg
@@ -97,7 +119,8 @@ export default function ServiceZoneMap({
     const center = type === "radius" && coordinates && !Array.isArray(coordinates) ? coordinates : null;
     if (center && center.longitude != null && center.latitude != null) {
       // Add marker
-      markerRef.current = new mapboxgl.Marker()
+      const mb = mbRef.current!;
+      markerRef.current = new mb.Marker()
         .setLngLat([center.longitude, center.latitude])
         .addTo(map.current);
 
@@ -211,15 +234,16 @@ export default function ServiceZoneMap({
         polygonRef.current = true;
       }
 
+      const mb2 = mbRef.current!;
       coordinates.forEach((coord: MapCoordinate, index: number) => {
-        new mapboxgl.Marker({ color: "#3b82f6" })
+        new mb2.Marker({ color: "#3b82f6" })
           .setLngLat([coord.longitude, coord.latitude])
-          .setPopup(new mapboxgl.Popup().setText(`Point ${index + 1}`))
+          .setPopup(new mb2.Popup().setText(`Point ${index + 1}`))
           .addTo(map.current!);
       });
 
       if (coordinates.length >= 3) {
-        const bounds = new mapboxgl.LngLatBounds();
+        const bounds = new mb2.LngLatBounds();
         coordinates.forEach((coord: MapCoordinate) => {
           bounds.extend([coord.longitude, coord.latitude]);
         });
@@ -242,8 +266,16 @@ export default function ServiceZoneMap({
 
   if (!publicToken) {
     return (
-      <div className="w-full h-96 bg-gray-100 rounded-lg flex items-center justify-center">
-        <p className="text-gray-500">Loading Mapbox configuration...</p>
+      <div className="w-full h-96 bg-gray-100 rounded-lg flex flex-col items-center justify-center gap-2 p-4 text-center">
+        <p className="text-gray-600 text-sm font-medium">
+          {configError ? "Mapbox public token not configured" : "Loading Mapbox configuration…"}
+        </p>
+        {configError ? (
+          <p className="text-gray-500 text-xs max-w-md">
+            Save a <strong>public</strong> token (pk.…) on this page and ensure &quot;Enable Mapbox&quot; is on, or set{" "}
+            <code className="text-[11px]">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> for development.
+          </p>
+        ) : null}
       </div>
     );
   }

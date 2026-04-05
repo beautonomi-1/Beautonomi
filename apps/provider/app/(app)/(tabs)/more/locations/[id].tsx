@@ -18,7 +18,9 @@ import * as Haptics from "expo-haptics";
 import { useTranslation } from "@beautonomi/i18n";
 import { useApi , useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
-import { validateRequired, validatePhone } from "@/lib/validation";
+import { validateRequired } from "@/lib/validation";
+import { validateE164Phone } from "@/lib/phone-country-codes";
+import { E164PhoneField } from "@/components/E164PhoneField";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -26,6 +28,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { twStyle } from "@/lib/twStyle";
+import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 
 type LocationData = {
   id: string;
@@ -41,6 +44,7 @@ type LocationData = {
   longitude?: number | null;
   is_primary?: boolean;
   is_active?: boolean;
+  location_type?: "salon" | "base";
 };
 
 export default function EditLocationScreen() {
@@ -61,10 +65,11 @@ export default function EditLocationScreen() {
   const [state, setState] = useState("");
   const [postal_code, setPostalCode] = useState("");
   const [country, setCountry] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phoneE164, setPhoneE164] = useState("");
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [is_primary, setIsPrimary] = useState(false);
+  const [is_active, setIsActive] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const { t } = useTranslation();
@@ -85,10 +90,11 @@ export default function EditLocationScreen() {
     setState(d.state ?? "");
     setPostalCode(d.postal_code ?? "");
     setCountry(d.country ?? "");
-    setPhone(d.phone ?? "");
+    setPhoneE164(d.phone ?? "");
     setLatitude(d.latitude ?? null);
     setLongitude(d.longitude ?? null);
     setIsPrimary(!!d.is_primary);
+    setIsActive(d.is_active !== false);
   }, [data]);
 
   const handleSave = useCallback(async () => {
@@ -102,8 +108,6 @@ export default function EditLocationScreen() {
     if (cityErr) nextErrors.city = cityErr;
     const countryErr = validateRequired(country);
     if (countryErr) nextErrors.country = countryErr;
-    const phoneErr = validatePhone(phone, false);
-    if (phoneErr) nextErrors.phone = phoneErr;
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
       const firstKey = Object.keys(nextErrors)[0];
@@ -113,6 +117,13 @@ export default function EditLocationScreen() {
         : t(firstMsg);
       Alert.alert(t("validation.fixForm"), message);
       return;
+    }
+    if (phoneE164.trim()) {
+      const pe = validateE164Phone(phoneE164);
+      if (pe) {
+        Alert.alert(t("validation.fixForm"), pe);
+        return;
+      }
     }
     const trimmedName = name.trim();
     const trimmedAddress = address_line1.trim();
@@ -128,10 +139,11 @@ export default function EditLocationScreen() {
       state: state.trim() || null,
       postal_code: postal_code.trim() || null,
       country: trimmedCountry,
-      phone: phone.trim() || null,
+      phone: phoneE164.trim() || null,
       latitude: latitude ?? null,
       longitude: longitude ?? null,
       is_primary: is_primary,
+      is_active: is_active,
     });
     setSaving(false);
     if (res.error) {
@@ -142,7 +154,7 @@ export default function EditLocationScreen() {
     Alert.alert("Saved", "Location updated.");
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- FIELD_LABELS is static
-  }, [locationId, name, address_line1, address_line2, city, state, postal_code, country, phone, latitude, longitude, is_primary, refresh, t]);
+  }, [locationId, name, address_line1, address_line2, city, state, postal_code, country, phoneE164, latitude, longitude, is_primary, is_active, refresh, t]);
 
   const handleDelete = useCallback(() => {
     Alert.alert(
@@ -258,7 +270,13 @@ export default function EditLocationScreen() {
                 onBlur={(text) => setAddressLine1(text)}
                 placeholder="Street address or search…"
                 label={undefined}
-                countryCode={country ? (country.length === 2 ? country : "ZA") : "ZA"}
+                countryCode={countryFilterIso2FromStorage(country) ?? "ZA"}
+                defaultCountryName={country.trim() || undefined}
+                proximity={
+                  latitude != null && longitude != null && !(latitude === 0 && longitude === 0)
+                    ? { latitude, longitude }
+                    : undefined
+                }
               />
               {errors.address_line1 ? (
                 <Text style={twStyle("mt-1 text-sm text-red-500")}>
@@ -343,21 +361,22 @@ export default function EditLocationScreen() {
               </View>
             </View>
             <View style={twStyle("mb-4")}>
-              <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Phone</Text>
-              <TextInput
-                style={twStyle(`rounded-xl border bg-white px-4 py-3 text-base text-gray-900 ${errors.phone ? "border-red-500" : "border-gray-200"}`)}
-                value={phone}
-                onChangeText={(t) => {
-                  setPhone(t);
-                  if (errors.phone) setErrors((e) => ({ ...e, phone: "" }));
-                }}
-                placeholder="Location phone"
-                placeholderTextColor="#9ca3af"
-                keyboardType="phone-pad"
+              <E164PhoneField
+                label="Phone"
+                valueE164={phoneE164}
+                onChangeE164={setPhoneE164}
+                showHint={false}
+                accessibilityLabel="Location phone"
               />
-              {errors.phone ? (
-                <Text style={twStyle("mt-1 text-sm text-red-500")}>{t(errors.phone)}</Text>
-              ) : null}
+            </View>
+            <View style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3")}>
+              <Text style={twStyle("text-base text-gray-900")}>Active</Text>
+              <Switch
+                value={is_active}
+                onValueChange={setIsActive}
+                trackColor={{ true: "#14b8a6", false: "#d1d5db" }}
+                thumbColor="#fff"
+              />
             </View>
             <View style={twStyle("mb-6 flex-row items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3")}>
               <Text style={twStyle("text-base text-gray-900")}>Primary location</Text>

@@ -20,6 +20,8 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import type { ProfileUser } from "@/types/profile";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
 
 interface PersonalInfoCardProps {
   user: ProfileUser;
@@ -49,6 +51,14 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (type === "phone" && formData.phone?.trim() && !isCompleteE164(formData.phone)) {
+      toast.error("Enter a valid phone number in international format (e.g. +27…).");
+      return;
+    }
+    if (type === "emergencyContact" && formData.phone?.trim() && !isCompleteE164(formData.phone)) {
+      toast.error("Enter a valid emergency contact phone number.");
+      return;
+    }
     setIsSaving(true);
     try {
       await onSave(formData);
@@ -141,13 +151,12 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
 
           {type === "phone" && (
             <div>
-              <Label htmlFor="phone">Phone Number</Label>
-              <Input
-                id="phone"
-                type="tel"
+              <PhoneInput
+                inputId="profile-edit-phone"
+                label="Phone Number"
                 value={formData.phone || ""}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="+27 12 345 6789"
+                onChange={(e164) => setFormData({ ...formData, phone: e164 })}
+                placeholder="Phone number"
               />
             </div>
           )}
@@ -230,12 +239,12 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
                 />
               </div>
               <div>
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input
-                  id="phone"
-                  type="tel"
+                <PhoneInput
+                  inputId="profile-edit-emergency-phone"
+                  label="Phone Number"
                   value={formData.phone || ""}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  onChange={(e164) => setFormData({ ...formData, phone: e164 })}
+                  placeholder="Phone number"
                   required
                 />
               </div>

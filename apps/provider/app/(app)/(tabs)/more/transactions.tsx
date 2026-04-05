@@ -9,6 +9,7 @@ import { SearchBar } from "@/components/ui/SearchBar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate, formatTimeAgo } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -90,7 +91,7 @@ export default function TransactionsScreen() {
   const [search, setSearch] = useState("");
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
 
-  const { data: transactions, loading, refresh } = useApi<Transaction[]>(
+  const { data: transactions, loading, error: txnError, refresh } = useApi<Transaction[]>(
     `/api/provider/transactions?period=${period}&limit=200`
   );
   const { execute: exportTransactions, loading: exporting } = useApiPost<
@@ -279,6 +280,8 @@ export default function TransactionsScreen() {
 
       {loading && !transactions ? (
         <SkeletonList rows={6} />
+      ) : txnError && !transactions ? (
+        <ErrorState message={txnError} onRetry={refresh} />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon="swap-horizontal-outline"

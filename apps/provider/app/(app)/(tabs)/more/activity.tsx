@@ -13,6 +13,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { formatCurrencyShort } from "@/lib/format";
 import { Colors } from "@/constants/colors";
 
 interface DashboardData {
@@ -37,11 +38,19 @@ interface DashboardData {
   } | null;
 }
 
-function formatCurrency(amount: number): string {
-  if (amount >= 1000000) return `R${(amount / 1e6).toFixed(1)}m`;
-  if (amount >= 1000) return `R${(amount / 1000).toFixed(1)}k`;
-  return `R${amount.toFixed(0)}`;
+function formatDateTimeSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
+
+const formatCurrency = formatCurrencyShort;
 
 export default function ActivityScreen() {
   const [refreshing, setRefreshing] = useState(false);
@@ -198,12 +207,7 @@ export default function ActivityScreen() {
                     {tx.description || tx.source || "Points"}
                   </Text>
                   <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
-                    {new Date(tx.created_at).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {formatDateTimeSafe(tx.created_at)}
                   </Text>
                 </View>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#16a34a" }}>

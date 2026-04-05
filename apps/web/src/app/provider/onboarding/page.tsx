@@ -1,22 +1,42 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import Image from "next/image";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronLeft, ChevronRight, Check, Plus, Trash2, AlertCircle, Sparkles, Upload, Image as ImageIcon, X, Loader2, MapPin, CircleUser } from "lucide-react";
+import { ChevronLeft, ChevronRight, Check, Plus, Trash2, AlertCircle, Sparkles, Upload, Image as ImageIcon, X, Loader2, MapPin, CircleUser, Globe, Share2, Building2, MapPinned } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
+import { LocationMapPickerDialog, type PickedMapLocation } from "@/components/mapbox/LocationMapPickerDialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import Breadcrumb from "@/components/ui/breadcrumb";
 import { validateFileType, validateFileSize, IMAGE_CONSTRAINTS } from "@/lib/supabase/storage-client";
 import { getPricingPlans } from "@/lib/supabase/pricing";
 import { ChipCombobox } from "@/components/ui/chip-combobox";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { OtpDigitInput } from "@/components/ui/otp-digit-input";
+import { normalizeFullPhoneToE164, normalizePhoneToE164 } from "@/lib/phone";
+import {
+  normalizeSupabaseAuthPhone,
+  normalizeSupabaseSmsOtpToken,
+  isCompleteSupabaseSmsOtp,
+  SUPABASE_AUTH_OTP_LENGTH,
+  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+} from "@/lib/supabase/auth-sms-otp";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
+import { countryFilterIso2FromStorage } from "@beautonomi/utils";
+import { GlobalCategoryIcon } from "@/components/icons/GlobalCategoryIcon";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { currencySelectLabel } from "@/lib/locale/currency";
 
 interface GlobalCategory {
   id: string;
@@ -55,6 +75,7 @@ interface OnboardingData {
   // Step 2: Identity (Owner Info)
   owner_name: string;
   owner_email: string;
+  /** E.164 for Supabase / DB, e.g. +27821234567 (leading 0 stripped with +27). */
   owner_phone: string;
   phone_verified: boolean;
   phone_verification_code?: string;
@@ -141,6 +162,176 @@ interface OnboardingData {
   selected_plan_name?: string;
 }
 
+/** Muted secondary actions (Edit / Cancel) — light grey, readable contrast, 14px body text (WCAG-friendly on white). */
+const ONBOARDING_SOFT_SECONDARY_BTN =
+  "h-9 min-h-9 shrink-0 border-slate-200 bg-slate-50 px-3.5 text-sm font-medium text-slate-700 shadow-none hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-slate-400/35";
+
+/** Shared shell: rounded cards, depth, and text contrast across onboarding steps. */
+const ONBOARDING_PAGE_BG =
+  "min-h-screen bg-gradient-to-b from-slate-50 via-rose-50/35 to-violet-100/30";
+const ONBOARDING_CONTAINER = "w-full max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-5 sm:py-8 md:py-10";
+const ONBOARDING_PROGRESS_CARD =
+  "mb-5 sm:mb-7 rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white/90 shadow-md shadow-slate-200/40 backdrop-blur-sm px-4 py-4 sm:px-6 sm:py-5 ring-1 ring-slate-100";
+const ONBOARDING_MAIN_CARD =
+  "rounded-2xl sm:rounded-3xl border border-slate-200 bg-white shadow-xl shadow-slate-300/25 ring-1 ring-slate-200/80 p-5 sm:p-8 md:p-10";
+const ONBOARDING_STEP_TITLE =
+  "text-2xl sm:text-3xl font-bold tracking-tight text-slate-900";
+const ONBOARDING_STEP_DESC = "mt-2 text-base text-slate-600 leading-relaxed max-w-2xl";
+const ONBOARDING_NAV_ROW =
+  "flex flex-col sm:flex-row justify-between gap-3 sm:gap-4 mt-8 sm:mt-10 pt-6 sm:pt-8 border-t border-slate-200";
+const ONBOARDING_BTN_BACK =
+  "w-full sm:w-auto h-12 sm:h-14 rounded-xl sm:rounded-2xl border-2 border-slate-300 bg-white text-slate-800 font-semibold hover:bg-slate-50 hover:text-slate-900 hover:border-slate-400";
+const ONBOARDING_BTN_SKIP =
+  "flex-1 sm:flex-none h-12 sm:h-14 rounded-xl sm:rounded-2xl border-2 border-slate-300 bg-white text-slate-800 font-semibold hover:bg-slate-50 hover:border-slate-400";
+const ONBOARDING_BTN_NEXT =
+  "flex-1 sm:flex-none h-12 sm:h-14 rounded-xl sm:rounded-2xl font-semibold shadow-lg shadow-primary/25";
+const ONBOARDING_REVIEW_HEADING = "font-semibold text-slate-900 mb-3 text-base sm:text-lg";
+const ONBOARDING_REVIEW_CARD =
+  "rounded-2xl sm:rounded-3xl border border-slate-200 bg-slate-50/90 p-4 sm:p-5 text-sm text-slate-800 shadow-sm";
+
+function digitsOnlyPhone(s: string | null | undefined): string {
+  return (s ?? "").replace(/\D/g, "");
+}
+
+/**
+ * Coerce profile / draft / pasted values to compact E.164 (+country…, no spaces).
+ * Handles: full E.164, "+27 082…", national with leading 0, legacy 9-digit SA mobile without 0.
+ */
+function coerceOwnerPhoneToE164ForForm(raw: string | undefined): string {
+  if (!raw?.trim()) return "";
+  const trimmed = raw.trim();
+  const compact = normalizeSupabaseAuthPhone(trimmed);
+
+  let e164 =
+    normalizeFullPhoneToE164(trimmed) ?? normalizeFullPhoneToE164(compact);
+  if (e164) return normalizeSupabaseAuthPhone(e164);
+
+  const digits = digitsOnlyPhone(trimmed);
+  if (!digits) return "";
+
+  if (digits.startsWith("27") && digits.length >= 11) {
+    return normalizeSupabaseAuthPhone("+" + digits);
+  }
+
+  const withZa = normalizePhoneToE164(trimmed, "27") ?? normalizePhoneToE164(digits, "27");
+  if (withZa) return normalizeSupabaseAuthPhone(withZa);
+
+  // Legacy onboarding drafts: national SA mobile without country or leading 0 (e.g. 823456789)
+  if (digits.length === 9 && /^[6789]\d{8}$/.test(digits)) {
+    return "+27" + digits;
+  }
+
+  return "";
+}
+
+function isValidOwnerPhoneE164(raw: string | undefined): boolean {
+  if (!raw?.trim()) return false;
+  const c = coerceOwnerPhoneToE164ForForm(raw);
+  return !!c && /^\+[1-9]\d{7,14}$/.test(c);
+}
+
+function phoneNumbersMatchProfile(profilePhone: string, formPhone: string): boolean {
+  const pe = coerceOwnerPhoneToE164ForForm(profilePhone);
+  const fe = coerceOwnerPhoneToE164ForForm(formPhone);
+  if (pe && fe) return digitsOnlyPhone(pe) === digitsOnlyPhone(fe);
+  const p = digitsOnlyPhone(profilePhone);
+  const f = digitsOnlyPhone(formPhone);
+  if (!p || !f) return false;
+  if (p === f) return true;
+  if (p.length >= 9 && f.length >= 9) {
+    return p.endsWith(f.slice(-9)) || f.endsWith(p.slice(-9));
+  }
+  return p.endsWith(f) || f.endsWith(p);
+}
+
+type ProfilePrefillResult = {
+  ownerPatch: Partial<Pick<OnboardingData, "owner_name" | "owner_email" | "owner_phone">>;
+  phoneVerifiedInDb: boolean;
+  rawProfilePhone: string | null;
+};
+
+async function fetchProfilePrefillForOnboarding(): Promise<ProfilePrefillResult | null> {
+  try {
+    const response = await fetcher.get<{
+      data: {
+        full_name?: string | null;
+        email?: string | null;
+        phone?: string | null;
+        phone_verified?: boolean | null;
+      } | null;
+    }>("/api/me/profile");
+    const p = response.data;
+    if (!p) return null;
+    const ownerPatch: ProfilePrefillResult["ownerPatch"] = {};
+    const fn = typeof p.full_name === "string" ? p.full_name.trim() : "";
+    const em = typeof p.email === "string" ? p.email.trim() : "";
+    const ph = typeof p.phone === "string" ? p.phone.trim() : "";
+    if (fn) ownerPatch.owner_name = fn;
+    if (em) ownerPatch.owner_email = em;
+    const e164 = coerceOwnerPhoneToE164ForForm(ph);
+    if (e164) ownerPatch.owner_phone = e164;
+    return {
+      ownerPatch,
+      phoneVerifiedInDb: Boolean(p.phone_verified),
+      rawProfilePhone: ph || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function mergeAccountIntoOnboardingForm(form: Partial<OnboardingData>, prefill: ProfilePrefillResult) {
+  if (!form.owner_name?.trim() && prefill.ownerPatch.owner_name) {
+    form.owner_name = prefill.ownerPatch.owner_name;
+  }
+  if (!form.owner_email?.trim() && prefill.ownerPatch.owner_email) {
+    form.owner_email = prefill.ownerPatch.owner_email;
+  }
+  if (!form.owner_phone?.trim() && prefill.ownerPatch.owner_phone) {
+    form.owner_phone = prefill.ownerPatch.owner_phone;
+  }
+  const ownerDigits = form.owner_phone?.trim() || "";
+  if (
+    prefill.phoneVerifiedInDb &&
+    ownerDigits &&
+    phoneNumbersMatchProfile(prefill.rawProfilePhone ?? "", ownerDigits)
+  ) {
+    form.phone_verified = true;
+  }
+  if (!form.phone?.trim() && form.owner_phone) {
+    form.phone = form.owner_phone;
+  }
+  if (!form.email?.trim() && form.owner_email) {
+    form.email = form.owner_email;
+  }
+}
+
+const INITIAL_ONBOARDING_DATA: Partial<OnboardingData> = {
+  team_size: undefined,
+  owner_name: "",
+  owner_email: "",
+  owner_phone: "",
+  phone_verified: false,
+  business_name: "",
+  business_type: "salon",
+  description: "",
+  yoco_machine: undefined,
+  previous_software: undefined,
+  payroll_type: undefined,
+  services: [],
+  global_category_ids: [],
+  operating_hours: {
+    monday: { open: "09:00", close: "18:00", closed: false },
+    tuesday: { open: "09:00", close: "18:00", closed: false },
+    wednesday: { open: "09:00", close: "18:00", closed: false },
+    thursday: { open: "09:00", close: "18:00", closed: false },
+    friday: { open: "09:00", close: "18:00", closed: false },
+    saturday: { open: "09:00", close: "18:00", closed: false },
+    sunday: { open: "09:00", close: "18:00", closed: true },
+  },
+  selected_zone_ids: [],
+};
+
 const ONBOARDING_DRAFT_STORAGE_KEY = "beautonomi_provider_onboarding_draft";
 
 // New streamlined step order
@@ -167,31 +358,9 @@ export default function ProviderOnboarding() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [inAppFromUrl, setInAppFromUrl] = useState(false);
-  const [formData, setFormData] = useState<Partial<OnboardingData>>({
-    team_size: undefined,
-    owner_name: "",
-    owner_email: "",
-    owner_phone: "",
-    phone_verified: false,
-    business_name: "",
-    business_type: "salon",
-    description: "",
-    yoco_machine: undefined,
-    previous_software: undefined,
-    payroll_type: undefined,
-    services: [],
-    global_category_ids: [],
-    operating_hours: {
-      monday: { open: "09:00", close: "18:00", closed: false },
-      tuesday: { open: "09:00", close: "18:00", closed: false },
-      wednesday: { open: "09:00", close: "18:00", closed: false },
-      thursday: { open: "09:00", close: "18:00", closed: false },
-      friday: { open: "09:00", close: "18:00", closed: false },
-      saturday: { open: "09:00", close: "18:00", closed: false },
-      sunday: { open: "09:00", close: "18:00", closed: true },
-    },
-    selected_zone_ids: [],
-  });
+  const [formData, setFormData] = useState<Partial<OnboardingData>>(() => ({
+    ...INITIAL_ONBOARDING_DATA,
+  }));
 
   // Check for pre-selected plan and entry-point params from URL
   useEffect(() => {
@@ -225,33 +394,58 @@ export default function ProviderOnboarding() {
   }, [formData, currentStep]);
 
   const loadDraft = async () => {
+    const merged: Partial<OnboardingData> = { ...INITIAL_ONBOARDING_DATA };
+    let step = 1;
+    let resumed: "server" | "session" | null = null;
+
     try {
-      const response = await fetcher.get<{ data: any }>("/api/provider/onboarding/draft");
-      if (response.data && response.data.draft_data) {
-        setFormData(response.data.draft_data);
-        setCurrentStep(response.data.current_step || 1);
+      const response = await fetcher.get<{
+        data: { draft_data?: Partial<OnboardingData>; current_step?: number } | null;
+      }>("/api/provider/onboarding/draft");
+      if (response.data?.draft_data) {
+        Object.assign(merged, response.data.draft_data);
+        step = response.data.current_step || 1;
+        resumed = "server";
         try {
           sessionStorage.removeItem(ONBOARDING_DRAFT_STORAGE_KEY);
-        } catch {}
-        toast.success("Resumed from saved draft");
+        } catch {
+          /* ignore */
+        }
       }
     } catch {
-      // No draft from server (e.g. not logged in or first time) — try sessionStorage so progress isn't lost
+      /* fall through to session + profile */
+    }
+
+    if (!resumed) {
       try {
-        const raw = typeof window !== "undefined" ? window.sessionStorage.getItem(ONBOARDING_DRAFT_STORAGE_KEY) : null;
+        const raw =
+          typeof window !== "undefined" ? window.sessionStorage.getItem(ONBOARDING_DRAFT_STORAGE_KEY) : null;
         if (raw) {
           const parsed = JSON.parse(raw) as { draft_data?: Partial<OnboardingData>; current_step?: number };
           if (parsed.draft_data) {
-            setFormData(parsed.draft_data);
+            Object.assign(merged, parsed.draft_data);
             if (typeof parsed.current_step === "number" && parsed.current_step >= 1) {
-              setCurrentStep(parsed.current_step);
+              step = parsed.current_step;
             }
-            toast.success("Resumed from saved progress");
+            resumed = "session";
           }
         }
       } catch {
-        // Ignore parse errors
+        /* ignore parse errors */
       }
+    }
+
+    const prefill = await fetchProfilePrefillForOnboarding();
+    if (prefill) {
+      mergeAccountIntoOnboardingForm(merged, prefill);
+    }
+
+    setFormData(merged);
+    setCurrentStep(step);
+    if (resumed === "server") {
+      toast.success("Resumed from saved draft");
+    } else if (resumed === "session") {
+      toast.success("Resumed from saved progress");
     }
   };
 
@@ -297,7 +491,7 @@ export default function ProviderOnboarding() {
         if (formData.owner_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.owner_email)) {
           errors.push("Invalid email address");
         }
-        if (!formData.owner_phone?.trim()) errors.push("Phone number is required");
+        if (!isValidOwnerPhoneE164(formData.owner_phone)) errors.push("Phone number is required");
         if (!formData.phone_verified) errors.push("Please verify your phone number");
         break;
       case 3: // Business Details
@@ -433,7 +627,11 @@ export default function ProviderOnboarding() {
         toast.error("Please select your team size");
         return;
       }
-      if (!formData.owner_name || !formData.owner_email || !formData.owner_phone) {
+      if (
+        !formData.owner_name ||
+        !formData.owner_email ||
+        !isValidOwnerPhoneE164(formData.owner_phone)
+      ) {
         toast.error("Please complete your identity information");
         return;
       }
@@ -457,7 +655,7 @@ export default function ProviderOnboarding() {
         team_size: formData.team_size,
         owner_name: formData.owner_name,
         owner_email: formData.owner_email,
-        owner_phone: formData.owner_phone,
+        owner_phone: coerceOwnerPhoneToE164ForForm(formData.owner_phone) || formData.owner_phone,
         yoco_machine: formData.yoco_machine || null,
         yoco_machine_other: formData.yoco_machine_other || null,
         payroll_type: formData.payroll_type || null,
@@ -469,7 +667,7 @@ export default function ProviderOnboarding() {
         previous_software: formData.previous_software || null,
         previous_software_other: formData.previous_software_other || null,
         // Legacy fields (mapped from owner fields)
-        phone: formData.owner_phone,
+        phone: coerceOwnerPhoneToE164ForForm(formData.owner_phone) || formData.owner_phone,
         email: formData.owner_email,
         address: {
           line1: formData.address?.line1 || "",
@@ -635,61 +833,75 @@ export default function ProviderOnboarding() {
       redirectTo="/become-a-partner"
       showLoading={true}
     >
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
-        <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-4 sm:py-6 md:py-8">
-          <Breadcrumb items={[
-            { label: "Home", href: "/" },
-            { label: "Become a Partner", href: "/become-a-partner" },
-            { label: "Onboarding" }
-          ]} />
-          
-          {/* Progress Bar - Mobile Optimized */}
-          <div className="mb-4 sm:mb-6 md:mb-8">
-            {/* Mobile: Show current step number */}
-            <div className="sm:hidden mb-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-gray-600">
+      <div className={ONBOARDING_PAGE_BG}>
+        <div className={ONBOARDING_CONTAINER}>
+          <div className="mb-4 sm:mb-5">
+            <Breadcrumb
+              items={[
+                { label: "Home", href: "/" },
+                { label: "Become a Partner", href: "/become-a-partner" },
+                { label: "Onboarding" },
+              ]}
+            />
+          </div>
+
+          <div className={ONBOARDING_PROGRESS_CARD}>
+            {/* Mobile: compact progress */}
+            <div className="sm:hidden">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-800">
                   Step {getActualStepIndex()} of {totalVisibleSteps}
                 </p>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm font-medium text-slate-600 tabular-nums">
                   {Math.round((getActualStepIndex() / totalVisibleSteps) * 100)}% complete
                 </p>
               </div>
-              <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+              <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
                 <div
-                  className="bg-primary h-2 rounded-full transition-all duration-300"
+                  className="h-full rounded-full bg-primary transition-all duration-300"
                   style={{ width: `${(getActualStepIndex() / totalVisibleSteps) * 100}%` }}
+                  role="progressbar"
+                  aria-valuenow={getActualStepIndex()}
+                  aria-valuemin={1}
+                  aria-valuemax={totalVisibleSteps}
                 />
               </div>
             </div>
-            
-            {/* Desktop: Full progress bar */}
+
+            {/* Desktop: stepper */}
             <div className="hidden sm:block">
-              <div className="flex items-center justify-between mb-2">
-                {STEPS.filter(s => !s.conditional || (s.conditional && s.conditional(formData))).map((step, index) => {
-                  const _stepIndex = STEPS.findIndex(s => s.id === step.id);
+              <div className="mb-1 flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Your progress
+                </p>
+                {isSavingDraft && (
+                  <p className="text-xs font-medium text-slate-600">Saving…</p>
+                )}
+              </div>
+              <div className="flex items-center justify-between">
+                {STEPS.filter((s) => !s.conditional || (s.conditional && s.conditional(formData))).map((step, index) => {
                   const isCompleted = currentStep > step.id;
                   const isCurrent = currentStep === step.id;
                   return (
-                    <div key={step.id} className="flex items-center flex-1">
-                      <div className="flex flex-col items-center flex-1">
+                    <div key={step.id} className="flex flex-1 items-center">
+                      <div className="flex flex-1 flex-col items-center">
                         <div
-                          className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center border-2 transition-all duration-200 ${
+                          className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all duration-200 sm:h-12 sm:w-12 ${
                             isCompleted || isCurrent
-                              ? "bg-primary border-primary text-white shadow-md scale-110"
-                              : "bg-white border-gray-300 text-gray-400"
+                              ? "scale-105 border-primary bg-primary text-white shadow-md"
+                              : "border-slate-300 bg-white text-slate-500"
                           }`}
                         >
                           {isCompleted ? (
-                            <Check className="w-5 h-5 sm:w-6 sm:h-6" />
+                            <Check className="h-5 w-5 sm:h-6 sm:w-6" aria-hidden />
                           ) : (
-                            <span className="text-sm sm:text-base font-semibold">{index + 1}</span>
+                            <span className="text-sm font-semibold sm:text-base">{index + 1}</span>
                           )}
                         </div>
-                        <div className="mt-2 text-center">
+                        <div className="mt-2 text-center px-0.5">
                           <p
-                            className={`text-xs sm:text-sm font-medium ${
-                              isCompleted || isCurrent ? "text-gray-900" : "text-gray-400"
+                            className={`text-[10px] font-medium leading-tight sm:text-xs ${
+                              isCompleted || isCurrent ? "text-slate-900" : "text-slate-500"
                             }`}
                           >
                             {step.title}
@@ -698,8 +910,8 @@ export default function ProviderOnboarding() {
                       </div>
                       {index < totalVisibleSteps - 1 && (
                         <div
-                          className={`h-1 flex-1 mx-2 transition-all duration-300 ${
-                            isCompleted ? "bg-primary" : "bg-gray-300"
+                          className={`mx-1 h-1 flex-1 rounded-full transition-all duration-300 sm:mx-2 ${
+                            isCompleted ? "bg-primary" : "bg-slate-200"
                           }`}
                         />
                       )}
@@ -709,20 +921,18 @@ export default function ProviderOnboarding() {
               </div>
             </div>
             {isSavingDraft && (
-              <p className="text-xs text-gray-500 text-center mt-2">Saving progress...</p>
+              <p className="mt-3 text-center text-xs font-medium text-slate-600 sm:hidden">Saving progress…</p>
             )}
           </div>
 
-          {/* Form Content */}
-          <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg border border-gray-100 p-4 sm:p-6 md:p-8 lg:p-10">
-            <div className="mb-4 sm:mb-6 md:mb-8">
-              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-2 sm:mb-3">
-                {currentStepData.title}
-              </h2>
-              <p className="text-sm sm:text-base md:text-lg text-gray-600 leading-relaxed">
-                {currentStepData.description}
+          <div className={ONBOARDING_MAIN_CARD}>
+            <header className="mb-6 sm:mb-8">
+              <p className="hidden text-xs font-semibold uppercase tracking-wide text-slate-500 sm:block">
+                Step {getActualStepIndex()} of {totalVisibleSteps}
               </p>
-            </div>
+              <h2 className={`${ONBOARDING_STEP_TITLE} mt-2`}>{currentStepData.title}</h2>
+              <p className={ONBOARDING_STEP_DESC}>{currentStepData.description}</p>
+            </header>
 
             {currentStep === 1 && (
               <Step1TeamSize data={formData} updateData={updateFormData} />
@@ -765,46 +975,38 @@ export default function ProviderOnboarding() {
               <Step14PlanSelection data={formData} updateData={updateFormData} />
             )}
 
-            {/* Navigation */}
-            <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-4 mt-6 sm:mt-8 md:mt-10 pt-4 sm:pt-6 md:pt-8 border-t border-gray-200">
+            <nav className={ONBOARDING_NAV_ROW} aria-label="Onboarding steps">
               <Button
                 variant="outline"
                 onClick={handleBack}
                 disabled={currentStep === 1}
-                className="w-full sm:w-auto h-12 sm:h-14 text-base font-semibold border-2 border-gray-300 hover:border-gray-400 rounded-lg"
+                className={ONBOARDING_BTN_BACK}
               >
-                <ChevronLeft className="w-5 h-5 mr-2" />
+                <ChevronLeft className="mr-2 h-5 w-5" aria-hidden />
                 Back
               </Button>
-              <div className="flex gap-3 sm:gap-4 w-full sm:w-auto">
+              <div className="flex w-full gap-3 sm:w-auto sm:gap-4">
                 {canSkip && currentStep < STEPS.length && (
-                  <Button 
-                    variant="outline" 
-                    onClick={handleSkip}
-                    className="flex-1 sm:flex-none h-12 sm:h-14 text-base font-semibold border-2 border-gray-300 hover:border-gray-400 rounded-lg"
-                  >
+                  <Button variant="outline" onClick={handleSkip} className={ONBOARDING_BTN_SKIP}>
                     Skip for now
                   </Button>
                 )}
                 {currentStep < STEPS.length ? (
-                  <Button 
-                    onClick={handleNext} 
-                    className="flex-1 sm:flex-none bg-primary hover:bg-primary-hover text-white h-12 sm:h-14 text-base font-semibold rounded-lg shadow-md hover:shadow-lg transition-all"
-                  >
+                  <Button onClick={handleNext} className={`${ONBOARDING_BTN_NEXT} bg-primary text-white hover:bg-primary-hover`}>
                     Next
-                    <ChevronRight className="w-5 h-5 ml-2" />
+                    <ChevronRight className="ml-2 h-5 w-5" aria-hidden />
                   </Button>
                 ) : (
-                  <Button 
-                    onClick={handleSubmit} 
-                    disabled={isSubmitting} 
-                    className="flex-1 sm:flex-none bg-primary hover:bg-primary-hover text-white h-12 sm:h-14 text-base font-semibold rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={isSubmitting}
+                    className={`${ONBOARDING_BTN_NEXT} bg-primary text-white hover:bg-primary-hover disabled:opacity-50`}
                   >
-                    {isSubmitting ? "Submitting..." : "Submit"}
+                    {isSubmitting ? "Submitting…" : "Submit"}
                   </Button>
                 )}
               </div>
-            </div>
+            </nav>
           </div>
         </div>
       </div>
@@ -853,20 +1055,17 @@ function Step1TeamSize({
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="text-center mb-8">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-          Tell us about your team
-        </h3>
-        <p className="text-base text-gray-600">
-          How many staff members are there?
-        </p>
-        <p className="text-sm text-gray-500 mt-2">
-          This helps us customize your setup (e.g. skip payroll for solo providers). You&apos;ll choose salon, mobile, or both in the next step.
+    <div className="space-y-8">
+      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 text-center shadow-sm sm:rounded-3xl sm:p-6">
+        <h3 className="text-lg font-semibold text-slate-900 sm:text-xl">Tell us about your team</h3>
+        <p className="mt-2 text-base text-slate-700">How many staff members are there?</p>
+        <p className="mt-3 text-sm leading-relaxed text-slate-600">
+          We use this to tailor setup (for example, payroll steps only when you have a team). You&apos;ll choose salon,
+          mobile, or both in the next step.
         </p>
       </div>
-      
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5">
         {teamSizeOptions.map((option) => {
           const isSelected = data.team_size === option.id;
           return (
@@ -875,41 +1074,35 @@ function Step1TeamSize({
               type="button"
               onClick={() => {
                 updateData({ team_size: option.id as any });
-                // Default business model by team size; user can change in Business Details
                 updateData({ business_type: option.id === "freelancer" ? "mobile" : "salon" });
               }}
-              className={`relative p-6 rounded-2xl border-2 transition-all duration-200 text-left hover:shadow-lg ${
+              className={`relative rounded-2xl border-2 p-6 text-left shadow-sm transition-all duration-200 hover:shadow-md sm:rounded-3xl sm:p-7 ${
                 isSelected
-                  ? "border-primary bg-primary/5 shadow-md"
-                  : "border-gray-200 hover:border-gray-300 bg-white"
+                  ? "border-primary bg-primary/[0.06] shadow-md ring-2 ring-primary/20"
+                  : "border-slate-200 bg-white hover:border-slate-300"
               }`}
             >
               {option.badge && (
-                <span className="absolute top-3 right-3 text-xs font-semibold bg-primary text-white px-2 py-1 rounded-full">
+                <span className="absolute right-3 top-3 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-white">
                   {option.badge}
                 </span>
               )}
               <div className="flex items-start gap-4">
-                <div className="text-4xl">{option.icon}</div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                    {option.title}
-                  </h3>
-                  <p className="text-sm font-medium text-gray-700 mb-2">
-                    {option.subtitle}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {option.description}
-                  </p>
+                <div className="text-4xl" aria-hidden>
+                  {option.icon}
                 </div>
-                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                  isSelected
-                    ? "border-primary bg-primary"
-                    : "border-gray-300"
-                }`}>
-                  {isSelected && (
-                    <Check className="w-4 h-4 text-white" />
-                  )}
+                <div className="min-w-0 flex-1">
+                  <h3 className="mb-1 text-lg font-semibold text-slate-900">{option.title}</h3>
+                  <p className="mb-2 text-sm font-medium text-slate-700">{option.subtitle}</p>
+                  <p className="text-sm text-slate-600">{option.description}</p>
+                </div>
+                <div
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
+                    isSelected ? "border-primary bg-primary" : "border-slate-300 bg-white"
+                  }`}
+                  aria-hidden
+                >
+                  {isSelected && <Check className="h-4 w-4 text-white" />}
                 </div>
               </div>
             </button>
@@ -1181,13 +1374,12 @@ function _Step1BusinessInfo({
           <Label htmlFor="phone" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
             Phone <span className="text-primary">*</span>
           </Label>
-          <Input
-            id="phone"
-            type="tel"
+          <PhoneInput
+            inputId="provider-onboarding-legacy-business-phone"
+            label=""
             value={data.phone || ""}
-            onChange={(e) => updateData({ phone: e.target.value })}
-            placeholder="+27 12 345 6789"
-            className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
+            onChange={(e164) => updateData({ phone: e164 })}
+            placeholder="Phone number"
             required
           />
         </div>
@@ -1243,6 +1435,8 @@ function Step2Identity({
   const [verificationCode, setVerificationCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  /** E.164 used with `updateUser({ phone })` — must match `verifyOtp` phone. */
+  const [pendingPhoneE164, setPendingPhoneE164] = useState("");
 
   // Countdown timer
   useEffect(() => {
@@ -1253,49 +1447,61 @@ function Step2Identity({
   }, [countdown]);
 
   const handleSendCode = async () => {
-    if (!data.owner_phone) {
-      toast.error("Please enter your phone number first");
+    const ownerE164 = coerceOwnerPhoneToE164ForForm(data.owner_phone);
+    if (!ownerE164) {
+      toast.error("Please enter a valid phone number first");
       return;
     }
 
+    const normalized = normalizeSupabaseAuthPhone(ownerE164);
     try {
       setIsSendingCode(true);
-      await fetcher.post("/api/provider/onboarding/verify-phone", {
-        phone: data.owner_phone,
-      });
-      
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.auth.updateUser({ phone: normalized });
+      if (error) throw error;
+
+      setPendingPhoneE164(normalized);
+      setVerificationCode("");
       setCodeSent(true);
-      setCountdown(300); // 5 minutes
-      toast.success("Verification code sent to your phone");
+      setCountdown(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS);
+      toast.success("Verification code sent to your phone.");
     } catch (error) {
-      toast.error("Failed to send verification code. Please try again.");
+      const msg = error instanceof Error ? error.message : "Failed to send verification code.";
+      toast.error(msg);
       console.error("Error sending code:", error);
     } finally {
       setIsSendingCode(false);
     }
   };
 
-  const handleVerifyCode = async () => {
-    if (!verificationCode || verificationCode.length !== 4) {
-      toast.error("Please enter a 4-digit code");
+  const handleVerifyCode = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? verificationCode);
+    if (!pendingPhoneE164 || !isCompleteSupabaseSmsOtp(token)) {
+      toast.error(`Please enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS.`);
       return;
     }
 
     try {
       setIsVerifying(true);
-      const response = await fetcher.put<{ data?: { verified?: boolean } }>("/api/provider/onboarding/verify-phone/verify", {
-        phone: data.owner_phone,
-        code: verificationCode,
+      const supabase = getSupabaseClient();
+      const phone = normalizeSupabaseAuthPhone(pendingPhoneE164);
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        phone,
+        token,
+        type: "phone_change",
+      });
+      if (verifyError) throw verifyError;
+
+      await fetcher.patch("/api/me/profile", {
+        phone,
+        phone_verified: true,
       });
 
-      if (response?.data?.verified) {
-        updateData({ phone_verified: true });
-        toast.success("Phone number verified!");
-      } else {
-        toast.error("Invalid verification code. Please try again.");
-      }
+      updateData({ phone_verified: true, owner_phone: phone });
+      toast.success("Phone number verified!");
     } catch (error) {
-      toast.error("Verification failed. Please try again.");
+      const msg = error instanceof Error ? error.message : "Verification failed. Please try again.";
+      toast.error(msg);
       console.error("Error verifying code:", error);
     } finally {
       setIsVerifying(false);
@@ -1303,25 +1509,26 @@ function Step2Identity({
   };
 
   return (
-    <div className="space-y-6">
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5 mb-6">
-        <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-            <span className="text-white text-sm font-bold">!</span>
+    <div className="space-y-8">
+      <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-5 shadow-sm sm:rounded-3xl sm:p-6">
+        <div className="flex items-start gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sky-600 text-white shadow-sm">
+            <CircleUser className="h-5 w-5" aria-hidden />
           </div>
-          <div>
-            <h4 className="font-semibold text-blue-900 mb-1">Owner / Contact Information</h4>
-            <p className="text-sm text-blue-800 leading-relaxed">
-              Whether you&apos;re a freelancer or salon owner, we need your details for verification and to contact you about bookings and payouts.
+          <div className="min-w-0">
+            <h4 className="mb-2 text-base font-semibold text-sky-950 sm:text-lg">Owner and contact details</h4>
+            <p className="text-sm leading-relaxed text-sky-950/90">
+              We use this for verification and to reach you about bookings and payouts. If you signed up with name,
+              email, or phone already, those values should appear below — you can change them anytime.
             </p>
           </div>
         </div>
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-6">
         {/* Name */}
         <div>
-          <Label htmlFor="owner_name" className="text-base font-semibold text-gray-900 mb-2 block">
+          <Label htmlFor="owner_name" className="mb-2 block text-base font-semibold text-slate-900">
             Your Name <span className="text-primary">*</span>
           </Label>
           <Input
@@ -1329,14 +1536,14 @@ function Step2Identity({
             value={data.owner_name || ""}
             onChange={(e) => updateData({ owner_name: e.target.value })}
             placeholder="Enter your full name"
-            className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
+            className="h-14 rounded-2xl border-slate-300 text-base focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20"
             required
           />
         </div>
 
         {/* Email */}
         <div>
-          <Label htmlFor="owner_email" className="text-base font-semibold text-gray-900 mb-2 block">
+          <Label htmlFor="owner_email" className="mb-2 block text-base font-semibold text-slate-900">
             Email Address <span className="text-primary">*</span>
           </Label>
           <Input
@@ -1345,36 +1552,37 @@ function Step2Identity({
             value={data.owner_email || ""}
             onChange={(e) => updateData({ owner_email: e.target.value })}
             placeholder="your.email@example.com"
-            className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
+            className="h-14 rounded-2xl border-slate-300 text-base focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20"
             required
           />
         </div>
 
         {/* Phone with Verification */}
         <div>
-          <Label htmlFor="owner_phone" className="text-base font-semibold text-gray-900 mb-2 block">
+          <Label htmlFor="owner_phone" className="mb-2 block text-base font-semibold text-slate-900">
             Mobile Number <span className="text-primary">*</span>
           </Label>
-          <div className="flex gap-3">
-            <Input
-              id="owner_phone"
-              type="tel"
-              value={data.owner_phone || ""}
-              onChange={(e) => {
-                const phone = e.target.value.replace(/\D/g, "");
-                updateData({ owner_phone: phone, phone_verified: false });
-                setCodeSent(false);
-                setVerificationCode("");
-              }}
-              placeholder="0821234567"
-              className="flex-1 h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
-              required
-            />
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+            <div className="min-w-0 w-full lg:flex-1">
+              <PhoneInput
+                inputId="provider-onboarding-owner-phone"
+                label=""
+                value={data.owner_phone || ""}
+                onChange={(e164) => {
+                  updateData({ owner_phone: e164, phone_verified: false });
+                  setCodeSent(false);
+                  setVerificationCode("");
+                  setPendingPhoneE164("");
+                }}
+                placeholder="Phone number"
+                required
+              />
+            </div>
             <Button
               type="button"
               onClick={handleSendCode}
-              disabled={!data.owner_phone || isSendingCode || countdown > 0}
-              className="h-14 px-6 bg-primary hover:bg-primary-hover text-white rounded-xl disabled:opacity-50"
+              disabled={!isValidOwnerPhoneE164(data.owner_phone) || isSendingCode || countdown > 0}
+              className="h-14 w-full shrink-0 rounded-2xl bg-primary px-6 text-white hover:bg-primary-hover disabled:opacity-50 lg:w-auto"
             >
               {isSendingCode ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
@@ -1385,34 +1593,42 @@ function Step2Identity({
               )}
             </Button>
           </div>
-          <p className="text-xs text-gray-500 mt-2">
-            We'll send a 4-digit verification code via SMS to verify your number. This helps us keep your account secure.
+          <p className="mt-2 text-xs leading-relaxed text-slate-600">
+            We’ll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid for about{" "}
+            {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
+            {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}). For South Africa, enter the local number only
+            (omit +27)—for example <span className="whitespace-nowrap">82 123 4567</span> or{" "}
+            <span className="whitespace-nowrap">082 123 4567</span>—as shown under the field. Standard carrier rates may apply.
           </p>
 
           {/* Verification Code Input */}
           {codeSent && (
             <div className="mt-4 space-y-3">
-              <Label htmlFor="verification_code" className="text-base font-semibold text-gray-900 mb-2 block">
+              <Label
+                htmlFor="provider-onboarding-verify-otp-0"
+                className="mb-2 block text-base font-semibold text-slate-900"
+              >
                 Enter Verification Code <span className="text-primary">*</span>
               </Label>
-              <div className="flex gap-3">
-                <Input
-                  id="verification_code"
-                  type="text"
-                  maxLength={4}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <OtpDigitInput
+                  id="provider-onboarding-verify-otp"
+                  length={SUPABASE_AUTH_OTP_LENGTH}
+                  label="Phone verification code"
                   value={verificationCode}
-                  onChange={(e) => {
-                    const code = e.target.value.replace(/\D/g, "").slice(0, 4);
-                    setVerificationCode(code);
+                  onChange={setVerificationCode}
+                  onComplete={(code) => {
+                    if (!isVerifying && !data.phone_verified) void handleVerifyCode(code);
                   }}
-                  placeholder="1234"
-                  className="h-14 text-2xl text-center font-bold tracking-widest border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
+                  disabled={isVerifying || Boolean(data.phone_verified)}
+                  autoFocus
+                  className="min-w-0 flex-1 [&>div:last-child]:!justify-start"
                 />
                 <Button
                   type="button"
-                  onClick={handleVerifyCode}
-                  disabled={verificationCode.length !== 4 || isVerifying || data.phone_verified}
-                  className="h-14 px-6 bg-primary hover:bg-primary-hover text-white rounded-xl disabled:opacity-50"
+                  onClick={() => void handleVerifyCode()}
+                  disabled={!isCompleteSupabaseSmsOtp(verificationCode) || isVerifying || data.phone_verified}
+                  className="h-14 shrink-0 rounded-2xl bg-primary px-6 text-white hover:bg-primary-hover disabled:opacity-50 sm:h-14"
                 >
                   {isVerifying ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
@@ -1424,8 +1640,8 @@ function Step2Identity({
                 </Button>
               </div>
               {data.phone_verified && (
-                <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
-                  <Check className="w-4 h-4" />
+                <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900">
+                  <Check className="h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
                   Phone number verified
                 </div>
               )}
@@ -1542,30 +1758,34 @@ function Step8Photos({
   }, [data.thumbnail_url, data.avatar_url, data.gallery]);
 
   return (
-    <div className="space-y-6">
-      <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-5 mb-6">
-        <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
-            <ImageIcon className="w-5 h-5 text-white" />
+    <div className="space-y-8">
+      <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50/60 p-5 shadow-sm sm:rounded-3xl sm:p-6">
+        <div className="flex items-start gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-sm">
+            <ImageIcon className="h-5 w-5" aria-hidden />
           </div>
-          <div>
-            <h4 className="font-semibold text-purple-900 mb-2">Why Photos Matter</h4>
+          <div className="min-w-0">
+            <h4 className="mb-2 text-base font-semibold text-violet-950 sm:text-lg">Why photos matter</h4>
             {data.business_type === "mobile" ? (
-              <div className="text-sm text-purple-800 space-y-2">
+              <div className="space-y-2 text-sm leading-relaxed text-violet-950/90">
                 <p>
-                  <strong>Your Photo:</strong> A professional photo of yourself is crucial. People are 2-3x more likely to click on a human face than a logo.
+                  <strong className="text-violet-950">Your photo:</strong> A clear, professional photo of you helps
+                  clients trust you before they book.
                 </p>
                 <p>
-                  <strong>Portfolio Gallery:</strong> Showcase your completed work, before/after transformations, and service examples. This builds trust and helps customers see your quality.
+                  <strong className="text-violet-950">Gallery:</strong> Show finished work and before/after shots so
+                  customers see your quality.
                 </p>
               </div>
             ) : (
-              <div className="text-sm text-purple-800 space-y-2">
+              <div className="space-y-2 text-sm leading-relaxed text-violet-950/90">
                 <p>
-                  <strong>Salon/Owner Photo:</strong> A photo of your salon interior/exterior or yourself as the owner is crucial. People are 2-3x more likely to click on real photos than logos.
+                  <strong className="text-violet-950">Salon or owner photo:</strong> Real spaces and faces outperform
+                  generic logos in search and profile views.
                 </p>
                 <p>
-                  <strong>Portfolio Gallery:</strong> Showcase your completed work, before/after transformations, and service examples. This builds trust and helps customers see your quality.
+                  <strong className="text-violet-950">Gallery:</strong> Portfolio images build confidence in your
+                  services.
                 </p>
               </div>
             )}
@@ -1575,11 +1795,11 @@ function Step8Photos({
 
       {/* Thumbnail Upload */}
       <div>
-        <Label className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
+        <Label className="mb-2 block text-sm font-semibold text-slate-900 sm:text-base">
           {data.business_type === "mobile" ? "Your Photo" : "Salon Photo or Owner Photo"}
-          <span className="text-gray-500 font-normal text-xs sm:text-sm ml-2">(Recommended)</span>
+          <span className="ml-2 text-xs font-normal text-slate-600 sm:text-sm">(Recommended)</span>
         </Label>
-        <p className="text-xs sm:text-sm text-gray-600 mb-3">
+        <p className="mb-3 text-xs leading-relaxed text-slate-700 sm:text-sm">
           {data.business_type === "mobile" ? (
             <>
               <strong>For freelancers:</strong> Upload a professional photo of yourself. People are more likely to click on a human face than a logo. 
@@ -1595,7 +1815,7 @@ function Step8Photos({
         </p>
         <div className="flex flex-col sm:flex-row gap-4">
           {thumbnailPreview ? (
-            <div className="relative w-full sm:w-48 h-48 border-2 border-gray-200 rounded-lg overflow-hidden">
+            <div className="relative h-48 w-full overflow-hidden rounded-2xl border-2 border-slate-200 sm:w-48">
               <Image
                 src={thumbnailPreview}
                 alt="Thumbnail preview"
@@ -1620,10 +1840,10 @@ function Step8Photos({
               </Button>
             </div>
           ) : (
-            <div className="w-full sm:w-48 h-48 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50">
-              <div className="text-center p-4">
-                <ImageIcon className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-xs text-gray-600">No thumbnail</p>
+            <div className="flex h-48 w-full items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 sm:w-48">
+              <div className="p-4 text-center">
+                <ImageIcon className="mx-auto mb-2 h-12 w-12 text-slate-400" aria-hidden />
+                <p className="text-xs text-slate-600">No thumbnail</p>
               </div>
             </div>
           )}
@@ -1783,6 +2003,34 @@ function Step8Photos({
   );
 }
 
+const STEP3_LANGUAGE_SUGGESTIONS = [
+  "English",
+  "Afrikaans",
+  "French",
+  "Portuguese",
+  "Swahili",
+  "Zulu",
+  "Xhosa",
+  "Sesotho",
+  "Tswana",
+  "Venda",
+  "Tsonga",
+  "Swati",
+  "Ndebele",
+  "Southern Sotho",
+  "Northern Sotho",
+].map((l) => ({ value: l, label: l }));
+
+function hasAnySocialLink(links: OnboardingData["social_media_links"] | undefined): boolean {
+  if (!links) return false;
+  return Boolean(
+    links.facebook?.trim() ||
+      links.instagram?.trim() ||
+      links.twitter?.trim() ||
+      links.linkedin?.trim(),
+  );
+}
+
 // Step 3: Business Details - Consolidated business information
 function Step3BusinessDetails({
   data,
@@ -1791,232 +2039,312 @@ function Step3BusinessDetails({
   data: Partial<OnboardingData>;
   updateData: (updates: Partial<OnboardingData>) => void;
 }) {
+  const [websiteOpen, setWebsiteOpen] = useState(() => Boolean(data.website?.trim()));
+  const [socialOpen, setSocialOpen] = useState(() => hasAnySocialLink(data.social_media_links));
+
+  const websiteWasEmpty = useRef(!data.website?.trim());
+  const socialWasEmpty = useRef(!hasAnySocialLink(data.social_media_links));
+
+  useEffect(() => {
+    const filled = Boolean(data.website?.trim());
+    if (filled && websiteWasEmpty.current) {
+      setWebsiteOpen(true);
+      websiteWasEmpty.current = false;
+    }
+    if (!filled) websiteWasEmpty.current = true;
+  }, [data.website]);
+
+  useEffect(() => {
+    const filled = hasAnySocialLink(data.social_media_links);
+    if (filled && socialWasEmpty.current) {
+      setSocialOpen(true);
+      socialWasEmpty.current = false;
+    }
+    if (!filled) socialWasEmpty.current = true;
+  }, [
+    data.social_media_links?.facebook,
+    data.social_media_links?.instagram,
+    data.social_media_links?.twitter,
+    data.social_media_links?.linkedin,
+  ]);
+
+  const fieldShell =
+    "rounded-2xl border border-slate-200/90 bg-white shadow-sm transition-shadow focus-within:shadow-md focus-within:border-primary/35";
+  const inputClass =
+    "h-12 sm:h-14 text-base border-slate-200 bg-white rounded-xl focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15";
+  const helper = "text-sm text-slate-700 leading-relaxed";
+  const helperMuted = "text-sm text-slate-600 leading-relaxed";
+
   return (
-    <div className="space-y-6">
-      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4">
-        <p className="text-sm text-gray-700">
-          <strong>💡 Tip:</strong> Complete business details help customers find you and build trust. 
-          The more information you provide, the better your visibility on our platform.
-        </p>
-        {data.team_size === "freelancer" && (
-          <p className="text-sm text-gray-600 mt-2">
-            <strong>Freelancer?</strong> Choose &quot;Freelancer (Mobile/At-Home)&quot; if you go to clients, or &quot;Salon/Studio&quot; if you have a fixed location (e.g. home studio). You can offer both.
-          </p>
-        )}
+    <div className="space-y-8">
+      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Building2 className="h-5 w-5" aria-hidden />
+          </div>
+          <div className="min-w-0 space-y-2">
+            <p className={`${helper} font-medium text-slate-800`}>
+              <span className="mr-1.5" aria-hidden>
+                💡
+              </span>
+              Complete profiles build trust: add a clear description, the languages you speak, and optionally turn on a
+              website or social links below.
+            </p>
+            {data.team_size === "freelancer" && (
+              <p className={helperMuted}>
+                <span className="font-semibold text-slate-800">Freelancer?</span> Mobile, studio, or both is set in a later
+                step—here, focus on how you want your brand to read on your public profile.
+              </p>
+            )}
+          </div>
+        </div>
       </div>
 
-      <div>
-        <Label htmlFor="business_name" className="text-base font-semibold text-gray-900 mb-2 block">
+      <section className="space-y-2">
+        <Label htmlFor="business_name" className="text-base font-semibold text-slate-900">
           Business Name <span className="text-primary">*</span>
         </Label>
-        <p className="text-xs text-gray-500 mb-2">
-          This is how customers will see your business on the platform
-        </p>
+        <p className={helperMuted}>This is how customers will see your business on the platform.</p>
         <Input
           id="business_name"
           value={data.business_name || ""}
           onChange={(e) => updateData({ business_name: e.target.value })}
-          placeholder="Enter your business name"
-          className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
+          placeholder="e.g. Studio Huumphrey"
+          className={`${inputClass} mt-1`}
           required
         />
-      </div>
+      </section>
 
-      <div>
-        <Label htmlFor="description" className="text-base font-semibold text-gray-900 mb-2 block">
-          Business Description <span className="text-gray-500 font-normal text-sm">(Recommended)</span>
+      <section className="space-y-2">
+        <Label htmlFor="description" className="text-base font-semibold text-slate-900">
+          Business Description <span className="text-slate-600 font-normal text-sm">(Recommended)</span>
         </Label>
-        <p className="text-xs text-gray-500 mb-2">
-          Describe your business, services, and what makes you special. This appears on your public profile.
+        <p className={helperMuted}>
+          Describe your services, style, and what makes you special—this appears on your public profile.
         </p>
         <Textarea
           id="description"
           value={data.description || ""}
           onChange={(e) => updateData({ description: e.target.value })}
           placeholder="Tell customers about your business, your expertise, and what makes you unique..."
-          className="min-h-[120px] text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl resize-none"
+          className={`min-h-[132px] text-base border-slate-200 bg-white rounded-xl resize-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 mt-1`}
           maxLength={2000}
         />
-        <div className="flex items-center justify-between mt-2">
-          <p className="text-xs text-gray-500">
+        <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm tabular-nums text-slate-700">
             {(data.description?.length || 0)}/2000 characters
           </p>
-          {data.description && data.description.length < 50 && (
-            <p className="text-xs text-amber-600 font-medium">
-              Consider adding more details (at least 50 characters recommended)
+          {data.description != null && data.description.length > 0 && data.description.length < 50 && (
+            <p className="text-sm font-medium text-amber-800">
+              Consider adding more detail—we recommend at least 50 characters for a stronger profile.
             </p>
           )}
         </div>
-      </div>
+      </section>
 
-      <div>
-        <Label htmlFor="website" className="text-base font-semibold text-gray-900 mb-2 block">
-          Website URL <span className="text-gray-500 font-normal text-sm">(Optional)</span>
+      <section className="space-y-2">
+        <Label htmlFor="years_in_business" className="text-base font-semibold text-slate-900">
+          Years in Business <span className="text-slate-600 font-normal text-sm">(Optional)</span>
         </Label>
-        <p className="text-xs text-gray-500 mb-2">
-          Your website helps customers learn more about you and improves your search visibility
-        </p>
-        <Input
-          id="website"
-          type="url"
-          value={data.website || ""}
-          onChange={(e) => {
-            let value = e.target.value.trim();
-            if (value && !value.match(/^https?:\/\//)) {
-              value = `https://${value}`;
-            }
-            updateData({ website: value || undefined });
-          }}
-          placeholder="https://yourwebsite.com"
-          className="h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
-        />
-      </div>
-
-      <div>
-        <Label htmlFor="years_in_business" className="text-base font-semibold text-gray-900 mb-2 block">
-          Years in Business <span className="text-gray-500 font-normal text-sm">(Optional)</span>
-        </Label>
-        <p className="text-xs text-gray-500 mb-2">
-          Your experience helps build trust with customers
-        </p>
+        <p className={helperMuted}>Your experience helps build trust with customers.</p>
         <select
           id="years_in_business"
-          value={data.years_in_business || ""}
-          onChange={(e) => updateData({ years_in_business: e.target.value ? parseInt(e.target.value) : undefined })}
-          className="w-full h-14 px-4 text-base border border-gray-300 rounded-xl focus:border-primary focus:ring-primary bg-white"
+          value={data.years_in_business ?? ""}
+          onChange={(e) => updateData({ years_in_business: e.target.value ? parseInt(e.target.value, 10) : undefined })}
+          className={`mt-1 w-full ${inputClass} px-4`}
         >
-          <option value="">Select years...</option>
+          <option value="">Select years…</option>
           <option value="0">Just starting (0 years)</option>
           <option value="1">1 year</option>
           <option value="2">2 years</option>
           <option value="3">3 years</option>
           <option value="4">4 years</option>
           <option value="5">5 years</option>
-          <option value="6">6-10 years</option>
-          <option value="11">11-15 years</option>
-          <option value="16">16-20 years</option>
+          <option value="6">6–10 years</option>
+          <option value="11">11–15 years</option>
+          <option value="16">16–20 years</option>
           <option value="21">20+ years</option>
         </select>
-      </div>
+      </section>
 
-      {/* Languages Spoken */}
-      <div>
-        <Label htmlFor="languages_spoken" className="text-base font-semibold text-gray-900 mb-2 block">
-          Languages You Speak
-          <span className="text-gray-500 font-normal text-sm ml-2">(Optional but recommended)</span>
+      <section className="space-y-2">
+        <Label htmlFor="languages_spoken" className="text-base font-semibold text-slate-900">
+          Languages you speak <span className="text-slate-600 font-normal text-sm">(Optional but recommended)</span>
         </Label>
-        <p className="text-xs text-gray-600 mb-3">
-          Select or type the languages you can communicate in with clients. At least one language is required.
+        <p className={helper}>
+          Select or type every language you&apos;re comfortable using with clients. At least one language is required—we
+          default to English until you add more.
         </p>
-        <ChipCombobox
-          singleSelect={false}
-          value={data.languages_spoken?.length ? data.languages_spoken : ["English"]}
-          onChange={(next) => updateData({ languages_spoken: next.length ? next : ["English"] })}
-          staticSuggestions={[
-            "English", "Afrikaans", "Zulu", "Xhosa", "Sesotho", "Tswana", "Venda", "Tsonga", "Swati", "Ndebele", "Southern Sotho", "Northern Sotho",
-          ].map((l) => ({ value: l, label: l }))}
-          allowFreeForm
-          placeholder="Add language..."
-          aria-label="Languages you speak"
-        />
-      </div>
+        <div className="mt-2">
+          <ChipCombobox
+            singleSelect={false}
+            value={data.languages_spoken?.length ? data.languages_spoken : ["English"]}
+            onChange={(next) => updateData({ languages_spoken: next.length ? next : ["English"] })}
+            staticSuggestions={STEP3_LANGUAGE_SUGGESTIONS}
+            allowFreeForm
+            placeholder="Add language…"
+            aria-label="Languages you speak"
+          />
+        </div>
+      </section>
 
-      {/* Social Media Links */}
-      <div>
-        <Label className="text-base font-semibold text-gray-900 mb-2 block">
-          Social Media Links
-          <span className="text-gray-500 font-normal text-sm ml-2">(Optional but recommended)</span>
-        </Label>
-        <p className="text-xs text-gray-600 mb-3">
-          Add your social media profiles to help customers find and connect with you online.
-        </p>
-        <div className="space-y-3">
-          <div>
-            <Label htmlFor="facebook" className="text-sm font-medium text-gray-700 mb-1 block">
-              Facebook
-            </Label>
-            <Input
-              id="facebook"
-              type="url"
-              value={data.social_media_links?.facebook || ""}
-              onChange={(e) => {
-                const current = data.social_media_links || {};
-                updateData({
-                  social_media_links: {
-                    ...current,
-                    facebook: e.target.value.trim() || undefined,
-                  },
-                });
-              }}
-              placeholder="https://facebook.com/yourpage"
-              className="h-12 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
-            />
+      {/* Website — collapsible */}
+      <section className={`${fieldShell} overflow-hidden`}>
+        <div className="flex items-center justify-between gap-4 border-b border-slate-100 bg-slate-50/80 px-4 py-3.5 sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <Globe className="h-5 w-5 shrink-0 text-slate-600" aria-hidden />
+            <div>
+              <p className="text-base font-semibold text-slate-900">Website URL</p>
+              <p className={`${helperMuted} mt-0.5`}>Optional — helps customers learn more and can help discovery.</p>
+            </div>
           </div>
-          <div>
-            <Label htmlFor="instagram" className="text-sm font-medium text-gray-700 mb-1 block">
-              Instagram
-            </Label>
-            <Input
-              id="instagram"
-              type="url"
-              value={data.social_media_links?.instagram || ""}
-              onChange={(e) => {
-                const current = data.social_media_links || {};
-                updateData({
-                  social_media_links: {
-                    ...current,
-                    instagram: e.target.value.trim() || undefined,
-                  },
-                });
-              }}
-              placeholder="https://instagram.com/yourprofile"
-              className="h-12 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
-            />
-          </div>
-          <div>
-            <Label htmlFor="twitter" className="text-sm font-medium text-gray-700 mb-1 block">
-              Twitter / X
-            </Label>
-            <Input
-              id="twitter"
-              type="url"
-              value={data.social_media_links?.twitter || ""}
-              onChange={(e) => {
-                const current = data.social_media_links || {};
-                updateData({
-                  social_media_links: {
-                    ...current,
-                    twitter: e.target.value.trim() || undefined,
-                  },
-                });
-              }}
-              placeholder="https://twitter.com/yourhandle"
-              className="h-12 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
-            />
-          </div>
-          <div>
-            <Label htmlFor="linkedin" className="text-sm font-medium text-gray-700 mb-1 block">
-              LinkedIn
-            </Label>
-            <Input
-              id="linkedin"
-              type="url"
-              value={data.social_media_links?.linkedin || ""}
-              onChange={(e) => {
-                const current = data.social_media_links || {};
-                updateData({
-                  social_media_links: {
-                    ...current,
-                    linkedin: e.target.value.trim() || undefined,
-                  },
-                });
-              }}
-              placeholder="https://linkedin.com/in/yourprofile"
-              className="h-12 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-xl"
+          <div className="flex shrink-0 items-center gap-2">
+            <span id="onboarding-website-toggle-label" className="text-sm font-medium text-slate-800">
+              Add website
+            </span>
+            <Switch
+              checked={websiteOpen}
+              onCheckedChange={setWebsiteOpen}
+              aria-labelledby="onboarding-website-toggle-label"
             />
           </div>
         </div>
-      </div>
+        {websiteOpen ? (
+          <div className="space-y-2 p-4 sm:p-5">
+            <Label htmlFor="website" className="sr-only">
+              Website URL
+            </Label>
+            <p className={helperMuted}>Paste your full link; we&apos;ll add https:// if you omit it.</p>
+            <Input
+              id="website"
+              type="url"
+              value={data.website || ""}
+              onChange={(e) => {
+                let value = e.target.value.trim();
+                if (value && !value.match(/^https?:\/\//)) {
+                  value = `https://${value}`;
+                }
+                updateData({ website: value || undefined });
+              }}
+              placeholder="https://yourwebsite.com"
+              className={inputClass}
+            />
+          </div>
+        ) : null}
+      </section>
+
+      {/* Social — collapsible */}
+      <section className={`${fieldShell} overflow-hidden`}>
+        <div className="flex items-center justify-between gap-4 border-b border-slate-100 bg-slate-50/80 px-4 py-3.5 sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <Share2 className="h-5 w-5 shrink-0 text-slate-600" aria-hidden />
+            <div>
+              <p className="text-base font-semibold text-slate-900">Social media links</p>
+              <p className={`${helperMuted} mt-0.5`}>
+                Optional but recommended — helps clients find and follow you.
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span id="onboarding-social-toggle-label" className="text-sm font-medium text-slate-800">
+              Add profiles
+            </span>
+            <Switch
+              checked={socialOpen}
+              onCheckedChange={setSocialOpen}
+              aria-labelledby="onboarding-social-toggle-label"
+            />
+          </div>
+        </div>
+        {socialOpen ? (
+          <div className="grid gap-4 p-4 sm:grid-cols-2 sm:gap-5 sm:p-5">
+            <div className="space-y-1.5">
+              <Label htmlFor="facebook" className="text-sm font-semibold text-slate-800">
+                Facebook
+              </Label>
+              <Input
+                id="facebook"
+                type="url"
+                value={data.social_media_links?.facebook || ""}
+                onChange={(e) => {
+                  const current = data.social_media_links || {};
+                  updateData({
+                    social_media_links: {
+                      ...current,
+                      facebook: e.target.value.trim() || undefined,
+                    },
+                  });
+                }}
+                placeholder="https://facebook.com/yourpage"
+                className={inputClass}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="instagram" className="text-sm font-semibold text-slate-800">
+                Instagram
+              </Label>
+              <Input
+                id="instagram"
+                type="url"
+                value={data.social_media_links?.instagram || ""}
+                onChange={(e) => {
+                  const current = data.social_media_links || {};
+                  updateData({
+                    social_media_links: {
+                      ...current,
+                      instagram: e.target.value.trim() || undefined,
+                    },
+                  });
+                }}
+                placeholder="https://instagram.com/yourprofile"
+                className={inputClass}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="twitter" className="text-sm font-semibold text-slate-800">
+                Twitter / X
+              </Label>
+              <Input
+                id="twitter"
+                type="url"
+                value={data.social_media_links?.twitter || ""}
+                onChange={(e) => {
+                  const current = data.social_media_links || {};
+                  updateData({
+                    social_media_links: {
+                      ...current,
+                      twitter: e.target.value.trim() || undefined,
+                    },
+                  });
+                }}
+                placeholder="https://twitter.com/yourhandle"
+                className={inputClass}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="linkedin" className="text-sm font-semibold text-slate-800">
+                LinkedIn
+              </Label>
+              <Input
+                id="linkedin"
+                type="url"
+                value={data.social_media_links?.linkedin || ""}
+                onChange={(e) => {
+                  const current = data.social_media_links || {};
+                  updateData({
+                    social_media_links: {
+                      ...current,
+                      linkedin: e.target.value.trim() || undefined,
+                    },
+                  });
+                }}
+                placeholder="https://linkedin.com/in/yourprofile"
+                className={inputClass}
+              />
+            </div>
+          </div>
+        ) : null}
+      </section>
     </div>
   );
 }
@@ -2036,16 +2364,13 @@ function Step4PaymentSetup({
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="text-center mb-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-          Payment Setup
-        </h3>
-        <p className="text-base text-gray-600 mb-2">
-          Do you have a Yoco Machine?
-        </p>
-        <p className="text-sm text-gray-500">
-          Yoco is a popular card payment solution in South Africa. We'll help you set it up after onboarding.
+    <div className="space-y-8">
+      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 text-center shadow-sm sm:rounded-3xl sm:p-6">
+        <h3 className="text-lg font-semibold text-slate-900 sm:text-xl">Payment setup</h3>
+        <p className="mt-2 text-base text-slate-700">Do you have a Yoco card machine?</p>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          Yoco is widely used in South Africa. Whatever you choose here, you can connect payouts and terminals after
+          onboarding.
         </p>
       </div>
 
@@ -2057,27 +2382,24 @@ function Step4PaymentSetup({
               key={option.id}
               type="button"
               onClick={() => updateData({ yoco_machine: option.id as any })}
-              className={`w-full p-5 rounded-xl border-2 transition-all duration-200 text-left ${
+              className={`w-full rounded-2xl border-2 p-5 text-left shadow-sm transition-all duration-200 sm:rounded-3xl sm:p-6 ${
                 isSelected
-                  ? "border-primary bg-primary/5 shadow-md"
-                  : "border-gray-200 hover:border-gray-300 bg-white"
+                  ? "border-primary bg-primary/[0.06] shadow-md ring-2 ring-primary/15"
+                  : "border-slate-200 bg-white hover:border-slate-300"
               }`}
             >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                    {option.title}
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    {option.description}
-                  </p>
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="mb-1 text-lg font-semibold text-slate-900">{option.title}</h3>
+                  <p className="text-sm text-slate-600">{option.description}</p>
                 </div>
-                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                  isSelected
-                    ? "border-primary bg-primary"
-                    : "border-gray-300"
-                }`}>
-                  {isSelected && <Check className="w-4 h-4 text-white" />}
+                <div
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${
+                    isSelected ? "border-primary bg-primary" : "border-slate-300 bg-white"
+                  }`}
+                  aria-hidden
+                >
+                  {isSelected && <Check className="h-4 w-4 text-white" />}
                 </div>
               </div>
             </button>
@@ -2449,17 +2771,49 @@ function Step7Location({
   data: Partial<OnboardingData>;
   updateData: (updates: Partial<OnboardingData>) => void;
 }) {
-  const isFreelancer = data.business_type === "mobile";
+  const isMobileOnly = data.business_type === "mobile";
+  const isSalon = data.business_type === "salon";
+  const isBoth = data.business_type === "both";
+  const houseCallOrNoSalonNote =
+    isMobileOnly || isBoth || data.team_size === "freelancer";
+
   const [countries, setCountries] = useState<Array<{ code: string; name: string }>>([]);
   const [isLoadingCountries, setIsLoadingCountries] = useState(true);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
+
+  const defaultCountryDisplay = data.address?.country?.trim() || "South Africa";
+
+  const mapboxCountryIso = useMemo(() => {
+    const row = countries.find((c) => c.name === defaultCountryDisplay);
+    return row?.code ?? countryFilterIso2FromStorage(defaultCountryDisplay) ?? "ZA";
+  }, [countries, defaultCountryDisplay]);
+
+  const proximity = useMemo(() => {
+    const lat = data.address?.latitude;
+    const lng = data.address?.longitude;
+    if (
+      lat == null ||
+      lng == null ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      (lat === 0 && lng === 0)
+    ) {
+      return undefined;
+    }
+    return { latitude: lat, longitude: lng };
+  }, [data.address?.latitude, data.address?.longitude]);
+
+  const hasValidCoords =
+    data.address?.latitude != null &&
+    data.address?.longitude != null &&
+    !(data.address.latitude === 0 && data.address.longitude === 0);
 
   useEffect(() => {
     const loadCountries = async () => {
       try {
         const response = await fetcher.get<{ data: Array<{ code: string; name: string }> }>("/api/public/countries");
         const countriesData = response.data || [];
-        
-        // If API returns empty array, use fallback
+
         if (countriesData.length === 0) {
           console.warn("Countries API returned empty array, using fallback");
           setCountries([
@@ -2479,7 +2833,6 @@ function Step7Location({
         }
       } catch (error) {
         console.error("Error loading countries:", error);
-        // Fallback to common countries
         setCountries([
           { code: "ZA", name: "South Africa" },
           { code: "KE", name: "Kenya" },
@@ -2499,196 +2852,296 @@ function Step7Location({
     loadCountries();
   }, []);
 
-  const handleAddressSelect = (addressData: {
-    address_line1: string;
-    city: string;
-    state?: string;
-    postal_code?: string;
-    country: string;
-    latitude: number;
-    longitude: number;
-  }) => {
-    // When Mapbox suggestion is selected we get real lat/long. When user types manually and blurs,
-    // AddressAutocomplete passes 0,0 — treat as "no coordinates" and preserve existing so zone suggestions still work.
-    const hasValidCoords =
-      addressData.latitude != null &&
-      addressData.longitude != null &&
-      !(addressData.latitude === 0 && addressData.longitude === 0);
-    const prev = data.address;
-    updateData({
-      address: {
-        line1: addressData.address_line1,
-        line2: prev?.line2 || undefined,
-        city: addressData.city,
-        state: addressData.state ?? prev?.state ?? "",
-        postal_code: addressData.postal_code ?? prev?.postal_code ?? "",
-        country: addressData.country,
-        latitude: hasValidCoords ? addressData.latitude : (prev?.latitude ?? undefined),
-        longitude: hasValidCoords ? addressData.longitude : (prev?.longitude ?? undefined),
-      },
-    });
-  };
+  const handleAddressSelect = useCallback(
+    (addressData: {
+      address_line1: string;
+      city: string;
+      state?: string;
+      postal_code?: string;
+      country: string;
+      latitude: number;
+      longitude: number;
+      place_name?: string;
+    }) => {
+      const coordsOk =
+        addressData.latitude != null &&
+        addressData.longitude != null &&
+        !(addressData.latitude === 0 && addressData.longitude === 0);
+      const prev = data.address;
+      // DB provider_locations.address_line1 = street line (same as mobile); not full Mapbox place_name.
+      const line1 =
+        (addressData.address_line1 || "").trim() ||
+        (prev?.line1 ?? "").trim() ||
+        (addressData.place_name || "").trim() ||
+        "";
+      updateData({
+        address: {
+          line1,
+          line2: prev?.line2 || undefined,
+          city: addressData.city ?? prev?.city ?? "",
+          state: addressData.state ?? prev?.state ?? "",
+          postal_code: addressData.postal_code ?? prev?.postal_code ?? "",
+          country: addressData.country?.trim() || defaultCountryDisplay,
+          latitude: coordsOk ? addressData.latitude : (prev?.latitude ?? undefined),
+          longitude: coordsOk ? addressData.longitude : (prev?.longitude ?? undefined),
+        },
+      });
+    },
+    [data.address, defaultCountryDisplay, updateData],
+  );
+
+  const onAddressLineTyping = useCallback(
+    (value: string) => {
+      const a = data.address;
+      updateData({
+        address: {
+          line1: value,
+          line2: a?.line2,
+          city: a?.city ?? "",
+          state: a?.state ?? "",
+          postal_code: a?.postal_code ?? "",
+          country: a?.country ?? defaultCountryDisplay,
+          latitude: a?.latitude,
+          longitude: a?.longitude,
+        } as OnboardingData["address"],
+      });
+    },
+    [data.address, defaultCountryDisplay, updateData],
+  );
+
+  const onMapLocationPicked = useCallback(
+    (picked: PickedMapLocation) => {
+      handleAddressSelect({
+        address_line1: picked.address_line1,
+        city: picked.city,
+        state: picked.state,
+        postal_code: picked.postal_code,
+        country: picked.country?.trim() || defaultCountryDisplay,
+        latitude: picked.latitude,
+        longitude: picked.longitude,
+        place_name: picked.place_name,
+      });
+    },
+    [defaultCountryDisplay, handleAddressSelect],
+  );
+
+  const fieldClass =
+    "h-12 sm:h-14 text-base rounded-xl border-slate-200 bg-white focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15";
+  const helper = "text-sm text-slate-700 leading-relaxed";
+  const helperMuted = "text-sm text-slate-600 leading-relaxed";
 
   return (
-    <div className="space-y-6">
-      <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-5 mb-6">
-        <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-            <MapPin className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h4 className="font-semibold text-green-900 mb-2">Business Location</h4>
-            <p className="text-sm text-green-800">
-              {isFreelancer ? (
-                <>
-                  Enter your base address (e.g. home). We use it only for travel distance and fees—clients won't book "Visit Salon" until you add a salon location in Settings.
-                </>
+    <div className="space-y-8">
+      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-emerald-50/40 shadow-sm sm:rounded-3xl">
+        <div className="border-b border-slate-100 bg-white/80 px-4 py-4 sm:rounded-t-3xl sm:px-6 sm:py-5">
+          <div className="flex items-start gap-3 sm:gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <MapPin className="h-5 w-5" aria-hidden />
+            </div>
+            <div className="min-w-0 space-y-2">
+              <h4 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">Business location</h4>
+              {isMobileOnly ? (
+                <p className={helper}>
+                  Enter your <strong className="font-semibold text-slate-900">base address</strong> (often your home).
+                  We use it for travel distance and fees only. Clients won&apos;t get a &quot;Visit salon&quot; option here
+                  until you add a salon-style location in Settings.
+                </p>
+              ) : isSalon ? (
+                <p className={helper}>
+                  Enter your <strong className="font-semibold text-slate-900">salon or studio</strong> where clients
+                  can visit. We also use it for travel math when you offer house calls.
+                </p>
               ) : (
-                <>
-                  Enter your salon or studio address. Clients can book "Visit Salon" at this location. We also use it for travel distance when you offer at-home services.
-                </>
+                <p className={helper}>
+                  Add the address that best represents where you operate from (studio or main base). You can refine
+                  multiple locations later in Settings.
+                </p>
               )}
-            </p>
+              {houseCallOrNoSalonNote ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2.5 sm:px-4">
+                  <p className={`${helperMuted} text-sm`}>
+                    <span className="font-semibold text-slate-800">House calls or no shop yet?</span> Use the address
+                    you travel from (e.g. home). Pick a Mapbox suggestion or drop a pin so we capture coordinates for
+                    zones and fees—you can add a public salon listing later.
+                  </p>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Address Autocomplete - Main field */}
-      <div>
-        <Label htmlFor="address" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
-          Address <span className="text-primary">*</span>
-        </Label>
-        <AddressAutocomplete
-          value={data.address?.line1 || ""}
-          onChange={handleAddressSelect}
-          onInputChange={(value) =>
-            updateData({
-              address: {
-                ...data.address,
-                line1: value,
-              } as OnboardingData["address"],
-            })
-          }
-          placeholder="Start typing your address (e.g., 12 Gary Street, Johannesburg)"
-          country={(() => {
-            const countryName = data.address?.country || "South Africa";
-            const countryObj = countries.find((c) => c.name === countryName);
-            return countryObj?.code || countryName;
-          })()}
-          className="h-12 sm:h-14 text-base"
-          required
-        />
-        <p className="text-xs sm:text-sm text-gray-500 mt-2">
-          💡 Start typing and <strong>select a suggestion</strong> to fill city, state, postal code and map coordinates. Required for service zone suggestions.
-        </p>
-        {data.address?.latitude != null && data.address?.longitude != null && (data.address.latitude !== 0 || data.address.longitude !== 0) && (
-          <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-            <MapPin className="w-3.5 h-3.5" />
-            Location captured: {data.address.latitude.toFixed(5)}, {data.address.longitude.toFixed(5)}
+      <section className="space-y-2 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <Label htmlFor="provider-onboarding-address" className="text-base font-semibold text-slate-900">
+              Street address <span className="text-primary">*</span>
+            </Label>
+            <p className={`${helperMuted} mt-1 max-w-xl`}>
+              Search powered by Mapbox. <strong className="font-medium text-slate-800">Choose a suggestion</strong> so
+              city, area, postal code, and GPS coordinates stay in sync for service zones.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 gap-2 rounded-xl border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100"
+            onClick={() => setMapPickerOpen(true)}
+          >
+            <MapPinned className="h-4 w-4" aria-hidden />
+            Drop pin on map
+          </Button>
+        </div>
+
+        <div className="mt-3">
+          <AddressAutocomplete
+            inputId="provider-onboarding-address"
+            value={data.address?.line1 || ""}
+            onChange={handleAddressSelect}
+            onInputChange={onAddressLineTyping}
+            placeholder="Start typing (e.g. 12 Forest Drive, Sandton)"
+            country={mapboxCountryIso}
+            defaultCountryName={defaultCountryDisplay}
+            proximity={proximity}
+            inputClassName={cn(fieldClass, "h-12 sm:h-14 pl-10")}
+            required
+          />
+        </div>
+
+        {hasValidCoords ? (
+          <p className="mt-2 flex items-center gap-2 text-sm font-medium text-emerald-800">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+              <Check className="h-3.5 w-3.5" aria-hidden />
+            </span>
+            Map coordinates saved — zones and distance can use this point (
+            {data.address!.latitude!.toFixed(5)}, {data.address!.longitude!.toFixed(5)}).
+          </p>
+        ) : (
+          <p className={`${helperMuted} mt-2 rounded-lg border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-amber-950`}>
+            No GPS yet — select a suggestion or use <strong className="font-semibold">Drop pin on map</strong> so the
+            next step can suggest service zones.
           </p>
         )}
-      </div>
+      </section>
 
-      {/* Apartment/Suite - Optional */}
-      <div>
-        <Label htmlFor="address_line2" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
-          Apartment, suite, etc. <span className="text-gray-500 font-normal">(Optional)</span>
+      <LocationMapPickerDialog
+        open={mapPickerOpen}
+        onOpenChange={setMapPickerOpen}
+        initialLongitude={data.address?.longitude}
+        initialLatitude={data.address?.latitude}
+        defaultCountryName={defaultCountryDisplay}
+        onLocationPicked={onMapLocationPicked}
+      />
+
+      <section className="space-y-2">
+        <Label htmlFor="address_line2" className="text-base font-semibold text-slate-900">
+          Apartment, suite, etc. <span className="text-slate-600 text-sm font-normal">(Optional)</span>
         </Label>
+        <p className={helperMuted}>Unit or floor — helps couriers and clients find you.</p>
         <Input
           id="address_line2"
           value={data.address?.line2 || ""}
-          onChange={(e) => updateData({
-            address: {
-              ...data.address,
-              line2: e.target.value || undefined,
-            } as any
-          })}
+          onChange={(e) =>
+            updateData({
+              address: {
+                ...data.address,
+                line2: e.target.value || undefined,
+              } as OnboardingData["address"],
+            })
+          }
           placeholder="Apt 4B, Suite 200, etc."
-          className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
+          className={fieldClass}
         />
-      </div>
+      </section>
 
-      {/* City - Auto-filled from address but can be edited */}
-      <div>
-        <Label htmlFor="city" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
+      <section className="space-y-2">
+        <Label htmlFor="city" className="text-base font-semibold text-slate-900">
           City <span className="text-primary">*</span>
         </Label>
         <Input
           id="city"
           value={data.address?.city || ""}
-          onChange={(e) => updateData({
-            address: {
-              ...data.address,
-              city: e.target.value,
-            } as any
-          })}
-          placeholder="City (e.g., Cape Town)"
-          className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
+          onChange={(e) =>
+            updateData({
+              address: {
+                ...data.address,
+                city: e.target.value,
+              } as OnboardingData["address"],
+            })
+          }
+          placeholder="e.g. Cape Town"
+          className={fieldClass}
           required
         />
-        {data.address?.city && (
-          <p className="text-xs text-green-600 mt-1">✓ Auto-filled from address</p>
-        )}
-      </div>
+        {data.address?.city ? (
+          <p className="text-sm font-medium text-emerald-800">Filled from Mapbox — you can edit if needed.</p>
+        ) : null}
+      </section>
 
-      {/* State/Province and Postal Code - Auto-filled but can be edited */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 md:gap-5">
-        <div>
-          <Label htmlFor="state" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
-            State/Province <span className="text-gray-500 font-normal text-xs">(Optional)</span>
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <section className="space-y-2">
+          <Label htmlFor="state" className="text-base font-semibold text-slate-900">
+            State / province <span className="text-slate-600 text-sm font-normal">(Optional)</span>
           </Label>
           <Input
             id="state"
             value={data.address?.state || ""}
-            onChange={(e) => updateData({
-              address: {
-                ...data.address,
-                state: e.target.value,
-              } as any
-            })}
-            placeholder="State or Province"
-            className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
+            onChange={(e) =>
+              updateData({
+                address: {
+                  ...data.address,
+                  state: e.target.value,
+                } as OnboardingData["address"],
+              })
+            }
+            placeholder="Province or state"
+            className={fieldClass}
           />
-        </div>
-        <div>
-          <Label htmlFor="postal_code" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
-            Postal Code <span className="text-gray-500 font-normal text-xs">(Optional)</span>
+        </section>
+        <section className="space-y-2">
+          <Label htmlFor="postal_code" className="text-base font-semibold text-slate-900">
+            Postal code <span className="text-slate-600 text-sm font-normal">(Optional)</span>
           </Label>
           <Input
             id="postal_code"
             value={data.address?.postal_code || ""}
-            onChange={(e) => updateData({
-              address: {
-                ...data.address,
-                postal_code: e.target.value,
-              } as any
-            })}
-            placeholder="Postal Code"
-            className="h-12 sm:h-14 text-base border-gray-300 focus:border-primary focus:ring-primary rounded-lg"
+            onChange={(e) =>
+              updateData({
+                address: {
+                  ...data.address,
+                  postal_code: e.target.value,
+                } as OnboardingData["address"],
+              })
+            }
+            placeholder="Postal code"
+            className={fieldClass}
           />
-        </div>
+        </section>
       </div>
 
-      {/* Country - Dropdown */}
-      <div>
-        <Label htmlFor="country" className="text-sm sm:text-base font-semibold text-gray-900 mb-2 block">
+      <section className="space-y-2">
+        <Label htmlFor="country" className="text-base font-semibold text-slate-900">
           Country <span className="text-primary">*</span>
         </Label>
+        <p className={helperMuted}>Used to bias search results — change before typing if you operate outside South Africa.</p>
         {isLoadingCountries ? (
-          <div className="h-12 sm:h-14 border border-gray-300 rounded-lg flex items-center justify-center">
-            <p className="text-sm text-gray-500">Loading countries...</p>
+          <div className={cn(fieldClass, "flex items-center justify-center border border-slate-200")}>
+            <p className="text-sm text-slate-600">Loading countries…</p>
           </div>
         ) : (
           <select
             id="country"
             value={data.address?.country || "South Africa"}
-            onChange={(e) => updateData({
-              address: {
-                ...data.address,
-                country: e.target.value,
-              } as any
-            })}
-            className="w-full h-12 sm:h-14 px-4 text-base border border-gray-300 rounded-lg focus:border-primary focus:ring-primary bg-white"
+            onChange={(e) =>
+              updateData({
+                address: {
+                  ...data.address,
+                  country: e.target.value,
+                } as OnboardingData["address"],
+              })
+            }
+            className={cn(fieldClass, "w-full px-4")}
             required
           >
             {countries.map((country) => (
@@ -2698,7 +3151,7 @@ function Step7Location({
             ))}
           </select>
         )}
-      </div>
+      </section>
     </div>
   );
 }
@@ -2776,10 +3229,10 @@ function Step9ServiceZones({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-gray-600">Finding service zones matching your location...</p>
+      <div className="flex items-center justify-center py-14">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-8 py-10 text-center shadow-sm sm:rounded-3xl">
+          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="text-sm font-medium text-slate-800">Finding service zones for your location…</p>
         </div>
       </div>
     );
@@ -2797,32 +3250,34 @@ function Step9ServiceZones({
   }
 
   return (
-    <div className="space-y-4 sm:space-y-5 md:space-y-6">
-      <Alert className="bg-blue-50 border-blue-200">
-        <AlertCircle className="w-4 h-4 text-blue-600" />
-        <AlertDescription className="text-blue-800">
-          <strong>Service zones</strong> define where you can provide at-home services. We've automatically found zones matching your location. You can select or skip this step and configure zones later.
+    <div className="space-y-5 sm:space-y-6">
+      <Alert className="rounded-2xl border-sky-200 bg-sky-50 sm:rounded-3xl">
+        <AlertCircle className="h-4 w-4 text-sky-700" />
+        <AlertDescription className="text-sm leading-relaxed text-sky-950">
+          <strong className="text-sky-950">Service zones</strong> define where you offer at-home services. We&apos;ve
+          suggested zones near your address. You can adjust this now or finish later in Settings.
         </AlertDescription>
       </Alert>
 
       {suggestedZones.length === 0 ? (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-yellow-800 text-sm">
-            No service zones found for your location. You can configure zones later in Settings &gt; Service Zones.
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm sm:rounded-3xl sm:p-5">
+          <p className="text-sm font-medium text-amber-950">
+            No zones matched this address yet. You can add service zones later under Settings → Service Zones.
           </p>
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
-              Found <strong>{suggestedZones.length}</strong> zone{suggestedZones.length !== 1 ? 's' : ''} matching your location
+          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:flex-row sm:items-center sm:justify-between sm:rounded-3xl sm:p-5">
+            <p className="text-sm text-slate-800">
+              Found <strong className="font-semibold text-slate-900">{suggestedZones.length}</strong> zone
+              {suggestedZones.length !== 1 ? "s" : ""} near you
             </p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={selectAll}>
-                Select All
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" className="rounded-xl" onClick={selectAll}>
+                Select all
               </Button>
-              <Button variant="outline" size="sm" onClick={deselectAll}>
-                Deselect All
+              <Button variant="outline" size="sm" className="rounded-xl" onClick={deselectAll}>
+                Deselect all
               </Button>
             </div>
           </div>
@@ -2831,33 +3286,44 @@ function Step9ServiceZones({
             {suggestedZones.map((zone) => (
               <div
                 key={zone.id}
-                className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    toggleZone(zone.id);
+                  }
+                }}
+                className={`cursor-pointer rounded-2xl border-2 p-4 transition-all sm:rounded-3xl sm:p-5 ${
                   selectedZoneIds.includes(zone.id)
-                    ? "border-primary bg-primary/5"
-                    : "border-gray-200 hover:border-gray-300"
+                    ? "border-primary bg-primary/[0.07] shadow-sm ring-1 ring-primary/15"
+                    : "border-slate-200 bg-white hover:border-slate-300"
                 }`}
                 onClick={() => toggleZone(zone.id)}
               >
                 <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
                       <input
                         type="checkbox"
                         checked={selectedZoneIds.includes(zone.id)}
                         onChange={() => toggleZone(zone.id)}
-                        className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
+                        className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                        aria-label={`Select ${zone.name}`}
                       />
-                      <h3 className="font-semibold text-lg">{zone.name}</h3>
-                      <span className="text-xs px-2 py-1 bg-gray-100 rounded">
-                        {zone.zone_type === "postal_code" ? "Postal Code" :
-                         zone.zone_type === "city" ? "City" :
-                         zone.zone_type === "radius" ? "Radius" : "Polygon"}
+                      <h3 className="text-lg font-semibold text-slate-900">{zone.name}</h3>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
+                        {zone.zone_type === "postal_code"
+                          ? "Postal code"
+                          : zone.zone_type === "city"
+                            ? "City"
+                            : zone.zone_type === "radius"
+                              ? "Radius"
+                              : "Polygon"}
                       </span>
                     </div>
-                    <p className="text-sm text-blue-700 mb-1">{zone.match_reason}</p>
-                    <p className="text-xs text-gray-600">
-                      You can set custom travel fees for each zone after onboarding.
-                    </p>
+                    <p className="mb-1 text-sm font-medium text-sky-800">{zone.match_reason}</p>
+                    <p className="text-xs text-slate-600">Travel fees per zone can be customized after onboarding.</p>
                   </div>
                 </div>
               </div>
@@ -2865,10 +3331,10 @@ function Step9ServiceZones({
           </div>
 
           {selectedZoneIds.length > 0 && (
-            <div className="mt-4 p-4 bg-primary/5 rounded-lg border border-primary/20">
-              <p className="text-sm text-primary">
-                <span className="font-medium">{selectedZoneIds.length}</span> zone{selectedZoneIds.length !== 1 ? 's' : ''} selected. 
-                You'll be able to set travel fees and pricing for each zone after completing onboarding.
+            <div className="rounded-2xl border border-primary/25 bg-primary/[0.06] p-4 sm:rounded-3xl sm:p-5">
+              <p className="text-sm font-medium text-slate-900">
+                <span className="text-primary">{selectedZoneIds.length}</span> zone
+                {selectedZoneIds.length !== 1 ? "s" : ""} selected — set travel fees anytime after signup.
               </p>
             </div>
           )}
@@ -2948,10 +3414,10 @@ function Step10GlobalCategories({
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading categories...</p>
+      <div className="flex items-center justify-center py-14">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/80 px-8 py-10 text-center shadow-sm sm:rounded-3xl">
+          <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="text-sm font-medium text-slate-800">Loading categories…</p>
         </div>
       </div>
     );
@@ -2959,13 +3425,9 @@ function Step10GlobalCategories({
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800 text-sm">{error}</p>
-        <Button
-          onClick={() => window.location.reload()}
-          variant="outline"
-          className="mt-4"
-        >
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm sm:rounded-3xl">
+        <p className="text-sm font-medium text-red-950">{error}</p>
+        <Button onClick={() => window.location.reload()} variant="outline" className="mt-4 rounded-xl">
           Retry
         </Button>
       </div>
@@ -2973,57 +3435,63 @@ function Step10GlobalCategories({
   }
 
   return (
-    <div className="space-y-4 sm:space-y-5 md:space-y-6">
-      <Alert className="bg-blue-50 border-blue-200">
-        <Sparkles className="w-4 h-4 text-blue-600" />
-        <AlertDescription className="text-blue-800">
-          <strong>Smart Setup:</strong> These categories help customers find you. 
+    <div className="space-y-5 sm:space-y-6">
+      <Alert className="rounded-2xl border-indigo-200 bg-indigo-50 sm:rounded-3xl">
+        <Sparkles className="h-4 w-4 text-indigo-700" />
+        <AlertDescription className="text-sm leading-relaxed text-indigo-950">
+          <strong className="text-indigo-950">Tip:</strong> Categories help clients discover you in search and filters.
           {(!data.services || data.services.length === 0) && (
-            <span> If you skip adding services, we'll automatically generate basic services based on your selected categories!</span>
+            <span> If you skip services for now, we can draft simple services from the categories you pick.</span>
           )}
         </AlertDescription>
       </Alert>
       {globalCategories.length === 0 ? (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-yellow-800 text-sm">
-            No categories available. Please contact support.
-          </p>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:rounded-3xl sm:p-5">
+          <p className="text-sm font-medium text-amber-950">No categories available. Please contact support.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
           {globalCategories.map((category) => (
             <button
               key={category.id}
+              type="button"
               onClick={() => toggleCategory(category.id)}
-              className={`p-4 border rounded-lg text-left transition-colors ${
+              className={`rounded-2xl border-2 p-4 text-left shadow-sm transition-all sm:rounded-3xl sm:p-5 ${
                 data.global_category_ids?.includes(category.id)
-                  ? "border-primary bg-primary/5 text-primary"
-                  : "border-gray-300 hover:border-gray-400"
+                  ? "border-primary bg-primary/[0.07] ring-1 ring-primary/20"
+                  : "border-slate-200 bg-white hover:border-slate-300"
               }`}
             >
-              <div className="flex items-center gap-3 mb-2">
-                {category.icon && (
-                  <span className="text-2xl">{category.icon}</span>
-                )}
-                <span className="font-medium">{category.name}</span>
+              <div className="mb-2 flex items-center gap-3">
+                <GlobalCategoryIcon
+                  icon={category.icon || "Tag"}
+                  size={28}
+                  strokeWidth={1.75}
+                  isActive={Boolean(data.global_category_ids?.includes(category.id))}
+                  className={
+                    data.global_category_ids?.includes(category.id) ? "text-primary" : "text-slate-600"
+                  }
+                />
+                <span
+                  className={`font-semibold ${
+                    data.global_category_ids?.includes(category.id) ? "text-primary" : "text-slate-900"
+                  }`}
+                >
+                  {category.name}
+                </span>
               </div>
               {category.description && (
-                <p className="text-xs text-gray-600 mt-1 line-clamp-2">
-                  {category.description}
-                </p>
+                <p className="line-clamp-2 text-xs leading-relaxed text-slate-600">{category.description}</p>
               )}
             </button>
           ))}
         </div>
       )}
       {data.global_category_ids && data.global_category_ids.length > 0 && (
-        <div className="mt-4 p-4 bg-primary/5 rounded-lg border border-primary/20">
-          <p className="text-sm text-primary">
-            <span className="font-medium">
-              {data.global_category_ids.length}
-            </span>{" "}
-            categor{data.global_category_ids.length === 1 ? "y" : "ies"}{" "}
-            selected
+        <div className="rounded-2xl border border-primary/25 bg-primary/[0.06] p-4 sm:rounded-3xl sm:p-5">
+          <p className="text-sm font-medium text-slate-900">
+            <span className="text-primary">{data.global_category_ids.length}</span>{" "}
+            {data.global_category_ids.length === 1 ? "category" : "categories"} selected
           </p>
         </div>
       )}
@@ -3038,6 +3506,8 @@ function Step11ServiceCatalog({
   data: Partial<OnboardingData>;
   updateData: (updates: Partial<OnboardingData>) => void;
 }) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [services, setServices] = useState<Service[]>(data.services || []);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -3046,7 +3516,7 @@ function Step11ServiceCatalog({
     description: "",
     duration_minutes: 60,
     price: 0,
-    currency: "ZAR",
+    currency: tenantCurrency,
     supports_at_home: false,
     supports_at_salon: true,
     addons: [],
@@ -3076,7 +3546,7 @@ function Step11ServiceCatalog({
       description: "",
       duration_minutes: 60,
       price: 0,
-      currency: "ZAR",
+      currency: tenantCurrency,
       supports_at_home: false,
       supports_at_salon: true,
       addons: [],
@@ -3097,28 +3567,24 @@ function Step11ServiceCatalog({
   };
 
   return (
-    <div className="space-y-4 sm:space-y-5 md:space-y-6">
-      <Alert>
-        <AlertCircle className="w-4 h-4" />
-        <AlertDescription>
-          Add your actual services with prices and durations. Customers will see these when booking. You can add more later.
+    <div className="space-y-5 sm:space-y-6">
+      <Alert className="rounded-2xl border-slate-200 bg-slate-50 sm:rounded-3xl">
+        <AlertCircle className="h-4 w-4 text-slate-700" />
+        <AlertDescription className="text-sm leading-relaxed text-slate-800">
+          Add the services you sell today with price and duration. Clients see these on your booking page; you can refine
+          them anytime after onboarding.
         </AlertDescription>
       </Alert>
 
       {services.length > 0 && (
-        <div className="space-y-3 sm:space-y-4">
+        <div className="space-y-4">
           {services.map((service, index) => (
-            <div
-              key={index}
-              className="p-4 border rounded-lg space-y-3"
-            >
+            <div key={index} className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:rounded-3xl sm:p-5">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <h4 className="font-medium">{service.title}</h4>
-                  {service.description && (
-                    <p className="text-sm text-gray-600 mt-1">{service.description}</p>
-                  )}
-                  <div className="flex gap-4 mt-2 text-sm text-gray-600">
+                  <h4 className="font-semibold text-slate-900">{service.title}</h4>
+                  {service.description && <p className="mt-1 text-sm text-slate-600">{service.description}</p>}
+                  <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-700">
                     <span>{service.duration_minutes} mins</span>
                     <span>{service.currency} {service.price}</span>
                     <span>
@@ -3132,6 +3598,7 @@ function Step11ServiceCatalog({
                   <Button
                     variant="outline"
                     size="sm"
+                    className={ONBOARDING_SOFT_SECONDARY_BTN}
                     onClick={() => handleEditService(index)}
                   >
                     Edit
@@ -3139,7 +3606,9 @@ function Step11ServiceCatalog({
                   <Button
                     variant="outline"
                     size="sm"
+                    className={`${ONBOARDING_SOFT_SECONDARY_BTN} hover:border-red-200 hover:bg-red-50 hover:text-red-800`}
                     onClick={() => handleDeleteService(index)}
+                    aria-label="Remove service"
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
@@ -3147,10 +3616,10 @@ function Step11ServiceCatalog({
               </div>
               {/* Addons Section */}
               {service.addons && service.addons.length > 0 && (
-                <div className="pl-4 border-l-2 border-primary/20 space-y-2">
-                  <p className="text-xs font-medium text-gray-500">Add-ons:</p>
+                <div className="space-y-2 border-l-2 border-primary/25 pl-4">
+                  <p className="text-xs font-semibold text-slate-600">Add-ons</p>
                   {service.addons.map((addon, addonIndex) => (
-                    <div key={addonIndex} className="text-sm text-gray-600 flex items-center justify-between">
+                    <div key={addonIndex} className="flex items-center justify-between text-sm text-slate-700">
                       <span>{addon.name} {addon.duration_minutes ? `(+${addon.duration_minutes} mins)` : ""}</span>
                       <span className="font-medium">{addon.currency} {addon.price}</span>
                     </div>
@@ -3163,9 +3632,9 @@ function Step11ServiceCatalog({
       )}
 
       {showAddForm ? (
-        <div className="p-4 border rounded-lg bg-gray-50">
-          <h4 className="font-medium mb-4">
-            {editingIndex !== null ? "Edit Service" : "Add Service"}
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/90 p-4 sm:rounded-3xl sm:p-6">
+          <h4 className="mb-4 text-lg font-semibold text-slate-900">
+            {editingIndex !== null ? "Edit service" : "Add service"}
           </h4>
           <div className="space-y-4">
             <div>
@@ -3268,13 +3737,13 @@ function Step11ServiceCatalog({
                 <Label htmlFor="service_currency">Currency</Label>
                 <select
                   id="service_currency"
-                  value={formService.currency || "ZAR"}
+                  value={formService.currency || tenantCurrency}
                   onChange={(e) =>
                     setFormService({ ...formService, currency: e.target.value })
                   }
                   className="w-full p-2 border rounded-md"
                 >
-                  <option value="ZAR">ZAR</option>
+                  <option value={LAST_RESORT_CURRENCY}>{currencySelectLabel(LAST_RESORT_CURRENCY)}</option>
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
                 </select>
@@ -3306,7 +3775,7 @@ function Step11ServiceCatalog({
             {/* Addons Section */}
             <ServiceAddonsManager
               addons={formService.addons || []}
-              currency={formService.currency || "ZAR"}
+              currency={formService.currency || tenantCurrency}
               onAddonsChange={(addons) => setFormService({ ...formService, addons })}
             />
 
@@ -3319,6 +3788,7 @@ function Step11ServiceCatalog({
               </Button>
               <Button
                 variant="outline"
+                className={ONBOARDING_SOFT_SECONDARY_BTN}
                 onClick={() => {
                   setShowAddForm(false);
                   setEditingIndex(null);
@@ -3327,7 +3797,7 @@ function Step11ServiceCatalog({
                     description: "",
                     duration_minutes: 60,
                     price: 0,
-                    currency: "ZAR",
+                    currency: tenantCurrency,
                     supports_at_home: false,
                     supports_at_salon: true,
                     addons: [],
@@ -3461,6 +3931,7 @@ function ServiceAddonsManager({
                   type="button"
                   variant="outline"
                   size="sm"
+                  className={ONBOARDING_SOFT_SECONDARY_BTN}
                   onClick={() => handleEditAddon(index)}
                 >
                   Edit
@@ -3469,7 +3940,9 @@ function ServiceAddonsManager({
                   type="button"
                   variant="outline"
                   size="sm"
+                  className={`${ONBOARDING_SOFT_SECONDARY_BTN} hover:border-red-200 hover:bg-red-50 hover:text-red-800`}
                   onClick={() => handleDeleteAddon(index)}
+                  aria-label="Remove add-on"
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>
@@ -3536,7 +4009,7 @@ function ServiceAddonsManager({
                   }
                   className="w-full p-2 border rounded-md text-sm"
                 >
-                  <option value="ZAR">ZAR</option>
+                  <option value={LAST_RESORT_CURRENCY}>{currencySelectLabel(LAST_RESORT_CURRENCY)}</option>
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
                 </select>
@@ -3572,6 +4045,7 @@ function ServiceAddonsManager({
                 type="button"
                 variant="outline"
                 size="sm"
+                className={ONBOARDING_SOFT_SECONDARY_BTN}
                 onClick={() => {
                   setShowAddForm(false);
                   setEditingIndex(null);
@@ -3645,19 +4119,27 @@ function Step12Hours({
   }, [isFreelancer]);
 
   return (
-    <div className="space-y-3 sm:space-y-4">
-      <Alert className={isFreelancer ? "bg-green-50 border-green-200" : ""}>
-        <AlertCircle className={`w-4 h-4 ${isFreelancer ? "text-green-600" : ""}`} />
-        <AlertDescription className={isFreelancer ? "text-green-800" : ""}>
+    <div className="space-y-4 sm:space-y-5">
+      <Alert
+        className={
+          isFreelancer
+            ? "rounded-2xl border-emerald-200 bg-emerald-50 sm:rounded-3xl"
+            : "rounded-2xl border-slate-200 bg-slate-50 sm:rounded-3xl"
+        }
+      >
+        <AlertCircle className={`h-4 w-4 ${isFreelancer ? "text-emerald-700" : "text-slate-600"}`} />
+        <AlertDescription
+          className={`text-sm leading-relaxed ${isFreelancer ? "text-emerald-950" : "text-slate-800"}`}
+        >
           {isFreelancer ? (
             <span>
-              <strong>Freelancer Hours:</strong> We've set flexible hours (8 AM - 8 PM weekdays) perfect for mobile services. 
-              Adjust as needed - you can change these anytime!
+              <strong className="text-emerald-950">Freelancer hours:</strong> We started you on broad weekday hours (8:00–20:00);
+              tweak them to match how you actually work. You can change this anytime in Settings.
             </span>
           ) : (
             <span>
-              Set your operating hours. Customers will only be able to book during these times. 
-              You can adjust hours later in Settings.
+              <strong className="text-slate-900">Booking window:</strong> Clients only see slots inside these hours. Adjust
+              now or later under Settings.
             </span>
           )}
         </AlertDescription>
@@ -3665,8 +4147,11 @@ function Step12Hours({
       {days.map((day) => {
         const dayHours = data.operating_hours?.[day.key as keyof typeof data.operating_hours];
         return (
-          <div key={day.key} className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 border rounded-lg">
-            <div className="w-full sm:w-24 font-medium text-sm sm:text-base">{day.label}</div>
+          <div
+            key={day.key}
+            className="flex flex-col items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:gap-4 sm:rounded-3xl sm:p-4"
+          >
+            <div className="w-full text-sm font-semibold text-slate-900 sm:w-28 sm:text-base">{day.label}</div>
             <label className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -3701,101 +4186,102 @@ function Step12Hours({
 
 function Step13Review({ data }: { data: Partial<OnboardingData> }) {
   return (
-    <div className="space-y-4 sm:space-y-5 md:space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       <div>
-        <h3 className="font-semibold mb-2 text-base sm:text-lg">Business Information</h3>
-        <div className="bg-gray-50 p-3 sm:p-4 rounded-lg space-y-2 text-sm">
+        <h3 className={ONBOARDING_REVIEW_HEADING}>Business information</h3>
+        <div className={`${ONBOARDING_REVIEW_CARD} space-y-2`}>
           <p>
-            <span className="font-medium">Name:</span> {data.business_name}
+            <span className="font-semibold text-slate-900">Name:</span> {data.business_name}
           </p>
           <p>
-            <span className="font-medium">Type:</span> {data.business_type}
+            <span className="font-semibold text-slate-900">Type:</span> {data.business_type}
           </p>
           <p>
-            <span className="font-medium">Phone:</span> {data.phone}
+            <span className="font-semibold text-slate-900">Phone:</span> {data.phone}
           </p>
           <p>
-            <span className="font-medium">Email:</span> {data.email}
+            <span className="font-semibold text-slate-900">Email:</span> {data.email}
           </p>
           {data.previous_software && (
             <p>
-              <span className="font-medium">Previous Software:</span>{" "}
-              {data.previous_software === "other" 
+              <span className="font-semibold text-slate-900">Previous software:</span>{" "}
+              {data.previous_software === "other"
                 ? data.previous_software_other || "Other"
                 : data.previous_software === "none"
-                ? "None / First time using salon software"
-                : data.previous_software.charAt(0).toUpperCase() + data.previous_software.slice(1).replace(/_/g, " ")
-              }
+                  ? "None / first time using salon software"
+                  : data.previous_software.charAt(0).toUpperCase() + data.previous_software.slice(1).replace(/_/g, " ")}
             </p>
           )}
         </div>
       </div>
       {data.description && (
         <div>
-          <h3 className="font-semibold mb-2 text-base sm:text-lg">Business Description</h3>
-          <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
-            <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-              {data.description}
-            </p>
-            <p className="text-xs text-gray-500 mt-2">
+          <h3 className={ONBOARDING_REVIEW_HEADING}>Business description</h3>
+          <div className={ONBOARDING_REVIEW_CARD}>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">{data.description}</p>
+            <p className="mt-3 text-xs text-slate-600">
               {data.description.length} characters
               {data.description.length >= 50 && (
-                <span className="text-green-600 ml-2">✓ Good length</span>
+                <span className="ml-2 font-medium text-emerald-700">Good length</span>
               )}
             </p>
           </div>
         </div>
       )}
       <div>
-        <h3 className="font-semibold mb-2 text-base sm:text-lg">Location</h3>
-        <div className="bg-gray-50 p-3 sm:p-4 rounded-lg text-sm">
-          {data.address?.line1}, {data.address?.city}, {data.address?.state}{" "}
-          {data.address?.postal_code}
+        <h3 className={ONBOARDING_REVIEW_HEADING}>Location</h3>
+        <div className={ONBOARDING_REVIEW_CARD}>
+          <p className="text-slate-800">
+            {data.address?.line1}, {data.address?.city}, {data.address?.state} {data.address?.postal_code}
+          </p>
           {data.address?.latitude && data.address?.longitude && (
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="mt-2 text-xs text-slate-600">
               Coordinates: {data.address.latitude.toFixed(6)}, {data.address.longitude.toFixed(6)}
             </p>
           )}
         </div>
       </div>
-      {(data.business_type === "mobile" || data.business_type === "both") && data.selected_zone_ids && data.selected_zone_ids.length > 0 && (
-        <div>
-          <h3 className="font-semibold mb-2 text-base sm:text-lg">Service Zones</h3>
-          <div className="bg-blue-50 p-3 sm:p-4 rounded-lg border border-blue-200">
-            <p className="text-sm text-blue-800">
-              <span className="font-medium">{data.selected_zone_ids.length}</span> zone{data.selected_zone_ids.length !== 1 ? "s" : ""} selected for at-home services
-            </p>
-            <p className="text-xs text-blue-600 mt-1">
-              ✓ Travel fees will be set to platform defaults. You can customize pricing after onboarding.
-            </p>
+      {(data.business_type === "mobile" || data.business_type === "both") &&
+        data.selected_zone_ids &&
+        data.selected_zone_ids.length > 0 && (
+          <div>
+            <h3 className={ONBOARDING_REVIEW_HEADING}>Service zones</h3>
+            <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 sm:rounded-3xl sm:p-5">
+              <p className="text-sm font-medium text-sky-950">
+                <span className="font-semibold">{data.selected_zone_ids.length}</span> zone
+                {data.selected_zone_ids.length !== 1 ? "s" : ""} selected for at-home services
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-sky-900">
+                Travel fees start at platform defaults; you can customize after onboarding.
+              </p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
       <div>
-        <h3 className="font-semibold mb-2 text-base sm:text-lg">Service Categories</h3>
-        <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
+        <h3 className={ONBOARDING_REVIEW_HEADING}>Service categories</h3>
+        <div className={ONBOARDING_REVIEW_CARD}>
           {data.global_category_ids && data.global_category_ids.length > 0 ? (
-            <p className="text-sm text-gray-600">
-              {data.global_category_ids.length} categor
-              {data.global_category_ids.length === 1 ? "y" : "ies"} selected
+            <p className="text-slate-800">
+              {data.global_category_ids.length} {data.global_category_ids.length === 1 ? "category" : "categories"}{" "}
+              selected
             </p>
           ) : (
-            <p className="text-sm text-gray-500">No categories selected</p>
+            <p className="text-slate-600">No categories selected</p>
           )}
         </div>
       </div>
       {(data.selected_plan_id || data.selected_plan_name) && (
         <div>
-          <h3 className="font-semibold mb-2 text-base sm:text-lg">Subscription plan</h3>
-          <div className="bg-primary/5 border border-primary/20 p-3 sm:p-4 rounded-lg">
-            <p className="text-sm text-gray-800">
+          <h3 className={ONBOARDING_REVIEW_HEADING}>Subscription plan</h3>
+          <div className="rounded-2xl border border-primary/30 bg-primary/[0.07] p-4 sm:rounded-3xl sm:p-5">
+            <p className="text-sm text-slate-900">
               {data.selected_plan_name ? (
-                <span className="font-medium">{data.selected_plan_name}</span>
+                <span className="font-semibold">{data.selected_plan_name}</span>
               ) : (
-                <span className="font-medium">Plan selected</span>
+                <span className="font-semibold">Plan selected</span>
               )}
               {data.selected_plan_id && !data.selected_plan_name && (
-                <span className="text-gray-500 ml-1">(you&apos;ll choose your plan on the next step)</span>
+                <span className="ml-1 text-slate-600">(confirm on the next step)</span>
               )}
             </p>
           </div>
@@ -3803,25 +4289,25 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
       )}
       {data.services && data.services.length > 0 ? (
         <div>
-          <h3 className="font-semibold mb-2 text-base sm:text-lg">Services ({data.services.length})</h3>
-          <div className="bg-gray-50 p-3 sm:p-4 rounded-lg space-y-3 sm:space-y-4">
+          <h3 className={ONBOARDING_REVIEW_HEADING}>Services ({data.services.length})</h3>
+          <div className={`${ONBOARDING_REVIEW_CARD} space-y-4`}>
             {data.services.map((service, index) => (
-              <div key={index} className="border-b border-gray-200 last:border-0 pb-3 last:pb-0">
+              <div key={index} className="border-b border-slate-200 pb-4 last:border-0 last:pb-0">
                 <div className="text-sm">
-                  <div className="mb-1">
-                    <span className="font-medium">{service.title}</span> - {service.duration_minutes} mins - {service.currency} {service.price}
+                  <div className="mb-1 font-medium text-slate-900">
+                    {service.title} — {service.duration_minutes} min — {service.currency} {service.price}
                   </div>
                   {service.description && (
-                    <div className="mt-2 pl-2 border-l-2 border-primary/20">
-                      <p className="text-xs text-gray-600 italic">"{service.description}"</p>
+                    <div className="mt-2 border-l-2 border-primary/30 pl-3">
+                      <p className="text-xs italic text-slate-700">&ldquo;{service.description}&rdquo;</p>
                     </div>
                   )}
                   {service.addons && service.addons.length > 0 && (
-                    <div className="mt-2 pl-4 border-l-2 border-gray-300 space-y-1">
+                    <div className="mt-2 space-y-1 border-l-2 border-slate-200 pl-4">
                       {service.addons.map((addon, addonIndex) => (
-                        <div key={addonIndex} className="text-xs text-gray-600">
-                          + {addon.name} - {addon.currency} {addon.price}
-                          {addon.duration_minutes && addon.duration_minutes > 0 && ` (+${addon.duration_minutes} mins)`}
+                        <div key={addonIndex} className="text-xs text-slate-700">
+                          + {addon.name} — {addon.currency} {addon.price}
+                          {addon.duration_minutes && addon.duration_minutes > 0 && ` (+${addon.duration_minutes} min)`}
                         </div>
                       ))}
                     </div>
@@ -3833,48 +4319,50 @@ function Step13Review({ data }: { data: Partial<OnboardingData> }) {
         </div>
       ) : (
         <div>
-          <h3 className="font-semibold mb-2 text-base sm:text-lg">Services</h3>
-          <div className="bg-yellow-50 p-3 sm:p-4 rounded-lg border border-yellow-200">
-            <p className="text-sm text-yellow-800">
-              <span className="font-medium">Auto-generation enabled:</span> We'll create basic services based on your selected categories. You can add more services after onboarding.
+          <h3 className={ONBOARDING_REVIEW_HEADING}>Services</h3>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:rounded-3xl sm:p-5">
+            <p className="text-sm font-medium text-amber-950">
+              <span className="font-semibold">Draft services:</span> We can create starter services from your categories
+              after you submit. You can edit them anytime.
             </p>
           </div>
         </div>
       )}
       <div>
-        <h3 className="font-semibold mb-2 text-base sm:text-lg">Operating Hours</h3>
-        <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
+        <h3 className={ONBOARDING_REVIEW_HEADING}>Operating hours</h3>
+        <div className={ONBOARDING_REVIEW_CARD}>
           {data.operating_hours && Object.keys(data.operating_hours).length > 0 ? (
-            <div className="space-y-1 text-sm">
+            <div className="space-y-2 text-sm">
               {Object.entries(data.operating_hours).map(([day, hours]: [string, any]) => (
-                <div key={day} className="flex justify-between">
-                  <span className="capitalize font-medium">{day}:</span>
-                  <span className="text-gray-600">
-                    {hours.closed ? "Closed" : `${hours.open} - ${hours.close}`}
+                <div key={day} className="flex justify-between gap-4 border-b border-slate-100 py-1 last:border-0">
+                  <span className="capitalize font-semibold text-slate-900">{day}</span>
+                  <span className="text-slate-700">
+                    {hours.closed ? "Closed" : `${hours.open} – ${hours.close}`}
                   </span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-500">Default hours will be set</p>
+            <p className="text-slate-600">Default hours will be applied</p>
           )}
         </div>
       </div>
-      <Alert className="bg-green-50 border-green-200">
-        <Check className="w-4 h-4 text-green-600" />
-        <AlertDescription className="text-green-800">
-          <strong>Almost done!</strong> After submission, we'll automatically configure:
-          <ul className="list-disc list-inside mt-2 space-y-1 text-sm">
-            {data.business_type === "mobile" && (
-              <li>Mark you as mobile-ready staff</li>
-            )}
+      <Alert className="rounded-2xl border-emerald-200 bg-emerald-50 sm:rounded-3xl">
+        <Check className="h-4 w-4 text-emerald-700" />
+        <AlertDescription className="text-sm leading-relaxed text-emerald-950">
+          <strong className="text-emerald-950">Almost done.</strong> After you submit, we will:
+          <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-emerald-950/95">
+            {data.business_type === "mobile" && <li>Mark you as mobile-ready where applicable</li>}
             {data.selected_zone_ids && data.selected_zone_ids.length > 0 && (
-              <li>Set up {data.selected_zone_ids.length} service zone{data.selected_zone_ids.length !== 1 ? "s" : ""} with default pricing</li>
+              <li>
+                Attach {data.selected_zone_ids.length} service zone{data.selected_zone_ids.length !== 1 ? "s" : ""} with
+                default travel settings
+              </li>
             )}
-            {(!data.services || data.services.length === 0) && data.global_category_ids && data.global_category_ids.length > 0 && (
-              <li>Generate basic services based on your categories</li>
-            )}
-            <li>Create your provider profile and location</li>
+            {(!data.services || data.services.length === 0) &&
+              data.global_category_ids &&
+              data.global_category_ids.length > 0 && <li>Draft basic services from your categories</li>}
+            <li>Create your provider profile and primary location</li>
           </ul>
         </AlertDescription>
       </Alert>
@@ -3924,11 +4412,20 @@ function Step14PlanSelection({
     loadPlans();
   }, []);
 
+  /** Default to first catalog plan (display_order: Starter free) when none selected */
+  useEffect(() => {
+    if (pricingPlans.length === 0) return;
+    if (data.selected_plan_id?.trim()) return;
+    updateData({ selected_plan_id: pricingPlans[0].id });
+  }, [pricingPlans, data.selected_plan_id, updateData]);
+
   if (isLoadingPlans) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        <span className="ml-3 text-gray-600">Loading plans...</span>
+      <div className="flex items-center justify-center py-14">
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50/90 px-6 py-5 shadow-sm sm:rounded-3xl">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden />
+          <span className="text-sm font-medium text-slate-800">Loading plans…</span>
+        </div>
       </div>
     );
   }
@@ -3947,73 +4444,75 @@ function Step14PlanSelection({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="text-center mb-8">
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">
-          Choose Your Plan
-        </h3>
-        <p className="text-base text-gray-600">
-          Select a subscription plan to get started. All plans include a 14-day free trial.
+    <div className="space-y-8">
+      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 text-center shadow-sm sm:rounded-3xl sm:p-8">
+        <h3 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Choose your plan</h3>
+        <p className="mx-auto mt-3 max-w-xl text-base leading-relaxed text-slate-600">
+          Beautonomi Starter is free and includes online booking, Yoco, and calendar sync. Upgrade anytime for SMS, WhatsApp, and higher limits.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-6">
         {pricingPlans.map((plan) => {
           const isSelected = data.selected_plan_id === plan.id;
           return (
             <div
               key={plan.id}
+              role="button"
+              tabIndex={0}
               onClick={() => updateData({ selected_plan_id: plan.id })}
-              className={`relative rounded-2xl border-2 p-6 cursor-pointer transition-all ${
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  updateData({ selected_plan_id: plan.id });
+                }
+              }}
+              className={`relative cursor-pointer rounded-2xl border-2 p-6 shadow-sm transition-all sm:rounded-3xl sm:p-7 ${
                 isSelected
-                  ? "border-primary shadow-xl bg-primary/5"
+                  ? "border-primary bg-primary/[0.06] shadow-lg ring-2 ring-primary/20"
                   : plan.is_popular
-                  ? "border-gray-300 shadow-lg hover:border-primary/50"
-                  : "border-gray-200 hover:border-gray-300"
+                    ? "border-slate-300 bg-white hover:border-primary/40"
+                    : "border-slate-200 bg-white hover:border-slate-300"
               }`}
             >
               {plan.is_popular && (
-                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                  <span className="bg-primary text-white px-3 py-1 rounded-full text-xs font-semibold">
-                    Most Popular
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 transform">
+                  <span className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-white shadow-sm">
+                    Most popular
                   </span>
                 </div>
               )}
-              
-              <div className="text-center mb-6">
-                <h4 className="text-xl font-bold text-gray-900 mb-2">{plan.name}</h4>
-                <div className="flex items-baseline justify-center gap-1 mb-2">
-                  <span className="text-3xl font-bold text-gray-900">{plan.price}</span>
-                  {plan.period && (
-                    <span className="text-gray-600 text-sm">{plan.period}</span>
-                  )}
+
+              <div className="mb-6 text-center">
+                <h4 className="mb-2 text-xl font-bold text-slate-900">{plan.name}</h4>
+                <div className="mb-2 flex items-baseline justify-center gap-1">
+                  <span className="text-3xl font-bold text-slate-900">{plan.price}</span>
+                  {plan.period && <span className="text-sm text-slate-600">{plan.period}</span>}
                 </div>
-                {plan.description && (
-                  <p className="text-sm text-gray-600">{plan.description}</p>
-                )}
+                {plan.description && <p className="text-sm text-slate-600">{plan.description}</p>}
               </div>
 
-              <ul className="space-y-3 mb-6">
+              <ul className="mb-6 space-y-3">
                 {plan.features.map((feature, index) => (
                   <li key={index} className="flex items-start gap-2">
-                    <Check className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
-                    <span className="text-sm text-gray-700">{feature}</span>
+                    <Check className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
+                    <span className="text-sm text-slate-800">{feature}</span>
                   </li>
                 ))}
               </ul>
 
-              <div className={`w-full h-10 rounded-full flex items-center justify-center ${
-                isSelected
-                  ? "bg-primary text-white"
-                  : "bg-gray-100 text-gray-600"
-              }`}>
+              <div
+                className={`flex h-11 w-full items-center justify-center rounded-2xl ${
+                  isSelected ? "bg-primary text-white" : "bg-slate-100 text-slate-700"
+                }`}
+              >
                 {isSelected ? (
                   <div className="flex items-center gap-2">
-                    <Check className="w-5 h-5" />
+                    <Check className="h-5 w-5" aria-hidden />
                     <span className="font-semibold">Selected</span>
                   </div>
                 ) : (
-                  <span className="font-semibold">Select Plan</span>
+                  <span className="font-semibold">Select plan</span>
                 )}
               </div>
             </div>
@@ -4022,10 +4521,11 @@ function Step14PlanSelection({
       </div>
 
       {data.selected_plan_id && (
-        <Alert className="bg-green-50 border-green-200 mt-6">
-          <Check className="w-4 h-4 text-green-600" />
-          <AlertDescription className="text-green-800">
-            <strong>Plan selected!</strong> After you submit, you'll be assigned to this plan and can start your 14-day free trial.
+        <Alert className="rounded-2xl border-emerald-200 bg-emerald-50 sm:rounded-3xl">
+          <Check className="h-4 w-4 text-emerald-700" />
+          <AlertDescription className="text-sm leading-relaxed text-emerald-950">
+            <strong className="text-emerald-950">Plan selected.</strong> After you submit, you&apos;ll be on this plan and
+            can start your trial.
           </AlertDescription>
         </Alert>
       )}

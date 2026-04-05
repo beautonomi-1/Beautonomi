@@ -19,6 +19,8 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { useYocoIntegration } from "@/hooks/useYoco";
 import { twStyle } from "@/lib/twStyle";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 
 /* ─── types ─── */
 interface PaymentSettings {
@@ -48,7 +50,7 @@ const DEFAULT_SETTINGS: PaymentSettings = {
   vat_number: null,
   tax_rate: 15,
   tax_inclusive: true,
-  currency: "ZAR",
+  currency: getTenantDefaultCurrency(),
   receipt_auto_send: true,
   tips_enabled: true,
   tip_presets: [10, 15, 20, 25],
@@ -411,9 +413,9 @@ export default function PaymentSettingsScreen() {
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4 py-3.5")}>
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Currency</Text>
         <View style={twStyle("flex-row flex-wrap")}>
-          {(["ZAR", "USD", "GBP", "EUR", "BWP", "NAD", "MZN"] as const).map((c) => {
+          {([LAST_RESORT_CURRENCY, "USD", "GBP", "EUR", "BWP", "NAD", "MZN"] as const).map((c) => {
             const symbols: Record<string, string> = {
-              ZAR: "R",
+              [LAST_RESORT_CURRENCY]: "R",
               USD: "$",
               GBP: "£",
               EUR: "€",

@@ -1,12 +1,23 @@
 import { NextRequest } from "next/server";
-import { requireRoleInApi, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  successResponse,
+  errorResponse,
+  handleApiError,
+  getProviderIdForUser,
+} from "@/lib/supabase/api-helpers";
 import { verifyAccount } from "@/lib/payments/paystack-complete";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getSupabaseServer } from "@/lib/supabase/server";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { z } from "zod";
 
 const verifySchema = z.object({
   account_number: z.string().min(8).max(15),
   bank_code: z.string().min(1),
-});/**
+});
+
+/**
  * POST /api/provider/payout-accounts/verify
  *
  * Verify bank account number with Paystack (resolve account name).
@@ -14,7 +25,30 @@ const verifySchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(user.id, supabase);
+    if (!providerId) {
+      return errorResponse("Provider not found", "NOT_FOUND", 404);
+    }
+    const { data: provRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    if (
+      !resourceTenantMatchesHostTenant(
+        tenantId,
+        (provRow as { tenant_id?: string | null } | null)?.tenant_id,
+      )
+    ) {
+      return errorResponse(
+        "Your provider account is not on this market. Use the site or app for the correct region.",
+        "TENANT_MISMATCH",
+        403,
+      );
+    }
 
     const body = await request.json();
     const validationResult = verifySchema.safeParse(body);
@@ -36,7 +70,7 @@ export async function POST(request: NextRequest) {
     const result = await verifyAccount({
       account_number,
       bank_code,
-    });
+    }, { tenantId });
 
     if (!result.status || !result.data) {
       return errorResponse(

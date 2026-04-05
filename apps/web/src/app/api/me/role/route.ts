@@ -1,6 +1,16 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
+
+const ROLE_QUERY_TIMEOUT_MS = 3000;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  return Promise.race<T | null>([
+    promise,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+  ]);
+}
 
 /**
  * GET /api/me/role
@@ -10,7 +20,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  * are still treated as provider_owner if they own a provider or are owner in provider_staff,
  * so existing provider owners whose role was never upgraded can access the provider app.
  */
-export async function GET(request: NextRequest) {
+async function handleGetRole(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(
       ["customer", "provider_owner", "provider_staff", "superadmin"],
@@ -28,7 +38,7 @@ export async function GET(request: NextRequest) {
     // Provider context: allow customers who are actually provider owners (role may not have been upgraded)
     if (isProviderContext && role === "customer") {
       const supabaseAdmin = getSupabaseAdmin();
-      const [ownerOfProvider, staffAsOwner] = await Promise.all([
+      const ownerStaffResult = await withTimeout(Promise.all([
         supabaseAdmin
           .from("providers")
           .select("id")
@@ -43,7 +53,11 @@ export async function GET(request: NextRequest) {
           .eq("is_active", true)
           .limit(1)
           .maybeSingle(),
-      ]);
+      ].map((p) => Promise.resolve(p))), ROLE_QUERY_TIMEOUT_MS);
+      const ownerStaffTuple =
+        (ownerStaffResult as unknown as [{ data: { id: string } | null }, { data: { id: string } | null }] | null)
+        ?? [{ data: null }, { data: null }];
+      const [ownerOfProvider, staffAsOwner] = ownerStaffTuple;
       if (ownerOfProvider.data || staffAsOwner.data) {
         role = "provider_owner";
         // Persist so future requests and other APIs see the correct role
@@ -57,20 +71,32 @@ export async function GET(request: NextRequest) {
     // Provider context: customers who are active staff (any role) get provider_staff for this request only (no DB write)
     if (isProviderContext && role === "customer") {
       const supabaseAdmin = getSupabaseAdmin();
-      const { data: staffRow } = await supabaseAdmin
-        .from("provider_staff")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle();
+      const staffRowResult = await withTimeout(
+        Promise.resolve(
+          supabaseAdmin
+          .from("provider_staff")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle()
+        ),
+        ROLE_QUERY_TIMEOUT_MS
+      );
+      const staffRow = (staffRowResult as { data?: { id: string } | null } | null)?.data;
       if (staffRow) {
         role = "provider_staff";
       }
     }
 
-    return successResponse({ role });
+    const response = successResponse({ role });
+    response.headers.set("Cache-Control", "no-store");
+    return response;
   } catch (error) {
     return handleApiError(error, "Failed to get role");
   }
+}
+
+export async function GET(request: NextRequest) {
+  return withRouteMetrics(request, "/api/me/role", "GET", () => handleGetRole(request));
 }

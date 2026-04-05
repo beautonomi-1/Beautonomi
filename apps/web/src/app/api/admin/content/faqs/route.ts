@@ -5,6 +5,8 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 const faqSchema = z.object({
   question: z.string().min(1, "Question is required"),
@@ -30,6 +32,7 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     
     // Return empty array if query fails instead of 500 error
     if (!supabase) {
@@ -39,20 +42,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const { data: faqs, error } = await supabase
-      .from("faqs")
-      .select("*")
-      .order("display_order", { ascending: true })
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Error fetching FAQs:", error);
-      // Return empty array instead of 500 error
-      return NextResponse.json({
-        data: [],
-        error: null,
-      });
-    }
+    const scoped = await fetchScopedListMerged<Record<string, unknown>>({
+      supabase,
+      table: "faqs",
+      tenantId,
+      select: "*",
+      dedupeKey: (row) => `${String(row.category ?? "")}::${String(row.question ?? "")}`,
+      orderBy: { column: "display_order", ascending: true },
+    });
+    const faqs = scoped.data;
 
     type FaqRow = { display_order?: number; [key: string]: unknown };
     const transformedFaqs = (faqs || []).map((f: FaqRow) => ({
@@ -92,6 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     // Validate request body
@@ -115,6 +114,7 @@ export async function POST(request: NextRequest) {
     const { data: faq, error } = await supabase
       .from("faqs")
       .insert({
+        tenant_id: tenantId,
         question,
         answer,
         category,

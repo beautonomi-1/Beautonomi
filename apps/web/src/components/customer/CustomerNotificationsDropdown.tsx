@@ -135,22 +135,25 @@ export function CustomerNotificationsDropdown() {
     loadNotifications();
 
     const supabase = getSupabaseClient();
-    const channel = supabase
-      .channel(`notifications:customer:${user.id}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
-        () => {
-          loadNotifications();
-        }
-      )
-      .subscribe();
+    const enableRealtime = process.env.NODE_ENV === "production";
+    const channel = enableRealtime
+      ? supabase
+          .channel(`notifications:customer:${user.id}`)
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
+            () => {
+              loadNotifications();
+            }
+          )
+          .subscribe()
+      : null;
 
     const interval = setInterval(loadNotifications, 120000);
 
     return () => {
       try {
-        supabase.removeChannel(channel);
+        channel?.unsubscribe();
       } catch {
         // ignore
       }
@@ -262,13 +265,22 @@ export function CustomerNotificationsDropdown() {
             <div className="p-8 text-center text-gray-500">
               <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-gray-400" />
               <p className="text-sm">No new notifications</p>
-              <Link
-                href="/account-settings/notifications"
-                className="text-xs text-[#FF0077] hover:underline mt-2 inline-block"
-                onClick={() => setOpen(false)}
-              >
-                Manage notifications
-              </Link>
+              <div className="flex flex-col items-center gap-1 mt-2">
+                <Link
+                  href="/account-settings/notifications/inbox"
+                  className="text-xs text-[#FF0077] hover:underline"
+                  onClick={() => setOpen(false)}
+                >
+                  View all notifications
+                </Link>
+                <Link
+                  href="/account-settings/notifications"
+                  className="text-xs text-gray-500 hover:underline"
+                  onClick={() => setOpen(false)}
+                >
+                  Manage notification preferences
+                </Link>
+              </div>
             </div>
           ) : (
             <div className="divide-y">
@@ -319,13 +331,20 @@ export function CustomerNotificationsDropdown() {
           )}
         </div>
         
-        <div className="p-3 border-t bg-gray-50 sticky bottom-0">
+        <div className="p-3 border-t bg-gray-50 sticky bottom-0 flex items-center justify-between gap-2">
           <Link
-            href="/account-settings/notifications"
-            className="text-sm text-[#FF0077] hover:underline text-center block"
+            href="/account-settings/notifications/inbox"
+            className="text-sm text-[#FF0077] hover:underline"
             onClick={() => setOpen(false)}
           >
             View all notifications
+          </Link>
+          <Link
+            href="/account-settings/notifications"
+            className="text-xs text-gray-500 hover:underline"
+            onClick={() => setOpen(false)}
+          >
+            Preferences
           </Link>
         </div>
       </PopoverContent>

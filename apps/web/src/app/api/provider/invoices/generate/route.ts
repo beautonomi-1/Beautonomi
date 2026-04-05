@@ -4,6 +4,7 @@ import {
   successResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { percentOf, sumMoney } from "@beautonomi/utils";
 
 /**
  * POST /api/provider/invoices/generate
@@ -152,8 +153,8 @@ export async function POST(request: NextRequest) {
 
     const taxes = (settingsRow?.settings as Record<string, any>)?.taxes as Record<string, any> | undefined;
     const taxRate = (taxes?.default_tax_rate as number) ?? 15;
-    const taxAmount = subtotal * (taxRate / 100);
-    const totalAmount = subtotal + taxAmount;
+    const taxAmount = percentOf(subtotal, taxRate);
+    const totalAmount = sumMoney(subtotal, taxAmount);
 
     // Generate invoice number
     const year = new Date().getFullYear();

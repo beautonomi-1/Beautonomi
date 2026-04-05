@@ -36,6 +36,8 @@ export function useExploreFeed() {
   const filtersRef = useRef<ExploreFeedFilters>({});
   const initialLoadDone = useRef(false);
 
+  const appendInFlight = useRef(false);
+
   const load = useCallback(
     async (opts?: { refresh?: boolean; append?: boolean; filters?: ExploreFeedFilters }) => {
       const isRefresh = opts?.refresh === true;
@@ -51,6 +53,8 @@ export function useExploreFeed() {
         setNextCursor(undefined);
         setHasMore(true);
       } else if (isAppend) {
+        if (appendInFlight.current || !nextCursor) return;
+        appendInFlight.current = true;
         setLoadingMore(true);
       } else if (initialLoadDone.current && !newFilters) {
         return;
@@ -76,44 +80,47 @@ export function useExploreFeed() {
         params.set("radius_km", String(f.radius_km ?? 50));
       }
 
-      const res = await api.get<ExploreFeedResponse | ExplorePost[]>(
-        `/api/explore/posts?${params.toString()}`
-      );
+      try {
+        const res = await api.get<ExploreFeedResponse | ExplorePost[]>(
+          `/api/explore/posts?${params.toString()}`
+        );
 
-      if (res.error) {
-        setError(res.error.message);
-        if (isRefresh || newFilters) setPosts([]);
-      } else {
-        const body = res.data as ExploreFeedResponse | ExplorePost[] | undefined;
-        let items: ExplorePost[] = [];
-        let nc: string | undefined;
-        let more = false;
-
-        if (Array.isArray(body)) {
-          items = body;
-        } else if (body) {
-          items = body.data ?? body.posts ?? [];
-          nc = body.next_cursor;
-          more = body.has_more ?? false;
-        }
-
-        if (isRefresh || !isAppend) {
-          setPosts(items);
+        if (res.error) {
+          setError(res.error.message);
+          if (isRefresh || newFilters) setPosts([]);
         } else {
-          setPosts((prev) => {
-            const ids = new Set(prev.map((x) => x.id));
-            const newItems = items.filter((x) => !ids.has(x.id));
-            return newItems.length ? [...prev, ...newItems] : prev;
-          });
-        }
-        setNextCursor(nc);
-        setHasMore(more);
-      }
+          const body = res.data as ExploreFeedResponse | ExplorePost[] | undefined;
+          let items: ExplorePost[] = [];
+          let nc: string | undefined;
+          let more = false;
 
-      setLoading(false);
-      setRefreshing(false);
-      setLoadingMore(false);
-      initialLoadDone.current = true;
+          if (Array.isArray(body)) {
+            items = body;
+          } else if (body) {
+            items = body.data ?? body.posts ?? [];
+            nc = body.next_cursor;
+            more = body.has_more ?? false;
+          }
+
+          if (isRefresh || !isAppend) {
+            setPosts(items);
+          } else {
+            setPosts((prev) => {
+              const ids = new Set(prev.map((x) => x.id));
+              const newItems = items.filter((x) => !ids.has(x.id));
+              return newItems.length ? [...prev, ...newItems] : prev;
+            });
+          }
+          setNextCursor(nc);
+          setHasMore(more);
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
+        initialLoadDone.current = true;
+        if (isAppend) appendInFlight.current = false;
+      }
     },
     [nextCursor]
   );
@@ -137,6 +144,20 @@ export function useExploreFeed() {
     );
   }, []);
 
+  const setPostLiked = useCallback((postId: string, is_liked: boolean, likeDelta: number) => {
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId
+          ? {
+              ...p,
+              is_liked,
+              like_count: Math.max(0, (p.like_count ?? 0) + likeDelta),
+            }
+          : p
+      )
+    );
+  }, []);
+
   return {
     posts,
     loading,
@@ -149,5 +170,6 @@ export function useExploreFeed() {
     initialLoad: () => load({}),
     applyFilters,
     setPostSaved,
+    setPostLiked,
   };
 }

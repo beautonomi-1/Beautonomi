@@ -202,7 +202,7 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
                 src={image.src}
                 alt={image.alt}
                 fill
-                sizes="100vw"
+                sizes="(max-width: 768px) 100vw, 50vw"
                 className="object-cover"
                 priority={index === 0}
                 loading={index === 0 ? "eager" : "lazy"}
@@ -231,9 +231,39 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
           </>
         )}
 
+        {/* Bottom scrim — avatar + text legibility on photo */}
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-32 bg-gradient-to-t from-black/60 via-black/25 to-transparent"
+          aria-hidden
+        />
+
+        {/* Avatar on gallery (bottom-left) — keeps name row below unobstructed */}
+        <div className="absolute bottom-4 left-4 z-20">
+          <div className="relative h-[72px] w-[72px] shrink-0">
+            <div className="relative h-full w-full overflow-hidden rounded-full border-[3px] border-white bg-gray-200 shadow-xl ring-1 ring-black/10">
+              {thumbnail_url ? (
+                <Image
+                  src={thumbnail_url}
+                  alt={businessName ? `${businessName} profile photo` : "Provider profile photo"}
+                  fill
+                  sizes="72px"
+                  className="object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400">
+                  <span className="text-xl font-bold text-white">
+                    {(businessName || "P").charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              )}
+            </div>
+            {/* Corner check only when verified and no duplicate “Verified” pill — we keep top pill; skip redundant badge */}
+          </div>
+        </div>
+
         {/* Photo Counter - Bottom Right */}
         {displayImages.length > 1 && (
-          <div className="absolute bottom-4 right-4 bg-black/70 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-xs font-medium z-20">
+          <div className="absolute bottom-4 right-4 z-20 rounded-full bg-black/70 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm">
             {currentImageIndex + 1}/{displayImages.length}
           </div>
         )}
@@ -326,56 +356,22 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
         </div>
       </div>
 
-      {/* Provider Information Section - Card Overlay Style */}
-      <div className="relative -mt-16 bg-white rounded-t-3xl pt-6 pb-4 shadow-lg">
-        {/* Floating Avatar - Breaks the hero image box */}
-        <div className="absolute -top-10 left-4 z-10">
-          <div className="relative">
-            <div className="relative w-20 h-20 rounded-full border-4 border-white overflow-hidden bg-gray-200 shadow-xl">
-              {thumbnail_url ? (
-                <Image
-                  src={thumbnail_url}
-                  alt={businessName || "Provider"}
-                  fill
-                  sizes="80px"
-                  className="object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400">
-                  <span className="text-white font-bold text-xl">
-                    {(businessName || "P").charAt(0).toUpperCase()}
-                  </span>
-                </div>
-              )}
-            </div>
-            {/* SuperPartner/Verified Badge */}
-            {(is_verified || is_featured) && (
-              <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-lg">
-                <div className="h-6 w-6 rounded-full bg-gradient-to-br from-amber-500 via-yellow-500 to-amber-600 flex items-center justify-center">
-                  <Check className="h-3.5 w-3.5 text-white stroke-[3]" />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Provider Name and Location */}
-        <div className="px-4 mt-8 mb-4">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 leading-tight">
-              {businessName || "Provider"}
-            </h1>
-            {current_badge && (
-              <span
-                className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium text-white"
-                style={{ backgroundColor: current_badge.color || "#6366f1" }}
-                title={current_badge.description || current_badge.name}
-              >
-                {current_badge.name}
-              </span>
-            )}
-          </div>
-          <div className="flex flex-col gap-1 mb-3">
+      {/* Provider information — sits below gallery; avatar lives on hero so title stays readable */}
+      <div className="relative -mt-5 rounded-t-3xl bg-white pb-4 pt-5 shadow-lg">
+        <div className="mb-4 px-4">
+          <h1 className="text-2xl font-bold leading-tight text-gray-900 md:text-3xl">
+            {businessName || "Provider"}
+          </h1>
+          {current_badge ? (
+            <span
+              className="mt-2 inline-flex max-w-full items-center rounded-full px-3 py-1 text-sm font-medium text-white"
+              style={{ backgroundColor: current_badge.color || "#6366f1" }}
+              title={current_badge.description || current_badge.name}
+            >
+              {current_badge.name}
+            </span>
+          ) : null}
+          <div className="mt-3 flex flex-col gap-1 mb-3">
             {(city || country) && (
               <div className="flex items-center gap-1 text-gray-600 text-sm">
                 <MapPin className="h-4 w-4 text-gray-500" />
@@ -417,7 +413,8 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
           <div className="flex flex-col items-center flex-1">
             <MapPin className="h-5 w-5 text-gray-500 mb-1.5" />
             <span className="text-xs text-gray-600 mb-0.5">Distance</span>
-            <span className="text-sm font-semibold text-gray-900">
+            <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-900">
+              <MapPin className="h-3.5 w-3.5 text-gray-500" aria-hidden />
               {distance_km ? `${distance_km.toFixed(1)} km` : "—"}
             </span>
           </div>
@@ -480,7 +477,11 @@ const PartnerHeroMobile: React.FC<PartnerHeroMobileProps> = ({
             : undefined
         }
       />
-      <LoginModal open={isLoginModalOpen} setOpen={setIsLoginModalOpen} />
+      <LoginModal
+        open={isLoginModalOpen}
+        setOpen={setIsLoginModalOpen}
+        initialMode="login"
+      />
     </div>
   );
 };

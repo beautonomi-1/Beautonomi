@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { useAuth } from "@/providers/AuthProvider";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -30,7 +31,13 @@ interface PayRun {
   approved_at?: string;
 }
 
+function isPayrollOwnerRole(role: string | null | undefined): boolean {
+  return role === "provider_owner" || role === "superadmin";
+}
+
 export default function PayrollPage() {
+  const { role } = useAuth();
+  const isOwner = useMemo(() => isPayrollOwnerRole(role), [role]);
   const [payRuns, setPayRuns] = useState<PayRun[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -42,6 +49,10 @@ export default function PayrollPage() {
   useEffect(() => {
     loadPayRuns();
   }, []);
+
+  useEffect(() => {
+    if (!isOwner && isCreateOpen) setIsCreateOpen(false);
+  }, [isOwner, isCreateOpen]);
 
   const loadPayRuns = async () => {
     try {
@@ -104,10 +115,16 @@ export default function PayrollPage() {
         <SectionCard className="p-8 text-center">
           <DollarSign className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <h3 className="font-medium text-gray-900 mb-2">No pay runs yet</h3>
-          <p className="text-sm text-gray-600 mb-4">Create your first pay run to get started</p>
-          <Button onClick={() => setIsCreateOpen(true)} className="bg-[#FF0077] hover:bg-[#D60565]">
-            Create Pay Run
-          </Button>
+          <p className="text-sm text-gray-600 mb-4">
+            {isOwner
+              ? "Create your first pay run to get started"
+              : "No pay runs yet. Your business owner can create one from Payroll."}
+          </p>
+          {isOwner && (
+            <Button onClick={() => setIsCreateOpen(true)} className="bg-[#FF0077] hover:bg-[#D60565]">
+              Create Pay Run
+            </Button>
+          )}
         </SectionCard>
       ) : (
         <SectionCard>

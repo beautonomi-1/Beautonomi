@@ -293,6 +293,54 @@ describe("Tiered Strategy", () => {
     expect(result.withinServiceArea).toBe(true);
     expect(result.breakdown[0].label).toContain("no coordinates");
   });
+
+  it("should apply fixed-rate tiers (0-10km = R100, 11-50km = R150) with overrideDistanceKm", () => {
+    const tieredRules: TravelFeeRules = {
+      strategy: "tiered",
+      maxRadiusKm: 50,
+      baseTravelTimeMinutes: 15,
+      defaultMinutesPerKm: 2,
+      tiers: [
+        { maxDistanceKm: 10, fee: 100, minutesPerKm: 2 },
+        { maxDistanceKm: 50, fee: 150, minutesPerKm: 2 },
+      ],
+    };
+    const baseLocation = createMockCoordinates(-33.9249, 18.4241);
+    const address = createMockAddress({ coordinates: createMockCoordinates(-33.9249, 18.4241) });
+
+    const result5 = computeTravelFee(baseLocation, address, tieredRules, { overrideDistanceKm: 5 });
+    expect(result5.withinServiceArea).toBe(true);
+    expect(result5.fee).toBe(100);
+    expect(result5.distanceKm).toBe(5);
+
+    const result10 = computeTravelFee(baseLocation, address, tieredRules, { overrideDistanceKm: 10 });
+    expect(result10.withinServiceArea).toBe(true);
+    expect(result10.fee).toBe(100);
+
+    const result25 = computeTravelFee(baseLocation, address, tieredRules, { overrideDistanceKm: 25 });
+    expect(result25.withinServiceArea).toBe(true);
+    expect(result25.fee).toBe(150);
+
+    const result50 = computeTravelFee(baseLocation, address, tieredRules, { overrideDistanceKm: 50 });
+    expect(result50.withinServiceArea).toBe(true);
+    expect(result50.fee).toBe(150);
+  });
+
+  it("should mark outside service area when distance exceeds last tier with overrideDistanceKm", () => {
+    const tieredRules: TravelFeeRules = {
+      strategy: "tiered",
+      maxRadiusKm: 50,
+      tiers: [
+        { maxDistanceKm: 10, fee: 100, minutesPerKm: 2 },
+        { maxDistanceKm: 50, fee: 150, minutesPerKm: 2 },
+      ],
+    };
+    const baseLocation = createMockCoordinates(-33.9249, 18.4241);
+    const address = createMockAddress({ coordinates: baseLocation });
+
+    const result = computeTravelFee(baseLocation, address, tieredRules, { overrideDistanceKm: 60 });
+    expect(result.withinServiceArea).toBe(false);
+  });
 });
 
 // ============================================================================

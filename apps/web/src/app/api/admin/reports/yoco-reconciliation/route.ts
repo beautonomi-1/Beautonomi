@@ -4,7 +4,9 @@ import { requireAdminSection,
   handleApiError,
  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 
 export interface AdminYocoReconciliationRow {
   id: string;
@@ -38,14 +40,44 @@ export interface AdminYocoReconciliationResponse {
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
+    const supabaseAdmin = getSupabaseAdmin();
+    if (!supabaseAdmin) {
+      return handleApiError(new Error("Database unavailable"), "admin-yoco-reconciliation");
+    }
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const searchParams = request.nextUrl.searchParams;
     const providerId = searchParams.get("provider_id") || undefined;
+    if (providerId) {
+      const prov = await fetchProviderInAdminTenant(
+        supabaseAdmin,
+        providerId,
+        tenantId,
+        "id, tenant_id"
+      );
+      if ("error" in prov) {
+        return prov.error;
+      }
+    }
+
+    let scopeProviderIds: string[];
+    if (providerId) {
+      scopeProviderIds = [providerId];
+    } else {
+      const { data: tenantProviderRows, error: tenantProvErr } = await supabaseAdmin
+        .from("providers")
+        .select("id")
+        .eq("tenant_id", tenantId);
+      if (tenantProvErr) throw tenantProvErr;
+      scopeProviderIds = (tenantProviderRows || []).map((r) => (r as { id: string }).id);
+      if (scopeProviderIds.length === 0) {
+        return successResponse({
+          payments: [],
+          summary: { total: 0, with_booking: 0, synced: 0, not_synced: 0 },
+        });
+      }
+    }
+
     const fromStr = searchParams.get("from");
     const toStr = searchParams.get("to");
     const limit = Math.min(parseInt(searchParams.get("limit") || "100", 10) || 100, 500);
@@ -56,14 +88,11 @@ export async function GET(request: NextRequest) {
     let query = supabaseAdmin
       .from("provider_yoco_payments")
       .select("id, provider_id, yoco_payment_id, amount, currency, status, appointment_id, sale_id, created_at")
+      .in("provider_id", scopeProviderIds)
       .gte("created_at", from.toISOString())
       .lte("created_at", to.toISOString())
       .order("created_at", { ascending: false })
       .limit(limit);
-
-    if (providerId) {
-      query = query.eq("provider_id", providerId);
-    }
 
     const { data: yocoPayments, error: yocoError } = await query;
 
@@ -88,7 +117,9 @@ export async function GET(request: NextRequest) {
     if (yocoIdsWithBooking.length > 0) {
       const { data: bpRows } = await supabaseAdmin
         .from("booking_payments")
-        .select("payment_provider_id")
+        .select("payment_provider_id, bookings!inner(tenant_id)")
+        .eq("tenant_id", tenantId)
+        .eq("bookings.tenant_id", tenantId)
         .eq("payment_provider", "yoco")
         .in("payment_provider_id", yocoIdsWithBooking);
       for (const r of bpRows || []) {
@@ -103,6 +134,7 @@ export async function GET(request: NextRequest) {
       const { data: providers } = await supabaseAdmin
         .from("providers")
         .select("id, business_name")
+        .eq("tenant_id", tenantId)
         .in("id", providerIds);
       for (const p of providers || []) {
         providerNames[(p as { id: string }).id] = (p as { business_name?: string }).business_name || "—";

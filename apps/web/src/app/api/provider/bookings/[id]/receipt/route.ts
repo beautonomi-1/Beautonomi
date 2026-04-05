@@ -1,3 +1,5 @@
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
@@ -7,6 +9,7 @@ import {
   getProviderIdForUser,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 
 /**
  * GET /api/provider/bookings/[id]/receipt
@@ -36,7 +39,7 @@ export async function GET(
         customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
         locations:provider_locations(id, name, address_line1, address_line2, city, state, postal_code),
         providers:providers!bookings_provider_id_fkey(id, business_name, owner_email, phone, address),
-        group_bookings(ref_number),
+        group_bookings!bookings_group_booking_id_fkey(ref_number),
         booking_services(
           id,
           offering_id,
@@ -68,6 +71,11 @@ export async function GET(
     }
 
     const b = booking as any;
+    const tenantRegion = b.tenant_id
+      ? await getTenantRegionConfig(b.tenant_id as string)
+      : null;
+    const currencyFallback = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     const provider = b.providers || {};
     const address = provider.address && typeof provider.address === "object"
       ? provider.address
@@ -101,15 +109,20 @@ export async function GET(
 
     const items = [...serviceItems, ...productItems];
 
-    const subtotal = b.subtotal ?? items.reduce((s: number, i: any) => s + (i.total || 0), 0);
-    const travelFee = b.travel_fee || 0;
-    const taxAmount = b.tax_amount || 0;
-    const taxRate = b.tax_rate || 0;
-    const serviceFeeAmount = b.service_fee_amount || 0;
-    const serviceFeePercentage = b.service_fee_percentage || 0;
-    const tipAmount = b.tip_amount || 0;
-    const discountAmount = b.discount_amount || 0;
-    const totalAmount = b.total_amount ?? subtotal + travelFee + taxAmount + serviceFeeAmount + tipAmount - discountAmount;
+    const linesSubtotal = items.reduce((s: number, i: any) => s + (i.total || 0), 0);
+    const subtotal = b.subtotal != null ? Number(b.subtotal) : linesSubtotal;
+    const travelFee = Number(b.travel_fee || 0);
+    const taxAmount = Number(b.tax_amount || 0);
+    const taxRate = Number(b.tax_rate || 0);
+    const serviceFeeAmount = Number(b.service_fee_amount || 0);
+    const serviceFeePercentage = Number(b.service_fee_percentage || 0);
+    const tipAmount = Number(b.tip_amount || 0);
+    const discountAmount = Number(b.discount_amount || 0);
+    const cancellationFee = Number(b.cancellation_fee || 0);
+    const totalAmount =
+      b.total_amount != null && !Number.isNaN(Number(b.total_amount))
+        ? Number(b.total_amount)
+        : subtotal + travelFee + taxAmount + serviceFeeAmount + tipAmount - discountAmount - cancellationFee;
 
     const receiptData = {
       invoice_number: b.booking_number || `BKG-${b.id?.slice(0, 8)}`,
@@ -145,8 +158,9 @@ export async function GET(
       service_fee_amount: serviceFeeAmount,
       service_fee_percentage: serviceFeePercentage,
       tip_amount: tipAmount,
+      cancellation_fee: cancellationFee,
       total_amount: totalAmount,
-      currency: b.currency || "ZAR",
+      currency: b.currency || currencyFallback,
       payment_status: b.payment_status || "pending",
       location_type: b.location_type || "at_salon",
       service_address: b.address_line1

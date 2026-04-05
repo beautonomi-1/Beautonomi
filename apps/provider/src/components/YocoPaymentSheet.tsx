@@ -17,6 +17,7 @@ import {
 } from "@/hooks/useYoco";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 interface YocoPaymentSheetProps {
   visible: boolean;
@@ -33,7 +34,7 @@ export function YocoPaymentSheet({
   visible,
   onClose,
   amountCents,
-  currency = "ZAR",
+  currency = getTenantDefaultCurrency(),
   bookingId,
   saleId,
   description,

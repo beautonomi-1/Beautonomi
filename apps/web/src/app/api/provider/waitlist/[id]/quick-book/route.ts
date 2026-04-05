@@ -4,6 +4,9 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const quickBookSchema = z.object({
   date: z.string().date(),
@@ -78,6 +81,18 @@ export async function POST(
       );
     }
 
+    const { data: providerTenantRow } = await adminSupabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", entry.provider_id)
+      .maybeSingle();
+    const bookingTenantId =
+      (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+    const effectiveTenantId =
+      bookingTenantId ?? (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     // Get service details
     let serviceDuration = 60;
     let servicePrice = 0;
@@ -107,11 +122,12 @@ export async function POST(
       .insert({
         provider_id: entry.provider_id,
         customer_id: entry.customer_id,
+        tenant_id: bookingTenantId,
         scheduled_at: bookingDatetime.toISOString(),
         location_type: 'at_salon', // Default, could be configurable
         status: 'confirmed',
         price: servicePrice,
-        currency: 'ZAR', // Default, should come from provider
+        currency: lastResortCurrency,
         guest_name: entry.customer_name,
       })
       .select()
@@ -133,7 +149,7 @@ export async function POST(
           scheduled_end_at: bookingEnd.toISOString(),
           duration_minutes: serviceDuration,
           price: servicePrice,
-          currency: 'ZAR',
+          currency: lastResortCurrency,
         });
 
       if (serviceError) {

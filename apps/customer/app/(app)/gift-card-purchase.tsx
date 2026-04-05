@@ -10,19 +10,22 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 const AMOUNTS = [100, 250, 500, 1000, 2500, 5000];
 
 export default function GiftCardPurchaseScreen() {
   useScreenTracking("Gift Card Purchase");
   const router = useRouter();
+  const { provider_id, provider_name } = useLocalSearchParams<{ provider_id?: string; provider_name?: string }>();
+  const tenantCurrency = getTenantDefaultCurrency();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const [amount, setAmount] = useState<number>(250);
@@ -37,13 +40,11 @@ export default function GiftCardPurchaseScreen() {
     if (finalAmount <= 0 || loading) return;
     setLoading(true);
     try {
+      const body: Record<string, unknown> = { amount: finalAmount, quantity, currency: tenantCurrency };
+      if (provider_id) body.provider_id = provider_id;
       const res = await api.post<{ order_id: string; payment_url: string; reference: string }>(
         "/api/public/gift-cards/purchase",
-        {
-          amount: finalAmount,
-          quantity,
-          currency: "ZAR",
-        }
+        body
       );
       if (res.error) {
         Alert.alert("Error", getApiErrorMessage(res.error, "Failed to start purchase"));
@@ -71,10 +72,15 @@ export default function GiftCardPurchaseScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: "Buy Gift Card", headerBackTitle: "Back" }} />
+      <Stack.Screen options={{ title: provider_name ? `Gift Card — ${provider_name}` : "Buy Gift Card", headerBackTitle: "Back" }} />
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.white }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}>
-          <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Select amount (ZAR)</Text>
+          {provider_name ? (
+            <Text style={{ fontSize: 14, color: Colors.gray[500], marginBottom: 16 }}>
+              For: <Text style={{ fontWeight: "600", color: Colors.gray[800] }}>{provider_name}</Text>
+            </Text>
+          ) : null}
+          <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Select amount ({tenantCurrency})</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16 }}>
             {AMOUNTS.map((a) => (
               <TouchableOpacity
@@ -107,7 +113,7 @@ export default function GiftCardPurchaseScreen() {
           </View>
           <View style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 24 }}>
             <Text style={{ color: Colors.gray[600] }}>Total</Text>
-            <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>ZAR {total.toLocaleString()}</Text>
+            <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{tenantCurrency} {total.toLocaleString()}</Text>
           </View>
           <TouchableOpacity onPress={purchase} disabled={finalAmount <= 0 || loading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: finalAmount <= 0 || loading ? 0.5 : 1 }}>
             {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>Pay with card</Text>}

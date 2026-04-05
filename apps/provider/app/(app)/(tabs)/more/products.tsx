@@ -16,6 +16,8 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatCurrency } from "@/lib/format";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
@@ -261,7 +263,7 @@ export function ProductsContent() {
         (r) => r.retail_price === undefined || Number(r.retail_price) < 0
       );
       if (invalid) {
-        Alert.alert("Required", "Each variant must have a retail price (R).");
+        Alert.alert("Required", `Each variant must have a retail price (${getTenantDefaultCurrency()}).`);
         return;
       }
     } else {
@@ -366,9 +368,9 @@ export function ProductsContent() {
   const productDisplayPrice = (p: Product): string => {
     if (p.has_variants && p.variants?.length) {
       const min = Math.min(...p.variants.map((v) => Number(v.retail_price ?? 0)));
-      return `From R ${min.toFixed(2)}`;
+      return `From ${formatCurrency(min)}`;
     }
-    return `R ${Number(p.retail_price).toFixed(2)}`;
+    return formatCurrency(Number(p.retail_price));
   };
 
   const isLoading = loadingList;
@@ -516,7 +518,7 @@ export function ProductsContent() {
 
             {!form.hasVariants && (
               <>
-            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Retail price (R) *</Text>
+            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Retail price ({getTenantDefaultCurrency()}) *</Text>
             <TextInput
               value={form.retail_price}
               onChangeText={(v) => setForm((f) => ({ ...f, retail_price: v }))}

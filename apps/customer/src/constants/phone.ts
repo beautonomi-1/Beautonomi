@@ -44,13 +44,16 @@ export function stripLeadingZero(digits: string): string {
  * Parse a full E.164 or similar phone string into country code and national number.
  * Tries longest matching country code first.
  */
-export function parsePhoneToCountryAndNational(fullPhone: string | null | undefined): {
+export function parsePhoneToCountryAndNational(
+  fullPhone: string | null | undefined,
+  defaultCountryCode: string = "+27",
+): {
   countryCode: string;
   national: string;
 } {
   const trimmed = (fullPhone ?? "").trim();
   const raw = trimmed.replace(/\D/g, "");
-  if (!raw) return { countryCode: "+27", national: "" };
+  if (!raw) return { countryCode: defaultCountryCode, national: "" };
   for (const c of CODES_BY_LENGTH) {
     const codeDigits = c.code.replace(/\D/g, "");
     if (raw.startsWith(codeDigits)) {
@@ -58,7 +61,7 @@ export function parsePhoneToCountryAndNational(fullPhone: string | null | undefi
       return { countryCode: c.code, national };
     }
   }
-  return { countryCode: "+27", national: raw.replace(/^0+/, "") };
+  return { countryCode: defaultCountryCode, national: raw.replace(/^0+/, "") };
 }
 
 /**

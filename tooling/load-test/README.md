@@ -50,9 +50,25 @@ k6 run \
   tooling/load-test/k6-booking-flow.js
 ```
 
+### Additional scenarios
+
+```bash
+# Auth/bootstrap burst
+k6 run -e BASE_URL=https://staging.beautonomi.com -e AUTH_TOKEN=<jwt> tooling/load-test/k6-auth-burst.js
+
+# Provider calendar/dashboard read pressure
+k6 run -e BASE_URL=https://staging.beautonomi.com -e AUTH_TOKEN=<provider-jwt> tooling/load-test/k6-provider-calendar.js
+
+# Signed webhook storm (Paystack)
+k6 run -e BASE_URL=https://staging.beautonomi.com -e PAYSTACK_SECRET_KEY=<secret> tooling/load-test/k6-webhook-storm.js
+
+# Mixed soak profile (60+ minutes)
+k6 run -e BASE_URL=https://staging.beautonomi.com -e AUTH_TOKEN=<jwt> tooling/load-test/k6-soak-mixed.js
+```
+
 ## What it tests
 
-The script simulates the full booking flow:
+The booking-flow script simulates the full booking flow:
 
 | Step | Endpoint | Method |
 |------|----------|--------|
@@ -70,10 +86,14 @@ The script simulates the full booking flow:
 | Sustain | 3 min | 50 |
 | Ramp down | 1 min | 50 → 0 |
 
+Other scripts define their own profiles (burst / sustained / soak).
+
 ## Thresholds
 
 - **95th percentile response time** < 2 seconds (per step)
 - **Failure rate** < 10 %
+
+For high-scale launch gates, use thresholds in `docs/SCALE_SLO_GATES.md`.
 
 ## Custom metrics
 
@@ -89,3 +109,11 @@ The script simulates the full booking flow:
 ## Customization
 
 Edit the `options.stages` array in `k6-booking-flow.js` to change the load profile. Adjust thresholds in `options.thresholds` to match your SLA targets.
+
+## Recommended execution order (high-scale)
+
+1. `k6-auth-burst.js` (auth/session resilience)
+2. `k6-provider-calendar.js` (provider read path)
+3. `k6-booking-flow.js` (booking transaction path)
+4. `k6-webhook-storm.js` (payment callback resilience)
+5. `k6-soak-mixed.js` (1h+ steady-state mixed traffic)

@@ -3,6 +3,9 @@ import { getSupabaseServer } from '@/lib/supabase/server';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { z } from 'zod';
+import { getTenantRegionConfig } from '@/lib/regions/config';
+import { resolveAdminApiTenantId } from '@/lib/tenant/admin-request-tenant';
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const referralSettingsSchema = z.object({
   referral_amount: z.number().min(0).optional(),
@@ -12,12 +15,14 @@ const referralSettingsSchema = z.object({
 });
 
 const REFERRAL_SETTINGS_ID = '00000000-0000-0000-0000-000000000001';
-const DEFAULT_REFERRAL_SETTINGS = {
-  referral_amount: 50,
-  referral_message: 'Join Beautonomi and get rewarded! Use my referral link to get started.',
-  referral_currency: 'ZAR',
-  is_enabled: true,
-};
+function defaultReferralSettings(lastResortCurrency: string) {
+  return {
+    referral_amount: 50,
+    referral_message: 'Join Beautonomi and get rewarded! Use my referral link to get started.',
+    referral_currency: lastResortCurrency,
+    is_enabled: true,
+  };
+}
 
 /**
  * GET /api/admin/referrals
@@ -27,6 +32,9 @@ export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
+    const lastResortCurrency =
+      (await getTenantRegionConfig(tenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const { data: referralSettings, error } = await supabase
       .from('referral_settings')
@@ -35,12 +43,13 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (error) throw error;
-    if (!referralSettings) return successResponse(DEFAULT_REFERRAL_SETTINGS);
+    if (!referralSettings) return successResponse(defaultReferralSettings(lastResortCurrency));
 
+    const defaults = defaultReferralSettings(lastResortCurrency);
     return successResponse({
       referral_amount: referralSettings.referral_amount ?? 50,
-      referral_message: referralSettings.referral_message || DEFAULT_REFERRAL_SETTINGS.referral_message,
-      referral_currency: referralSettings.referral_currency || 'ZAR',
+      referral_message: referralSettings.referral_message || defaults.referral_message,
+      referral_currency: referralSettings.referral_currency || lastResortCurrency,
       is_enabled: referralSettings.is_enabled !== false,
     });
   } catch (error) {
@@ -58,6 +67,9 @@ export async function PATCH(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
+    const tenantId = await resolveAdminApiTenantId(request);
+    const lastResortCurrency =
+      (await getTenantRegionConfig(tenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const validatedData = referralSettingsSchema.parse(body);
 
@@ -68,7 +80,7 @@ export async function PATCH(request: NextRequest) {
           id: REFERRAL_SETTINGS_ID,
           referral_amount: validatedData.referral_amount ?? 50,
           referral_message: validatedData.referral_message || 'Join Beautonomi and get rewarded! Use my referral link to get started.',
-          referral_currency: validatedData.referral_currency || 'ZAR',
+          referral_currency: validatedData.referral_currency || lastResortCurrency,
           is_enabled: validatedData.is_enabled !== false,
           updated_at: new Date().toISOString(),
         },

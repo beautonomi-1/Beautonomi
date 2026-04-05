@@ -13,6 +13,8 @@ import Link from "next/link";
 import { Clock, MapPin, Check } from "lucide-react";
 
 interface ServiceDetailModalProps {
+  /** Concrete offering id for ?service= (variant id when the service has variants). */
+  offeringIdForBooking?: string;
   service: {
     id: string;
     title: string;
@@ -22,6 +24,14 @@ interface ServiceDetailModalProps {
     category?: string;
     supports_at_home?: boolean;
     supports_at_salon?: boolean;
+    /** When the service has variants, list them for transparency */
+    variants?: Array<{
+      id: string;
+      label: string;
+      description?: string | null;
+      duration_minutes: number;
+      priceFormatted: string;
+    }>;
   };
   providerSlug?: string;
   isOpen: boolean;
@@ -30,6 +40,7 @@ interface ServiceDetailModalProps {
 }
 
 export default function ServiceDetailModal({
+  offeringIdForBooking,
   service,
   providerSlug,
   isOpen,
@@ -37,22 +48,19 @@ export default function ServiceDetailModal({
   onBook,
 }: ServiceDetailModalProps) {
   const createBookingUrl = () => {
-    const serviceData = {
-      title: service.title,
-      duration: service.duration,
-      price: service.price,
-      category: service.category,
-    };
-    const _encoded = encodeURIComponent(JSON.stringify(serviceData));
-    return `/booking?serviceId=${service.id}&partnerId=${providerSlug}&slug=${providerSlug}`;
+    if (!providerSlug) return "#";
+    const oid =
+      offeringIdForBooking?.trim() ||
+      (service.variants && service.variants.length > 0 ? service.variants[0]!.id : service.id);
+    return `/booking?slug=${encodeURIComponent(providerSlug)}&service=${encodeURIComponent(oid)}`;
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white text-gray-900">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white text-gray-900 rounded-2xl">
         <DialogHeader>
           <DialogTitle className="text-2xl font-semibold">{service.title}</DialogTitle>
-          <DialogDescription className="flex items-center gap-4 mt-2">
+          <DialogDescription className="flex flex-wrap items-center gap-4 mt-2">
             <span className="flex items-center gap-1 text-gray-600">
               <Clock className="w-4 h-4" />
               {service.duration}
@@ -62,32 +70,53 @@ export default function ServiceDetailModal({
         </DialogHeader>
 
         <div className="space-y-6 mt-4">
-          {/* Description */}
           {service.description ? (
             <div>
               <h3 className="font-medium mb-2">About this service</h3>
-              <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">
-                {service.description}
-              </p>
+              <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{service.description}</p>
             </div>
           ) : (
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p className="text-sm text-gray-500 italic">
-                No description available for this service.
-              </p>
+            <div className="bg-gray-50 p-4 rounded-xl">
+              <p className="text-sm text-gray-500 italic">No description available for this service.</p>
             </div>
           )}
 
-          {/* Service Details */}
+          {service.variants && service.variants.length > 0 && (
+            <div className="border-t pt-4">
+              <h3 className="font-medium mb-3">Options</h3>
+              <p className="text-sm text-gray-600 mb-3">
+                This service is offered in multiple options. Choose one when you book — each may differ in time and price.
+              </p>
+              <ul className="space-y-3">
+                {service.variants.map((v) => (
+                  <li
+                    key={v.id}
+                    className="rounded-xl border border-gray-200 bg-gray-50/80 px-3 py-2.5 text-sm"
+                  >
+                    <div className="font-semibold text-gray-900">{v.label}</div>
+                    {v.description && <p className="text-gray-600 mt-1 text-xs">{v.description}</p>}
+                    <div className="mt-1 flex flex-wrap gap-3 text-xs text-gray-500">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5" />
+                        {v.duration_minutes} min
+                      </span>
+                      <span className="font-medium text-gray-900">{v.priceFormatted}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="border-t pt-4">
-            <h3 className="font-medium mb-3">Service Details</h3>
+            <h3 className="font-medium mb-3">Service details</h3>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-gray-400" />
                 <span className="text-sm text-gray-600">Duration: {service.duration}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-900">Price: {service.price}</span>
+                <span className="text-sm font-medium text-gray-900">From / base price: {service.price}</span>
               </div>
               {(service.supports_at_home || service.supports_at_salon) && (
                 <div className="flex items-center gap-2">
@@ -103,10 +132,9 @@ export default function ServiceDetailModal({
             </div>
           </div>
 
-          {/* What's Included */}
           {service.description && (
             <div className="border-t pt-4">
-              <h3 className="font-medium mb-3">What's Included</h3>
+              <h3 className="font-medium mb-3">What&apos;s included</h3>
               <ul className="space-y-2">
                 {service.description
                   .split("\n")
@@ -125,14 +153,11 @@ export default function ServiceDetailModal({
 
         <div className="flex gap-3 pt-6 border-t mt-6">
           <Link href={createBookingUrl()} className="flex-1">
-            <Button
-              onClick={onBook}
-              className="w-full bg-gray-900 hover:bg-gray-800 text-white"
-            >
-              Book This Service
+            <Button onClick={onBook} className="w-full bg-gray-900 hover:bg-gray-800 text-white rounded-full h-12">
+              Book this service
             </Button>
           </Link>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={onClose} className="rounded-full h-12 px-6">
             Close
           </Button>
         </div>

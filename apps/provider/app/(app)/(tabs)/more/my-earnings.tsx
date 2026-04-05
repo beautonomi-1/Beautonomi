@@ -14,6 +14,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 interface PayStub {
   pay_run_id: string;
@@ -38,6 +39,7 @@ export default function MyEarningsScreen() {
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const currency = getTenantDefaultCurrency();
 
   const { data, loading, error, refresh } = useApi<PayStub[] | { data?: PayStub[] }>(
     "/api/provider/pay-runs/my-earnings"
@@ -127,7 +129,7 @@ export default function MyEarningsScreen() {
                       {format(new Date(stub.pay_period_end), "MMM d, yyyy")}
                     </Text>
                     <Text style={twStyle("text-sm text-gray-500 mt-0.5")}>
-                      Net: R{Number(stub.net_pay).toFixed(2)}
+                      Net: {currency} {Number(stub.net_pay).toFixed(2)}
                     </Text>
                   </View>
                   <View style={twStyle("flex-row items-center gap-2")}>
@@ -144,24 +146,24 @@ export default function MyEarningsScreen() {
                 {isExpanded && (
                   <View style={twStyle("border-t border-gray-100 px-4 pb-4 pt-2")}>
                     <View style={twStyle("gap-2")}>
-                      <Row label="Gross pay" value={`R${Number(stub.gross_pay).toFixed(2)}`} />
-                      <Row label="Commission" value={`R${Number(stub.commission_amount).toFixed(2)}`} />
-                      <Row label="Hourly" value={`R${Number(stub.hourly_amount).toFixed(2)}`} />
-                      <Row label="Salary" value={`R${Number(stub.salary_amount).toFixed(2)}`} />
-                      <Row label="Tips" value={`R${Number(stub.tips_amount).toFixed(2)}`} />
+                      <Row label="Gross pay" value={`${currency} ${Number(stub.gross_pay).toFixed(2)}`} />
+                      <Row label="Commission" value={`${currency} ${Number(stub.commission_amount).toFixed(2)}`} />
+                      <Row label="Hourly" value={`${currency} ${Number(stub.hourly_amount).toFixed(2)}`} />
+                      <Row label="Salary" value={`${currency} ${Number(stub.salary_amount).toFixed(2)}`} />
+                      <Row label="Tips" value={`${currency} ${Number(stub.tips_amount).toFixed(2)}`} />
                       <View style={twStyle("flex-row justify-between py-1")}>
                         <Text style={twStyle("text-sm text-red-600")}>
                           Deductions (Tax, UIF, Other)
                         </Text>
                         <Text style={twStyle("text-sm font-medium text-red-600")}>
-                          -R{deductions.toFixed(2)}
+                          -{currency} {deductions.toFixed(2)}
                         </Text>
                       </View>
                     </View>
                     <View style={twStyle("flex-row justify-between pt-3 mt-2 border-t border-gray-200")}>
                       <Text style={twStyle("font-semibold text-gray-900")}>Net pay</Text>
                       <Text style={twStyle("font-semibold text-gray-900")}>
-                        R{Number(stub.net_pay).toFixed(2)}
+                        {currency} {Number(stub.net_pay).toFixed(2)}
                       </Text>
                     </View>
                     {stub.notes && (

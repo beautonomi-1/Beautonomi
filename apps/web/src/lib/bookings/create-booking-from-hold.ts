@@ -6,6 +6,8 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { determineAppointmentStatusFromDB } from "@/lib/provider-portal/appointment-settings";
 import { lockBookingServices } from "./conflict-check";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { percentOf, sumMoney } from "@beautonomi/utils";
 
 export interface HoldConsumeInput {
   holdId: string;
@@ -60,7 +62,7 @@ export async function createBookingFromHold(
     throw new Error("Staff ID required for booking");
   }
 
-  const currency = services[0]?.currency || "ZAR";
+  const currency = services[0]?.currency || LAST_RESORT_CURRENCY;
   const subtotal = services.reduce((sum, s) => sum + Number(s.price || 0), 0);
 
   // Load provider for tax/fee defaults
@@ -79,7 +81,7 @@ export async function createBookingFromHold(
     const { getPlatformDefaultTaxRate } = await import("@/lib/platform-tax-settings");
     taxRate = await getPlatformDefaultTaxRate();
   }
-  const taxAmount = taxRate > 0 ? Number(((subtotal * taxRate) / 100).toFixed(2)) : 0;
+  const taxAmount = taxRate > 0 ? percentOf(subtotal, taxRate) : 0;
 
   let serviceFeeAmount = 0;
   let serviceFeePercentage = 0;
@@ -93,27 +95,22 @@ export async function createBookingFromHold(
     if (feeConfig) {
       if (feeConfig.fee_type === "percentage") {
         serviceFeePercentage = Number(feeConfig.fee_percentage || 0);
-        serviceFeeAmount = Number(((subtotal * serviceFeePercentage) / 100).toFixed(2));
+        serviceFeeAmount = percentOf(subtotal, serviceFeePercentage);
       } else {
         serviceFeeAmount = Number(feeConfig.fee_fixed_amount || 0);
       }
     }
   }
 
-  const totalAmount = subtotal + taxAmount + serviceFeeAmount;
+  const totalAmount = sumMoney(subtotal, taxAmount, serviceFeeAmount);
   const appointmentStatus = await determineAppointmentStatusFromDB(adminSupabase, hold.provider_id);
 
   const startAt = new Date(hold.start_at);
   const endAt = new Date(hold.end_at);
 
-  // Re-check conflict before creating (slot may have been taken)
-  const conflictResult = await lockBookingServices(
-    supabase as any,
-    staffId,
-    startAt,
-    endAt,
-    15
-  );
+  // Re-check conflict before creating (slot may have been taken).
+  // hold.end_at is the full reserved window (incl. trailing buffer from hold creation); do not add buffer again.
+  const conflictResult = await lockBookingServices(supabase as any, staffId, startAt, endAt, 0);
   if (conflictResult.hasConflict) {
     throw new Error("This time slot is no longer available. Please select another time.");
   }

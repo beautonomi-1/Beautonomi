@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
+import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 /**
  * GET /api/public/pages/[slug]
@@ -15,28 +17,19 @@ export async function GET(
     const { slug } = await params;
     
     const supabase = await getSupabaseServer();
+    const tenant = await resolveTenantFromRequest(request);
+    const tenantId = tenant?.id ?? "";
 
-    const { data: pageContent, error } = await supabase
-      .from("page_content")
-      .select("*")
-      .eq("page_slug", slug)
-      .eq("is_active", true)
-      .order("display_order", { ascending: true })
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Error fetching page content:", error);
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Failed to fetch page content",
-            code: "FETCH_ERROR",
-          },
-        },
-        { status: 500 }
-      );
-    }
+    const scoped = await fetchScopedListMerged<Record<string, any>>({
+      supabase,
+      table: "page_content",
+      tenantId,
+      select: "*",
+      apply: (q) => q.eq("page_slug", slug).eq("is_active", true),
+      dedupeKey: (row) => String(row.section_key ?? row.id ?? ""),
+      orderBy: { column: "display_order", ascending: true },
+    });
+    const pageContent = scoped.data;
 
     // Group content by section_key
     const groupedContent = (pageContent || []).reduce((acc, item) => {

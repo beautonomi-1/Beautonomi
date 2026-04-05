@@ -1,11 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Calendar, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Calendar, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { coerceSelectedDate } from "@beautonomi/utils";
+import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
 import { cn } from "@/lib/utils";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
+import { useTranslation } from "@beautonomi/i18n";
 import type { BookingData } from "../../types/booking-engine";
-import { normalizePhoneToE164, DEFAULT_PHONE_COUNTRY_CODE } from "@/lib/phone";
+import { isCompleteE164 } from "@/lib/phone";
+import { PhoneInput } from "@/components/ui/phone-input";
 import {
   BOOKING_ACCENT,
   BOOKING_WAITLIST_BG,
@@ -45,6 +51,24 @@ function isUuid(s: string | undefined): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
+function startOfLocalDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+/** Slot must be at least minNoticeMinutes after now (lead time), and not on a past calendar day. */
+function isSlotStartStillSelectable(startIso: string, day: Date, minNoticeMinutes: number): boolean {
+  const slotTime = new Date(startIso);
+  const now = new Date();
+  const dayStart = startOfLocalDay(day).getTime();
+  const todayStart = startOfLocalDay(now).getTime();
+  if (dayStart < todayStart) return false;
+  const safeNotice = Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 60;
+  const cutoff = now.getTime() + safeNotice * 60 * 1000;
+  return slotTime.getTime() >= cutoff;
+}
+
 export type ScheduleSlot = { start: string; end: string; staff_id?: string; is_available?: boolean };
 
 interface StepScheduleProps {
@@ -53,10 +77,12 @@ interface StepScheduleProps {
   loadingSlots: boolean;
   selectedDate: Date | null;
   onSelectDate: (date: Date) => void;
-  onSelectSlot: (slot: ScheduleSlot) => void;
+  onSelectSlot: (slot: ScheduleSlot | null) => void;
   onNextAvailable: () => void;
   onNext: () => void;
   maxAdvanceDays: number;
+  /** From provider_online_booking_settings — same as availability API */
+  minNoticeMinutes?: number;
   providerId?: string;
   serviceId?: string | null;
   /** When false, unavailable slots are shown grayed out but without "Join Waitlist" */
@@ -73,29 +99,33 @@ export function StepSchedule({
   onNextAvailable,
   onNext,
   maxAdvanceDays,
+  minNoticeMinutes = 60,
   providerId = "",
   serviceId = null,
   waitlistEnabled = true,
 }: StepScheduleProps) {
+  const locale = useTenantLocaleTag();
+  const { t } = useTranslation();
+  const selectedDay = coerceSelectedDate(selectedDate);
   const router = useRouter();
   const [showMonthCalendar, setShowMonthCalendar] = useState(false);
+  const [monthViewDate, setMonthViewDate] = useState(() => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth(), 1);
+  });
   const [waitlistSlot, setWaitlistSlot] = useState<ScheduleSlot | null>(null);
   const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
   const [waitlistForm, setWaitlistForm] = useState({ name: "", email: "", phone: "" });
-  const [expandedPeriods, setExpandedPeriods] = useState<Set<string>>(new Set(["MORNING"]));
-  const togglePeriod = (label: string) => {
-    setExpandedPeriods((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label);
-      else next.add(label);
-      return next;
-    });
-  };
+  const [openPeriodKey, setOpenPeriodKey] = useState<"morning" | "afternoon" | "evening" | null>(null);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const safeAdvance = Math.max(1, maxAdvanceDays);
+  const lastSelectableDay = new Date(today);
+  lastSelectableDay.setDate(today.getDate() + safeAdvance - 1);
+
   const days: Date[] = [];
-  const daysToShow = Math.min(maxAdvanceDays, 21);
+  const daysToShow = Math.min(safeAdvance, 21);
   for (let i = 0; i < daysToShow; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() + i);
@@ -108,20 +138,48 @@ export function StepSchedule({
     new Date(start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const hasSelection = data.selectedDate != null && data.selectedSlot != null;
 
-  const _availableSlots = slots.filter((s) => s.is_available !== false);
-  const morningSlots = slots.filter((s) => getSlotPeriod(s.start) === "morning");
-  const afternoonSlots = slots.filter((s) => getSlotPeriod(s.start) === "afternoon");
-  const eveningSlots = slots.filter((s) => getSlotPeriod(s.start) === "evening");
+  const relevantSlots = useMemo(() => {
+    if (!selectedDay) return slots;
+    return slots.filter((s) => isSlotStartStillSelectable(s.start, selectedDay, minNoticeMinutes));
+  }, [slots, selectedDay, minNoticeMinutes]);
+
+  const morningSlots = relevantSlots.filter((s) => getSlotPeriod(s.start) === "morning");
+  const afternoonSlots = relevantSlots.filter((s) => getSlotPeriod(s.start) === "afternoon");
+  const eveningSlots = relevantSlots.filter((s) => getSlotPeriod(s.start) === "evening");
   const periodGroups = [
-    { label: "MORNING", slots: morningSlots },
-    { label: "AFTERNOON", slots: afternoonSlots },
-    { label: "EVENING", slots: eveningSlots },
+    { key: "morning" as const, label: t("booking.morning"), slots: morningSlots },
+    { key: "afternoon" as const, label: t("booking.afternoon"), slots: afternoonSlots },
+    { key: "evening" as const, label: t("booking.evening"), slots: eveningSlots },
   ];
+
+  useEffect(() => {
+    const first: "morning" | "afternoon" | "evening" | null =
+      morningSlots.length > 0
+        ? "morning"
+        : afternoonSlots.length > 0
+          ? "afternoon"
+          : eveningSlots.length > 0
+            ? "evening"
+            : null;
+    setOpenPeriodKey((prev) => {
+      if (prev === "morning" && morningSlots.length > 0) return prev;
+      if (prev === "afternoon" && afternoonSlots.length > 0) return prev;
+      if (prev === "evening" && eveningSlots.length > 0) return prev;
+      return first;
+    });
+  }, [selectedDay?.toDateString(), morningSlots.length, afternoonSlots.length, eveningSlots.length]);
+
+  useEffect(() => {
+    if (!selectedDay || !data.selectedSlot) return;
+    if (isSlotStartStillSelectable(data.selectedSlot.start, selectedDay, minNoticeMinutes)) return;
+    onSelectSlot(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- parent passes inline updater; avoid infinite effect loops
+  }, [selectedDay, data.selectedSlot?.start, minNoticeMinutes]);
 
   const timezoneLabel =
     typeof Intl !== "undefined"
-      ? new Date().toLocaleTimeString("en-ZA", { timeZoneName: "short" }).split(" ").pop() || "SAST"
-      : "SAST";
+      ? new Date().toLocaleTimeString(locale, { timeZoneName: "short" }).split(" ").pop() || "—"
+      : "—";
 
   const cardStyle = {
     background: BOOKING_GLASS_BG,
@@ -134,18 +192,20 @@ export function StepSchedule({
 
   const handleJoinWaitlist = async () => {
     if (!waitlistSlot || !providerId || !waitlistForm.name.trim()) return;
+    const rawPhone = waitlistForm.phone.trim();
+    if (rawPhone && !isCompleteE164(rawPhone)) {
+      alert("Enter a valid phone number or leave the field blank.");
+      return;
+    }
     setWaitlistSubmitting(true);
     try {
-      const rawPhone = waitlistForm.phone.trim();
-      const phoneE164 = rawPhone
-        ? normalizePhoneToE164(rawPhone, DEFAULT_PHONE_COUNTRY_CODE) || normalizePhoneToE164(rawPhone) || rawPhone
-        : undefined;
+      const phoneE164 = rawPhone || undefined;
       const body: Record<string, any> = {
         provider_id: providerId,
         customer_name: waitlistForm.name.trim(),
         customer_email: waitlistForm.email.trim() || undefined,
         customer_phone: phoneE164,
-        preferred_date: selectedDate?.toISOString().split("T")[0],
+        preferred_date: selectedDay ? formatLocalDateYYYYMMDD(selectedDay) : "",
         preferred_time_start: isoToHHMM(waitlistSlot.start),
         preferred_time_end: isoToHHMM(waitlistSlot.end),
       };
@@ -175,11 +235,12 @@ export function StepSchedule({
     }
   };
 
-  const monthForCalendar = selectedDate
-    ? new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1)
-    : new Date(today.getFullYear(), today.getMonth(), 1);
-  const year = monthForCalendar.getFullYear();
-  const month = monthForCalendar.getMonth();
+  const minViewMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const maxViewMonth = new Date(lastSelectableDay.getFullYear(), lastSelectableDay.getMonth(), 1);
+  const year = monthViewDate.getFullYear();
+  const month = monthViewDate.getMonth();
+  const canPrevMonth = startOfLocalDay(monthViewDate).getTime() > startOfLocalDay(minViewMonth).getTime();
+  const canNextMonth = startOfLocalDay(monthViewDate).getTime() < startOfLocalDay(maxViewMonth).getTime();
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
   const startPad = firstDay.getDay();
@@ -190,55 +251,93 @@ export function StepSchedule({
 
   const availableLabelColor = "#16a34a";
 
+  // Period icons as inline SVG strings for zero dependency  
+  const PeriodIcon = ({ period }: { period: "morning" | "afternoon" | "evening" }) => {
+    if (period === "morning") return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+      </svg>
+    );
+    if (period === "afternoon") return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+    );
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+    );
+  };
+
+  const periodMeta: Record<"morning" | "afternoon" | "evening", { label: string; gradient: string; iconColor: string }> = {
+    morning: { label: t("booking.morning"), gradient: "linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%)", iconColor: "#f59e0b" },
+    afternoon: { label: t("booking.afternoon"), gradient: "linear-gradient(135deg,#fff7ed 0%,#ffedd5 100%)", iconColor: "#f97316" },
+    evening: { label: t("booking.evening"), gradient: "linear-gradient(135deg,#f0f9ff 0%,#e0f2fe 100%)", iconColor: "#6366f1" },
+  };
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-300">
+    <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Header */}
       <div className="text-left">
-        <h2 className="text-2xl font-semibold tracking-tight" style={{ color: BOOKING_TEXT_PRIMARY }}>
-          Find an Opening
+        <h2 className="text-2xl font-bold tracking-tight" style={{ color: BOOKING_TEXT_PRIMARY }}>
+          Choose a date &amp; time
         </h2>
-        <p className="mt-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-          All times shown in your local timezone.
+        <p className="mt-1 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
+          All times are in your local timezone ({timezoneLabel}).
         </p>
       </div>
 
+      {/* Next available CTA */}
       <button
         type="button"
         onClick={onNextAvailable}
         className={cn(
-          "w-full rounded-2xl border-2 border-dashed py-3.5 font-semibold transition-all touch-manipulation flex items-center justify-center gap-2",
-          MIN_TAP,
-          BOOKING_ACTIVE_SCALE
+          "w-full rounded-2xl py-3.5 font-semibold transition-all touch-manipulation flex items-center justify-center gap-2.5 text-sm",
+          MIN_TAP, BOOKING_ACTIVE_SCALE
         )}
         style={{
           color: BOOKING_ACCENT,
-          borderColor: BOOKING_ACCENT,
+          border: `1.5px dashed ${BOOKING_ACCENT}`,
           backgroundColor: BOOKING_WAITLIST_BG,
         }}
       >
-        Next available
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={BOOKING_ACCENT} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        Next available slot
       </button>
 
+      {/* ── DATE SECTION ── */}
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
-            Date
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold" style={{ color: BOOKING_TEXT_PRIMARY }}>
+            {selectedDay
+              ? selectedDay.toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric" })
+              : "Select a date"}
           </p>
           <button
             type="button"
-            onClick={() => setShowMonthCalendar(true)}
-            className="text-xs flex items-center gap-1 min-h-[44px] min-w-[44px] justify-end touch-manipulation"
-            style={{ color: BOOKING_ACCENT }}
+            onClick={() => {
+              const base = selectedDay ?? today;
+              setMonthViewDate(new Date(base.getFullYear(), base.getMonth(), 1));
+              setShowMonthCalendar(true);
+            }}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all touch-manipulation"
+            style={{ color: BOOKING_ACCENT, background: BOOKING_WAITLIST_BG, border: `1px solid ${BOOKING_ACCENT}40` }}
           >
             <Calendar className="h-3.5 w-3.5" />
-            Full month
+            Month view
           </button>
         </div>
+
+        {/* Scrollable day strip */}
         <div
-          className="flex gap-2 overflow-x-auto pb-2 snap-x snap-mandatory"
-          style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}
+          className="flex gap-2 overflow-x-auto pb-1 snap-x snap-mandatory"
+          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
           {days.map((d) => {
-            const isSelected = selectedDate?.toDateString() === d.toDateString();
+            const isSelected = selectedDay?.toDateString() === d.toDateString();
             const isToday = d.toDateString() === today.toDateString();
             return (
               <button
@@ -246,104 +345,138 @@ export function StepSchedule({
                 type="button"
                 onClick={() => onSelectDate(d)}
                 className={cn(
-                  "shrink-0 snap-center rounded-2xl min-w-[64px] py-3 px-3 transition-all touch-manipulation flex flex-col items-center justify-center",
-                  MIN_TAP,
+                  "shrink-0 snap-center rounded-2xl w-[68px] h-[84px] transition-all touch-manipulation flex flex-col items-center justify-center gap-0.5 relative",
                   BOOKING_ACTIVE_SCALE
                 )}
                 style={
                   isSelected
                     ? {
-                        background: BOOKING_GLASS_BG,
-                        backdropFilter: "blur(16px) saturate(180%)",
-                        border: `2px solid ${BOOKING_ACCENT}`,
-                        color: BOOKING_ACCENT,
-                        boxShadow: BOOKING_SHADOW_CARD,
+                        background: BOOKING_ACCENT,
+                        color: "#fff",
+                        boxShadow: `0 8px 20px ${BOOKING_ACCENT}50`,
+                        border: "none",
                       }
                     : {
-                        background: isToday ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.7)",
-                        border: `1px solid ${BOOKING_EDGE}`,
+                        background: isToday ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.85)",
+                        border: isToday ? `1.5px solid ${BOOKING_ACCENT}50` : `1px solid ${BOOKING_EDGE}`,
                         color: BOOKING_TEXT_PRIMARY,
                       }
                 }
+                aria-pressed={isSelected}
+                aria-label={d.toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric" })}
               >
-                <span className="text-[10px] font-medium uppercase" style={{ opacity: 0.8 }}>
+                {isToday && !isSelected && (
+                  <span className="absolute top-2 left-0 right-0 text-center" style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: BOOKING_ACCENT }}>
+                    TODAY
+                  </span>
+                )}
+                <span className="text-[11px] font-semibold uppercase tracking-wide mt-2" style={{ opacity: isSelected ? 0.85 : 0.65 }}>
                   {formatDayShort(d)}
                 </span>
-                <span className="text-lg font-semibold mt-0.5">{formatDay(d)}</span>
+                <span className="text-[22px] font-bold leading-tight">{formatDay(d)}</span>
+                <span className="text-[10px] font-medium" style={{ opacity: 0.6 }}>
+                  {MONTHS[d.getMonth()]}
+                </span>
               </button>
             );
           })}
         </div>
-        <p className="text-xs mt-2" style={{ color: BOOKING_TEXT_SECONDARY }}>
-          Times shown in your local timezone ({timezoneLabel})
-        </p>
       </div>
 
+      {/* ── MONTH CALENDAR MODAL ── */}
       {showMonthCalendar && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: "rgba(0,0,0,0.4)" }}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)" }}
           onClick={() => setShowMonthCalendar(false)}
         >
           <div
-            className="w-full max-w-sm rounded-3xl p-5 shadow-xl"
+            className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl"
             style={cardStyle}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-4">
-              <span className="font-semibold" style={{ color: BOOKING_TEXT_PRIMARY }}>
+            {/* Month nav */}
+            <div className="flex items-center justify-between mb-5">
+              <button
+                type="button"
+                onClick={() => setMonthViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                disabled={!canPrevMonth}
+                className="w-10 h-10 rounded-full flex items-center justify-center transition-all touch-manipulation disabled:opacity-25"
+                style={{ background: "rgba(0,0,0,0.06)", color: BOOKING_TEXT_PRIMARY }}
+                aria-label="Previous month"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <span className="text-base font-bold" style={{ color: BOOKING_TEXT_PRIMARY }}>
                 {MONTHS[month]} {year}
               </span>
               <button
                 type="button"
-                onClick={() => setShowMonthCalendar(false)}
-                className="p-2 rounded-full touch-manipulation"
-                style={{ color: BOOKING_TEXT_SECONDARY }}
-                aria-label="Close"
+                onClick={() => setMonthViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                disabled={!canNextMonth}
+                className="w-10 h-10 rounded-full flex items-center justify-center transition-all touch-manipulation disabled:opacity-25"
+                style={{ background: "rgba(0,0,0,0.06)", color: BOOKING_TEXT_PRIMARY }}
+                aria-label="Next month"
               >
-                <X className="h-5 w-5" />
+                <ChevronRight className="h-5 w-5" />
               </button>
             </div>
-            <div className="grid grid-cols-7 gap-1">
-              {WEEKDAYS.map((w) => (
-                <div key={w} className="text-center text-xs py-1" style={{ color: BOOKING_TEXT_SECONDARY }}>
+
+            {/* Day name headers */}
+            <div className="grid grid-cols-7 mb-1">
+              {["S","M","T","W","T","F","S"].map((w, i) => (
+                <div key={i} className="text-center py-2 text-xs font-bold" style={{ color: BOOKING_TEXT_SECONDARY }}>
                   {w}
                 </div>
               ))}
-              {monthDays.map((d, i) => (
-                <div key={i} className="flex items-center justify-center">
-                  {d ? (
+            </div>
+
+            {/* Calendar grid */}
+            <div className="grid grid-cols-7 gap-y-1">
+              {monthDays.map((d, i) => {
+                if (!d) return <div key={i} />;
+                const dayStart = startOfLocalDay(d);
+                const beforeToday = dayStart.getTime() < today.getTime();
+                const afterLast = dayStart.getTime() > startOfLocalDay(lastSelectableDay).getTime();
+                const outOfRange = beforeToday || afterLast;
+                const isSelected = selectedDay?.toDateString() === d.toDateString();
+                const isTodayCell = d.toDateString() === today.toDateString();
+                return (
+                  <div key={i} className="flex items-center justify-center">
                     <button
                       type="button"
-                      onClick={() => {
-                        onSelectDate(d);
-                        setShowMonthCalendar(false);
-                      }}
-                      className={cn(
-                        "w-10 h-10 rounded-xl text-sm font-medium touch-manipulation",
-                        selectedDate?.toDateString() === d.toDateString()
-                          ? "text-white"
-                          : d.toDateString() === today.toDateString()
-                          ? "bg-gray-200"
-                          : "hover:bg-black/5"
-                      )}
+                      disabled={outOfRange}
+                      onClick={() => { onSelectDate(d); setShowMonthCalendar(false); }}
+                      className="relative w-10 h-10 rounded-full text-sm font-semibold transition-all touch-manipulation disabled:opacity-30 disabled:pointer-events-none"
                       style={{
-                        backgroundColor:
-                          selectedDate?.toDateString() === d.toDateString() ? BOOKING_ACCENT : undefined,
-                        color:
-                          selectedDate?.toDateString() === d.toDateString()
-                            ? "#fff"
-                            : d < today
-                            ? BOOKING_TEXT_SECONDARY
-                            : BOOKING_TEXT_PRIMARY,
+                        backgroundColor: isSelected ? BOOKING_ACCENT : isTodayCell ? "rgba(0,0,0,0.07)" : "transparent",
+                        color: isSelected ? "#fff" : outOfRange ? BOOKING_TEXT_SECONDARY : BOOKING_TEXT_PRIMARY,
+                        boxShadow: isSelected ? `0 4px 12px ${BOOKING_ACCENT}60` : "none",
                       }}
+                      aria-label={d.toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric" })}
+                      aria-pressed={isSelected}
                     >
                       {d.getDate()}
+                      {isTodayCell && !isSelected && (
+                        <span
+                          className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
+                          style={{ backgroundColor: BOOKING_ACCENT }}
+                        />
+                      )}
                     </button>
-                  ) : null}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowMonthCalendar(false)}
+              className="mt-4 w-full rounded-2xl h-11 text-sm font-semibold transition-all touch-manipulation"
+              style={{ background: "rgba(0,0,0,0.06)", color: BOOKING_TEXT_PRIMARY }}
+            >
+              Done
+            </button>
           </div>
         </div>
       )}
@@ -381,13 +514,13 @@ export function StepSchedule({
               className="w-full rounded-xl border px-4 py-3 text-sm min-h-[44px]"
               style={{ borderColor: BOOKING_BORDER }}
             />
-            <input
-              type="tel"
-              placeholder="Phone"
+            <PhoneInput
+              inputId="booking-engine-waitlist-phone"
+              label="Phone (optional)"
               value={waitlistForm.phone}
-              onChange={(e) => setWaitlistForm((f) => ({ ...f, phone: e.target.value }))}
-              className="w-full rounded-xl border px-4 py-3 text-sm min-h-[44px]"
-              style={{ borderColor: BOOKING_BORDER }}
+              onChange={(e164) => setWaitlistForm((f) => ({ ...f, phone: e164 }))}
+              placeholder="Phone number"
+              className="[&_label]:text-xs [&_label]:font-medium"
             />
             <div className="flex gap-2">
               <button
@@ -413,115 +546,160 @@ export function StepSchedule({
         </div>
       )}
 
-      {selectedDate && (
-        <div className="p-5 rounded-3xl" style={cardStyle}>
-          <p className="text-sm font-medium mb-3" style={{ color: BOOKING_TEXT_PRIMARY }}>
-            Time
-          </p>
+      {/* ── TIME SECTION ── */}
+      {selectedDay && (
+        <div className="rounded-3xl overflow-hidden" style={cardStyle}>
+          <div className="px-5 pt-5 pb-3">
+            <p className="text-sm font-bold" style={{ color: BOOKING_TEXT_PRIMARY }}>
+              Available times
+            </p>
+          </div>
+
           {loadingSlots ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin" style={{ color: BOOKING_TEXT_SECONDARY }} />
+            <div className="px-5 pb-5 space-y-3">
+              {[1, 2].map((i) => (
+                <div key={i} className="rounded-2xl overflow-hidden" style={{ background: "rgba(0,0,0,0.04)" }}>
+                  <div className="px-4 py-3.5 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full animate-pulse" style={{ background: "rgba(0,0,0,0.08)" }} />
+                    <div className="h-4 w-24 rounded animate-pulse" style={{ background: "rgba(0,0,0,0.08)" }} />
+                  </div>
+                  <div className="px-4 pb-4 flex flex-wrap gap-2">
+                    {[1, 2, 3, 4, 5].map((j) => (
+                      <div key={j} className="h-10 w-20 rounded-xl animate-pulse" style={{ background: "rgba(0,0,0,0.06)" }} />
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           ) : slots.length === 0 ? (
-            <p
-              className="text-sm py-4 text-center rounded-2xl"
-              style={{ backgroundColor: "rgba(0,0,0,0.04)", color: BOOKING_TEXT_SECONDARY }}
-            >
-              No slots available this day. Try another date.
-            </p>
+            <div className="px-5 pb-6 text-center">
+              <div className="w-14 h-14 rounded-full mx-auto mb-3 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.04)" }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={BOOKING_TEXT_SECONDARY} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+                </svg>
+              </div>
+              <p className="text-sm font-medium mb-1" style={{ color: BOOKING_TEXT_PRIMARY }}>No openings today</p>
+              <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>Try a different date or use &quot;Next available&quot; above.</p>
+            </div>
           ) : (
-            <div className="space-y-2">
-              {periodGroups.map(
-                (group) =>
-                  group.slots.length > 0 && (
-                    <div key={group.label} className="rounded-xl border overflow-hidden" style={{ borderColor: BOOKING_BORDER }}>
-                      <button
-                        type="button"
-                        onClick={() => togglePeriod(group.label)}
-                        className={cn(
-                          "w-full flex items-center justify-between px-4 py-3 text-left touch-manipulation",
-                          MIN_TAP,
-                          BOOKING_ACTIVE_SCALE
-                        )}
-                        style={{ backgroundColor: "rgba(0,0,0,0.03)", color: BOOKING_TEXT_PRIMARY }}
+            <div className="px-3 pb-4 space-y-2">
+              {periodGroups.map((group) =>
+                group.slots.length > 0 ? (
+                  <Collapsible
+                    key={group.key}
+                    open={openPeriodKey === group.key}
+                    onOpenChange={(open) => setOpenPeriodKey(open ? group.key : null)}
+                  >
+                    <CollapsibleTrigger
+                      className={cn(
+                        "flex w-full items-center gap-3 px-3 py-3 rounded-2xl transition-all touch-manipulation",
+                        MIN_TAP, BOOKING_ACTIVE_SCALE
+                      )}
+                      style={{
+                        background: openPeriodKey === group.key ? periodMeta[group.key].gradient : "rgba(0,0,0,0.03)",
+                      }}
+                    >
+                      <span
+                        className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                        style={{ background: `${periodMeta[group.key].iconColor}20`, color: periodMeta[group.key].iconColor }}
                       >
-                        <span className="text-xs font-medium uppercase tracking-wider">
-                          {group.label}
-                        </span>
-                        {expandedPeriods.has(group.label) ? (
-                          <ChevronUp className="h-4 w-4" style={{ color: BOOKING_TEXT_SECONDARY }} />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" style={{ color: BOOKING_TEXT_SECONDARY }} />
-                        )}
-                      </button>
-                      {expandedPeriods.has(group.label) && (
-                      <div className="px-4 pb-3 pt-1 flex flex-wrap gap-2">
+                        <PeriodIcon period={group.key} />
+                      </span>
+                      <span className="flex-1 text-left font-semibold text-sm" style={{ color: BOOKING_TEXT_PRIMARY }}>
+                        {group.label}
+                      </span>
+                      <span
+                        className="text-xs font-bold px-2 py-0.5 rounded-full"
+                        style={{
+                          background: `${periodMeta[group.key].iconColor}18`,
+                          color: periodMeta[group.key].iconColor,
+                        }}
+                      >
+                        {group.slots.filter((s) => s.is_available !== false).length}
+                      </span>
+                      <ChevronDown
+                        className={cn("h-4 w-4 shrink-0 transition-transform duration-200", openPeriodKey === group.key ? "rotate-180" : "")}
+                        style={{ color: BOOKING_TEXT_SECONDARY }}
+                        aria-hidden
+                      />
+                    </CollapsibleTrigger>
+
+                    <CollapsibleContent>
+                      <div className="px-2 pt-2 pb-1 flex flex-wrap gap-2">
                         {group.slots.map((slot, i) => {
                           const isAvailable = slot.is_available !== false;
-                          const isSelected =
-                            isAvailable && data.selectedSlot?.start === slot.start;
-                          if (isAvailable) {
-                            return (
-                              <button
-                                key={i}
-                                type="button"
-                                onClick={() => onSelectSlot(slot)}
-                                className={cn(
-                                  "rounded-xl py-3 px-4 text-sm font-medium transition-all touch-manipulation min-w-[80px] flex flex-col items-center gap-0.5",
-                                  MIN_TAP,
-                                  BOOKING_ACTIVE_SCALE
-                                )}
-                                style={{
-                                  borderRadius: BOOKING_RADIUS_PILL,
-                                  backgroundColor: isSelected ? BOOKING_ACCENT : "rgba(0,0,0,0.04)",
-                                  color: isSelected ? "#fff" : BOOKING_TEXT_PRIMARY,
-                                  border: isSelected ? "none" : `1px solid ${BOOKING_BORDER}`,
-                                }}
-                              >
-                                <span>{formatSlot(slot.start)}</span>
-                                <span className="text-[10px] font-semibold" style={{ color: isSelected ? "#fff" : availableLabelColor }}>
-                                  Available
-                                </span>
-                              </button>
-                            );
-                          }
-                          return (
+                          const isSelected = isAvailable && data.selectedSlot?.start === slot.start;
+                          return isAvailable ? (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => onSelectSlot(slot)}
+                              className={cn("rounded-xl transition-all touch-manipulation flex flex-col items-center py-2.5 px-4 min-w-[76px]", MIN_TAP, BOOKING_ACTIVE_SCALE)}
+                              style={{
+                                backgroundColor: isSelected ? BOOKING_ACCENT : "rgba(255,255,255,0.95)",
+                                color: isSelected ? "#fff" : BOOKING_TEXT_PRIMARY,
+                                border: isSelected ? "none" : `1px solid ${BOOKING_BORDER}`,
+                                boxShadow: isSelected ? `0 4px 12px ${BOOKING_ACCENT}40` : "0 1px 3px rgba(0,0,0,0.06)",
+                              }}
+                              aria-pressed={isSelected}
+                            >
+                              <span className="text-sm font-semibold">{formatSlot(slot.start)}</span>
+                              <span className="text-[10px] font-bold mt-0.5" style={{ color: isSelected ? "rgba(255,255,255,0.8)" : availableLabelColor }}>
+                                Open
+                              </span>
+                            </button>
+                          ) : (
                             <button
                               key={i}
                               type="button"
                               onClick={() => waitlistEnabled && providerId && setWaitlistSlot(slot)}
                               disabled={!waitlistEnabled}
-                              className={cn(
-                                "rounded-xl py-3 px-4 text-sm font-medium transition-all touch-manipulation min-w-[80px] flex flex-col items-center gap-0.5",
-                                MIN_TAP,
-                                BOOKING_ACTIVE_SCALE
-                              )}
+                              className={cn("rounded-xl transition-all touch-manipulation flex flex-col items-center py-2.5 px-4 min-w-[76px] opacity-60", MIN_TAP)}
                               style={{
-                                borderRadius: BOOKING_RADIUS_PILL,
-                                backgroundColor: "rgba(0,0,0,0.06)",
+                                backgroundColor: "rgba(0,0,0,0.04)",
                                 color: BOOKING_TEXT_SECONDARY,
                                 border: `1px solid ${BOOKING_BORDER}`,
                               }}
                             >
-                              <span>{formatSlot(slot.start)}</span>
+                              <span className="text-sm font-semibold">{formatSlot(slot.start)}</span>
                               {waitlistEnabled && (
-                                <span
-                                  className="text-[10px] font-semibold"
-                                  style={{ color: BOOKING_WAITLIST_TEXT }}
-                                >
-                                  Join Waitlist
-                                </span>
+                                <span className="text-[10px] font-bold mt-0.5" style={{ color: BOOKING_WAITLIST_TEXT }}>Waitlist</span>
                               )}
                             </button>
                           );
                         })}
                       </div>
-                      )}
-                    </div>
-                  )
+                    </CollapsibleContent>
+                  </Collapsible>
+                ) : null
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Selected slot summary */}
+      {hasSelection && data.selectedSlot && (
+        <div
+          className="rounded-2xl px-5 py-4 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300"
+          style={{ background: `${BOOKING_ACCENT}10`, border: `1px solid ${BOOKING_ACCENT}30` }}
+        >
+          <span
+            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+            style={{ backgroundColor: BOOKING_ACCENT, color: "#fff" }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold" style={{ color: BOOKING_TEXT_PRIMARY }}>
+              {selectedDay?.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" })}
+            </p>
+            <p className="text-xs font-medium mt-0.5" style={{ color: BOOKING_ACCENT }}>
+              {formatSlot(data.selectedSlot.start)}
+            </p>
+          </div>
         </div>
       )}
 
@@ -530,14 +708,15 @@ export function StepSchedule({
         onClick={onNext}
         disabled={!hasSelection}
         className={cn(
-          "w-full rounded-2xl h-12 font-semibold text-white transition-all touch-manipulation disabled:opacity-50 disabled:active:scale-100",
+          "w-full rounded-2xl h-14 font-bold text-white transition-all touch-manipulation disabled:opacity-40 disabled:active:scale-100",
           MIN_TAP,
           BOOKING_ACTIVE_SCALE
         )}
         style={{
           backgroundColor: BOOKING_ACCENT,
           borderRadius: BOOKING_RADIUS_BUTTON,
-          boxShadow: BOOKING_SHADOW_CARD,
+          boxShadow: hasSelection ? `0 8px 24px ${BOOKING_ACCENT}50` : BOOKING_SHADOW_CARD,
+          fontSize: "1rem",
         }}
       >
         Continue

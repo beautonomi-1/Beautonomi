@@ -23,8 +23,9 @@ Config (`guides_enabled`, `surveys_enabled`) is fetched from `/api/public/analyt
 ### Mobile (Provider and Customer) — implemented
 
 1. **Config** — Both apps use `@beautonomi/analytics`: `fetchAmplitudeConfig(APP_URL, environment)` and get the same `guides_enabled` and `surveys_enabled` as web.
-2. **Init** — `initAnalytics(config, "provider" | "client")` in `packages/analytics/src/react-native.ts`:
+2. **Init** — `initAnalytics(config, "provider" | "client", { enableSessionReplay?: boolean })` in `packages/analytics/src/react-native.ts`:
    - Initializes the Amplitude Analytics React Native SDK (`@amplitude/analytics-react-native`).
+   - When `enableSessionReplay` is true (typically signed-in users who passed analytics consent), adds `SessionReplayPlugin` with the admin-configured sampling rate; anonymous sessions pass `false` so replay is off.
    - If `config.guides_enabled || config.surveys_enabled`, adds the Engagement plugin: `add(getPlugin())` from `@amplitude/plugin-engagement-react-native`.
 3. **Boot** — When the app calls `client.identify(userId, userProperties)`, the module also calls `getPlugin().boot(userId, deviceId?)` so Guides and Surveys can be shown (same identity as Analytics for CDP).
 4. **Deep links** — In each app’s `AnalyticsProvider`, `Linking.getInitialURL()` and `Linking.addEventListener('url', …)` call `handleEngagementURL(url)` from `@beautonomi/analytics/react-native`. If the URL is handled by Amplitude (e.g. guide/survey preview), it returns `true`; otherwise the app can handle it (e.g. notification deep links).

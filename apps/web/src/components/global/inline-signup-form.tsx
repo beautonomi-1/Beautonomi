@@ -20,9 +20,19 @@ import { useAuth } from "@/providers/AuthProvider";
 import { signIn as signInAuth, signUp as signUpAuth, signInWithOAuth, resendVerificationEmail } from "@/lib/supabase/auth";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { useTranslation } from "@beautonomi/i18n";
+import { supportedLanguages, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
+import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
+import { RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
+
+const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
+const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
 
 interface InlineSignupFormProps {
   redirectContext?: "provider" | "customer";
+  /** Optional extra work after redirect (e.g. close a parent modal). Does not replace default navigation. */
   onAuthSuccess?: () => void;
   redirectUrl?: string;
   /** Referral code from signup?ref=CODE — attached after signup for attribution */
@@ -54,13 +64,38 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [countryCode, setCountryCode] = useState("+27");
   const [error, setError] = useState<string | null>(null);
   const [showPasswordField, setShowPasswordField] = useState(false);
   const [showResendVerification, setShowResendVerification] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [preferredLanguage, setPreferredLanguage] = useState(() => {
+    if (typeof navigator !== "undefined" && navigator.language) {
+      const code = navigator.language.split("-")[0];
+      return supportedLanguages.some((l) => l.code === code) ? code : "en";
+    }
+    return "en";
+  });
+  const [signupSource, setSignupSource] = useState<string | null>(null);
+  const { t } = useTranslation();
+  const fieldClass = "bg-gray-100 border-gray-200 text-[13px] text-gray-700 placeholder:text-gray-400";
+  const labelClass = "text-xs font-medium text-gray-700 mb-2 block";
+
+  // Apply pending signup_source / preferred_language when user becomes available (e.g. after email verification)
+  useEffect(() => {
+    if (!user?.id || typeof window === "undefined") return;
+    const pendingSource = sessionStorage.getItem(PENDING_SIGNUP_SOURCE_KEY);
+    const pendingLang = sessionStorage.getItem(PENDING_PREFERRED_LANGUAGE_KEY);
+    if (!pendingSource && !pendingLang) return;
+    const payload: { signup_source?: string; preferred_language?: string } = {};
+    if (pendingSource) payload.signup_source = pendingSource;
+    if (pendingLang) payload.preferred_language = pendingLang;
+    fetcher.patch("/api/me/profile", payload).then(() => {
+      sessionStorage.removeItem(PENDING_SIGNUP_SOURCE_KEY);
+      sessionStorage.removeItem(PENDING_PREFERRED_LANGUAGE_KEY);
+    }).catch(() => {});
+  }, [user?.id]);
 
   // Close form and call onAuthSuccess when user becomes authenticated
   useEffect(() => {
@@ -130,7 +165,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       return;
     }
     if (!agreeTerms) {
-      setError("Please agree to the Terms of Service and Privacy Policy");
+      setError(
+        "Please confirm you have read and agree to the Terms of Service and Privacy Policy (including product analytics and optional session replay while signed in)."
+      );
+      return;
+    }
+    if (phone?.trim() && !isCompleteE164(phone)) {
+      setError("Enter a valid phone number or clear the phone field.");
       return;
     }
 
@@ -150,13 +191,21 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
         email: trimmedEmail,
         password: trimmedPassword,
         fullName: fullName?.trim(),
-        phone: phone ? `${countryCode}${phone}` : undefined,
+        phone: phone?.trim() && isCompleteE164(phone) ? phone.trim() : undefined,
         role: userRole,
       });
 
       if (signupResult?.session) {
         toast.success("Account created successfully! Welcome to Beautonomi.");
         await refreshUser();
+        try {
+          await fetcher.patch("/api/me/profile", {
+            signup_source: signupSource || undefined,
+            preferred_language: preferredLanguage,
+          });
+        } catch {
+          // Non-blocking
+        }
         if (referralCode?.trim()) {
           try {
             await fetcher.post("/api/me/referrals/attach", { referral_code: referralCode.trim() });
@@ -165,20 +214,15 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           }
         }
         await new Promise(resolve => setTimeout(resolve, 300));
-        
-        if (onAuthSuccess) {
-          onAuthSuccess();
-          return;
-        }
-        
+
         if (redirectContext === "provider") {
           router.push("/provider/onboarding");
         } else if (redirectUrl) {
           router.push(redirectUrl);
         } else {
-          // For customers, redirect to onboarding flow
           router.push("/onboarding");
         }
+        onAuthSuccess?.();
       } else if (signupResult?.user) {
         try {
           const loginResult = await signInAuth({ email: trimmedEmail, password: trimmedPassword });
@@ -186,6 +230,14 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           if (loginResult?.session) {
             toast.success("Account created successfully! Welcome to Beautonomi.");
             await refreshUser();
+            try {
+              await fetcher.patch("/api/me/profile", {
+                signup_source: signupSource || undefined,
+                preferred_language: preferredLanguage,
+              });
+            } catch {
+              // Non-blocking
+            }
             if (referralCode?.trim()) {
               try {
                 await fetcher.post("/api/me/referrals/attach", { referral_code: referralCode.trim() });
@@ -194,25 +246,24 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               }
             }
             await new Promise(resolve => setTimeout(resolve, 300));
-            
-            if (onAuthSuccess) {
-              onAuthSuccess();
-              return;
-            }
-            
+
             if (redirectContext === "provider") {
               router.push("/provider/onboarding");
             } else if (redirectUrl) {
               router.push(redirectUrl);
             } else {
-              // For customers, redirect to onboarding flow
               router.push("/onboarding");
             }
+            onAuthSuccess?.();
           } else {
             throw new Error("Email verification required");
           }
         } catch (loginError: any) {
           console.log("Auto-login after signup failed, email verification is required:", loginError);
+          if (typeof window !== "undefined") {
+            if (signupSource) sessionStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource);
+            sessionStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage);
+          }
           toast.success(
             "Account created! Please check your email to verify your account. You'll be able to log in after verification.",
             { duration: 6000 }
@@ -283,8 +334,12 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
   };
 
   const handlePhoneAuth = async () => {
-    if (!phone) {
+    if (!phone?.trim()) {
       setError("Phone number is required");
+      return;
+    }
+    if (!isCompleteE164(phone)) {
+      setError("Enter a valid phone number with country code");
       return;
     }
 
@@ -352,36 +407,14 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
       {!showEmailForm && (
         <>
           <div className="mb-4">
-            <div className="border border-gray-300 rounded-lg overflow-hidden">
-              <div className="border-b border-gray-300 px-4 py-2 bg-gray-50">
-                <Label className="text-xs font-medium text-gray-700">Country code</Label>
-                <Select value={countryCode} onValueChange={setCountryCode}>
-                  <SelectTrigger className="w-full border-none px-0 pt-1 text-base font-semibold bg-transparent h-auto">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="+27">South Africa (+27)</SelectItem>
-                    <SelectItem value="+254">Kenya (+254)</SelectItem>
-                    <SelectItem value="+233">Ghana (+233)</SelectItem>
-                    <SelectItem value="+234">Nigeria (+234)</SelectItem>
-                    <SelectItem value="+20">Egypt (+20)</SelectItem>
-                    <SelectItem value="+1">USA (+1)</SelectItem>
-                    <SelectItem value="+44">UK (+44)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="px-4 py-3">
-                <Input
-                  type="tel"
-                  className="text-base border-0 px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0"
-                  placeholder="Phone number"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  autoComplete="tel"
-                  inputMode="tel"
-                />
-              </div>
-            </div>
+            <PhoneInput
+              inputId="inline-signup-phone"
+              label="Phone number"
+              value={phone}
+              onChange={setPhone}
+              placeholder="Phone number"
+              required
+            />
           </div>
           
           <p className="text-xs text-gray-600 mb-6">
@@ -406,27 +439,42 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           {!showPasswordField && (
             <>
               <div className="mb-4">
-                <Label className="text-sm font-medium text-gray-700 mb-2 block">Full name</Label>
+                <Label className={labelClass}>Full name</Label>
                 <Input
                   type="text"
-                  className="text-base h-12 border-gray-300"
+                  className={`${fieldClass} h-12`}
                   placeholder="Full name"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   autoComplete="name"
                 />
               </div>
-              <div className="mb-6">
-                <Label className="text-sm font-medium text-gray-700 mb-2 block">Email</Label>
+              <div className="mb-4">
+                <Label className={labelClass}>Email</Label>
                 <Input
                   type="email"
-                  className="text-base h-12 border-gray-300"
+                  className={`${fieldClass} h-12`}
                   placeholder="Email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoComplete="email"
                   inputMode="email"
                 />
+              </div>
+              <div className="mb-6">
+                <Label className={labelClass}>{t("auth.preferredLanguage")}</Label>
+                <Select value={preferredLanguage} onValueChange={setPreferredLanguage}>
+                  <SelectTrigger className={`w-full h-12 rounded-lg ${fieldClass}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {supportedLanguages.map((lang) => (
+                      <SelectItem key={lang.code} value={lang.code}>
+                        {lang.nativeName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <Button 
                 className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white h-12 text-base font-medium mb-6"
@@ -493,7 +541,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
               <div className="text-center mt-6">
                 <button
                   onClick={() => {
-                    window.open("/help", "_blank");
+                    window.open(PLATFORM_CONTACT_HREF, "_blank");
                   }}
                   className="text-sm text-gray-600 hover:text-gray-900 underline"
                 >
@@ -507,11 +555,11 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
           {showPasswordField && (
             <>
               <div className="mb-4">
-                <Label className="text-sm font-medium text-gray-700 mb-2 block">Password</Label>
+                <Label className={labelClass}>Password</Label>
                 <div className="relative">
                   <Input
                     type={showPassword ? "text" : "password"}
-                    className="text-base h-12 border-gray-300 pr-10"
+                    className={`${fieldClass} h-12 pr-10`}
                     placeholder="Min. 8 characters"
                     value={password}
                     onChange={(e) => {
@@ -552,6 +600,27 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   </div>
                 )}
               </div>
+              <div className="mb-4">
+                <Label className={labelClass}>
+                  {t("auth.howHearAboutUs")} <span className="text-gray-500 font-normal">(optional)</span>
+                </Label>
+                <Select
+                  value={signupSource ?? RADIX_SELECT_NONE}
+                  onValueChange={(v) => setSignupSource(v === RADIX_SELECT_NONE ? null : v)}
+                >
+                  <SelectTrigger className={`w-full h-12 rounded-lg ${fieldClass}`}>
+                    <SelectValue placeholder={t("auth.signupSourceSkip")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={RADIX_SELECT_NONE}>{t("auth.signupSourceSkip")}</SelectItem>
+                    {SIGNUP_SOURCE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {t(opt.labelKey)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="mb-4 flex items-start gap-3">
                 <Checkbox
                   id="signup-agree-terms"
@@ -560,8 +629,8 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   className="mt-0.5"
                   aria-describedby="signup-terms-text"
                 />
-                <label htmlFor="signup-agree-terms" id="signup-terms-text" className="text-sm text-gray-600 cursor-pointer">
-                  I agree to the{" "}
+                <label htmlFor="signup-agree-terms" id="signup-terms-text" className="text-xs text-gray-600 cursor-pointer leading-relaxed">
+                  I have read and agree to the{" "}
                   <Link href="/terms-and-condition" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
                     Terms of Service
                   </Link>{" "}
@@ -569,6 +638,7 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                   <Link href="/privacy-policy" className="text-primary font-medium underline hover:no-underline" target="_blank" rel="noopener noreferrer">
                     Privacy Policy
                   </Link>
+                  . I understand Beautonomi may use cookies and similar technologies, process personal data as described in the Privacy Policy, and (while I am signed in) use product analytics and limited session replay to operate and improve the service. I can update analytics preferences in my account privacy settings.
                 </label>
               </div>
               <Button 

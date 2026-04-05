@@ -24,6 +24,8 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { formatCurrency, formatDuration } from "@/lib/format";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -45,6 +47,8 @@ interface ServiceItem {
   supports_at_home: boolean;
   supports_at_salon: boolean;
   sort_order: number;
+  service_type?: string;
+  parent_service_id?: string | null;
   provider_categories?: CategoryInfo[];
 }
 
@@ -66,7 +70,7 @@ const EMPTY_FORM = {
   description: "",
   duration_minutes: "60",
   price: "",
-  currency: "ZAR",
+  currency: getTenantDefaultCurrency(),
   category_id: "",
   supports_at_home: false,
   supports_at_salon: true,
@@ -97,6 +101,7 @@ export default function CatalogueScreen() {
 
   const { execute: toggleService } = useApiMutation("patch");
   const { execute: reorderService } = useApiMutation("patch");
+  const { execute: reorderCategory } = useApiMutation("patch");
   const { execute: createService, loading: creating } = useApiPost<
     Record<string, unknown>,
     ServiceItem
@@ -183,9 +188,19 @@ export default function CatalogueScreen() {
     ]);
   }
 
+  async function handleReorderCategory(catId: string, direction: "up" | "down") {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const { error: err } = await reorderCategory(`/api/provider/categories/${catId}`, { direction });
+    if (err) Alert.alert("Error", err);
+    else refreshCategories();
+  }
+
   // --- Filtering ---
   const filtered = useMemo(() => {
-    let items = services ?? [];
+    let items = (services ?? []).filter(
+      // Always exclude child variant rows — they appear inside the service detail screen
+      (s) => s.service_type !== "variant" && !s.parent_service_id
+    );
     if (filter === "active") items = items.filter((s) => s.is_active);
     if (filter === "inactive") items = items.filter((s) => !s.is_active);
     if (search.trim()) {
@@ -199,7 +214,7 @@ export default function CatalogueScreen() {
     return items.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   }, [services, filter, search]);
 
-  // --- Grouped by category ---
+  // --- Grouped by category, respecting category display_order ---
   const grouped = useMemo(() => {
     const map = new Map<string, ServiceItem[]>();
     for (const item of filtered) {
@@ -207,8 +222,14 @@ export default function CatalogueScreen() {
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat)!.push(item);
     }
-    return Array.from(map.entries());
-  }, [filtered]);
+    // Sort group keys by the category's display_order from the categories list
+    const catOrderMap = new Map(categories.map((c, i) => [c.name, i]));
+    return Array.from(map.entries()).sort(([a], [b]) => {
+      const oa = catOrderMap.has(a) ? catOrderMap.get(a)! : 9999;
+      const ob = catOrderMap.has(b) ? catOrderMap.get(b)! : 9999;
+      return oa - ob;
+    });
+  }, [filtered, categories]);
 
   // --- Handlers ---
   async function handleToggleActive(service: ServiceItem) {
@@ -367,29 +388,61 @@ export default function CatalogueScreen() {
       </View>
 
       {categories.length > 0 && (
-        <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap", alignItems: "center" }}>
-          {categories.map((cat) => (
+        <View style={{ marginBottom: 12 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], letterSpacing: 0.5, textTransform: "uppercase", flex: 1 }}>
+              Categories
+            </Text>
             <TouchableOpacity
-              key={cat.id}
-              style={{ flexDirection: "row", alignItems: "center", borderRadius: 9999, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingHorizontal: 12, paddingVertical: 6, marginRight: 8, marginBottom: 8 }}
-              onPress={() => openEditCategory(cat)}
-              onLongPress={() => handleDeleteCategory(cat)}
-              accessibilityLabel={`Edit category ${cat.name}`}
+              style={{ flexDirection: "row", alignItems: "center", borderRadius: 9999, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[300], paddingHorizontal: 10, paddingVertical: 4 }}
+              onPress={openAddCategory}
+              accessibilityLabel="Add category"
             >
-              {cat.color && (
-                <View style={{ marginRight: 6, height: 10, width: 10, borderRadius: 9999, backgroundColor: cat.color }} />
-              )}
-              <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[700] }}>{cat.name}</Text>
+              <Ionicons name="add" size={14} color="#6b7280" />
+              <Text style={{ marginLeft: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Add</Text>
             </TouchableOpacity>
+          </View>
+          {categories.map((cat, idx) => (
+            <View
+              key={cat.id}
+              style={{ flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 6 }}
+            >
+              {/* Colour dot */}
+              {cat.color ? (
+                <View style={{ height: 12, width: 12, borderRadius: 9999, backgroundColor: cat.color, marginRight: 10 }} />
+              ) : (
+                <Ionicons name="folder-outline" size={14} color="#9ca3af" style={{ marginRight: 10 }} />
+              )}
+              <Text style={{ flex: 1, fontSize: 14, fontWeight: "500", color: Colors.gray[800] }}>{cat.name}</Text>
+              {/* Up / Down reorder */}
+              <TouchableOpacity
+                hitSlop={6}
+                onPress={() => handleReorderCategory(cat.id, "up")}
+                disabled={idx === 0}
+                accessibilityLabel={`Move ${cat.name} up`}
+                style={{ marginRight: 4, opacity: idx === 0 ? 0.3 : 1 }}
+              >
+                <Ionicons name="chevron-up" size={18} color="#6b7280" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                hitSlop={6}
+                onPress={() => handleReorderCategory(cat.id, "down")}
+                disabled={idx === categories.length - 1}
+                accessibilityLabel={`Move ${cat.name} down`}
+                style={{ marginRight: 10, opacity: idx === categories.length - 1 ? 0.3 : 1 }}
+              >
+                <Ionicons name="chevron-down" size={18} color="#6b7280" />
+              </TouchableOpacity>
+              {/* Edit */}
+              <TouchableOpacity
+                hitSlop={6}
+                onPress={() => openEditCategory(cat)}
+                accessibilityLabel={`Edit ${cat.name}`}
+              >
+                <Ionicons name="pencil-outline" size={16} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
           ))}
-          <TouchableOpacity
-            style={{ flexDirection: "row", alignItems: "center", borderRadius: 9999, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[300], paddingHorizontal: 12, paddingVertical: 6, marginRight: 8, marginBottom: 8 }}
-            onPress={openAddCategory}
-            accessibilityLabel="Add category"
-          >
-            <Ionicons name="add" size={14} color="#6b7280" />
-            <Text style={{ marginLeft: 4, fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Category</Text>
-          </TouchableOpacity>
         </View>
       )}
       {categories.length === 0 && (
@@ -580,7 +633,7 @@ export default function CatalogueScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <FormField
-              label="Price (R) *"
+              label={`Price (${getTenantDefaultCurrency()}) *`}
               value={form.price}
               onChangeText={(t) => setForm((p) => ({ ...p, price: t }))}
               placeholder="350.00"
@@ -591,7 +644,7 @@ export default function CatalogueScreen() {
 
         <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Currency</Text>
         <View style={{ marginBottom: 12, flexDirection: "row" }}>
-          {["ZAR", "USD", "GBP", "EUR"].map((c) => (
+          {[LAST_RESORT_CURRENCY, "USD", "GBP", "EUR"].map((c) => (
             <TouchableOpacity
               key={c}
               style={{ borderRadius: 9999, paddingHorizontal: 16, paddingVertical: 8, marginRight: 8, backgroundColor: form.currency === c ? Colors.gray[900] : Colors.white, borderWidth: form.currency === c ? 0 : 1, borderColor: Colors.gray[200] }}

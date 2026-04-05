@@ -607,11 +607,10 @@ export default function WhatsAppChat({
       // Remove optimistic message on error
       setMessages((prev) => (Array.isArray(prev) ? prev : []).filter((m) => m.id !== tempId));
       
-      // Handle subscription limit errors with better messaging
       let errorMessage = "Failed to send message";
       if (err instanceof FetchError) {
-        if (err.status === 403 && err.message?.includes("subscription")) {
-          errorMessage = "Message limit reached. Please upgrade your plan to send more messages.";
+        if (err.status === 403 && (err.message?.includes("subscription") || err.message?.includes("plan"))) {
+          errorMessage = "Messaging is not available on your current plan. Please upgrade your subscription to enable chat.";
         } else {
           errorMessage = err.message || "Failed to send message";
         }

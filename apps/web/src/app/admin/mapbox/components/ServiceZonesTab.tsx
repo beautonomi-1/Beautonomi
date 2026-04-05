@@ -1,486 +1,150 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { fetcher } from "@/lib/http/fetcher";
-import LoadingTimeout from "@/components/ui/loading-timeout";
-import EmptyState from "@/components/ui/empty-state";
-import { toast } from "sonner";
-import { FetchError } from "@/lib/http/fetcher";
-import { Plus, Edit, Trash2 } from "lucide-react";
+/**
+ * Zone management has moved to Operations → Market Coverage (/admin/service-zones).
+ * This file is kept so the import in mapbox/page.tsx continues to compile, but the
+ * legacy Create/Edit zone form is no longer rendered — it used flat array fields
+ * (postal_codes[], cities[], polygon_coordinates) that are not read by the PostGIS
+ * coverage checks.  All zone work should go through the new control plane.
+ */
+
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-
-function formatFetchError(e: any, fallback: string): string {
-  if (!(e instanceof FetchError)) return e instanceof Error ? e.message : fallback;
-  const msg = e.message;
-  if (!e.details) return msg;
-  const details = Array.isArray(e.details)
-    ? (e.details as Array<{ path?: string; message?: string }>)
-        .map((d) => (d.path ? `${d.path}: ${d.message ?? ""}` : String(d.message ?? d)))
-        .join("; ")
-    : String(e.details);
-  return details ? `${msg}: ${details}` : msg;
-}
+import { fetcher } from "@/lib/http/fetcher";
+import { Globe2, ArrowRight, AlertTriangle, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
-interface PlatformZone {
+interface LegacyZone {
   id: string;
   name: string;
-  zone_type: "postal_code" | "city" | "polygon" | "radius";
-  postal_codes?: string[];
-  cities?: string[];
-  polygon_coordinates?: any;
-  center_latitude?: number;
-  center_longitude?: number;
-  radius_km?: number;
+  zone_type: string;
   is_active: boolean;
-  description?: string;
-  created_by?: string;
+  status?: string;
 }
 
 export default function ServiceZonesTab() {
-  const [zones, setZones] = useState<PlatformZone[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showDialog, setShowDialog] = useState(false);
-  const [editingZone, setEditingZone] = useState<PlatformZone | null>(null);
+  const [legacyZones, setLegacyZones] = useState<LegacyZone[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadZones();
+    // Fetch zones that use the old flat-field approach (have zone_type but no inclusions).
+    fetcher
+      .get<{ data: LegacyZone[] }>("/api/admin/mapbox/service-zones")
+      .then((res) => setLegacyZones(res.data ?? []))
+      .catch(() => setLegacyZones([]))
+      .finally(() => setLoading(false));
   }, []);
 
-  const loadZones = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetcher.get<{ data: PlatformZone[] }>("/api/admin/platform-zones");
-      setZones(response.data || []);
-    } catch (error) {
-      console.error("Error loading zones:", error);
-      toast.error(formatFetchError(error, "Failed to load platform zones"));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleCreate = () => {
-    setEditingZone(null);
-    setShowDialog(true);
-  };
-
-  const handleEdit = (zone: PlatformZone) => {
-    setEditingZone(zone);
-    setShowDialog(true);
-  };
-
-  const handleDelete = async (zone: PlatformZone) => {
-    if (!confirm(`Are you sure you want to delete "${zone.name}"? This will affect all providers who have selected this zone.`)) return;
-
-    try {
-      await fetcher.delete(`/api/admin/platform-zones/${zone.id}`);
-      toast.success("Platform zone deleted");
-      loadZones();
-    } catch (error) {
-      toast.error(formatFetchError(error, "Failed to delete platform zone"));
-    }
-  };
-
-  const handleSave = async (zoneData: any) => {
-    try {
-      if (editingZone) {
-        await fetcher.patch(`/api/admin/platform-zones/${editingZone.id}`, zoneData);
-        toast.success("Platform zone updated");
-      } else {
-        await fetcher.post("/api/admin/platform-zones", zoneData);
-        toast.success("Platform zone created");
-      }
-      setShowDialog(false);
-      setEditingZone(null);
-      loadZones();
-    } catch (error) {
-      toast.error(formatFetchError(error, "Failed to save platform zone"));
-    }
-  };
-
-  if (isLoading) {
-    return <LoadingTimeout loadingMessage="Loading service zones..." />;
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <div>
-          <p className="text-sm text-gray-600">Manage platform service zones</p>
-          <p className="text-xs text-gray-500 mt-1">
-            Platform zones define where the platform is available. Providers can then select these zones and set their own pricing.
-          </p>
-          <Link href="/admin/service-zones" className="text-xs text-primary hover:underline mt-1 inline-block">
-            Open Service Zones Control Plane (hierarchy, map, publish) →
-          </Link>
+    <div className="space-y-6">
+      {/* Deprecation banner */}
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-amber-900">
+              Legacy zone format — use Market Coverage instead
+            </p>
+            <p className="mt-1 text-sm leading-relaxed text-amber-800">
+              These zones use flat field arrays (<code className="rounded bg-amber-100 px-1 text-xs">postal_codes[]</code>,{" "}
+              <code className="rounded bg-amber-100 px-1 text-xs">cities[]</code>,{" "}
+              <code className="rounded bg-amber-100 px-1 text-xs">polygon_coordinates</code>) that are{" "}
+              <strong>not read by the PostGIS coverage checks</strong>. All new zone work — city by
+              city rollout, dataset-backed inclusions, Mapbox map preview, and provider
+              auto-enrollment — should go through{" "}
+              <strong>Operations → Market Coverage</strong>.
+            </p>
+            <div className="mt-3">
+              <Button asChild size="sm" className="gap-1.5">
+                <Link href="/admin/service-zones">
+                  <Globe2 className="h-4 w-4" />
+                  Go to Market Coverage
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
+          </div>
         </div>
-        <Button onClick={handleCreate} className="bg-primary hover:bg-primary-hover">
-          <Plus className="w-4 h-4 mr-2" />
-          Add Platform Zone
-        </Button>
       </div>
 
-      {zones.length === 0 ? (
-        <EmptyState
-          title="No platform zones"
-          description="Create platform zones to define where the platform is available. Providers will be able to select these zones and set their own pricing."
-          action={{
-            label: "Add Platform Zone",
-            onClick: handleCreate,
-          }}
-        />
-      ) : (
-        <div className="bg-white border rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {zones.map((zone) => (
-                <tr key={zone.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium">{zone.name}</td>
-                  <td className="px-6 py-4">
-                    <Badge variant="outline">
-                      {zone.zone_type === "postal_code" && "Postal Code"}
-                      {zone.zone_type === "city" && "City"}
-                      {zone.zone_type === "radius" && "Radius"}
-                      {zone.zone_type === "polygon" && "Polygon"}
-                    </Badge>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    {zone.zone_type === "postal_code" && zone.postal_codes
-                      ? `${zone.postal_codes.length} postal codes`
-                      : zone.zone_type === "city" && zone.cities
-                      ? `${zone.cities.length} cities`
-                      : zone.zone_type === "radius" && zone.radius_km
-                      ? `${zone.radius_km} km radius`
-                      : zone.zone_type === "polygon" && zone.polygon_coordinates
-                      ? "Polygon zone"
-                      : "-"}
-                  </td>
-                  <td className="px-6 py-4">
-                    <Badge className={zone.is_active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"}>
-                      {zone.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(zone)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(zone)}>
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* How the two systems relate */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-2 flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-amber-500" />
+            <span className="text-xs font-bold uppercase tracking-wide text-slate-600">
+              Legacy zones (here)
+            </span>
+            <Badge variant="outline" className="border-amber-300 text-amber-700 text-[10px]">
+              Deprecated
+            </Badge>
+          </div>
+          <ul className="space-y-1 text-xs text-slate-600">
+            <li>• Stored as <code className="text-slate-800">postal_codes[]</code> / <code className="text-slate-800">cities[]</code> arrays</li>
+            <li>• No map preview or PostGIS geometry</li>
+            <li>• Only matched via JS string comparison at booking time</li>
+            <li>• Not read when active <code className="text-slate-800">platform_zones</code> with geometry exist</li>
+          </ul>
+        </div>
+
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+          <div className="mb-2 flex items-center gap-2">
+            <Globe2 className="h-4 w-4 text-emerald-600" />
+            <span className="text-xs font-bold uppercase tracking-wide text-slate-600">
+              Market Coverage
+            </span>
+            <Badge className="bg-emerald-600 text-[10px]">
+              Active
+            </Badge>
+          </div>
+          <ul className="space-y-1 text-xs text-slate-600">
+            <li>• PostGIS geometry built from postal dataset inclusions</li>
+            <li>• Interactive Mapbox map with layer toggles</li>
+            <li>• Draft → active → archived lifecycle with versioning</li>
+            <li>• Providers auto-enrolled on zone publish</li>
+          </ul>
+        </div>
+      </div>
+
+      {/* Read-only list of any existing legacy zones */}
+      {!loading && legacyZones.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <p className="text-sm font-semibold text-slate-800">
+              Existing legacy zones ({legacyZones.length})
+            </p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              These are read-only. Recreate them in Market Coverage to enable PostGIS checks and
+              map preview.
+            </p>
+          </div>
+          <ul className="divide-y divide-slate-100">
+            {legacyZones.map((z) => (
+              <li key={z.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-900">{z.name}</p>
+                  <p className="text-xs text-slate-500">{z.zone_type}</p>
+                </div>
+                <Badge
+                  variant="outline"
+                  className={
+                    z.is_active
+                      ? "border-emerald-300 text-emerald-700"
+                      : "border-slate-300 text-slate-500"
+                  }
+                >
+                  {z.is_active ? "Active" : "Inactive"}
+                </Badge>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
-      {showDialog && (
-        <ServiceZoneDialog
-          zone={editingZone}
-          onClose={() => {
-            setShowDialog(false);
-            setEditingZone(null);
-          }}
-          onSave={handleSave}
-        />
+      {!loading && legacyZones.length === 0 && (
+        <p className="text-center text-sm text-slate-500">No legacy zones found.</p>
       )}
     </div>
-  );
-}
-
-function ServiceZoneDialog({
-  zone,
-  onClose,
-  onSave,
-}: {
-  zone: PlatformZone | null;
-  onClose: () => void;
-  onSave: (data: any) => void;
-}) {
-  const [formData, setFormData] = useState({
-    name: zone?.name || "",
-    zone_type: (zone?.zone_type || "postal_code") as PlatformZone["zone_type"],
-    postal_codes: zone?.postal_codes || [] as string[],
-    cities: zone?.cities || [] as string[],
-    polygon_coordinates: zone?.polygon_coordinates || null,
-    center_latitude: zone?.center_latitude || undefined,
-    center_longitude: zone?.center_longitude || undefined,
-    radius_km: zone?.radius_km || undefined,
-    description: zone?.description || "",
-    is_active: zone?.is_active ?? true,
-  });
-  const [postalCodeInput, setPostalCodeInput] = useState("");
-  const [cityInput, setCityInput] = useState("");
-
-  const handleAddPostalCode = () => {
-    if (postalCodeInput.trim()) {
-      setFormData({
-        ...formData,
-        postal_codes: [...(formData.postal_codes || []), postalCodeInput.trim()],
-      });
-      setPostalCodeInput("");
-    }
-  };
-
-  const handleRemovePostalCode = (index: number) => {
-    setFormData({
-      ...formData,
-      postal_codes: formData.postal_codes?.filter((_, i) => i !== index) || [],
-    });
-  };
-
-  const handleAddCity = () => {
-    if (cityInput.trim()) {
-      setFormData({
-        ...formData,
-        cities: [...(formData.cities || []), cityInput.trim()],
-      });
-      setCityInput("");
-    }
-  };
-
-  const handleRemoveCity = (index: number) => {
-    setFormData({
-      ...formData,
-      cities: formData.cities?.filter((_, i) => i !== index) || [],
-    });
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(formData);
-  };
-
-  return (
-    <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{zone ? "Edit Platform Zone" : "Create Platform Zone"}</DialogTitle>
-          <DialogDescription>
-            Define a platform zone to control where the platform is available. Providers can then select these zones and set their own pricing.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label htmlFor="name">Zone Name *</Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g., Johannesburg Central, Cape Town Metro"
-              required
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="zone_type">Zone Type *</Label>
-            <select
-              id="zone_type"
-              value={formData.zone_type}
-              onChange={(e) => setFormData({ ...formData, zone_type: e.target.value as PlatformZone["zone_type"] })}
-              className="w-full p-2 border rounded-md"
-            >
-              <option value="postal_code">Postal Code</option>
-              <option value="city">City</option>
-              <option value="radius">Radius</option>
-              <option value="polygon">Polygon</option>
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              {formData.zone_type === "postal_code" && "Match addresses by postal/zip codes"}
-              {formData.zone_type === "city" && "Match addresses by city names"}
-              {formData.zone_type === "radius" && "Match addresses within a radius from a center point"}
-              {formData.zone_type === "polygon" && "Match addresses within a custom polygon boundary"}
-            </p>
-          </div>
-
-          {formData.zone_type === "postal_code" && (
-            <div>
-              <Label>Postal Codes *</Label>
-              <div className="flex gap-2 mt-1">
-                <Input
-                  value={postalCodeInput}
-                  onChange={(e) => setPostalCodeInput(e.target.value)}
-                  placeholder="Enter postal code"
-                  onKeyPress={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddPostalCode();
-                    }
-                  }}
-                />
-                <Button type="button" onClick={handleAddPostalCode} variant="outline">
-                  Add
-                </Button>
-              </div>
-              {formData.postal_codes && formData.postal_codes.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {formData.postal_codes.map((code, index) => (
-                    <Badge key={index} variant="secondary" className="flex items-center gap-1">
-                      {code}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemovePostalCode(index)}
-                        className="ml-1 h-5 w-5 p-0 min-w-0 hover:text-red-500 text-base leading-none"
-                      >
-                        ×
-                      </Button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {formData.zone_type === "city" && (
-            <div>
-              <Label>Cities *</Label>
-              <div className="flex gap-2 mt-1">
-                <Input
-                  value={cityInput}
-                  onChange={(e) => setCityInput(e.target.value)}
-                  placeholder="Enter city name"
-                  onKeyPress={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddCity();
-                    }
-                  }}
-                />
-                <Button type="button" onClick={handleAddCity} variant="outline">
-                  Add
-                </Button>
-              </div>
-              {formData.cities && formData.cities.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {formData.cities.map((city, index) => (
-                    <Badge key={index} variant="secondary" className="flex items-center gap-1">
-                      {city}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveCity(index)}
-                        className="ml-1 h-5 w-5 p-0 min-w-0 hover:text-red-500 text-base leading-none"
-                      >
-                        ×
-                      </Button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {formData.zone_type === "radius" && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="center_latitude">Center Latitude *</Label>
-                  <Input
-                    id="center_latitude"
-                    type="number"
-                    step="any"
-                    value={formData.center_latitude || ""}
-                    onChange={(e) => setFormData({ ...formData, center_latitude: parseFloat(e.target.value) || undefined })}
-                    placeholder="-26.2041"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="center_longitude">Center Longitude *</Label>
-                  <Input
-                    id="center_longitude"
-                    type="number"
-                    step="any"
-                    value={formData.center_longitude || ""}
-                    onChange={(e) => setFormData({ ...formData, center_longitude: parseFloat(e.target.value) || undefined })}
-                    placeholder="28.0473"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="radius_km">Radius (km) *</Label>
-                <Input
-                  id="radius_km"
-                  type="number"
-                  step="0.1"
-                  min="0.1"
-                  value={formData.radius_km || ""}
-                  onChange={(e) => setFormData({ ...formData, radius_km: parseFloat(e.target.value) || undefined })}
-                  placeholder="10"
-                />
-              </div>
-            </div>
-          )}
-
-          {formData.zone_type === "polygon" && (
-            <div>
-              <Label>Polygon Coordinates</Label>
-              <p className="text-xs text-gray-500 mb-2">
-                Polygon zones require GeoJSON coordinates. Use the API or contact support for polygon zone creation.
-              </p>
-              <p className="text-xs text-amber-600">
-                Note: Interactive polygon editor coming soon. For now, polygon zones must be created via API.
-              </p>
-            </div>
-          )}
-
-          <div>
-            <Label htmlFor="description">Description</Label>
-            <Input
-              id="description"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Optional description"
-            />
-          </div>
-
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={formData.is_active}
-                onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-              />
-              <span>Active (available for providers to select)</span>
-            </label>
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit">
-              {zone ? "Update" : "Create"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

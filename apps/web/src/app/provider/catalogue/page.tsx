@@ -23,12 +23,12 @@ export default function CataloguePage() {
   const checkData = async () => {
     try {
       setIsLoading(true);
-      // Check for products
-      const productsResponse = await providerApi.listProducts({}, { page: 1, limit: 1 });
+      // Fire both requests in parallel — was previously serial (await … then await …)
+      const [productsResponse, servicesResponse] = await Promise.all([
+        providerApi.listProducts({}, { page: 1, limit: 1 }),
+        providerApi.listServiceCategories(),
+      ]);
       setHasProducts(productsResponse.data.length > 0);
-
-      // Check for services
-      const servicesResponse = await providerApi.listServiceCategories();
       const totalServices = servicesResponse.reduce((sum, cat) => sum + (cat.services?.length || 0), 0);
       setHasServices(totalServices > 0);
     } catch (error) {

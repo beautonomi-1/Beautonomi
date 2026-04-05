@@ -1,8 +1,8 @@
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, RefreshControl } from "react-native";
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useApi } from "@/hooks/useApi";
+import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
@@ -29,6 +29,20 @@ type RoutesResponse = {
   segments?: Segment[];
 };
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
+
+function formatTimeSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleTimeString();
+}
+
 export default function RoutesScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
@@ -36,12 +50,22 @@ export default function RoutesScreen() {
   const { data, loading, error, refresh } = useApi<RoutesResponse>(
     `/api/provider/routes?date=${date}`
   );
+  const { execute: optimizeRoute, loading: optimizing } = useApiMutation("post");
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refresh();
     setRefreshing(false);
   }, [refresh]);
+
+  const handleOptimize = useCallback(async () => {
+    const { error: optimizeError } = await optimizeRoute("/api/provider/routes/optimize", { date });
+    if (optimizeError) {
+      Alert.alert("Could not optimize", optimizeError);
+      return;
+    }
+    refresh();
+  }, [date, optimizeRoute, refresh]);
 
   if (loading && !data) {
     return (
@@ -82,16 +106,32 @@ export default function RoutesScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 12 }}>
-          <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
-            Route for {new Date(date).toLocaleDateString()}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
+              Route for {formatDateSafe(date)}
+            </Text>
+            <TouchableOpacity
+              onPress={handleOptimize}
+              disabled={optimizing}
+              style={{
+                borderRadius: 9999,
+                backgroundColor: optimizing ? Colors.gray[300] : "#e0e7ff",
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+              }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: "600", color: optimizing ? Colors.gray[600] : "#3730a3" }}>
+                {optimizing ? "Optimizing..." : "Optimize"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
         {segments.length === 0 ? (
           <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="navigate-outline" size={48} color="#9ca3af" />
             <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>No route for today</Text>
             <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
-              Plan and optimize routes in the web portal
+              Tap Optimize to generate your best route for today.
             </Text>
           </View>
         ) : (
@@ -113,7 +153,7 @@ export default function RoutesScreen() {
                   )}
                   {seg.to_booking?.scheduled_at && (
                     <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[600] }}>
-                      {new Date(seg.to_booking.scheduled_at).toLocaleTimeString()}
+                      {formatTimeSafe(seg.to_booking.scheduled_at)}
                     </Text>
                   )}
                 </View>

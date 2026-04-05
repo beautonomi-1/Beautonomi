@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -147,7 +148,12 @@ const languages: Language[] = [
     { name: "Romanian leu", code: "RON – lei" },
     { name: "Saudi Arabian riyal", code: "SAR – SR" },
     { name: "Singapore dollar", code: "SGD – $" },
-    { name: "South African rand", code: "ZAR – R" },
+    {
+      name:
+        new Intl.DisplayNames(undefined, { type: "currency" }).of(LAST_RESORT_CURRENCY) ??
+        "South African rand",
+      code: `${LAST_RESORT_CURRENCY} – R`,
+    },
     { name: "South Korean won", code: "KRW – ₩" },
     { name: "Swedish krona", code: "SEK – kr" },
     { name: "Swiss franc", code: "CHF" },

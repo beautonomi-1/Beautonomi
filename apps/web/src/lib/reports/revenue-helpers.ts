@@ -1,6 +1,15 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
-import { MAX_FINANCE_TRANSACTIONS } from "./constants";
+import { LEDGER_FULL_PROVIDER_NET_TYPES } from "./constants";
+
+export type ProviderRevenueOptions = {
+  /**
+   * Defaults to LEDGER_FULL_PROVIDER_NET_TYPES (provider_earnings + travel_fee + tip) so
+   * commission and per-booking allocation include tips/travel. Use DASHBOARD_REVENUE_TRANSACTION_TYPES
+   * for the same net as the main provider dashboard revenue cards.
+   */
+  transactionTypes?: readonly string[];
+};
 
 /**
  * Get provider earnings from finance_transactions
@@ -11,30 +20,36 @@ import { MAX_FINANCE_TRANSACTIONS } from "./constants";
  * Only includes:
  * - Online bookings (always have finance_transactions)
  * - Walk-in bookings paid via Paystack (platform holds the money, creates finance_transactions)
+ *
+ * Default transaction types are LEDGER_FULL_PROVIDER_NET_TYPES (provider_earnings + travel_fee + tip)
+ * so per-booking splits match commission logic. Pass DASHBOARD_REVENUE_TRANSACTION_TYPES to match
+ * the main provider app dashboard revenue cards (provider_earnings only).
  */
 export async function getProviderRevenue(
   supabaseAdmin: SupabaseClient,
   providerId: string,
   fromDate: Date,
   toDate: Date,
-  locationId?: string | null
+  locationId?: string | null,
+  options?: ProviderRevenueOptions
 ): Promise<{
   totalRevenue: number;
   revenueByBooking: Map<string, number>;
   revenueByDate: Map<string, number>;
 }> {
-  // Get provider earnings from finance_transactions
-  // This only includes transactions where the platform processed payment
-  // (excludes walk-in bookings paid directly to provider)
+  const types =
+    options?.transactionTypes?.length && options.transactionTypes.length > 0
+      ? [...options.transactionTypes]
+      : [...LEDGER_FULL_PROVIDER_NET_TYPES];
+
+  // Date-bounded query: do not cap rows — a capped query would undercount high-volume providers.
   const { data: financeTransactions } = await supabaseAdmin
     .from("finance_transactions")
     .select("id, transaction_type, amount, net, booking_id, created_at")
     .eq("provider_id", providerId)
-    .in("transaction_type", ["provider_earnings", "travel_fee", "tip"])
+    .in("transaction_type", types)
     .gte("created_at", fromDate.toISOString())
-    .lte("created_at", toDate.toISOString())
-    .order("created_at", { ascending: false })
-    .limit(MAX_FINANCE_TRANSACTIONS);
+    .lte("created_at", toDate.toISOString());
 
   // Get booking information for filtering by location if needed
   const financeBookingIds = [
@@ -109,7 +124,8 @@ export async function getPreviousPeriodRevenue(
   providerId: string,
   fromDate: Date,
   toDate: Date,
-  locationId?: string | null
+  locationId?: string | null,
+  options?: ProviderRevenueOptions
 ): Promise<number> {
   const daysDiff = Math.ceil(
     (toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)
@@ -122,7 +138,8 @@ export async function getPreviousPeriodRevenue(
     providerId,
     prevFromDate,
     prevToDate,
-    locationId
+    locationId,
+    options
   );
 
   return result.totalRevenue;

@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/disputes
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get("status"); // all, open, resolved, closed
@@ -41,17 +43,19 @@ export async function GET(request: NextRequest) {
         notes,
         created_at,
         updated_at,
-        booking:bookings(
+        booking:bookings!inner(
           id,
           booking_number,
           status,
           total_amount,
           customer_id,
           provider_id,
+          tenant_id,
           customer:users!bookings_customer_id_fkey(id, full_name, email),
           provider:providers!bookings_provider_id_fkey(id, business_name)
         )
       `)
+      .eq("booking.tenant_id", tenantId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -71,7 +75,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Get total count for pagination
-    let countQuery = supabase.from("booking_disputes").select("*", { count: "exact", head: true });
+    let countQuery = supabase
+      .from("booking_disputes")
+      .select("id, booking:bookings!inner(tenant_id)", { count: "exact", head: true })
+      .eq("booking.tenant_id", tenantId);
 
     if (status && status !== "all") {
       countQuery = countQuery.eq("status", status);

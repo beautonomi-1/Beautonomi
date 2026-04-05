@@ -2,16 +2,12 @@
 
 import React, { createContext, useContext, useCallback, useEffect, useState } from "react";
 import { fetcher } from "@/lib/http/fetcher";
+import type { ConfigBundleMeta } from "@/lib/config/types";
 
 export type Platform = "web" | "customer" | "provider";
 export type Environment = "production" | "staging" | "development";
 
-export interface ConfigBundleMeta {
-  env: Environment;
-  platform: Platform;
-  version: string | null;
-  fetched_at: string;
-}
+export type { ConfigBundleMeta };
 
 export interface ResolvedFlag {
   enabled: boolean;

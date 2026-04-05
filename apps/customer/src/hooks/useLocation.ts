@@ -25,7 +25,12 @@ export function useLocation() {
 
     (async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        let { status } = await Location.getForegroundPermissionsAsync();
+        if (cancelled) return;
+        if (status !== "granted") {
+          const req = await Location.requestForegroundPermissionsAsync();
+          status = req.status;
+        }
         if (cancelled) return;
         if (status !== "granted") {
           setError("Location permission denied");

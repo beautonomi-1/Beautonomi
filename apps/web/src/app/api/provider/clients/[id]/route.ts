@@ -69,7 +69,9 @@ export async function GET(
     const supabaseAdmin = await getSupabaseAdmin();
     const { data: customer, error: customerError } = await supabaseAdmin
       .from("users")
-      .select("id, full_name, email, phone, avatar_url, rating_average, review_count, created_at, date_of_birth, email_notifications_enabled, sms_notifications_enabled")
+      .select(
+        "id, full_name, email, phone, avatar_url, rating_average, review_count, customer_review_rating_avg, customer_review_rating_count, customer_booking_rating_avg, customer_booking_rating_count, created_at, date_of_birth, email_notifications_enabled, sms_notifications_enabled",
+      )
       .eq("id", customerId)
       .single();
 
@@ -110,6 +112,10 @@ export async function GET(
           avatar_url: null,
           rating_average: null,
           review_count: 0,
+          customer_review_rating_avg: null,
+          customer_review_rating_count: null,
+          customer_booking_rating_avg: null,
+          customer_booking_rating_count: null,
           created_at: null,
         },
         notes: client?.notes || null,
@@ -209,16 +215,12 @@ export async function GET(
           booking_id,
           offering_id,
           staff_id,
-          quantity,
-          unit_price,
-          total_price,
           duration_minutes,
-          customization,
-          offerings:offerings!booking_services_offering_id_fkey(
+          price,
+          guest_name,
+          offering:offerings (
             id,
-            name,
-            service_category_id,
-            global_service_categories:global_service_categories!offerings_service_category_id_fkey(name)
+            title
           )
         `)
         .in("booking_id", bookingIds);
@@ -236,20 +238,11 @@ export async function GET(
         });
       }
 
-      // Get booking addons
+      // Get booking addons (plain columns only — no FK join available;
+      // addon_id references offerings.id but FK was dropped in migration 081)
       const { data: bookingAddons } = await supabaseAdmin
         .from("booking_addons")
-        .select(`
-          booking_id,
-          addon_id,
-          quantity,
-          unit_price,
-          total_price,
-          service_addons:service_addons!booking_addons_addon_id_fkey(
-            id,
-            name
-          )
-        `)
+        .select("booking_id, addon_id, quantity, price")
         .in("booking_id", bookingIds);
 
       // Get booking products

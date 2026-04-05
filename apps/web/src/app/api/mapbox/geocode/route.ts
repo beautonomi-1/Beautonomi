@@ -72,10 +72,13 @@ export async function POST(request: Request) {
     }
   } catch (error: any) {
     console.error("Error in geocode:", error);
-    // For any other error, return empty results to allow manual entry
+    // Return empty results for compatibility, but expose error so callers can react.
     return NextResponse.json({
       data: [],
-      error: null,
-    });
+      error: {
+        message: "Geocoding service unavailable",
+        code: "GEOCODE_UNAVAILABLE",
+      },
+    }, { status: 502 });
   }
 }

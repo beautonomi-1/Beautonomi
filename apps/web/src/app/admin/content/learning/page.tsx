@@ -32,6 +32,7 @@ import { ArrowLeft, Plus, Edit, Trash2, BookOpen, FolderOpen, Star, Layout, Chev
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { toast } from "sonner";
+import { RADIX_SELECT_ALL } from "@/lib/ui/select-radix-sentinels";
 
 interface LearningCategory {
   id: string;
@@ -671,12 +672,15 @@ export default function LearningCenterPage() {
 
                 <TabsContent value="articles" className="mt-4">
                   <div className="flex flex-wrap items-center gap-2 mb-4">
-                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <Select
+                      value={categoryFilter || RADIX_SELECT_ALL}
+                      onValueChange={(v) => setCategoryFilter(v === RADIX_SELECT_ALL ? "" : v)}
+                    >
                       <SelectTrigger className="w-[200px]">
                         <SelectValue placeholder="All categories" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All categories</SelectItem>
+                        <SelectItem value={RADIX_SELECT_ALL}>All categories</SelectItem>
                         {categories.map((c) => (
                           <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>
                         ))}

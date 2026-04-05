@@ -99,6 +99,11 @@ Never commit `.env.local` or any file containing real secrets.
 
 - **Public endpoint safety:** Branding route returns whitelisted fields only; `public-config-safety.test.ts` covers analytics-config, third-party-config, branding.
 - **Documentation:** ENVIRONMENT_MATRIX.md, SECURITY_HARDENING.md, OBSERVABILITY_AND_ALERTS.md, RELEASE_CHECKLIST.md.
+- **Global routing rollout controls:** `MARKET_AUTO_SWITCH_ENABLED`, `MARKET_AUTO_SWITCH_ALLOWED_COUNTRIES`, and `GLOBAL_ROUTING_GO_LIVE_CHECKLIST.md`.
+- **Provider portal rollout controls:** `PROVIDER_PORTAL_PERFORMANCE_BASELINE.md`, `PROVIDER_PORTAL_BROWSER_MATRIX.md`, and `PROVIDER_PORTAL_CANARY_ROLLOUT.md`.
+- **Resilience policy:** RESILIENCE_POLICY_MATRIX.md (rate limits, retries, idempotency, backpressure by endpoint class).
+- **Secrets bootstrap:** SECRETS_BOOTSTRAP.md (local/CI/hosting setup for scale gates).
+- **Domain routing:** DOMAIN_TENANT_ROUTING_RUNBOOK.md (.com global entry + market domains on one deployment).
 - **Scripts:** `scripts/prod/readiness-check.mjs`, `scripts/prod/verify-public-endpoints.mjs`, `scripts/prod/verify-rls-and-roles.md`.
 
 No changes to existing API contracts or backward compatibility.
@@ -126,3 +131,5 @@ No changes to existing API contracts or backward compatibility.
 **GO** when: All migrations applied; required env vars set (ENVIRONMENT_MATRIX); no secrets in PUBLIC vars; `readiness-check.mjs` passes; `verify-public-endpoints.mjs` passes for public config; smoke tests pass; Paystack webhook configured and tested.
 
 **NO-GO** if: Any public endpoint returns a known secret field; provider route that mutates data does not use getProviderIdForUser; migrations pending or failing; build or typecheck fails; critical payment or webhook path broken in smoke test.
+
+For high-scale launch decisions, also enforce [SCALE_SLO_GATES.md](./SCALE_SLO_GATES.md) Tier-1 thresholds.

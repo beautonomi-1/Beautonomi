@@ -25,7 +25,7 @@ Enterprise-grade platform service zone management for Beautonomi Superadmin: hie
    - Indexes: (country_code, province_name), (country_code, city_name), (country_code, postal_code), GIST(geom).
 
 2. **platform_zones** (extend)  
-   - Add: country_code, status ('draft'|'active'|'archived'), geometry (geography MultiPolygon), centroid (point), bbox (jsonb), version (int default 1).  
+   - Add: country_code, status ('draft'|'active'|'archived'), geometry (geography MultiPolygon), centroid (point), bbox (jsonb), version (int default 1), `published_at`, `ops_metadata` (JSONB rollout notes / strategy — migration 330).  
    - Keep existing columns for backward compatibility; geometry is the source of truth when present.
 
 3. **platform_zone_inclusions** (new)  
@@ -47,13 +47,16 @@ All under `/api/admin/service-zones/*` (superadmin only). Response shape: `{ dat
 | GET | `/api/admin/service-zones/areas/search?country=ZA&q=cape` | Search provinces/cities/towns/postal codes (metadata only). |
 | GET | `/api/admin/service-zones/areas/postal-codes?country=ZA&city=Cape%20Town` | List postal codes for a city. |
 | POST | `/api/admin/service-zones/areas/geometry` | Body: { country_code, postal_codes?, city?, province? }. Returns simplified GeoJSON for preview. |
-| GET | `/api/admin/service-zones` | List platform zones (draft + active). |
+| GET | `/api/admin/service-zones` | List platform zones (default: draft + active). Query `include_archived=1` includes archived. |
 | POST | `/api/admin/service-zones` | Create draft zone (name, country_code). |
-| PATCH | `/api/admin/service-zones/[id]` | Rename, status; require version for optimistic concurrency. |
-| POST | `/api/admin/service-zones/[id]/include` | Body: { type, ref_code, ref_name?, selection_scope? }. Resolve postal_areas, insert inclusions, recompute geometry. |
+| POST | `/api/admin/service-zones/clone` | Body: { source_zone_id, name }. New empty draft, same country (next-city rollout). |
+| PATCH | `/api/admin/service-zones/[id]` | Rename, status (`draft` \| `active` \| `archived`), shallow-merge `ops_metadata`; syncs `is_active` with status. Optional version. |
+| POST | `/api/admin/service-zones/[id]/include` | Body: { type, ref_code, ref_name?, version? }. Resolve postal_areas, insert inclusions, recompute geometry. |
 | POST | `/api/admin/service-zones/[id]/exclude` | Body: { type: 'postal_code', postal_code } or { type: 'custom_polygon', geojson }. Uses RPC `insert_platform_zone_exclusion_custom_polygon` for custom polygons (migration 296). |
-| POST | `/api/admin/service-zones/[id]/publish` | Set status = 'active', is_active = true; optional version. |
-| GET | `/api/admin/service-zones/[id]` | Zone detail with geometry (simplified), `fragment_count`, `disconnected_fragments`. |
+| POST | `/api/admin/service-zones/[id]/publish` | Set status = 'active', `is_active` = true, `published_at` on first publish; requires existing geometry. Optional version. |
+| GET | `/api/admin/service-zones/[id]` | Zone detail with geometry (simplified), `fragment_count`, `disconnected_fragments`, `published_at`, `ops_metadata`. |
+| GET | `/api/admin/service-zones/[id]/rollout-summary` | Distinct cities / provinces / towns implied by postal inclusions (rollout visibility). |
+| DELETE | `/api/admin/service-zones/[id]/inclusions/[inclusionId]` | Remove one inclusion; recompute zone geometry. |
 | DELETE | `/api/admin/service-zones/[id]/exclusions/[exclusionId]` | Remove one exclusion; recompute zone geometry. |
 
 ## Superadmin UI (control plane)
@@ -107,7 +110,37 @@ Each row has a `geom` polygon (WGS84) with rough bounds for that area. After 294
 - **Include**: e.g. include city "Cape Town" adds 4 postal areas (8001, 8005, 7441, 7800) and recomputes zone geometry.
 - **Exclude**: exclude postal code 8001 to punch a hole in the zone.
 
-For production, replace or extend this seed with a full ZA (and other countries) boundary dataset loaded via your import process.
+For production, replace or extend this seed with a full ZA (and other countries) dataset loaded via the importer flow below.
+
+### Production importer flow (CSV/GeoNames -> postal_areas)
+
+Migration **`352_postal_areas_import_helpers.sql`** adds:
+
+- `postal_areas_import_stage` (staging table)
+- `rebuild_postal_areas_from_stage(p_country_code, p_point_radius_m)` RPC
+
+Importer script:
+
+- `scripts/import-za-postal-areas.mjs`
+- npm scripts:
+  - `pnpm seed:postal:za`
+  - `pnpm seed:postal:za:keep-stage`
+
+What it does:
+
+1. Downloads `https://download.geonames.org/export/zip/ZA.zip` (or uses `--zip-path`)
+2. Parses and normalizes province/city/town/postal rows
+3. Inserts batches into `postal_areas_import_stage`
+4. Rebuilds `postal_areas` for ZA via `rebuild_postal_areas_from_stage`
+5. Clears stage rows (unless `--keep-stage`)
+
+Example:
+
+```bash
+pnpm seed:postal:za
+pnpm seed:postal:za -- --radius=1000
+pnpm seed:postal:za -- --zip-path=/tmp/ZA.zip --keep-stage
+```
 
 ## Performance and safety
 

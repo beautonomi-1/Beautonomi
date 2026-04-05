@@ -10,8 +10,10 @@ import { Label } from "@/components/ui/label";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { toast } from "sonner";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 export default function GiftCardPurchasePage() {
+  const { currencyCode, format: fmt } = useReportCurrency();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [amount, setAmount] = useState("500");
@@ -108,7 +110,7 @@ export default function GiftCardPurchasePage() {
         <div className="border rounded-lg p-6 space-y-4">
           <div>
             <Label htmlFor="amount" className="text-sm font-medium mb-1 block">
-              Amount per card (ZAR)
+              Amount per card ({currencyCode})
             </Label>
             <Input 
               id="amount"
@@ -144,11 +146,11 @@ export default function GiftCardPurchasePage() {
               <div className="flex justify-between items-center">
                 <span className="text-sm font-medium text-gray-700">Total amount:</span>
                 <span className="text-lg font-bold text-gray-900">
-                  ZAR {totalAmount.toLocaleString()}
+                  {fmt(totalAmount)}
                 </span>
               </div>
               <p className="text-xs text-gray-600 mt-1">
-                {quantity} cards × ZAR {Number(amount).toLocaleString()} = ZAR {totalAmount.toLocaleString()}
+                {quantity} cards × {fmt(Number(amount))} = {fmt(totalAmount)}
               </p>
             </div>
           )}
@@ -172,7 +174,7 @@ export default function GiftCardPurchasePage() {
           </div>
 
           <Button onClick={submit} disabled={isSubmitting} className="w-full bg-gray-900 text-white">
-            {isSubmitting ? "Redirecting..." : `Continue to payment${isBulkMode && Number(quantity) > 1 ? ` (ZAR ${totalAmount.toLocaleString()})` : ""}`}
+            {isSubmitting ? "Redirecting..." : `Continue to payment${isBulkMode && Number(quantity) > 1 ? ` (${fmt(totalAmount)})` : ""}`}
           </Button>
         </div>
       </div>

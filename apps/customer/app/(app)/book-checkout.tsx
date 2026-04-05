@@ -17,15 +17,20 @@ import { useLocalSearchParams, Stack, router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { trackCheckoutStarted, trackBookingConfirmed, trackPaymentSuccess } from "@/lib/analytics";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
 import { Skeleton } from "@/components/Skeleton";
 import { useSavedCards } from "@/hooks/useSavedCards";
-import { usePaystackPayment } from "@/hooks/usePaystackPayment";
+import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFeatureFlag, useModuleConfig } from "@/providers/ConfigBundleProvider";
+import { clearPendingExcludeHoldId } from "@/lib/booking-flow-hold";
+import { useConfigBundle, useFeatureFlag, useModuleConfig } from "@/providers/ConfigBundleProvider";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatMoney } from "@beautonomi/utils";
 import type { SavedPaymentMethod } from "@/types/api";
 
 /* ─── Types ─── */
@@ -67,10 +72,22 @@ interface HoldData {
   tip_presets?: number[];
   cancellation_policy?: {
     cancellation_window_hours?: number;
+    grace_window_minutes?: number;
+    policy_text?: string;
+    late_refund_percentage?: number;
+    fee_amount?: number;
+    fee_type?: "fixed" | "percentage";
     no_show_fee_enabled?: boolean;
     no_show_fee_amount?: number;
     currency?: string;
   };
+  /** From hold metadata when booking started from a service package */
+  package_id?: string;
+  /** Tenant feature_flags — same as GET booking-holds + consume */
+  payment_paystack?: boolean;
+  payment_wallet?: boolean;
+  gift_cards?: boolean;
+  cash_enabled_on_platform?: boolean;
 }
 
 interface ConsumeResponse {
@@ -117,16 +134,27 @@ interface AddonOption {
 
 /* ─── Helpers ─── */
 
+function parseValidDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
 function formatDateOnly(s: string) {
-  return new Date(s).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const parsed = parseValidDate(s);
+  if (!parsed) return "—";
+  return parsed.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
 function formatTimeOnly(s: string) {
-  return new Date(s).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const parsed = parseValidDate(s);
+  if (!parsed) return "—";
+  return parsed.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
 }
 
-function formatCurrency(amount: number, currency = "ZAR") {
-  return `${currency} ${amount.toFixed(2)}`;
+function formatCurrency(amount: number, currency = getTenantDefaultCurrency()) {
+  const fallback = getTenantDefaultCurrency();
+  return formatMoney(amount, currency ?? fallback);
 }
 
 function getTimeRemaining(expiresAt: string): { minutes: number; seconds: number; expired: boolean } {
@@ -137,7 +165,7 @@ function getTimeRemaining(expiresAt: string): { minutes: number; seconds: number
 }
 
 /* ─── Countdown Bar ─── */
-function CountdownBar({ expiresAt }: { expiresAt: string }) {
+function CountdownBar({ expiresAt, t }: { expiresAt: string; t: (key: string, opts?: Record<string, string | number>) => string }) {
   const [countdown, setCountdown] = useState(() => getTimeRemaining(expiresAt));
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -166,8 +194,8 @@ function CountdownBar({ expiresAt }: { expiresAt: string }) {
         <Ionicons name="time-outline" size={18} color={iconColor} style={{ marginRight: 8 }} />
         <Text style={{ fontSize: 13, fontWeight: "600", color: textColor, flex: 1 }}>
           {countdown.expired
-            ? "This time slot has expired. Please select a new date and time to continue."
-            : `Slot held for ${countdown.minutes}:${String(countdown.seconds).padStart(2, "0")}`}
+            ? t("checkout.slotExpiredMessage")
+            : t("checkout.slotHeldFor", { minutes: countdown.minutes, seconds: String(countdown.seconds).padStart(2, "0") })}
         </Text>
       </View>
       {countdown.expired && (
@@ -181,9 +209,9 @@ function CountdownBar({ expiresAt }: { expiresAt: string }) {
             alignItems: "center",
           }}
           accessibilityRole="button"
-          accessibilityLabel="Select new time"
+          accessibilityLabel={t("checkout.selectNewTime")}
         >
-          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Select new time</Text>
+          <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>{t("checkout.selectNewTime")}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -191,16 +219,30 @@ function CountdownBar({ expiresAt }: { expiresAt: string }) {
 }
 
 /* ─── Cancellation Policy Section ─── */
-function CancellationPolicy({ policy, currency, contentPadding }: {
+function CancellationPolicy({ policy, currency, contentPadding, t }: {
   policy: HoldData["cancellation_policy"];
   currency: string;
   contentPadding: number;
+  t: (key: string, opts?: Record<string, string | number>) => string;
 }) {
   if (!policy) return null;
   const windowHrs = policy.cancellation_window_hours;
-  const noShowFee = policy.no_show_fee_enabled && policy.no_show_fee_amount;
+  const graceMin = policy.grace_window_minutes;
+  const noShowFee = policy.no_show_fee_enabled && policy.no_show_fee_amount != null && policy.no_show_fee_amount > 0;
+  const latePct = policy.late_refund_percentage;
+  const showLateLine =
+    latePct !== undefined && latePct !== null && !Number.isNaN(Number(latePct)) && Number(latePct) < 100;
+  const policyTextTrimmed = typeof policy.policy_text === "string" ? policy.policy_text.trim() : "";
+  const policySnippet =
+    policyTextTrimmed.length > 0
+      ? policyTextTrimmed.slice(0, 280) + (policyTextTrimmed.length > 280 ? "…" : "")
+      : null;
 
-  if (!windowHrs && !noShowFee) return null;
+  if (!windowHrs && !noShowFee && !(graceMin != null && graceMin > 0) && !showLateLine && !policySnippet) {
+    return null;
+  }
+
+  const cur = policy.currency || currency;
 
   return (
     <View style={{
@@ -209,21 +251,45 @@ function CancellationPolicy({ policy, currency, contentPadding }: {
     }}>
       <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
         <Ionicons name="shield-checkmark-outline" size={18} color="#6B7280" style={{ marginRight: 6 }} />
-        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Cancellation Policy</Text>
+        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{t("checkout.cancellationPolicy")}</Text>
       </View>
+      {graceMin != null && graceMin > 0 && (
+        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 6 }}>
+          <Ionicons name="checkmark-circle-outline" size={16} color={Colors.success} style={{ marginTop: 1, marginRight: 8 }} />
+          <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 20 }}>
+            {t("checkout.graceCancellation", { count: graceMin })}
+          </Text>
+        </View>
+      )}
       {windowHrs != null && windowHrs > 0 && (
         <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 6 }}>
           <Ionicons name="checkmark-circle-outline" size={16} color={Colors.success} style={{ marginTop: 1, marginRight: 8 }} />
           <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 20 }}>
-            Free cancellation up to {windowHrs} {windowHrs === 1 ? "hour" : "hours"} before your appointment
+            {t("checkout.freeCancellation", { count: windowHrs, hourWord: windowHrs === 1 ? t("checkout.hour") : t("checkout.hours") })}
           </Text>
         </View>
       )}
+      {showLateLine ? (
+        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 6 }}>
+          <Ionicons name="information-circle-outline" size={16} color="#6B7280" style={{ marginTop: 1, marginRight: 8 }} />
+          <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 20 }}>
+            {Number(latePct) <= 0
+              ? t("checkout.lateCancellationNoRefund")
+              : t("checkout.lateCancellationRefund", { percent: Math.round(Number(latePct)) })}
+          </Text>
+        </View>
+      ) : null}
+      {policySnippet ? (
+        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: noShowFee ? 6 : 0 }}>
+          <Ionicons name="document-text-outline" size={16} color="#6B7280" style={{ marginTop: 1, marginRight: 8 }} />
+          <Text style={{ fontSize: 12, color: "#6B7280", flex: 1, lineHeight: 18 }}>{policySnippet}</Text>
+        </View>
+      ) : null}
       {noShowFee ? (
         <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
           <Ionicons name="alert-circle-outline" size={16} color={Colors.warning} style={{ marginTop: 1, marginRight: 8 }} />
           <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 20 }}>
-            No-show fee of {formatCurrency(policy.no_show_fee_amount!, policy.currency || currency)} applies
+            {t("checkout.noShowFeeApplies", { amount: formatCurrency(policy.no_show_fee_amount!, cur) })}
           </Text>
         </View>
       ) : null}
@@ -337,11 +403,16 @@ function SavedCardSelector({ cards, selected, onSelect, onAddNew, onSetDefault }
   );
 }
 
-const SAVE_CARD_INFO =
-  "We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.";
-
 /* ─── Save Card Toggle ─── */
 function SaveCardToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
+  const { t } = useTranslation();
+  const { bundle } = useConfigBundle();
+  const tenantCur =
+    bundle?.meta?.tenant_region?.default_currency?.trim() ?? getTenantDefaultCurrency();
+  const saveCardInfo = useMemo(() => {
+    const example = formatMoney(1, tenantCur);
+    return `We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. ${example}) may be placed and reversed—this confirms your card for future use.`;
+  }, [tenantCur]);
   return (
     <View>
       <Pressable
@@ -351,7 +422,7 @@ function SaveCardToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () 
           paddingVertical: 12, paddingHorizontal: 2,
         }}
         accessibilityRole="switch" accessibilityState={{ checked: enabled }}
-        accessibilityLabel="Save card for future payments"
+        accessibilityLabel={t("checkout.saveCardForFuture")}
       >
         <View style={{
           width: 44, height: 24, borderRadius: 12, justifyContent: "center",
@@ -369,7 +440,7 @@ function SaveCardToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () 
           <Text style={{ fontSize: 11, color: "#9CA3AF" }}>For faster checkout next time</Text>
         </View>
         <TouchableOpacity
-          onPress={() => { haptic.light(); Alert.alert("Save card", SAVE_CARD_INFO); }}
+          onPress={() => { haptic.light(); Alert.alert(t("checkout.saveCard"), saveCardInfo); }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityLabel="Info about saving card"
         >
@@ -381,11 +452,18 @@ function SaveCardToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () 
   );
 }
 
+const CHECKOUT_PRODUCT_PAGE = 16;
+const CHECKOUT_PACKAGE_PAGE = 12;
+const CHECKOUT_MANY_PRODUCTS = 12;
+const CHECKOUT_MANY_PACKAGES = 8;
+const CHECKOUT_MANY_CATEGORY_PILLS = 10;
+
 /* ═══════════════════════════════════════════
    Main Screen
    ═══════════════════════════════════════════ */
 export default function BookCheckoutScreen() {
   useScreenTracking("Book Checkout");
+  const { t } = useTranslation();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const {
@@ -397,6 +475,8 @@ export default function BookCheckoutScreen() {
     reschedule_booking_id: routeRescheduleBookingId,
     campaign_id: routeCampaignId,
     provider_id: routeProviderId,
+    package_id: routePackageId,
+    primary_package_id: routePrimaryPackageId,
   } = useLocalSearchParams<{
     hold_id: string;
     slug?: string;
@@ -406,17 +486,31 @@ export default function BookCheckoutScreen() {
     reschedule_booking_id?: string;
     campaign_id?: string;
     provider_id?: string;
+    /** Prefilled from book flow when user started from a service package deep link */
+    package_id?: string | string[];
+    /** Same UUID as `package_id` — parity with consume body / web session key naming */
+    primary_package_id?: string | string[];
   }>();
+  const pickRouteParam = (v: string | string[] | undefined) =>
+    typeof v === "string" ? v : Array.isArray(v) ? v[0] : undefined;
+  const initialPackageIdFromRoute =
+    pickRouteParam(routePackageId)?.trim() || pickRouteParam(routePrimaryPackageId)?.trim() || undefined;
   const { user } = useAuth();
   const [hold, setHold] = useState<HoldData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** Shown after a successful booking before navigating to booking-detail */
+  const [bookingConfirmedData, setBookingConfirmedData] = useState<{ bookingId?: string; providerName?: string; date?: string; time?: string; services?: string } | null>(null);
   const [consuming, setConsuming] = useState(false);
   const [requestingNow, setRequestingNow] = useState(false);
   const onDemandAcceptEnabled = useFeatureFlag("on_demand_accept_customer_enabled");
   const onDemandModule = useModuleConfig("on_demand");
   const onDemandEnabled = Boolean(onDemandAcceptEnabled && onDemandModule?.enabled);
+  const paystackFlagBundle = useFeatureFlag("payment_paystack");
+  const walletFlagBundle = useFeatureFlag("payment_wallet");
+  const giftCardsFlagBundle = useFeatureFlag("gift_cards");
   const [paymentMethod, setPaymentMethod] = useState<"card" | "cash" | "wallet" | "giftcard">("card");
+  const [cashEnabledOnPlatform, setCashEnabledOnPlatform] = useState(false);
   const [paymentOption, setPaymentOption] = useState<"deposit" | "full">("full");
   const [saveCard, setSaveCard] = useState(true);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -429,26 +523,49 @@ export default function BookCheckoutScreen() {
   const [giftCardError, setGiftCardError] = useState<string | null>(null);
 
   const { cards: savedCards, loading: cardsLoading, defaultCard, refresh: refreshCards } = useSavedCards();
-  const { pay: paystackPay, loading: payLoading, error: payError } = usePaystackPayment();
 
   const [bookingCustomDefinitions, setBookingCustomDefinitions] = useState<CustomFieldDefinition[]>([]);
   const [bookingCustomValues, setBookingCustomValues] = useState<Record<string, string | number | boolean | null>>({});
   const [providerForms, setProviderForms] = useState<ProviderForm[]>([]);
   const [providerFormValues, setProviderFormValues] = useState<Record<string, Record<string, string | number | boolean | null>>>({});
   const [specialRequests, setSpecialRequests] = useState("");
+  /** Prefilled from book flow (venue step) via AsyncStorage; sent as house_call_instructions on consume */
+  const [houseCallInstructionsPrefill, setHouseCallInstructionsPrefill] = useState("");
   const [promotionCode, setPromotionCode] = useState("");
+  /** When true, debounced effect runs promotions/validate once (express link / deep link prefill). */
+  const [promoNeedsAutoValidate, setPromoNeedsAutoValidate] = useState(false);
   const [appliedPromoDiscount, setAppliedPromoDiscount] = useState(0);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoValidating, setPromoValidating] = useState(false);
   const [tipAmount, setTipAmount] = useState(0);
+  const [tipCustomInput, setTipCustomInput] = useState("");
+  const [isSlotExpired, setIsSlotExpired] = useState(false);
   const [addonsList, setAddonsList] = useState<AddonOption[]>([]);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
   const [isGroupBooking, setIsGroupBooking] = useState(false);
   const [groupParticipants, setGroupParticipants] = useState<{ id: string; name: string; phone?: string; notes?: string; service_ids: string[] }[]>([]);
-  const [productsList, setProductsList] = useState<{ id: string; name: string; retail_price: number; currency: string }[]>([]);
-  const [selectedProducts, setSelectedProducts] = useState<{ productId: string; name: string; price: number; quantity: number; currency: string }[]>([]);
+  const [productsList, setProductsList] = useState<{
+    id: string;
+    name: string;
+    description?: string | null;
+    category?: string | null;
+    retail_price: number;
+    currency: string;
+    hasVariants?: boolean;
+    defaultVariantId?: string | null;
+    defaultVariantPrice?: number;
+  }[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<{ productId: string; productVariantId?: string | null; name: string; price: number; quantity: number; currency: string }[]>([]);
   const [packagesList, setPackagesList] = useState<{ id: string; name: string; description?: string; price: number; currency: string }[]>([]);
-  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
+  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(() =>
+    initialPackageIdFromRoute?.trim() ? initialPackageIdFromRoute.trim() : null,
+  );
+  const [checkoutProductCategory, setCheckoutProductCategory] = useState<string>("All");
+  const [checkoutProductSearch, setCheckoutProductSearch] = useState("");
+  const [checkoutProductCategoryFilter, setCheckoutProductCategoryFilter] = useState("");
+  const [checkoutVisibleProducts, setCheckoutVisibleProducts] = useState(CHECKOUT_PRODUCT_PAGE);
+  const [checkoutPackageSearch, setCheckoutPackageSearch] = useState("");
+  const [checkoutVisiblePackages, setCheckoutVisiblePackages] = useState(CHECKOUT_PACKAGE_PAGE);
 
   useEffect(() => {
     if (defaultCard && !selectedCardId && !useNewCard) {
@@ -459,7 +576,7 @@ export default function BookCheckoutScreen() {
 
   useEffect(() => {
     if (!hold_id) {
-      setError("Missing booking. Please start again.");
+      setError(t("checkout.missingBooking"));
       setLoading(false);
       return;
     }
@@ -468,13 +585,25 @@ export default function BookCheckoutScreen() {
 
     const load = async () => {
       try {
-        const res = await api.get<HoldData>(`/api/public/booking-holds/${hold_id}`);
+        const res = await api.get<HoldData>(`/api/public/booking-holds/${hold_id}`, { timeout: 120_000 });
         if (cancelled) return;
 
         const data = (res.data ?? {}) as Record<string, unknown>;
         if (!data.hold_id && !data.booking_services_snapshot) {
-          throw new Error("Invalid or expired hold");
+          throw new Error(t("checkout.invalidOrExpiredHold"));
         }
+
+        const meta = (data.metadata as Record<string, unknown> | undefined) ?? {};
+        const packageIdFromHold =
+          (typeof data.package_id === "string" && data.package_id.trim()
+            ? data.package_id.trim()
+            : undefined) ??
+          (typeof meta.package_id === "string" && meta.package_id.trim()
+            ? (meta.package_id as string).trim()
+            : undefined) ??
+          (typeof meta.primary_package_id === "string" && meta.primary_package_id.trim()
+            ? (meta.primary_package_id as string).trim()
+            : undefined);
 
         const holdData: HoldData = {
           hold_id: (data.hold_id ?? data.id ?? hold_id) as string,
@@ -495,6 +624,10 @@ export default function BookCheckoutScreen() {
           deposit_required: data.deposit_required as boolean | undefined,
           deposit_percentage: data.deposit_percentage as number | undefined,
           deposit_amount: data.deposit_amount as number | undefined,
+          payment_paystack: (data as { payment_paystack?: boolean }).payment_paystack,
+          payment_wallet: (data as { payment_wallet?: boolean }).payment_wallet,
+          gift_cards: (data as { gift_cards?: boolean }).gift_cards,
+          cash_enabled_on_platform: (data as { cash_enabled_on_platform?: boolean }).cash_enabled_on_platform,
           travel_fee: data.travel_fee as number | undefined,
           travel_distance_km: data.travel_distance_km as number | undefined,
           tips_enabled: (data as { tips_enabled?: boolean }).tips_enabled,
@@ -502,8 +635,19 @@ export default function BookCheckoutScreen() {
             ? (data as { tip_presets: number[] }).tip_presets
             : undefined,
           cancellation_policy: data.cancellation_policy as HoldData["cancellation_policy"],
+          ...(packageIdFromHold ? { package_id: packageIdFromHold } : {}),
         };
         setHold(holdData);
+        // Read platform payment policy (cash optional on-platform) as fallback when hold payload is older.
+        try {
+          const feeRes = await api.get<{ cash_enabled_on_platform?: boolean }>("/api/public/platform-fees");
+          setCashEnabledOnPlatform((feeRes.data as any)?.cash_enabled_on_platform === true);
+        } catch {
+          setCashEnabledOnPlatform(false);
+        }
+        if (packageIdFromHold) {
+          setSelectedPackageId((prev) => prev ?? packageIdFromHold);
+        }
         try {
           const saved = await AsyncStorage.getItem("beautonomi_booking_addons");
           if (saved) {
@@ -512,11 +656,19 @@ export default function BookCheckoutScreen() {
               setSelectedAddonIds(parsed);
             }
           }
+          const savedPromo = await AsyncStorage.getItem("beautonomi_booking_promotion_code");
+          if (savedPromo?.trim()) setPromotionCode(savedPromo.trim());
+          const promoPrefillFlag = await AsyncStorage.getItem("beautonomi_booking_promotion_prefill");
+          if (promoPrefillFlag === "1" && savedPromo?.trim()) setPromoNeedsAutoValidate(true);
+          const savedGift = await AsyncStorage.getItem("beautonomi_booking_gift_card_code");
+          if (savedGift?.trim()) setGiftCardCode(savedGift.trim());
+          const hci = await AsyncStorage.getItem("beautonomi_booking_house_call_instructions");
+          if (hci?.trim()) setHouseCallInstructionsPrefill(hci.trim());
         } catch {
           // ignore parse or get errors
         }
       } catch (e) {
-        if (!cancelled) setError(getApiErrorMessage(e, "Hold expired. Please select a new time."));
+        if (!cancelled) setError(getApiErrorMessage(e, t("checkout.holdExpiredFallback")));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -524,8 +676,24 @@ export default function BookCheckoutScreen() {
 
     load();
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- route params are stable for this screen
-  }, [hold_id]);
+  }, [hold_id, t, routeProviderName, routeProviderThumbnail]);
+
+  const checkoutTrackedRef = useRef(false);
+  const productPrefillFromLinkAppliedRef = useRef(false);
+
+  /* Track hold expiry reactively — CountdownBar updates its own UI, but the main screen needs
+     to disable the CTA and reflect the expired state without waiting for the next hold fetch. */
+  useEffect(() => {
+    if (!hold?.expires_at) return;
+    if (getTimeRemaining(hold.expires_at).expired) { setIsSlotExpired(true); return; }
+    const timer = setInterval(() => {
+      if (getTimeRemaining(hold.expires_at!).expired) {
+        setIsSlotExpired(true);
+        clearInterval(timer);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [hold?.expires_at]);
 
   useEffect(() => {
     if (!hold?.provider_id) return;
@@ -613,10 +781,82 @@ export default function BookCheckoutScreen() {
         if (res.error) return;
         const raw = res.data as any;
         const arr = Array.isArray(raw) ? raw : raw?.data ?? [];
-        setProductsList(Array.isArray(arr) ? arr.map((p: any) => ({ id: p.id, name: p.name || "Product", retail_price: Number(p.price ?? p.retail_price) || 0, currency: p.currency || "ZAR" })) : []);
+        setProductsList(
+          Array.isArray(arr)
+            ? arr.map((p: any) => {
+                // For variant products, pre-resolve the first in-stock variant
+                let defaultVariantId: string | null = null;
+                let defaultVariantPrice: number | undefined;
+                if (p.hasVariants && Array.isArray(p.variants) && p.variants.length > 0) {
+                  const sorted = [...p.variants].sort(
+                    (a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+                  );
+                  const firstInStock =
+                    sorted.find((v: any) => (v.quantity ?? 0) > 0) ?? sorted[0];
+                  defaultVariantId = firstInStock?.id ?? null;
+                  defaultVariantPrice = firstInStock ? Number(firstInStock.retail_price) : undefined;
+                }
+                const catRaw = p.category;
+                const categoryStr =
+                  typeof catRaw === "string"
+                    ? catRaw.trim() || null
+                    : catRaw != null
+                      ? String(catRaw).trim() || null
+                      : null;
+                return {
+                  id: p.id,
+                  name: p.name || "Product",
+                  description: typeof p.description === "string" ? p.description : p.description != null ? String(p.description) : null,
+                  category: categoryStr,
+                  retail_price: defaultVariantPrice ?? (Number(p.price ?? p.retail_price) || 0),
+                  currency: p.currency || getTenantDefaultCurrency(),
+                  hasVariants: Boolean(p.hasVariants),
+                  defaultVariantId,
+                  defaultVariantPrice,
+                };
+              })
+            : []
+        );
       })
       .catch(() => setProductsList([]));
   }, [provider_slug]);
+
+  useEffect(() => {
+    if (productPrefillFromLinkAppliedRef.current || !provider_slug || productsList.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem("beautonomi_booking_product_cart");
+        if (!raw?.trim() || cancelled) return;
+        const lines = JSON.parse(raw) as { product_id: string; quantity: number }[];
+        if (!Array.isArray(lines)) return;
+        const merged = lines
+          .map((line) => {
+            const p = productsList.find((x) => x.id === line.product_id);
+            if (!p) return null;
+            const q = Math.max(1, Math.floor(Number(line.quantity) || 1));
+            return {
+              productId: p.id,
+              productVariantId: p.defaultVariantId ?? null,
+              name: p.name,
+              price: Number(p.retail_price) || 0,
+              quantity: q,
+              currency: p.currency || getTenantDefaultCurrency(),
+            };
+          })
+          .filter(Boolean) as { productId: string; productVariantId?: string | null; name: string; price: number; quantity: number; currency: string }[];
+        if (merged.length > 0 && !cancelled) {
+          productPrefillFromLinkAppliedRef.current = true;
+          setSelectedProducts(merged);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [provider_slug, productsList]);
 
   // Fetch provider packages (optional add-to-booking)
   useEffect(() => {
@@ -629,10 +869,105 @@ export default function BookCheckoutScreen() {
         if (res.error) return;
         const raw = res.data as any;
         const arr = Array.isArray(raw) ? raw : raw?.data ?? [];
-        setPackagesList(Array.isArray(arr) ? arr.map((p: any) => ({ id: p.id, name: p.name || "Package", description: p.description, price: Number(p.price) || 0, currency: p.currency || "ZAR" })) : []);
+        setPackagesList(Array.isArray(arr) ? arr.map((p: any) => ({ id: p.id, name: p.name || "Package", description: p.description, price: Number(p.price) || 0, currency: p.currency || getTenantDefaultCurrency() })) : []);
       })
       .catch(() => setPackagesList([]));
   }, [provider_slug, hold?.location_id]);
+
+  /** After packages load, keep route `package_id` only if that package is available (e.g. location-scoped list). */
+  useEffect(() => {
+    const id = initialPackageIdFromRoute?.trim();
+    if (!id) return;
+    if (packagesList.length === 0) return;
+    if (packagesList.some((p) => p.id === id)) {
+      setSelectedPackageId(id);
+    } else {
+      setSelectedPackageId(null);
+    }
+  }, [packagesList, initialPackageIdFromRoute]);
+
+  const productCategoryPills = useMemo(() => {
+    const named = new Set<string>();
+    let hasUncat = false;
+    for (const p of productsList) {
+      const c = p.category?.trim();
+      if (c) named.add(c);
+      else hasUncat = true;
+    }
+    const sorted = [...named].sort((a, b) => a.localeCompare(b));
+    return ["All", ...sorted, ...(hasUncat ? ["Other"] : [])] as string[];
+  }, [productsList]);
+
+  useEffect(() => {
+    if (productCategoryPills.length <= 1) return;
+    if (!productCategoryPills.includes(checkoutProductCategory)) {
+      setCheckoutProductCategory("All");
+    }
+  }, [productCategoryPills, checkoutProductCategory]);
+
+  useEffect(() => {
+    setCheckoutVisibleProducts(CHECKOUT_PRODUCT_PAGE);
+  }, [checkoutProductCategory, checkoutProductSearch]);
+
+  useEffect(() => {
+    setCheckoutVisiblePackages(CHECKOUT_PACKAGE_PAGE);
+  }, [checkoutPackageSearch]);
+
+  const filteredCheckoutProducts = useMemo(() => {
+    let list =
+      checkoutProductCategory === "All"
+        ? productsList
+        : checkoutProductCategory === "Other"
+          ? productsList.filter((p) => !p.category?.trim())
+          : productsList.filter((p) => (p.category || "").trim() === checkoutProductCategory);
+    const q = checkoutProductSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          (p.description && p.description.toLowerCase().includes(q)),
+      );
+    }
+    return list;
+  }, [productsList, checkoutProductCategory, checkoutProductSearch]);
+
+  const displayedCheckoutCategoryPills = useMemo(() => {
+    const q = checkoutProductCategoryFilter.trim().toLowerCase();
+    let list = productCategoryPills;
+    if (q && productCategoryPills.length >= CHECKOUT_MANY_CATEGORY_PILLS) {
+      list = productCategoryPills.filter((label) => label.toLowerCase().includes(q));
+    }
+    if (checkoutProductCategory !== "All" && !list.includes(checkoutProductCategory)) {
+      list = [checkoutProductCategory, ...list];
+    }
+    return list;
+  }, [productCategoryPills, checkoutProductCategoryFilter, checkoutProductCategory]);
+
+  const visibleCheckoutProductRows = useMemo(
+    () => filteredCheckoutProducts.slice(0, checkoutVisibleProducts),
+    [filteredCheckoutProducts, checkoutVisibleProducts],
+  );
+
+  const filteredCheckoutPackages = useMemo(() => {
+    const q = checkoutPackageSearch.trim().toLowerCase();
+    if (!q) return packagesList;
+    return packagesList.filter(
+      (pkg) =>
+        pkg.name.toLowerCase().includes(q) ||
+        (pkg.description && String(pkg.description).toLowerCase().includes(q)),
+    );
+  }, [packagesList, checkoutPackageSearch]);
+
+  const visibleCheckoutPackages = useMemo(
+    () => filteredCheckoutPackages.slice(0, checkoutVisiblePackages),
+    [filteredCheckoutPackages, checkoutVisiblePackages],
+  );
+
+  const showCheckoutProductSearch =
+    productsList.length >= CHECKOUT_MANY_PRODUCTS || filteredCheckoutProducts.length >= CHECKOUT_MANY_PRODUCTS;
+  const showCheckoutCategoryFilter = productCategoryPills.length >= CHECKOUT_MANY_CATEGORY_PILLS;
+  const showCheckoutPackageSearch =
+    packagesList.length >= CHECKOUT_MANY_PACKAGES || filteredCheckoutPackages.length >= CHECKOUT_MANY_PACKAGES;
 
   const snapshotOfferingIds = hold?.booking_services_snapshot?.map((s) => s.offering_id ?? (s as { id?: string }).id).filter(Boolean) as string[] ?? [];
 
@@ -654,7 +989,7 @@ export default function BookCheckoutScreen() {
       }, 0)
     : 0;
   const subtotal = hold ? primarySubtotal + groupParticipantsSubtotal : 0;
-  const currency = hold?.booking_services_snapshot[0]?.currency || "ZAR";
+  const currency = hold?.booking_services_snapshot[0]?.currency || getTenantDefaultCurrency();
   const travelFee = hold?.travel_fee ?? 0;
   const addonsSubtotal = addonsList
     .filter((a) => selectedAddonIds.includes(a.id))
@@ -662,8 +997,58 @@ export default function BookCheckoutScreen() {
   const productsSubtotal = selectedProducts.reduce((s, p) => s + p.price * p.quantity, 0);
   const prePromoTotal = subtotal + addonsSubtotal + travelFee + productsSubtotal;
   const total = Math.max(0, prePromoTotal - appliedPromoDiscount + tipAmount);
-  const hasDeposit = !!(hold?.deposit_required && hold?.deposit_amount != null && hold.deposit_amount > 0);
-  const depositAmount = hold?.deposit_amount ?? (hold?.deposit_percentage ? total * hold.deposit_percentage / 100 : 0);
+
+  useEffect(() => {
+    if (hold && hold_id && total != null && !checkoutTrackedRef.current) {
+      checkoutTrackedRef.current = true;
+      trackCheckoutStarted(hold_id, total);
+    }
+  }, [hold, hold_id, total]);
+
+  const paystackEnabled = hold ? hold.payment_paystack !== false : paystackFlagBundle;
+  const walletEnabled = hold ? hold.payment_wallet !== false : walletFlagBundle;
+  const giftCardsEnabled = hold ? hold.gift_cards !== false : giftCardsFlagBundle;
+  const cashEnabled = hold?.cash_enabled_on_platform === true || cashEnabledOnPlatform;
+
+  const depositPctEffective =
+    hold?.deposit_percentage != null && !Number.isNaN(Number(hold.deposit_percentage))
+      ? Number(hold.deposit_percentage)
+      : hold?.deposit_required
+        ? 30
+        : 0;
+  const depositAmountComputed =
+    hold?.deposit_amount != null && hold.deposit_amount > 0
+      ? hold.deposit_amount
+      : depositPctEffective > 0
+        ? Math.ceil((total * depositPctEffective) / 100)
+        : 0;
+  const hasDeposit = !!(hold?.deposit_required && depositPctEffective > 0 && depositAmountComputed > 0);
+  const depositAmount = depositAmountComputed;
+
+  useEffect(() => {
+    if (!hold) return;
+    const paystack = hold.payment_paystack !== false;
+    const walletOk = hold.payment_wallet !== false;
+    const giftOk = hold.gift_cards !== false;
+    if (paymentMethod === "giftcard" && !giftOk) {
+      setPaymentMethod(paystack ? "card" : cashEnabled ? "cash" : "card");
+      return;
+    }
+    if (paymentMethod === "wallet" && !walletOk) {
+      setPaymentMethod(paystack ? "card" : cashEnabled ? "cash" : "card");
+      return;
+    }
+    if (paymentMethod === "card" && !paystack && cashEnabled) {
+      setPaymentMethod("cash");
+    }
+    if (paymentMethod === "cash" && !cashEnabled) {
+      setPaymentMethod(paystack ? "card" : walletOk ? "wallet" : giftOk ? "giftcard" : "card");
+    }
+  }, [hold, paymentMethod, cashEnabled]);
+
+  useEffect(() => {
+    if (!hasDeposit) setPaymentOption("full");
+  }, [hasDeposit]);
 
   const applyPromoCode = useCallback(async () => {
     const code = promotionCode.trim().toUpperCase();
@@ -704,6 +1089,19 @@ export default function BookCheckoutScreen() {
     }
   }, [promotionCode, hold?.provider_id, hold?.location_type, hold?.location_id, prePromoTotal]);
 
+  const applyPromoCodeRef = useRef(applyPromoCode);
+  applyPromoCodeRef.current = applyPromoCode;
+
+  useEffect(() => {
+    if (!promoNeedsAutoValidate || !promotionCode.trim() || !hold?.provider_id) return;
+    const timer = setTimeout(() => {
+      setPromoNeedsAutoValidate(false);
+      void AsyncStorage.removeItem("beautonomi_booking_promotion_prefill");
+      void applyPromoCodeRef.current();
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [promoNeedsAutoValidate, prePromoTotal, promotionCode, hold?.provider_id]);
+
   const applyGiftCard = useCallback(async () => {
     const code = giftCardCode.trim().toUpperCase();
     if (!code) return;
@@ -715,7 +1113,7 @@ export default function BookCheckoutScreen() {
       );
       const data = res.data as any;
       if (data?.valid && data?.balance != null) {
-        setGiftCardValid({ balance: Number(data.balance), currency: data.currency || "ZAR" });
+        setGiftCardValid({ balance: Number(data.balance), currency: data.currency || getTenantDefaultCurrency() });
         haptic.success();
       } else {
         setGiftCardValid(null);
@@ -731,7 +1129,13 @@ export default function BookCheckoutScreen() {
 
   const navigateToBooking = useCallback((bookingId?: string, previousBookingId?: string) => {
     haptic.success();
+    clearPendingExcludeHoldId().catch(() => {});
     AsyncStorage.removeItem("beautonomi_booking_addons").catch(() => {});
+    AsyncStorage.removeItem("beautonomi_booking_promotion_code").catch(() => {});
+    AsyncStorage.removeItem("beautonomi_booking_promotion_prefill").catch(() => {});
+    AsyncStorage.removeItem("beautonomi_booking_gift_card_code").catch(() => {});
+    AsyncStorage.removeItem("beautonomi_booking_product_cart").catch(() => {});
+    AsyncStorage.removeItem("beautonomi_booking_house_call_instructions").catch(() => {});
 
     // Ad attribution: record "book" event when user completed booking from a sponsored result (one event per booking)
     if (routeCampaignId && routeProviderId) {
@@ -746,35 +1150,62 @@ export default function BookCheckoutScreen() {
         .catch(() => {});
     }
 
-    if (!bookingId) {
-      router.replace({ pathname: "/(app)/(tabs)/bookings" });
-      return;
-    }
-    if (previousBookingId) {
-      Alert.alert(
-        "Rescheduled",
-        "Would you like to cancel your previous appointment?",
-        [
-          { text: "Keep both", style: "cancel", onPress: () => router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } }) },
-          {
-            text: "Cancel previous",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await api.post(`/api/me/bookings/${previousBookingId}/cancel`, {});
-                haptic.success();
-              } catch {
-                // Still navigate to new booking
-              }
-              router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
+    // Build summary for the success overlay
+    const holdServices = hold?.booking_services_snapshot ?? [];
+    const serviceNames = holdServices
+      .map((s: BookingServiceSnapshot) => s.service_name ?? s.title ?? s.name ?? "")
+      .filter(Boolean)
+      .join(", ");
+    const startAt = hold?.start_at;
+    const bookingDate = startAt
+      ? new Date(startAt).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
+      : undefined;
+    const bookingTime = startAt
+      ? new Date(startAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+      : undefined;
+
+    // Show the success overlay — it auto-dismisses and navigates after 2.5 s
+    setBookingConfirmedData({
+      bookingId,
+      providerName: hold?.provider_name ?? undefined,
+      date: bookingDate,
+      time: bookingTime,
+      services: serviceNames || undefined,
+    });
+
+    const navigate = () => {
+      if (!bookingId) {
+        router.replace({ pathname: "/(app)/(tabs)/bookings" });
+        return;
+      }
+      if (previousBookingId) {
+        Alert.alert(
+          "Rescheduled",
+          "Would you like to cancel your previous appointment?",
+          [
+            { text: "Keep both", style: "cancel", onPress: () => router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } }) },
+            {
+              text: "Cancel previous",
+              style: "destructive",
+              onPress: async () => {
+                try {
+                  await api.post(`/api/me/bookings/${previousBookingId}/cancel`, {});
+                  haptic.success();
+                } catch {
+                  // Still navigate to new booking
+                }
+                router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
+              },
             },
-          },
-        ]
-      );
-    } else {
-      router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
-    }
-  }, [routeCampaignId, routeProviderId, hold_id]);
+          ]
+        );
+      } else {
+        router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
+      }
+    };
+
+    setTimeout(navigate, 2600);
+  }, [routeCampaignId, routeProviderId, hold_id, hold]);
 
   const handleRequestNow = useCallback(async () => {
     if (!hold_id || !hold || !user) return;
@@ -808,10 +1239,14 @@ export default function BookCheckoutScreen() {
           phone: user.phone ?? undefined,
         };
       }
-      const res = await api.post<{ id: string }>(`/api/me/on-demand/requests`, {
-        provider_id: hold.provider_id,
-        request_payload: requestPayload,
-      });
+      const res = await api.post<{ id: string }>(
+        `/api/me/on-demand/requests`,
+        {
+          provider_id: hold.provider_id,
+          request_payload: requestPayload,
+        },
+        { timeout: 120_000 }
+      );
       if (res.error) {
         haptic.error();
         setError(getApiErrorMessage(res.error, "Failed to submit request"));
@@ -836,7 +1271,10 @@ export default function BookCheckoutScreen() {
     if (!hold_id || !hold) return;
 
     if (!user) {
-      router.replace({ pathname: "/(auth)/login", params: { return_to: `/(app)/book-checkout?hold_id=${hold_id}` } });
+      router.replace({
+        pathname: "/(auth)/login",
+        params: { return_to: `/(app)/book/continue?hold_id=${hold_id}` },
+      });
       return;
     }
 
@@ -847,6 +1285,15 @@ export default function BookCheckoutScreen() {
 
     if (paymentMethod === "giftcard" && (!giftCardCode.trim() || !giftCardValid)) {
       setError("Please enter and apply a valid gift card code.");
+      return;
+    }
+
+    if (paymentMethod === "card" && !paystackEnabled) {
+      setError("Online card payment is unavailable for this market.");
+      return;
+    }
+    if (paymentMethod === "wallet" && !walletEnabled) {
+      setError("Wallet payment is unavailable for this market.");
       return;
     }
 
@@ -892,6 +1339,7 @@ export default function BookCheckoutScreen() {
       if (Object.keys(bookingCustomValues).length > 0) payload.custom_field_values = bookingCustomValues;
       if (Object.keys(providerFormValues).length > 0) payload.provider_form_responses = providerFormValues;
       if (specialRequests.trim()) payload.special_requests = specialRequests.trim();
+      if (houseCallInstructionsPrefill.trim()) payload.house_call_instructions = houseCallInstructionsPrefill.trim();
       if (promotionCode.trim()) payload.promotion_code = promotionCode.trim();
       if (selectedAddonIds.length > 0) payload.addons = selectedAddonIds;
       if (routeRescheduleBookingId) payload.reschedule_booking_id = routeRescheduleBookingId;
@@ -910,12 +1358,16 @@ export default function BookCheckoutScreen() {
       if (selectedProducts.length > 0) {
         payload.products = selectedProducts.map((p) => ({
           productId: p.productId,
+          productVariantId: p.productVariantId ?? null,
           quantity: p.quantity,
           unitPrice: p.price,
           totalPrice: p.price * p.quantity,
         }));
       }
-      if (selectedPackageId) payload.package_id = selectedPackageId;
+      if (selectedPackageId) {
+        payload.package_id = selectedPackageId;
+        payload.primary_package_id = selectedPackageId;
+      }
       if (user?.user_metadata?.full_name || user?.email) {
         const parts = (user.user_metadata?.full_name ?? "").trim().split(/\s+/);
         payload.client_info = {
@@ -926,7 +1378,11 @@ export default function BookCheckoutScreen() {
         };
       }
 
-      const res = await api.post<ConsumeResponse>(`/api/public/booking-holds/${hold_id}/consume`, payload);
+      const res = await api.post<ConsumeResponse>(
+        `/api/public/booking-holds/${hold_id}/consume`,
+        payload,
+        { timeout: 120_000 }
+      );
 
       if (res.error) {
         haptic.error();
@@ -937,27 +1393,21 @@ export default function BookCheckoutScreen() {
       const data = res.data;
       const bookingId = data?.booking_id;
 
-      /* Server already charged saved card when payment_method_id was sent; it returns payment_url: null in that case. */
+      /* Server creates the Paystack transaction in POST /api/public/bookings; must open this URL (same as web book/continue). */
       const paymentUrl = data?.payment_url;
       if (paymentUrl && paymentMethod === "card") {
-        const payResult = await paystackPay({
-          booking_id: bookingId || hold_id,
-          amount: paymentOption === "deposit" && hasDeposit ? depositAmount : total,
-          email: user.email || "",
-          currency,
-          save_card: saveCard,
-          customer_id: user.id,
+        await WebBrowser.openBrowserAsync(paymentUrl, {
+          presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
         });
-
-        if (payResult.success || payResult.dismissed) {
-          if (saveCard) refreshCards();
-          navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
-        } else {
-          haptic.error();
-          setError("Payment was not completed. Please try again.");
-        }
+        if (saveCard) refreshCards();
+        const amountPaid = paymentOption === "deposit" && hasDeposit ? depositAmount : total;
+        trackBookingConfirmed(bookingId ?? hold_id, paymentMethod, total);
+        trackPaymentSuccess(bookingId ?? hold_id, amountPaid);
+        navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
       } else {
         if (selectedCardId && !useNewCard && savedCards.length > 0) refreshCards();
+        trackBookingConfirmed(bookingId ?? hold_id, paymentMethod, total);
+        trackPaymentSuccess(bookingId ?? hold_id, total);
         navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
       }
     } catch (e) {
@@ -966,7 +1416,7 @@ export default function BookCheckoutScreen() {
       setConsuming(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pay helpers and navigateToBooking are stable refs
-  }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId]);
+  }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled]);
 
   /* ─── Loading skeleton ─── */
   if (loading) {
@@ -1010,9 +1460,9 @@ export default function BookCheckoutScreen() {
           <TouchableOpacity
             onPress={() => router.back()}
             style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12 }}
-            accessibilityRole="button" accessibilityLabel="Start over"
+            accessibilityRole="button" accessibilityLabel={t("checkout.startOver")}
           >
-            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Start Over</Text>
+            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>{t("checkout.startOver")}</Text>
           </TouchableOpacity>
         </View>
       </>
@@ -1021,7 +1471,31 @@ export default function BookCheckoutScreen() {
 
   if (!hold) return null;
 
-  const isExpired = hold.expires_at ? getTimeRemaining(hold.expires_at).expired : false;
+  /** Re-open book with the same services/staff/venue so editing date/time or services works (params-only navigation used to drop cart state). */
+  const navigateToEditBooking = (step: "date" | "service") => {
+    if (!provider_slug) {
+      router.back();
+      return;
+    }
+    const offeringIds = hold.booking_services_snapshot
+      .map((s) => s.offering_id || (s as { id?: string }).id)
+      .filter((id): id is string => Boolean(id))
+      .join(",");
+    router.replace({
+      pathname: "/(app)/book",
+      params: {
+        slug: provider_slug,
+        step,
+        ...(offeringIds ? { service_ids: offeringIds } : {}),
+        ...(hold.staff_id ? { staff_id: hold.staff_id } : {}),
+        ...(hold.location_id ? { location_id: hold.location_id } : {}),
+        ...(hold.location_type ? { location_type: hold.location_type } : {}),
+        ...(selectedPackageId ? { package: selectedPackageId } : {}),
+      },
+    });
+  };
+
+  const isExpired = isSlotExpired;
   const providerInitial = (hold.provider_name || "P").charAt(0).toUpperCase();
   const thumbnailUrl = hold.provider_thumbnail || hold.provider_avatar_url;
   const usingSavedCard = paymentMethod === "card" && !!selectedCardId && !useNewCard && savedCards.length > 0;
@@ -1037,20 +1511,20 @@ export default function BookCheckoutScreen() {
         }}>
           <TouchableOpacity
             onPress={() => {
-              Alert.alert("Leave checkout?", "Your slot will remain held until it expires.", [
-                { text: "Stay", style: "cancel" },
-                { text: "Leave", style: "destructive", onPress: () => router.back() },
+              Alert.alert(t("checkout.leaveCheckoutTitle"), t("checkout.leaveCheckoutMessage"), [
+                { text: t("checkout.stay"), style: "cancel" },
+                { text: t("checkout.leave"), style: "destructive", onPress: () => router.back() },
               ]);
             }}
             style={{
               width: 38, height: 38, borderRadius: 19, backgroundColor: "#F3F4F6",
               alignItems: "center", justifyContent: "center",
             }}
-            accessibilityRole="button" accessibilityLabel="Go back"
+            accessibilityRole="button" accessibilityLabel={t("common.back")}
           >
             <Ionicons name="arrow-back" size={20} color="#111827" />
           </TouchableOpacity>
-          <Text style={{ flex: 1, fontSize: 18, fontWeight: "700", color: "#111827", marginLeft: 12 }}>Checkout</Text>
+          <Text style={{ flex: 1, fontSize: 18, fontWeight: "700", color: "#111827", marginLeft: 12 }}>{t("checkout.title")}</Text>
           <Ionicons name="lock-closed-outline" size={16} color="#9CA3AF" />
         </View>
 
@@ -1065,11 +1539,11 @@ export default function BookCheckoutScreen() {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             showsVerticalScrollIndicator={false}
-            accessibilityLabel="Checkout summary and payment"
+            accessibilityLabel={t("checkout.summaryAccessibility")}
             accessibilityRole="none"
           >
             {/* Countdown */}
-            {hold.expires_at && <CountdownBar expiresAt={hold.expires_at} />}
+            {hold.expires_at && <CountdownBar expiresAt={hold.expires_at} t={t} />}
 
             {/* ═══ Provider Identity ═══ */}
             <View style={{
@@ -1084,37 +1558,64 @@ export default function BookCheckoutScreen() {
                 </View>
               )}
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>{hold.provider_name || "Provider"}</Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>{hold.provider_name || t("checkout.provider")}</Text>
                 {hold.staff_name && (
-                  <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>with {hold.staff_name}</Text>
+                  <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{t("checkout.withStaff", { name: hold.staff_name })}</Text>
                 )}
               </View>
             </View>
+
+            {/* ═══ Package Identity Banner (when booking via a package) ═══ */}
+            {(() => {
+              const activePkg = selectedPackageId
+                ? packagesList.find((p) => p.id === selectedPackageId) ?? null
+                : null;
+              if (!activePkg) return null;
+              return (
+                <View style={{
+                  flexDirection: "row", alignItems: "center",
+                  backgroundColor: "#F0FDF4", borderRadius: 14,
+                  borderWidth: 1.5, borderColor: "#BBF7D0",
+                  padding: 14, marginBottom: 16,
+                }}>
+                  <View style={{
+                    width: 38, height: 38, borderRadius: 19,
+                    backgroundColor: "#DCFCE7", alignItems: "center", justifyContent: "center", marginRight: 12,
+                  }}>
+                    <Ionicons name="gift" size={20} color="#16A34A" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#15803D", textTransform: "uppercase", letterSpacing: 0.7 }}>
+                      Package
+                    </Text>
+                    <Text style={{ fontSize: 15, fontWeight: "700", color: "#111827", marginTop: 2 }}>{activePkg.name}</Text>
+                    {activePkg.description ? (
+                      <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }} numberOfLines={2}>{activePkg.description}</Text>
+                    ) : null}
+                  </View>
+                  <Text style={{ fontSize: 15, fontWeight: "800", color: Colors.primary }}>{formatCurrency(activePkg.price, activePkg.currency)}</Text>
+                </View>
+              );
+            })()}
 
             {/* ═══ Appointment Details (with edit options) ═══ */}
             <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginBottom: 16 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <Ionicons name="calendar-outline" size={18} color="#6B7280" style={{ marginRight: 6 }} />
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Appointment Details</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{t("checkout.appointmentDetails")}</Text>
                 </View>
-                <EditChip label="date and time" onPress={() => {
-                  if (provider_slug) {
-                    router.replace({ pathname: "/(app)/book", params: { slug: provider_slug, step: "date" } });
-                  } else {
-                    router.back();
-                  }
-                }} />
+                <EditChip label={t("checkout.dateAndTime")} onPress={() => navigateToEditBooking("date")} />
               </View>
 
               {/* Date & Time */}
               <View style={{ flexDirection: "row", marginBottom: 10 }}>
                 <View style={{ flex: 1, marginRight: 16 }}>
-                  <Text style={{ fontSize: 11, color: "#9CA3AF", fontWeight: "500", marginBottom: 4 }}>DATE</Text>
+                  <Text style={{ fontSize: 11, color: "#9CA3AF", fontWeight: "500", marginBottom: 4 }}>{t("checkout.date")}</Text>
                   <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{formatDateOnly(hold.start_at)}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, color: "#9CA3AF", fontWeight: "500", marginBottom: 4 }}>TIME</Text>
+                  <Text style={{ fontSize: 11, color: "#9CA3AF", fontWeight: "500", marginBottom: 4 }}>{t("checkout.time")}</Text>
                   <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{formatTimeOnly(hold.start_at)}</Text>
                 </View>
               </View>
@@ -1127,7 +1628,7 @@ export default function BookCheckoutScreen() {
                   style={{ marginRight: 6 }}
                 />
                 <Text style={{ fontSize: 13, color: "#6B7280" }}>
-                  {hold.location_type === "at_home" ? "At your location" : hold.location_name || "At salon"}
+                  {hold.location_type === "at_home" ? t("checkout.atYourLocation") : hold.location_name || t("checkout.atSalon")}
                 </Text>
               </View>
             </View>
@@ -1135,14 +1636,8 @@ export default function BookCheckoutScreen() {
             {/* ═══ Services ═══ */}
             <View style={{ marginBottom: 16 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Services</Text>
-                <EditChip label="service" onPress={() => {
-                if (provider_slug) {
-                  router.replace({ pathname: "/(app)/book", params: { slug: provider_slug, step: "service" } });
-                } else {
-                  router.back();
-                }
-              }} />
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{t("checkout.services")}</Text>
+                <EditChip label={t("checkout.service")} onPress={() => navigateToEditBooking("service")} />
               </View>
               {hold.booking_services_snapshot.map((svc, i) => {
                 const serviceName = svc.service_name ?? svc.title ?? svc.name ?? routeServiceName ?? `Service ${i + 1}`;
@@ -1169,7 +1664,7 @@ export default function BookCheckoutScreen() {
             {/* Add-ons */}
             {addonsList.length > 0 && (
               <View style={{ marginBottom: 16 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Add-ons (optional)</Text>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>{t("checkout.addonsOptional")}</Text>
                 {addonsList.map((addon) => {
                   const label = addon.name ?? addon.title ?? "Add-on";
                   const price = Number(addon.price) || 0;
@@ -1265,7 +1760,7 @@ export default function BookCheckoutScreen() {
                       id: offeringId(s) as string,
                       label: (s.service_name ?? s.title ?? s.name ?? "Service").trim() || "Service",
                       price: s.price,
-                      currency: s.currency || "ZAR",
+                      currency: s.currency || getTenantDefaultCurrency(),
                     })).filter((o) => o.id);
                     return (
                       <View key={p.id} style={{ backgroundColor: "#F9FAFB", borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: "#E5E7EB" }}>
@@ -1345,89 +1840,245 @@ export default function BookCheckoutScreen() {
             {/* Products (add to booking) */}
             {productsList.length > 0 && (
               <View style={{ marginBottom: 16 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Products (optional)</Text>
-                {productsList.map((prod) => {
-                  const cur = selectedProducts.find((s) => s.productId === prod.id);
-                  const qty = cur?.quantity ?? 0;
-                  return (
-                    <View key={prod.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: "#F9FAFB", borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: "#E5E7EB" }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>{prod.name}</Text>
-                        <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{formatCurrency(prod.retail_price, prod.currency)}</Text>
-                      </View>
-                      <View style={{ flexDirection: "row", alignItems: "center" }}>
-                        <TouchableOpacity
-                          onPress={() => {
-                            haptic.selection();
-                            if (qty <= 0) return;
-                            if (qty === 1) setSelectedProducts((prev) => prev.filter((s) => s.productId !== prod.id));
-                            else setSelectedProducts((prev) => prev.map((s) => (s.productId === prod.id ? { ...s, quantity: s.quantity - 1 } : s)));
-                          }}
-                          style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#E5E7EB", alignItems: "center", justifyContent: "center" }}
-                        >
-                          <Ionicons name="remove" size={18} color="#374151" />
-                        </TouchableOpacity>
-                        <Text style={{ minWidth: 28, textAlign: "center", fontSize: 14, fontWeight: "600", color: "#111827" }}>{qty}</Text>
-                        <TouchableOpacity
-                          onPress={() => {
-                            haptic.selection();
-                            if (qty === 0) setSelectedProducts((prev) => [...prev, { productId: prod.id, name: prod.name, price: prod.retail_price, quantity: 1, currency: prod.currency }]);
-                            else setSelectedProducts((prev) => prev.map((s) => (s.productId === prod.id ? { ...s, quantity: s.quantity + 1 } : s)));
-                          }}
-                          style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center" }}
-                        >
-                          <Ionicons name="add" size={18} color={Colors.primary} />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })}
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>{t("checkout.productsOptional")}</Text>
+                {productCategoryPills.length > 1 && (
+                  <View style={{ marginBottom: 12 }}>
+                    {showCheckoutCategoryFilter && (
+                      <TextInput
+                        value={checkoutProductCategoryFilter}
+                        onChangeText={setCheckoutProductCategoryFilter}
+                        placeholder={t("booking.filterCategoriesPlaceholder")}
+                        placeholderTextColor="#9CA3AF"
+                        style={{
+                          backgroundColor: "#FFF",
+                          borderWidth: 1,
+                          borderColor: "#E5E7EB",
+                          borderRadius: 10,
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          fontSize: 14,
+                          color: "#111827",
+                          marginBottom: 10,
+                        }}
+                      />
+                    )}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: "row", flexWrap: "nowrap", paddingVertical: 4 }}>
+                      {displayedCheckoutCategoryPills.map((label) => {
+                        const active = checkoutProductCategory === label;
+                        return (
+                          <TouchableOpacity
+                            key={label}
+                            onPress={() => {
+                              haptic.selection();
+                              setCheckoutProductCategory(label);
+                              setCheckoutProductSearch("");
+                            }}
+                            style={{
+                              paddingHorizontal: 16,
+                              paddingVertical: 8,
+                              borderRadius: 999,
+                              marginRight: 8,
+                              backgroundColor: active ? Colors.primary : "#FFF",
+                              borderWidth: 1,
+                              borderColor: active ? Colors.primary : "#E5E7EB",
+                            }}
+                          >
+                            <Text style={{ fontSize: 13, fontWeight: "600", color: active ? "#FFF" : "#374151" }}>{label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+                {showCheckoutProductSearch && (
+                  <TextInput
+                    value={checkoutProductSearch}
+                    onChangeText={setCheckoutProductSearch}
+                    placeholder={t("booking.searchProductsPlaceholder")}
+                    placeholderTextColor="#9CA3AF"
+                    style={{
+                      backgroundColor: "#FFF",
+                      borderWidth: 1,
+                      borderColor: "#E5E7EB",
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      fontSize: 14,
+                      color: "#111827",
+                      marginBottom: 12,
+                    }}
+                  />
+                )}
+                {filteredCheckoutProducts.length === 0 ? (
+                  <Text style={{ fontSize: 13, color: "#6B7280", paddingVertical: 8 }}>{t("checkout.noMatchingProducts")}</Text>
+                ) : (
+                  <>
+                    {visibleCheckoutProductRows.length < filteredCheckoutProducts.length && (
+                      <Text style={{ fontSize: 11, color: "#6B7280", marginBottom: 8 }}>
+                        {t("booking.servicesPaginationSummary", { shown: visibleCheckoutProductRows.length, total: filteredCheckoutProducts.length })}
+                      </Text>
+                    )}
+                    {visibleCheckoutProductRows.map((prod) => {
+                      const cur = selectedProducts.find((s) => s.productId === prod.id);
+                      const qty = cur?.quantity ?? 0;
+                      return (
+                        <View key={prod.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: "#F9FAFB", borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: "#E5E7EB" }}>
+                          <View style={{ flex: 1, marginRight: 8 }}>
+                            {prod.category?.trim() ? (
+                              <Text style={{ fontSize: 10, fontWeight: "700", color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }} numberOfLines={1}>
+                                {prod.category.trim()}
+                              </Text>
+                            ) : null}
+                            <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>{prod.name}</Text>
+                            <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{formatCurrency(prod.retail_price, prod.currency)}</Text>
+                          </View>
+                          <View style={{ flexDirection: "row", alignItems: "center" }}>
+                            <TouchableOpacity
+                              onPress={() => {
+                                haptic.selection();
+                                if (qty <= 0) return;
+                                if (qty === 1) setSelectedProducts((prev) => prev.filter((s) => s.productId !== prod.id));
+                                else setSelectedProducts((prev) => prev.map((s) => (s.productId === prod.id ? { ...s, quantity: s.quantity - 1 } : s)));
+                              }}
+                              style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#E5E7EB", alignItems: "center", justifyContent: "center" }}
+                            >
+                              <Ionicons name="remove" size={18} color="#374151" />
+                            </TouchableOpacity>
+                            <Text style={{ minWidth: 28, textAlign: "center", fontSize: 14, fontWeight: "600", color: "#111827" }}>{qty}</Text>
+                            <TouchableOpacity
+                              onPress={() => {
+                                haptic.selection();
+                                if (qty === 0) setSelectedProducts((prev) => [...prev, { productId: prod.id, productVariantId: prod.defaultVariantId ?? null, name: prod.name, price: prod.retail_price, quantity: 1, currency: prod.currency }]);
+                                else setSelectedProducts((prev) => prev.map((s) => (s.productId === prod.id ? { ...s, quantity: s.quantity + 1 } : s)));
+                              }}
+                              style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center" }}
+                            >
+                              <Ionicons name="add" size={18} color={Colors.primary} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })}
+                    {checkoutVisibleProducts < filteredCheckoutProducts.length && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          haptic.selection();
+                          setCheckoutVisibleProducts((c) => Math.min(c + CHECKOUT_PRODUCT_PAGE, filteredCheckoutProducts.length));
+                        }}
+                        style={{
+                          marginTop: 4,
+                          paddingVertical: 12,
+                          paddingHorizontal: 16,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: "#E5E7EB",
+                          backgroundColor: "#FFF",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{t("booking.loadMoreProducts")}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
+                )}
               </View>
             )}
 
-            {/* Package (optional) */}
+            {/* Package selector — preselected when arriving from a package, optional otherwise */}
             {packagesList.length > 0 && (
               <View style={{ marginBottom: 16 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Package (optional)</Text>
-                {packagesList.map((pkg) => {
-                  const selected = selectedPackageId === pkg.id;
-                  return (
-                    <Pressable
-                      key={pkg.id}
-                      onPress={() => { haptic.selection(); setSelectedPackageId(selected ? null : pkg.id); }}
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        paddingVertical: 12,
-                        paddingHorizontal: 12,
-                        borderWidth: 1,
-                        borderColor: selected ? "#7C3AED" : "#E5E7EB",
-                        borderRadius: 12,
-                        backgroundColor: selected ? "#F5F3FF" : "#F9FAFB",
-                        marginBottom: 8,
-                      }}
-                    >
-                      <View style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: 11,
-                        borderWidth: 2,
-                        borderColor: selected ? "#7C3AED" : "#9CA3AF",
-                        backgroundColor: selected ? "#7C3AED" : "transparent",
-                        marginRight: 10,
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}>
-                        {selected && <Ionicons name="checkmark" size={14} color="#FFF" />}
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>{pkg.name}</Text>
-                        {pkg.description ? <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }} numberOfLines={2}>{pkg.description}</Text> : null}
-                      </View>
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{formatCurrency(pkg.price, pkg.currency)}</Text>
-                    </Pressable>
-                  );
-                })}
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>
+                  {selectedPackageId ? "Package applied" : "Apply a package (optional)"}
+                </Text>
+                {showCheckoutPackageSearch && (
+                  <TextInput
+                    value={checkoutPackageSearch}
+                    onChangeText={setCheckoutPackageSearch}
+                    placeholder={t("booking.searchPackagesPlaceholder")}
+                    placeholderTextColor="#9CA3AF"
+                    style={{
+                      backgroundColor: "#FFF",
+                      borderWidth: 1,
+                      borderColor: "#E5E7EB",
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      fontSize: 14,
+                      color: "#111827",
+                      marginBottom: 12,
+                    }}
+                  />
+                )}
+                {filteredCheckoutPackages.length === 0 ? (
+                  <Text style={{ fontSize: 13, color: "#6B7280", paddingVertical: 8 }}>{t("checkout.noMatchingPackages")}</Text>
+                ) : (
+                  <>
+                    {visibleCheckoutPackages.length < filteredCheckoutPackages.length && (
+                      <Text style={{ fontSize: 11, color: "#6B7280", marginBottom: 8 }}>
+                        {t("booking.servicesPaginationSummary", { shown: visibleCheckoutPackages.length, total: filteredCheckoutPackages.length })}
+                      </Text>
+                    )}
+                    {visibleCheckoutPackages.map((pkg) => {
+                      const selected = selectedPackageId === pkg.id;
+                      return (
+                        <Pressable
+                          key={pkg.id}
+                          onPress={() => { haptic.selection(); setSelectedPackageId(selected ? null : pkg.id); }}
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            paddingVertical: 12,
+                            paddingHorizontal: 12,
+                            borderWidth: 1,
+                            borderColor: selected ? "#7C3AED" : "#E5E7EB",
+                            borderRadius: 12,
+                            backgroundColor: selected ? "#F5F3FF" : "#F9FAFB",
+                            marginBottom: 8,
+                          }}
+                        >
+                          <View style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: 11,
+                            borderWidth: 2,
+                            borderColor: selected ? "#7C3AED" : "#9CA3AF",
+                            backgroundColor: selected ? "#7C3AED" : "transparent",
+                            marginRight: 10,
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}>
+                            {selected && <Ionicons name="checkmark" size={14} color="#FFF" />}
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>{pkg.name}</Text>
+                            {pkg.description ? <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }} numberOfLines={2}>{pkg.description}</Text> : null}
+                          </View>
+                          <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{formatCurrency(pkg.price, pkg.currency)}</Text>
+                        </Pressable>
+                      );
+                    })}
+                    {checkoutVisiblePackages < filteredCheckoutPackages.length && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          haptic.selection();
+                          setCheckoutVisiblePackages((c) => Math.min(c + CHECKOUT_PACKAGE_PAGE, filteredCheckoutPackages.length));
+                        }}
+                        style={{
+                          marginTop: 4,
+                          paddingVertical: 12,
+                          paddingHorizontal: 16,
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: "#E5E7EB",
+                          backgroundColor: "#FFF",
+                          alignItems: "center",
+                        }}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>{t("booking.loadMorePackages")}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
+                )}
               </View>
             )}
 
@@ -1440,7 +2091,7 @@ export default function BookCheckoutScreen() {
                 <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                   <Ionicons name="car-outline" size={16} color="#92400E" style={{ marginRight: 8 }} />
                   <View>
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#92400E" }}>Travel fee</Text>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: "#92400E" }}>{t("checkout.travelFee")}</Text>
                     {hold.travel_distance_km != null && (
                       <Text style={{ fontSize: 11, color: "#B45309" }}>~{hold.travel_distance_km.toFixed(1)} km</Text>
                     )}
@@ -1455,43 +2106,43 @@ export default function BookCheckoutScreen() {
               {(travelFee > 0 || addonsSubtotal > 0 || productsSubtotal > 0 || appliedPromoDiscount > 0 || tipAmount > 0) && (
                 <>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                    <Text style={{ fontSize: 13, color: "#6B7280" }}>Services</Text>
+                    <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.services")}</Text>
                     <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(subtotal, currency)}</Text>
                   </View>
                   {addonsSubtotal > 0 && (
                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>Add-ons</Text>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.addons")}</Text>
                       <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(addonsSubtotal, currency)}</Text>
                     </View>
                   )}
                   {productsSubtotal > 0 && (
                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>Products</Text>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.products")}</Text>
                       <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(productsSubtotal, currency)}</Text>
                     </View>
                   )}
                   {travelFee > 0 && (
                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>Travel</Text>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(travelFee, currency)}</Text>
+<Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.travel")}</Text>
+                    <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(travelFee, currency)}</Text>
                     </View>
                   )}
                   {appliedPromoDiscount > 0 && (
                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                      <Text style={{ fontSize: 13, color: "#059669" }}>Promo</Text>
+                      <Text style={{ fontSize: 13, color: "#059669" }}>{t("checkout.promo")}</Text>
                       <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(appliedPromoDiscount, currency)}</Text>
                     </View>
                   )}
                   {tipAmount > 0 && (
                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderColor: "#E5E7EB" }}>
-                      <Text style={{ fontSize: 13, color: "#6B7280" }}>Tip</Text>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.tip")}</Text>
                       <Text style={{ fontSize: 13, color: "#6B7280" }}>+{formatCurrency(tipAmount, currency)}</Text>
                     </View>
                   )}
                 </>
               )}
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>Total</Text>
+                <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>{t("checkout.total")}</Text>
                 <Text style={{ fontSize: 22, fontWeight: "800", color: "#111827" }}>{formatCurrency(total, currency)}</Text>
               </View>
             </View>
@@ -1499,35 +2150,72 @@ export default function BookCheckoutScreen() {
             {/* ═══ Tip (optional) ═══ */}
             {hold?.tips_enabled && (
               <View style={{ marginBottom: 16 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Add a tip (optional)</Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-                  {([0, ...(hold.tip_presets ?? [10, 15, 20, 25])].map((preset) => (
-                    <TouchableOpacity
-                      key={preset}
-                      onPress={() => setTipAmount(preset)}
-                      style={{
-                        paddingHorizontal: 14,
-                        paddingVertical: 10,
-                        borderRadius: 12,
-                        backgroundColor: tipAmount === preset ? Colors.primary : "#F3F4F6",
-                      }}
-                    >
-                      <Text style={{ fontSize: 14, fontWeight: "600", color: tipAmount === preset ? "#fff" : "#374151" }}>
-                        {preset === 0 ? "No tip" : formatCurrency(preset, currency)}
-                      </Text>
-                    </TouchableOpacity>
-                  )))}
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>{t("checkout.addTipOptional")}</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                  {([0, ...(hold.tip_presets ?? [10, 15, 20, 25])].map((preset) => {
+                    const isCustomActive = tipCustomInput.trim().length > 0 && !hold.tip_presets?.concat([0]).includes(tipAmount) && tipAmount > 0;
+                    const isPresetActive = !isCustomActive && tipAmount === preset;
+                    return (
+                      <TouchableOpacity
+                        key={preset}
+                        onPress={() => {
+                          haptic.light();
+                          setTipAmount(preset);
+                          setTipCustomInput("");
+                        }}
+                        style={{
+                          paddingHorizontal: 14,
+                          paddingVertical: 10,
+                          borderRadius: 12,
+                          borderWidth: 1.5,
+                          borderColor: isPresetActive ? Colors.primary : "#E5E7EB",
+                          backgroundColor: isPresetActive ? Colors.primaryLight : "#F9FAFB",
+                        }}
+                      >
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: isPresetActive ? Colors.primary : "#374151" }}>
+                          {preset === 0 ? t("checkout.noTip") : formatCurrency(preset, currency)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  }))}
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={{ fontSize: 13, color: "#6B7280", minWidth: 54 }}>Custom</Text>
+                  <TextInput
+                    value={tipCustomInput}
+                    onChangeText={(v) => {
+                      setTipCustomInput(v);
+                      const parsed = parseFloat(v);
+                      setTipAmount(Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) / 100 : 0);
+                    }}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    returnKeyType="done"
+                    style={{
+                      flex: 1,
+                      backgroundColor: "#F9FAFB",
+                      borderWidth: 1.5,
+                      borderColor: tipCustomInput.trim() ? Colors.primary : "#E5E7EB",
+                      borderRadius: 12,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      fontSize: 15,
+                      color: "#111827",
+                    }}
+                    placeholderTextColor="#9CA3AF"
+                    accessibilityLabel="Custom tip amount"
+                  />
                 </View>
               </View>
             )}
 
             {/* ═══ Special requests & promo code ═══ */}
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Special requests (optional)</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>{t("checkout.specialRequestsOptional")}</Text>
               <TextInput
                 value={specialRequests}
                 onChangeText={setSpecialRequests}
-                placeholder="Allergies, accessibility, preferred stylist, etc."
+                placeholder={t("checkout.specialRequestsPlaceholder")}
                 multiline
                 numberOfLines={2}
                 style={{
@@ -1544,7 +2232,7 @@ export default function BookCheckoutScreen() {
                 }}
                 placeholderTextColor="#9CA3AF"
               />
-              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginTop: 12, marginBottom: 10 }}>Promo code (optional)</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginTop: 12, marginBottom: 10 }}>{t("checkout.promoCodeOptional")}</Text>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <TextInput
                   value={promotionCode}
@@ -1553,7 +2241,7 @@ export default function BookCheckoutScreen() {
                     setAppliedPromoDiscount(0);
                     setPromoError(null);
                   }}
-                  placeholder="Enter code"
+                  placeholder={t("checkout.enterCode")}
                   autoCapitalize="characters"
                   autoCorrect={false}
                   style={{
@@ -1583,7 +2271,7 @@ export default function BookCheckoutScreen() {
                   {promoValidating ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
-                    <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Apply</Text>
+                    <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>{t("checkout.apply")}</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -1692,7 +2380,7 @@ export default function BookCheckoutScreen() {
             {/* ═══ Payment Option (deposit vs full) ═══ */}
             {hasDeposit && (
               <View style={{ marginBottom: 16 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Payment Option</Text>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>{t("checkout.paymentOption")}</Text>
                 <View style={{ flexDirection: "row" }}>
                   <Pressable
                     onPress={() => { haptic.light(); setPaymentOption("full"); }}
@@ -1707,7 +2395,7 @@ export default function BookCheckoutScreen() {
                       <Ionicons name="checkmark-circle" size={20} color={Colors.primary} style={{ marginBottom: 4 }} />
                     )}
                     <Text style={{ fontWeight: "600", color: paymentOption === "full" ? Colors.primary : "#374151", fontSize: 14 }}>
-                      Pay in Full
+                      {t("checkout.payFullAmount")}
                     </Text>
                     <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>{formatCurrency(total, currency)}</Text>
                   </Pressable>
@@ -1724,14 +2412,14 @@ export default function BookCheckoutScreen() {
                       <Ionicons name="checkmark-circle" size={20} color={Colors.primary} style={{ marginBottom: 4 }} />
                     )}
                     <Text style={{ fontWeight: "600", color: paymentOption === "deposit" ? Colors.primary : "#374151", fontSize: 14 }}>
-                      Deposit Only
+                      {t("checkout.depositOnly")}
                     </Text>
                     <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 4 }}>{formatCurrency(depositAmount, currency)}</Text>
                   </Pressable>
                 </View>
                 {paymentOption === "deposit" && (
                   <Text style={{ marginTop: 8, fontSize: 12, color: "#6B7280" }}>
-                    Remaining {formatCurrency(total - depositAmount, currency)} due at appointment
+                    {t("checkout.remainingDueAtAppointment", { amount: formatCurrency(total - depositAmount, currency) })}
                   </Text>
                 )}
               </View>
@@ -1739,23 +2427,25 @@ export default function BookCheckoutScreen() {
 
             {/* ═══ Payment Method ═══ */}
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>Payment Method</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 10 }}>{t("checkout.paymentMethod")}</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 12, gap: 8 }}>
-                <Pressable
-                  onPress={() => { haptic.light(); setPaymentMethod("card"); setUseWallet(false); }}
-                  style={{
-                    flex: 1, minWidth: 90, flexDirection: "row", alignItems: "center", justifyContent: "center",
-                    paddingVertical: 14, borderRadius: 14, borderWidth: 1.5,
-                    borderColor: paymentMethod === "card" ? Colors.primary : "#E5E7EB",
-                    backgroundColor: paymentMethod === "card" ? Colors.primaryLight : "#fff",
-                  }}
-                  accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === "card" }}
-                >
-                  <Ionicons name="card-outline" size={18} color={paymentMethod === "card" ? Colors.primary : "#6B7280"} style={{ marginRight: 6 }} />
-                  <Text style={{ fontWeight: "600", color: paymentMethod === "card" ? Colors.primary : "#374151", fontSize: 14 }}>Card</Text>
-                  {paymentMethod === "card" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginLeft: 4 }} />}
-                </Pressable>
-                {user && walletBalance > 0 && (
+                {paystackEnabled && (
+                  <Pressable
+                    onPress={() => { haptic.light(); setPaymentMethod("card"); setUseWallet(false); }}
+                    style={{
+                      flex: 1, minWidth: 90, flexDirection: "row", alignItems: "center", justifyContent: "center",
+                      paddingVertical: 14, borderRadius: 14, borderWidth: 1.5,
+                      borderColor: paymentMethod === "card" ? Colors.primary : "#E5E7EB",
+                      backgroundColor: paymentMethod === "card" ? Colors.primaryLight : "#fff",
+                    }}
+                    accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === "card" }}
+                  >
+                    <Ionicons name="card-outline" size={18} color={paymentMethod === "card" ? Colors.primary : "#6B7280"} style={{ marginRight: 6 }} />
+                    <Text style={{ fontWeight: "600", color: paymentMethod === "card" ? Colors.primary : "#374151", fontSize: 14 }}>{t("checkout.card")}</Text>
+                    {paymentMethod === "card" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginLeft: 4 }} />}
+                  </Pressable>
+                )}
+                {user && walletBalance > 0 && walletEnabled && (
                   <Pressable
                     onPress={() => { haptic.light(); setPaymentMethod("wallet"); }}
                     style={{
@@ -1767,44 +2457,48 @@ export default function BookCheckoutScreen() {
                     accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === "wallet" }}
                   >
                     <Ionicons name="wallet-outline" size={18} color={paymentMethod === "wallet" ? Colors.primary : "#6B7280"} style={{ marginRight: 6 }} />
-                    <Text style={{ fontWeight: "600", color: paymentMethod === "wallet" ? Colors.primary : "#374151", fontSize: 14 }}>Wallet</Text>
+                    <Text style={{ fontWeight: "600", color: paymentMethod === "wallet" ? Colors.primary : "#374151", fontSize: 14 }}>{t("checkout.wallet")}</Text>
                     {paymentMethod === "wallet" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginLeft: 4 }} />}
                   </Pressable>
                 )}
-                <Pressable
-                  onPress={() => { haptic.light(); setPaymentMethod("cash"); }}
-                  style={{
-                    flex: 1, minWidth: 90, flexDirection: "row", alignItems: "center", justifyContent: "center",
-                    paddingVertical: 14, borderRadius: 14, borderWidth: 1.5,
-                    borderColor: paymentMethod === "cash" ? Colors.primary : "#E5E7EB",
-                    backgroundColor: paymentMethod === "cash" ? Colors.primaryLight : "#fff",
-                  }}
-                  accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === "cash" }}
-                >
-                  <Ionicons name="cash-outline" size={18} color={paymentMethod === "cash" ? Colors.primary : "#6B7280"} />
-                  <Text style={{ fontWeight: "600", color: paymentMethod === "cash" ? Colors.primary : "#374151", fontSize: 14 }}>Cash</Text>
-                  {paymentMethod === "cash" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginLeft: 4 }} />}
-                </Pressable>
-                <Pressable
-                  onPress={() => { haptic.light(); setPaymentMethod("giftcard"); setGiftCardError(null); }}
-                  style={{
-                    flex: 1, minWidth: 90, flexDirection: "row", alignItems: "center", justifyContent: "center",
-                    paddingVertical: 14, borderRadius: 14, borderWidth: 1.5,
-                    borderColor: paymentMethod === "giftcard" ? Colors.primary : "#E5E7EB",
-                    backgroundColor: paymentMethod === "giftcard" ? Colors.primaryLight : "#fff",
-                  }}
-                  accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === "giftcard" }}
-                >
-                  <Ionicons name="gift-outline" size={18} color={paymentMethod === "giftcard" ? Colors.primary : "#6B7280"} style={{ marginRight: 6 }} />
-                  <Text style={{ fontWeight: "600", color: paymentMethod === "giftcard" ? Colors.primary : "#374151", fontSize: 14 }}>Gift card</Text>
-                  {paymentMethod === "giftcard" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginLeft: 4 }} />}
-                </Pressable>
+                {cashEnabled && (
+                  <Pressable
+                    onPress={() => { haptic.light(); setPaymentMethod("cash"); }}
+                    style={{
+                      flex: 1, minWidth: 90, flexDirection: "row", alignItems: "center", justifyContent: "center",
+                      paddingVertical: 14, borderRadius: 14, borderWidth: 1.5,
+                      borderColor: paymentMethod === "cash" ? Colors.primary : "#E5E7EB",
+                      backgroundColor: paymentMethod === "cash" ? Colors.primaryLight : "#fff",
+                    }}
+                    accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === "cash" }}
+                  >
+                    <Ionicons name="cash-outline" size={18} color={paymentMethod === "cash" ? Colors.primary : "#6B7280"} />
+                    <Text style={{ fontWeight: "600", color: paymentMethod === "cash" ? Colors.primary : "#374151", fontSize: 14 }}>{t("checkout.cash")}</Text>
+                    {paymentMethod === "cash" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginLeft: 4 }} />}
+                  </Pressable>
+                )}
+                {giftCardsEnabled && (
+                  <Pressable
+                    onPress={() => { haptic.light(); setPaymentMethod("giftcard"); setGiftCardError(null); }}
+                    style={{
+                      flex: 1, minWidth: 90, flexDirection: "row", alignItems: "center", justifyContent: "center",
+                      paddingVertical: 14, borderRadius: 14, borderWidth: 1.5,
+                      borderColor: paymentMethod === "giftcard" ? Colors.primary : "#E5E7EB",
+                      backgroundColor: paymentMethod === "giftcard" ? Colors.primaryLight : "#fff",
+                    }}
+                    accessibilityRole="radio" accessibilityState={{ selected: paymentMethod === "giftcard" }}
+                  >
+                    <Ionicons name="gift-outline" size={18} color={paymentMethod === "giftcard" ? Colors.primary : "#6B7280"} style={{ marginRight: 6 }} />
+                    <Text style={{ fontWeight: "600", color: paymentMethod === "giftcard" ? Colors.primary : "#374151", fontSize: 14 }}>{t("checkout.giftCard")}</Text>
+                    {paymentMethod === "giftcard" && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} style={{ marginLeft: 4 }} />}
+                  </Pressable>
+                )}
               </View>
 
               {/* Gift card code (when gift card selected) */}
               {paymentMethod === "giftcard" && (
                 <View style={{ marginBottom: 12 }}>
-                  <Text style={{ fontSize: 13, fontWeight: "500", color: "#374151", marginBottom: 8 }}>Gift card code</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "500", color: "#374151", marginBottom: 8 }}>{t("checkout.giftCardCode")}</Text>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <TextInput
                       value={giftCardCode}
@@ -1813,7 +2507,7 @@ export default function BookCheckoutScreen() {
                         setGiftCardValid(null);
                         setGiftCardError(null);
                       }}
-                      placeholder="Enter code"
+                      placeholder={t("checkout.enterCode")}
                       autoCapitalize="characters"
                       autoCorrect={false}
                       style={{
@@ -1843,7 +2537,7 @@ export default function BookCheckoutScreen() {
                       {giftCardValidating ? (
                         <ActivityIndicator size="small" color="#fff" />
                       ) : (
-                        <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>Apply</Text>
+                        <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>{t("checkout.apply")}</Text>
                       )}
                     </TouchableOpacity>
                   </View>
@@ -1851,14 +2545,14 @@ export default function BookCheckoutScreen() {
                     <Text style={{ fontSize: 12, color: "#DC2626", marginTop: 6 }}>{giftCardError}</Text>
                   ) : giftCardValid ? (
                     <Text style={{ fontSize: 12, color: "#059669", marginTop: 6 }}>
-                      Gift card applied — {giftCardValid.currency} {giftCardValid.balance.toFixed(2)} available
+                      {t("checkout.giftCardApplied", { currency: giftCardValid.currency, amount: giftCardValid.balance.toFixed(2) })}
                     </Text>
                   ) : null}
                 </View>
               )}
 
               {/* Use wallet balance (when card selected and user has balance; wallet is not the primary method) */}
-              {paymentMethod === "card" && user && walletBalance > 0 && (
+              {paymentMethod === "card" && user && walletBalance > 0 && walletEnabled && (
                 <Pressable
                   onPress={() => { haptic.light(); setUseWallet(!useWallet); }}
                   style={{
@@ -1885,7 +2579,7 @@ export default function BookCheckoutScreen() {
                   </View>
                   <Ionicons name="wallet-outline" size={18} color={useWallet ? Colors.primary : "#6B7280"} style={{ marginRight: 10 }} />
                   <Text style={{ flex: 1, fontWeight: "500", color: useWallet ? Colors.primary : "#374151", fontSize: 14 }}>
-                    Use wallet balance — {formatCurrency(walletBalance, currency)} available
+                    {t("checkout.useWalletBalance", { amount: formatCurrency(walletBalance, currency) })}
                   </Text>
                 </Pressable>
               )}
@@ -1909,7 +2603,7 @@ export default function BookCheckoutScreen() {
                           const res = await api.patch<{ data: unknown }>(`/api/me/payment-methods/${id}`, { is_default: true });
                           if (res?.data != null) refreshCards();
                         } catch {
-                          Alert.alert("Error", "Could not set default card. Please try again.");
+                          Alert.alert(t("common.error"), t("checkout.couldNotSetDefaultCard"));
                         }
                       }}
                     />
@@ -1922,7 +2616,7 @@ export default function BookCheckoutScreen() {
                       style={{ flexDirection: "row", alignItems: "center", marginBottom: 12, paddingVertical: 4 }}
                     >
                       <Ionicons name="arrow-back-outline" size={14} color={Colors.primary} style={{ marginRight: 6 }} />
-                      <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>Use a saved card</Text>
+                      <Text style={{ fontSize: 13, color: Colors.primary, fontWeight: "500" }}>{t("checkout.useSavedCard")}</Text>
                     </Pressable>
                   )}
 
@@ -1935,12 +2629,12 @@ export default function BookCheckoutScreen() {
             </View>
 
             {/* ═══ Cancellation Policy ═══ */}
-            <CancellationPolicy policy={hold.cancellation_policy} currency={currency} contentPadding={contentPadding} />
+            <CancellationPolicy policy={hold.cancellation_policy} currency={currency} contentPadding={contentPadding} t={t} />
 
             {/* Error banner */}
-            {(error || payError) && (
+            {error && (
               <View style={{ backgroundColor: "#FEF2F2", borderRadius: 12, padding: 12, marginBottom: 16 }}>
-                <Text style={{ color: "#B91C1C", fontSize: 13 }}>{error || payError}</Text>
+                <Text style={{ color: "#B91C1C", fontSize: 13 }}>{error}</Text>
               </View>
             )}
           </ScrollView>
@@ -1953,7 +2647,7 @@ export default function BookCheckoutScreen() {
             {/* Price summary */}
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <Text style={{ fontSize: 13, color: "#6B7280" }}>
-                {paymentOption === "deposit" && hasDeposit ? "Deposit now" : "Total"}
+                {paymentOption === "deposit" && hasDeposit ? t("checkout.depositNow") : t("checkout.total")}
               </Text>
               <Text style={{ fontSize: 18, fontWeight: "800", color: "#111827" }}>
                 {formatCurrency(paymentOption === "deposit" && hasDeposit ? depositAmount : total, currency)}
@@ -1976,7 +2670,7 @@ export default function BookCheckoutScreen() {
                   opacity: (requestingNow || isExpired) ? 0.7 : 1,
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Request now (provider will accept or decline)"
+                accessibilityLabel={t("checkout.requestNowAccessibility")}
               >
                 {requestingNow ? (
                   <ActivityIndicator size="small" color="#6B7280" />
@@ -1984,29 +2678,29 @@ export default function BookCheckoutScreen() {
                   <Ionicons name="flash-outline" size={20} color="#374151" style={{ marginRight: 8 }} />
                 )}
                 <Text style={{ color: "#374151", fontWeight: "600", fontSize: 15 }}>
-                  {requestingNow ? "Submitting..." : "Request now"}
+                  {requestingNow ? t("checkout.submitting") : t("checkout.requestNow")}
                 </Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
               onPress={() => { haptic.medium(); handleComplete(); }}
-              disabled={consuming || payLoading || isExpired}
+              disabled={consuming || isExpired}
               style={{
                 backgroundColor: isExpired ? "#D1D5DB" : Colors.primary,
                 borderRadius: 14, paddingVertical: 16,
                 alignItems: "center", flexDirection: "row", justifyContent: "center",
-                opacity: (consuming || payLoading) ? 0.7 : 1,
+                opacity: consuming ? 0.7 : 1,
               }}
               accessibilityRole="button"
-              accessibilityLabel={user ? "Complete booking" : "Sign in to complete"}
+              accessibilityLabel={user ? t("checkout.completeBooking") : t("checkout.signInToComplete")}
               accessibilityHint={user ? "Double tap to confirm and pay for your appointment" : "Double tap to sign in first"}
-              accessibilityState={{ disabled: consuming || payLoading || isExpired }}
+              accessibilityState={{ disabled: consuming || isExpired }}
             >
-              {(consuming || payLoading) ? (
+              {consuming ? (
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <ActivityIndicator size="small" color="#fff" />
                   <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16, marginLeft: 8 }}>
-                    {payLoading ? "Charging card..." : "Processing..."}
+                    {t("checkout.processing")}
                   </Text>
                 </View>
               ) : (
@@ -2014,12 +2708,12 @@ export default function BookCheckoutScreen() {
                   <Ionicons name={isExpired ? "time-outline" : usingSavedCard ? "card" : "shield-checkmark"} size={20} color="#fff" style={{ marginRight: 8 }} />
                   <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>
                     {isExpired
-                      ? "Slot Expired"
+                      ? t("checkout.slotExpired")
                       : user
                         ? usingSavedCard
-                          ? `Pay with •••• ${savedCards.find(c => c.id === selectedCardId)?.last4 || "card"}`
-                          : "Complete Booking"
-                        : "Sign in to Complete"}
+                          ? t("checkout.payWithCard", { last4: savedCards.find(c => c.id === selectedCardId)?.last4 || "card" })
+                          : t("checkout.completeBooking")
+                        : t("checkout.signInToComplete")}
                   </Text>
                 </>
               )}
@@ -2027,6 +2721,92 @@ export default function BookCheckoutScreen() {
           </View>
         </KeyboardAvoidingView>
       </View>
+
+      {/* ── BOOKING CONFIRMED SUCCESS OVERLAY ── */}
+      {bookingConfirmedData && (
+        <View
+          style={{
+            position: "absolute",
+            top: 0, left: 0, right: 0, bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.55)",
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 24,
+            zIndex: 999,
+          }}
+          pointerEvents="box-only"
+        >
+          <View style={{
+            width: "100%", maxWidth: 380,
+            backgroundColor: "#fff",
+            borderRadius: 28,
+            padding: 32,
+            alignItems: "center",
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 20 },
+            shadowOpacity: 0.25,
+            shadowRadius: 40,
+            elevation: 20,
+          }}>
+            {/* Animated icon */}
+            <View style={{
+              width: 88, height: 88, borderRadius: 44,
+              backgroundColor: `${Colors.primary}12`,
+              borderWidth: 2, borderColor: `${Colors.primary}30`,
+              alignItems: "center", justifyContent: "center",
+              marginBottom: 20,
+            }}>
+              <Ionicons name="checkmark-circle" size={52} color={Colors.primary} />
+            </View>
+
+            <Text style={{ fontSize: 22, fontWeight: "800", color: "#111827", textAlign: "center", marginBottom: 6 }}>
+              Booking confirmed!
+            </Text>
+
+            {bookingConfirmedData.providerName && (
+              <Text style={{ fontSize: 14, color: "#6B7280", textAlign: "center", marginBottom: 16 }}>
+                {bookingConfirmedData.providerName}
+              </Text>
+            )}
+
+            {/* Summary */}
+            {(bookingConfirmedData.date || bookingConfirmedData.services) && (
+              <View style={{
+                width: "100%",
+                backgroundColor: "#F9FAFB",
+                borderRadius: 16,
+                padding: 16,
+                gap: 10,
+                marginBottom: 20,
+              }}>
+                {bookingConfirmedData.date && bookingConfirmedData.time && (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: `${Colors.primary}12`, alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name="calendar-outline" size={16} color={Colors.primary} />
+                    </View>
+                    <View>
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: "#111827" }}>{bookingConfirmedData.date}</Text>
+                      <Text style={{ fontSize: 12, color: "#6B7280" }}>{bookingConfirmedData.time}</Text>
+                    </View>
+                  </View>
+                )}
+                {bookingConfirmedData.services && (
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+                    <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: `${Colors.primary}12`, alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name="cut-outline" size={16} color={Colors.primary} />
+                    </View>
+                    <Text style={{ fontSize: 13, color: "#374151", flex: 1, lineHeight: 18 }} numberOfLines={2}>{bookingConfirmedData.services}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            <Text style={{ fontSize: 13, color: "#9CA3AF", textAlign: "center" }}>
+              Taking you to your booking…
+            </Text>
+          </View>
+        </View>
+      )}
     </>
   );
 }

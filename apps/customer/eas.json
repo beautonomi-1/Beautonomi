@@ -46,6 +46,13 @@
       },
       "env": {
         "APP_ENV": "production",
+        "EXPO_PUBLIC_IOS_APP_STORE_ID": "6748387058",
+        "EXPO_PUBLIC_APP_URL": "https://beautonomi.com",
+        "EXPO_PUBLIC_WEB_API_TENANT_HOST": "beautonomi.co.za",
+        "EXPO_PUBLIC_GLOBAL_ENTRY_HOST": "beautonomi.com",
+        "EXPO_PUBLIC_DEFAULT_MARKET_HOST": "beautonomi.co.za",
+        "EXPO_PUBLIC_MARKET_HOST_OPTIONS": "beautonomi.co.za|South Africa",
+        "EXPO_PUBLIC_MARKET_OVERRIDE_TTL_HOURS": "24",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true",
         "SENTRY_ALLOW_FAILURE": "true"
       },
@@ -61,7 +68,7 @@
       },
       "android": {
         "serviceAccountKeyPath": "./google-services-key.json",
-        "track": "internal",
+        "track": "production",
         "releaseStatus": "draft"
       }
     }

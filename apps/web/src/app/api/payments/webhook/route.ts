@@ -7,6 +7,15 @@ import { handleSubscriptionEvent } from "./_handlers/subscription-events";
 import { handleTransferEvent } from "./_handlers/transfer-events";
 import { handleRefundEvent } from "./_handlers/refund-events";
 import type { PaystackEvent } from "./_handlers/shared";
+import { tryRecordPaymentWebhookEvent } from "@/lib/payment/webhook-idempotency";
+import {
+  extractBookingIdFromPaystackPayloadData,
+  resolvePaymentWebhookTenantId,
+} from "@/lib/payment/resolve-payment-webhook-tenant";
+import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
+import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
+
+const MAX_WEBHOOK_BODY_BYTES = 1_000_000; // 1 MB safety cap
 
 /**
  * POST /api/payments/webhook
@@ -21,23 +30,34 @@ import type { PaystackEvent } from "./_handlers/shared";
  * 6. Returns 200 for unhandled event types
  */
 export async function POST(request: Request) {
-  try {
-    // ── 1. Read body & verify signature ─────────────────────────────────────
-    const body = await request.text();
-    const signature = request.headers.get("x-paystack-signature");
+  return withRouteMetrics(
+    request,
+    "/api/payments/webhook",
+    "POST",
+    async () => {
+      try {
+        // ── 1. Read body & verify signature ─────────────────────────────────────
+        const body = await request.text();
+        const signature = request.headers.get("x-paystack-signature");
+        if (body.length > MAX_WEBHOOK_BODY_BYTES) {
+          return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+        }
 
     if (!signature) {
       return NextResponse.json({ error: "Missing signature" }, { status: 400 });
     }
 
-    const paystackSecretKey = await getPaystackSecretKey();
+    const tenant = await resolveTenantFromRequest(request);
+    const paystackSecretKey = await getPaystackSecretKey({ tenantId: tenant?.id ?? null });
 
     const hash = crypto
       .createHmac("sha512", paystackSecretKey)
       .update(body)
       .digest("hex");
 
-    if (hash !== signature) {
+    const sigBuf = Buffer.from(signature, "hex");
+    const hashBuf = Buffer.from(hash, "hex");
+    if (sigBuf.length !== hashBuf.length || !crypto.timingSafeEqual(sigBuf, hashBuf)) {
       console.error("Invalid webhook signature");
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
@@ -54,6 +74,13 @@ export async function POST(request: Request) {
     // ── 3. Idempotency check ────────────────────────────────────────────────
     const supabase = getSupabaseAdmin();
     const eventId = event.id || data.id || data.reference;
+    const { data: defaultTenant } = await supabase.from("tenants").select("id").eq("slug", "za").maybeSingle();
+
+    const paymentWebhookTenantId = await resolvePaymentWebhookTenantId(supabase, {
+      hostTenantId: tenant?.id ?? null,
+      bookingIdFromPayload: extractBookingIdFromPaystackPayloadData(data),
+      defaultTenantId: (defaultTenant?.id as string | undefined) ?? null,
+    });
 
     if (eventId) {
       const { error: insertError } = await supabase
@@ -68,6 +95,18 @@ export async function POST(request: Request) {
         })
         .select("id, status")
         .single();
+
+      if (!insertError && paymentWebhookTenantId) {
+        try {
+          await tryRecordPaymentWebhookEvent(supabase, {
+            tenantId: paymentWebhookTenantId,
+            provider: "paystack",
+            idempotencyKey: String(eventId),
+          });
+        } catch {
+          /* payment_webhook_events optional until migration 334 applied */
+        }
+      }
 
       if (insertError) {
         if (
@@ -183,16 +222,18 @@ export async function POST(request: Request) {
       }
 
       // Still return 200 to Paystack (we'll retry manually)
-      return NextResponse.json({
-        received: true,
-        error: processingError.message,
-      });
-    }
-  } catch (error) {
-    console.error("Unexpected error in /api/payments/webhook:", error);
-    return NextResponse.json(
-      { error: "Webhook processing failed" },
-      { status: 500 },
-    );
-  }
+          return NextResponse.json({
+            received: true,
+            error: processingError.message,
+          });
+        }
+      } catch (error) {
+        console.error("Unexpected error in /api/payments/webhook:", error);
+        return NextResponse.json(
+          { error: "Webhook processing failed" },
+          { status: 500 },
+        );
+      }
+    },
+  );
 }

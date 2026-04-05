@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { sendToUsers } from "@/lib/notifications/onesignal";
 
 /**
@@ -14,6 +15,7 @@ export async function POST(request: NextRequest) {
     const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     if (!user) throw new Error("Authentication required");
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     const { title, message, recipient_type, user_ids, url } = body;
@@ -39,6 +41,7 @@ export async function POST(request: NextRequest) {
       const { data: providers } = await supabase
         .from("providers")
         .select("user_id")
+        .eq("tenant_id", tenantId)
         .not("user_id", "is", null);
       userIds = providers?.map((p: { user_id?: string }) => p.user_id).filter(Boolean) ?? [];
     } else if (recipient_type === "custom" && user_ids && Array.isArray(user_ids)) {

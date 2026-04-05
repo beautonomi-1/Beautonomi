@@ -5,6 +5,7 @@ import { requireAdminSection,
   handleApiError,
  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/analytics/previous-software
@@ -19,11 +20,13 @@ export async function GET(request: NextRequest) {
     if (!supabase) {
       return handleApiError(new Error("Server error"), "Database connection failed");
     }
+    const tenantId = await resolveAdminApiTenantId(request);
 
     // Get all providers with previous software data
     const { data: providers, error } = await supabase
       .from("providers")
       .select("id, business_name, previous_software, previous_software_other, created_at, status")
+      .eq("tenant_id", tenantId)
       .not("previous_software", "is", null)
       .order("created_at", { ascending: false });
 
@@ -59,7 +62,8 @@ export async function GET(request: NextRequest) {
     // Get total providers for percentage calculation
     const { count: totalProviders } = await supabase
       .from("providers")
-      .select("*", { count: "exact", head: true });
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", tenantId);
 
     // Sort by count (descending)
     const sortedSoftware = Object.entries(softwareCounts)

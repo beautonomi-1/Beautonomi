@@ -6,6 +6,7 @@ import { requireAdminSection,
   errorResponse,
  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 type PingRow = { provider_id: string };
 type BookingRow = { id: string; provider_id: string; location_type?: string; location_id?: string; address_latitude?: number | null; address_longitude?: number | null; status?: string; current_stage?: string };
@@ -23,6 +24,7 @@ type AtHomeBookingOut = { booking_id: string; provider_id: string; customer_targ
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const admin = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
     const locationType = searchParams.get("location_type"); // at_home | at_salon
@@ -40,6 +42,7 @@ export async function GET(request: NextRequest) {
       .select(
         "id, provider_id, customer_id, location_type, status, address_latitude, address_longitude, location_id, scheduled_at, current_stage"
       )
+      .eq("tenant_id", tenantId)
       .in("status", statusFilter);
 
     if (locationType) {
@@ -71,7 +74,11 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    let providerQuery = admin.from("providers").select("id, business_name, owner_name, status").in("id", allProviderIds);
+    let providerQuery = admin
+      .from("providers")
+      .select("id, business_name, owner_name, status")
+      .eq("tenant_id", tenantId)
+      .in("id", allProviderIds);
     if (providerStatus) {
       providerQuery = providerQuery.eq("status", providerStatus);
     }

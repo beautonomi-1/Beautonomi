@@ -11,41 +11,27 @@ import {
   Modal,
   Pressable,
   FlatList,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useAuth } from "@/providers/AuthProvider";
-const PRIMARY = Colors.primary;
-const PRIMARY_LIGHT = "rgba(255,0,119,0.06)";
+import { api } from "@/lib/api-client";
+import { useTranslation, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
+import {
+  COUNTRY_CODES,
+  stripLeadingZero,
+  validateNationalPhoneDigits,
+} from "@/lib/phone-country-codes";
+import { getDeviceDefaultCountryDial } from "@/lib/phone";
+import { APP_URL } from "@/config/public-env";
 
-const COUNTRY_CODES = [
-  { code: "+27", flag: "🇿🇦", label: "South Africa (+27)", phoneLen: 9 },
-  { code: "+254", flag: "🇰🇪", label: "Kenya (+254)", phoneLen: 9 },
-  { code: "+233", flag: "🇬🇭", label: "Ghana (+233)", phoneLen: 9 },
-  { code: "+234", flag: "🇳🇬", label: "Nigeria (+234)", phoneLen: 10 },
-  { code: "+20", flag: "🇪🇬", label: "Egypt (+20)", phoneLen: 10 },
-  { code: "+255", flag: "🇹🇿", label: "Tanzania (+255)", phoneLen: 9 },
-  { code: "+256", flag: "🇺🇬", label: "Uganda (+256)", phoneLen: 9 },
-  { code: "+260", flag: "🇿🇲", label: "Zambia (+260)", phoneLen: 9 },
-  { code: "+263", flag: "🇿🇼", label: "Zimbabwe (+263)", phoneLen: 9 },
-  { code: "+267", flag: "🇧🇼", label: "Botswana (+267)", phoneLen: 7 },
-  { code: "+258", flag: "🇲🇿", label: "Mozambique (+258)", phoneLen: 9 },
-  { code: "+264", flag: "🇳🇦", label: "Namibia (+264)", phoneLen: 8 },
-  { code: "+212", flag: "🇲🇦", label: "Morocco (+212)", phoneLen: 9 },
-  { code: "+216", flag: "🇹🇳", label: "Tunisia (+216)", phoneLen: 8 },
-  { code: "+1", flag: "🇺🇸", label: "USA (+1)", phoneLen: 10 },
-  { code: "+44", flag: "🇬🇧", label: "UK (+44)", phoneLen: 10 },
-  { code: "+91", flag: "🇮🇳", label: "India (+91)", phoneLen: 10 },
-  { code: "+971", flag: "🇦🇪", label: "UAE (+971)", phoneLen: 9 },
-  { code: "+966", flag: "🇸🇦", label: "Saudi Arabia (+966)", phoneLen: 9 },
-  { code: "+61", flag: "🇦🇺", label: "Australia (+61)", phoneLen: 9 },
-  { code: "+49", flag: "🇩🇪", label: "Germany (+49)", phoneLen: 11 },
-  { code: "+33", flag: "🇫🇷", label: "France (+33)", phoneLen: 9 },
-  { code: "+351", flag: "🇵🇹", label: "Portugal (+351)", phoneLen: 9 },
-  { code: "+55", flag: "🇧🇷", label: "Brazil (+55)", phoneLen: 11 },
-];
+const PRIMARY = Colors.primary;
+const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
+const PRIMARY_LIGHT = "rgba(255,0,119,0.06)";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -63,24 +49,9 @@ function getPasswordStrength(pw: string): { score: number; label: string; color:
   return { score, label: "Strong", color: "#22C55E" };
 }
 
-function stripLeadingZero(digits: string): string {
-  return digits.replace(/^0+/, "");
-}
-
-function validatePhone(digits: string, countryCode: string): string | null {
-  const raw = digits.replace(/\D/g, "");
-  if (!raw) return null;
-  const clean = stripLeadingZero(raw);
-  const country = COUNTRY_CODES.find((c) => c.code === countryCode);
-  const expectedLen = country?.phoneLen ?? 9;
-  if (clean.length < expectedLen - 1 || clean.length > expectedLen) {
-    return `Phone should be ${expectedLen} digits for ${country?.flag ?? ""} ${countryCode} (leading 0 is optional)`;
-  }
-  return null;
-}
-
 export default function SignupScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { contentMaxWidth, isTablet, screenPadding } = useResponsive();
   const { signUpWithEmail } = useAuth();
   const formNarrow = isTablet || Platform.OS === "web";
@@ -92,13 +63,15 @@ export default function SignupScreen() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [phone, setPhone] = useState("");
-  const [countryCode, setCountryCode] = useState("+27");
+  const [countryCode, setCountryCode] = useState(getDeviceDefaultCountryDial);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [countrySearch, setCountrySearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
+  const [signupSource, setSignupSource] = useState<string | null>(null);
+  const [showSignupSourcePicker, setShowSignupSourcePicker] = useState(false);
 
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -116,7 +89,7 @@ export default function SignupScreen() {
       const digits = text.replace(/[^\d\s]/g, "");
       setPhone(digits);
       if (digits.replace(/\s/g, "").length > 0) {
-        setPhoneError(validatePhone(digits, countryCode));
+        setPhoneError(validateNationalPhoneDigits(digits, countryCode));
       } else {
         setPhoneError(null);
       }
@@ -133,7 +106,7 @@ export default function SignupScreen() {
     if (strength.score < 2)
       return "Please choose a stronger password (add uppercase, numbers, or symbols)";
     if (phone.trim()) {
-      const phoneErr = validatePhone(phone, countryCode);
+      const phoneErr = validateNationalPhoneDigits(phone, countryCode);
       if (phoneErr) return phoneErr;
     }
     return null;
@@ -165,6 +138,7 @@ export default function SignupScreen() {
       }
 
       if (result.requiresConfirmation) {
+        if (signupSource) AsyncStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource).catch(() => {});
         setFormSuccess(
           "We've sent a confirmation link to your email. Please confirm to activate your account, then log in.",
         );
@@ -172,6 +146,9 @@ export default function SignupScreen() {
         return;
       }
 
+      if (signupSource) {
+        api.patch("/api/me/profile", { signup_source: signupSource }).catch(() => {});
+      }
       router.replace("/(app)/onboarding" as never);
     } catch (e: any) {
       setLoading(false);
@@ -441,7 +418,36 @@ export default function SignupScreen() {
           <Text style={{ fontSize: 12, color: "#EF4444", marginBottom: 16 }}>{phoneError}</Text>
         ) : null}
 
-        <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 16, textAlign: "center" }}>
+        {/* How did you hear about us? (optional) */}
+        <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
+          {t("auth.howHearAboutUs")} <Text style={{ fontWeight: "400", color: "#9CA3AF" }}>(optional)</Text>
+        </Text>
+        <TouchableOpacity
+          onPress={() => setShowSignupSourcePicker(true)}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderWidth: 1.5,
+            borderColor: "#E5E7EB",
+            borderRadius: 12,
+            backgroundColor: "#FAFAFA",
+            paddingHorizontal: 14,
+            paddingVertical: 14,
+            marginBottom: 20,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={t("auth.howHearAboutUs")}
+        >
+          <Text style={{ fontSize: 15, color: signupSource ? "#111827" : "#9CA3AF" }}>
+            {signupSource
+              ? t(SIGNUP_SOURCE_OPTIONS.find((o) => o.value === signupSource)?.labelKey ?? "auth.signupSourceOther")
+              : t("auth.signupSourceSkip")}
+          </Text>
+          <Ionicons name="chevron-down" size={18} color="#6B7280" />
+        </TouchableOpacity>
+
+        <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 16, textAlign: "center", lineHeight: 18 }}>
           By creating an account you agree to our{" "}
           <Text
             style={{ color: PRIMARY, fontWeight: "600", textDecorationLine: "underline" }}
@@ -456,7 +462,14 @@ export default function SignupScreen() {
           >
             Privacy Policy
           </Text>
-          .
+          , and our{" "}
+          <Text
+            style={{ color: PRIMARY, fontWeight: "600", textDecorationLine: "underline" }}
+            onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/cookie-policy`).catch(() => {})}
+          >
+            Cookie Policy
+          </Text>
+          , including cookies and similar technologies, how we process personal data, and (while signed in) product analytics and limited session replay. You can change analytics preferences in account privacy settings.
         </Text>
 
         {/* Sign Up Button */}
@@ -573,7 +586,7 @@ export default function SignupScreen() {
                   onPress={() => {
                     setCountryCode(c.code);
                     setShowCountryPicker(false);
-                    setPhoneError(phone.trim() ? validatePhone(phone, c.code) : null);
+                    setPhoneError(phone.trim() ? validateNationalPhoneDigits(phone, c.code) : null);
                   }}
                   style={{
                     flexDirection: "row",
@@ -598,6 +611,82 @@ export default function SignupScreen() {
                     {c.label}
                   </Text>
                   {countryCode === c.code && <Ionicons name="checkmark-circle" size={20} color={PRIMARY} />}
+                </TouchableOpacity>
+              )}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* How did you hear about us modal */}
+      <Modal
+        visible={showSignupSourcePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSignupSourcePicker(false)}
+      >
+        <Pressable
+          style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" }}
+          onPress={() => setShowSignupSourcePicker(false)}
+        >
+          <Pressable
+            style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "70%" }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 4 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB" }} />
+            </View>
+            <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12, marginTop: 8 }}>
+              {t("auth.howHearAboutUs")}
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                setSignupSource(null);
+                setShowSignupSourcePicker(false);
+              }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingVertical: 14,
+                paddingHorizontal: screenPadding,
+                borderBottomWidth: 1,
+                borderColor: "#F9FAFB",
+              }}
+            >
+              <Text style={{ flex: 1, fontSize: 15, color: !signupSource ? PRIMARY : "#111827", fontWeight: !signupSource ? "700" : "400" }}>
+                {t("auth.signupSourceSkip")}
+              </Text>
+              {!signupSource && <Ionicons name="checkmark-circle" size={20} color={PRIMARY} />}
+            </TouchableOpacity>
+            <FlatList<{ value: string; labelKey: string }>
+              data={SIGNUP_SOURCE_OPTIONS}
+              keyExtractor={(o: { value: string }) => o.value}
+              renderItem={({ item: opt }: { item: { value: string; labelKey: string } }) => (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSignupSource(opt.value);
+                    setShowSignupSourcePicker(false);
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingVertical: 14,
+                    paddingHorizontal: screenPadding,
+                    borderBottomWidth: 1,
+                    borderColor: "#F9FAFB",
+                  }}
+                >
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontSize: 15,
+                      color: signupSource === opt.value ? PRIMARY : "#111827",
+                      fontWeight: signupSource === opt.value ? "700" : "400",
+                    }}
+                  >
+                    {t(opt.labelKey)}
+                  </Text>
+                  {signupSource === opt.value && <Ionicons name="checkmark-circle" size={20} color={PRIMARY} />}
                 </TouchableOpacity>
               )}
             />

@@ -1,0 +1,138 @@
+import { getSupabaseServer } from "@/lib/supabase/server";
+
+export type LearnCategoryRow = {
+  id: string;
+  title: string;
+  slug: string;
+  icon: string | null;
+  sort_order: number;
+  audience: string;
+  parent_id: string | null;
+};
+
+export type LearnTreeNode = LearnCategoryRow & { children: LearnTreeNode[] };
+
+export type LearnHomePayload = {
+  hero: { title: string; subtitle: string };
+  cta_cards: { cards: Array<{ title: string; description: string; icon: string; link: string }> };
+  featured_articles: Array<{
+    id: string;
+    title: string;
+    slug: string;
+    summary: string | null;
+    learning_categories?: { slug: string } | null;
+  }>;
+  video_library: { title: string; videos: unknown[] };
+  platform_updates: { title: string; article_ids: string[] };
+};
+
+function buildTree(items: LearnCategoryRow[], parentId: string | null = null): LearnTreeNode[] {
+  return items
+    .filter((c) => (c.parent_id ?? null) === parentId)
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((c) => ({ ...c, children: buildTree(items, c.id) }));
+}
+
+async function fetchLearnCategoryRows(audience: string | null): Promise<LearnCategoryRow[]> {
+  const supabase = await getSupabaseServer();
+  let query = supabase
+    .from("learning_categories")
+    .select("id, title, slug, icon, sort_order, audience, parent_id")
+    .eq("visibility", "public")
+    .order("sort_order", { ascending: true });
+
+  if (audience && ["general", "customer", "provider"].includes(audience)) {
+    query = query.or(`audience.eq.${audience},audience.eq.general`);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error("fetchLearnCategoryRows:", error);
+    return [];
+  }
+  return (data ?? []) as LearnCategoryRow[];
+}
+
+/** Same as GET /api/public/learn/tree */
+export async function getPublicLearnTree(audience: string | null = null): Promise<LearnTreeNode[]> {
+  try {
+    const list = await fetchLearnCategoryRows(audience);
+    return buildTree(list);
+  } catch (e) {
+    console.error("getPublicLearnTree:", e);
+    return [];
+  }
+}
+
+/** Same as GET /api/public/learn/categories */
+export async function getPublicLearnCategoriesFlat(audience: string | null = null): Promise<LearnCategoryRow[]> {
+  try {
+    return await fetchLearnCategoryRows(audience);
+  } catch (e) {
+    console.error("getPublicLearnCategoriesFlat:", e);
+    return [];
+  }
+}
+
+/**
+ * Sidebar: prefer hierarchical tree when non-empty; otherwise flat category list.
+ * Mirrors client logic that called /tree then /categories.
+ */
+export async function getLearnSidebarPayload(): Promise<{
+  tree: LearnTreeNode[] | null;
+  categories: Pick<LearnCategoryRow, "id" | "title" | "slug" | "audience">[];
+}> {
+  const tree = await getPublicLearnTree(null);
+  if (tree.length > 0) {
+    return { tree, categories: [] };
+  }
+  const rows = await getPublicLearnCategoriesFlat(null);
+  return {
+    tree: null,
+    categories: rows.map(({ id, title, slug, audience }) => ({ id, title, slug, audience })),
+  };
+}
+
+/** Same as GET /api/public/learn/home */
+export async function getPublicLearnHome(): Promise<LearnHomePayload> {
+  const supabase = await getSupabaseServer();
+
+  const { data: sections } = await supabase
+    .from("learning_homepage_sections")
+    .select("section_key, payload")
+    .in("section_key", ["hero", "cta_cards", "featured_articles", "video_library", "platform_updates"]);
+
+  const out: LearnHomePayload = {
+    hero: { title: "Learning Center", subtitle: "Find guides and answers." },
+    cta_cards: { cards: [] },
+    featured_articles: [],
+    video_library: { title: "Video Library", videos: [] },
+    platform_updates: { title: "Platform Updates", article_ids: [] },
+  };
+
+  for (const s of sections ?? []) {
+    const key = s.section_key as keyof LearnHomePayload;
+    if (key in out && s.payload) {
+      (out as Record<string, unknown>)[key] = s.payload;
+    }
+  }
+
+  const featuredPayload = out.featured_articles as unknown;
+  const featuredIds = Array.isArray(featuredPayload)
+    ? []
+    : ((featuredPayload as { article_ids?: string[] })?.article_ids ?? []);
+
+  if (featuredIds.length > 0) {
+    const { data: articles } = await supabase
+      .from("learning_articles")
+      .select("id, title, slug, summary, image_url, learning_categories(slug)")
+      .in("id", featuredIds)
+      .eq("status", "published")
+      .eq("is_internal", false);
+    out.featured_articles = (articles ?? []) as unknown as LearnHomePayload["featured_articles"];
+  } else {
+    out.featured_articles = [];
+  }
+
+  return out;
+}

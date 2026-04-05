@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface ProviderReportData {
   period: string;
@@ -44,6 +45,7 @@ interface ProviderReportData {
 }
 
 export default function ProviderReportPage() {
+  const { currencyCode } = useReportCurrency();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ProviderReportData | null>(null);
@@ -97,7 +99,7 @@ export default function ProviderReportPage() {
       const json = await response.json();
       const rows = data?.providers ?? json?.data?.providers ?? [];
       const csv = [
-        "Provider Name,Status,Rating,Bookings,Revenue (ZAR)",
+        `Provider Name,Status,Rating,Bookings,Revenue (${currencyCode})`,
         ...rows.map(
           (p: { provider_name: string; status: string; rating_average: number; bookings_count: number; revenue: number }) =>
             `${p.provider_name},${p.status},${p.rating_average},${p.bookings_count},${p.revenue}`

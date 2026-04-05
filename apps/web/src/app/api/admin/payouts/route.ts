@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, getPaginationParams  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/payouts
@@ -11,7 +12,8 @@ import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_FINANCE, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     if (!supabase) {
       return NextResponse.json({
@@ -32,10 +34,11 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status"); // pending, processing, completed, failed
     const providerId = searchParams.get("provider_id");
 
-    // Fetch payouts without joins
+    // Payouts scoped via provider → tenant (service role bypasses RLS)
     let query = supabase
       .from("payouts")
-      .select("*", { count: "exact" });
+      .select("*, providers!inner(tenant_id)", { count: "exact" })
+      .eq("providers.tenant_id", tenantId);
 
     // Apply filters
     if (status && status !== "all") {
@@ -86,6 +89,7 @@ export async function GET(request: NextRequest) {
       const { data: providers } = await supabase
         .from("providers")
         .select("id, business_name, slug")
+        .eq("tenant_id", tenantId)
         .in("id", providerIds);
       if (providers) {
         providerMap = new Map(providers.map((p: { id: string; business_name?: string; slug?: string }) => [p.id, p]));
@@ -130,18 +134,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const enrichedPayouts = (payouts as PayoutRow[]).map((payout) => {
-      const bankFromRecipient = payout.recipient_code
-        ? bankAccountByRecipient.get(payout.recipient_code) || null
+    type PayoutWithScope = PayoutRow & { providers?: unknown };
+    const enrichedPayouts = (payouts as PayoutWithScope[]).map((payout) => {
+      const { providers: _tenantScope, ...payoutRest } = payout;
+      void _tenantScope;
+      const bankFromRecipient = payoutRest.recipient_code
+        ? bankAccountByRecipient.get(payoutRest.recipient_code) || null
         : null;
       const bankFromProvider =
-        !bankFromRecipient && payout.provider_id
-          ? bankAccountByProviderId.get(payout.provider_id) || null
+        !bankFromRecipient && payoutRest.provider_id
+          ? bankAccountByProviderId.get(payoutRest.provider_id) || null
           : null;
       return {
-        ...payout,
-        provider: payout.provider_id
-          ? providerMap.get(payout.provider_id) || null
+        ...payoutRest,
+        provider: payoutRest.provider_id
+          ? providerMap.get(payoutRest.provider_id) || null
           : null,
         bank_account: bankFromRecipient || bankFromProvider || null,
       };

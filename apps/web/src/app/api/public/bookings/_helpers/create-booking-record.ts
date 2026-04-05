@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
 import { handleApiError } from "@/lib/supabase/api-helpers";
 import type { BookingDraft } from "@/types/beautonomi";
 import type { ValidatedBookingData } from "./validate-booking";
@@ -23,7 +24,7 @@ export async function createBookingRecord(
   supabase: SupabaseClient,
   adminSupabase: SupabaseClient,
   draft: BookingDraft,
-  validatedDraft: Record<string, any>,
+  validatedDraft: PublicBookingValidatedBody,
   v: ValidatedBookingData,
   userId: string
 ): Promise<CreatedBookingResult | Response> {
@@ -34,10 +35,10 @@ export async function createBookingRecord(
     provider_id: draft.provider_id,
     status: v.appointmentStatus,
     location_type: draft.location_type,
-    location_id: (draft as any).location_id || null,
+    location_id: draft.location_id ?? null,
     booking_source: "online",
     scheduled_at: draft.selected_datetime,
-    package_id: (draft as any).package_id || null,
+    package_id: draft.package_id ?? null,
     subtotal: v.subtotal,
     travel_fee: v.travelFee,
     service_fee_config_id: v.serviceFeeConfigId,
@@ -98,7 +99,8 @@ export async function createBookingRecord(
         409
       );
     }
-    throw bookingError;
+    console.error("[create_booking_with_locking]", bookingError);
+    throw new Error(msg || "Failed to create booking (database)");
   }
 
   if (!bookingId) {
@@ -126,7 +128,28 @@ export async function createBookingRecord(
     );
   }
 
-  const loyaltyPointsUsed = Number((validatedDraft as any).loyalty_points_used ?? 0);
+  // At-home columns not included in create_booking_with_locking() INSERT (see migration 187 + RPC).
+  const atHomePatch: Record<string, unknown> = {};
+  if (draft.location_type === "at_home" && draft.address) {
+    const a = draft.address;
+    atHomePatch.apartment_unit = a.apartment_unit ?? null;
+    atHomePatch.building_name = a.building_name ?? null;
+    atHomePatch.floor_number = a.floor_number ?? null;
+    atHomePatch.parking_instructions = a.parking_instructions ?? null;
+    atHomePatch.location_landmarks = a.location_landmarks ?? null;
+    if (a.access_codes && typeof a.access_codes === "object") {
+      atHomePatch.access_codes = a.access_codes;
+    }
+  }
+  const hci = validatedDraft.house_call_instructions?.trim();
+  if (hci) {
+    atHomePatch.house_call_instructions = hci;
+  }
+  if (Object.keys(atHomePatch).length > 0) {
+    await adminSupabase.from("bookings").update(atHomePatch).eq("id", bookingId);
+  }
+
+  const loyaltyPointsUsed = Number(validatedDraft.loyalty_points_used ?? 0);
   if (loyaltyPointsUsed > 0) {
     await adminSupabase
       .from("bookings")
@@ -146,7 +169,11 @@ export async function createBookingRecord(
 
   // ── Group booking ────────────────────────────────────────────────────────
   if (v.isGroupBooking && v.groupParticipants && v.groupParticipants.length > 0) {
-    const clientInfo = validatedDraft.client_info || {};
+    const clientInfo = (validatedDraft.client_info ?? {}) as {
+      name?: string;
+      email?: string | null;
+      phone?: string | null;
+    };
 
     try {
       const { createGroupBooking } = await import("@/lib/bookings/group-booking");
@@ -237,7 +264,7 @@ export async function createBookingRecord(
   if (bookingServicesError) throw bookingServicesError;
 
   // ── Resource assignments ─────────────────────────────────────────────────
-  const draftResourceIds = (draft as any).resource_ids as string[] | undefined;
+  const draftResourceIds = draft.resource_ids;
   if (v.allResourceIds.length > 0 && createdBookingServices) {
     const { assignResourcesToBooking, getRequiredResourcesForOffering } = await import(
       "@/lib/resources/assignment"
@@ -313,16 +340,16 @@ export async function createBookingRecord(
   }
 
   // ── Products ─────────────────────────────────────────────────────────────
-  const products = (draft as any).products || [];
+  const products = draft.products ?? [];
   if (products.length > 0) {
     const primaryStaffId = draft.services?.[0]?.staff_id ?? null;
-    const bookingProductsRows = products.map((product: any) => ({
+    const bookingProductsRows = products.map((product) => ({
       booking_id: booking.id,
-      product_id: product.productId,
+      product_id: product.productId ?? product.product_id,
       product_variant_id: product.productVariantId ?? null,
-      quantity: product.quantity,
-      unit_price: product.unitPrice,
-      total_price: product.totalPrice,
+      quantity: Number(product.quantity),
+      unit_price: Number(product.unitPrice),
+      total_price: Number(product.totalPrice),
       currency: v.currency,
       staff_id: primaryStaffId,
     }));
@@ -354,13 +381,14 @@ export async function createBookingRecord(
           }
         }
       } else {
-        const productData = v.productById.get((product as any).productId ?? product.product_id);
-        if (productData?.track_stock_quantity) {
+        const pid = product.productId ?? product.product_id;
+        const productData = pid ? v.productById.get(pid) : undefined;
+        if (productData?.track_stock_quantity && pid) {
           const newQuantity = (productData.quantity || 0) - product.quantity;
           await adminSupabase
             .from("products")
             .update({ quantity: Math.max(0, newQuantity) })
-            .eq("id", product.productId);
+            .eq("id", pid);
         }
       }
     }

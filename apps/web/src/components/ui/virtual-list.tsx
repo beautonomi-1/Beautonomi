@@ -97,7 +97,7 @@ export function VirtualList<T>({
 /**
  * Virtual Table Component
  * 
- * A virtual scrolling table for large datasets.
+ * A virtual scrolling table for large datasets using div-based rows.
  */
 interface VirtualTableProps<T> {
   items: T[];
@@ -168,6 +168,86 @@ export function VirtualTable<T>({
         </div>
       </div>
       {footer}
+    </div>
+  );
+}
+
+/**
+ * Virtual HTML Table Component
+ *
+ * Renders a semantic <table> with virtualized <tbody> rows.
+ * The <thead> stays pinned while the body scrolls.
+ */
+interface VirtualHtmlTableProps<T> {
+  items: T[];
+  rowHeight: number;
+  renderRow: (item: T, index: number) => React.ReactNode;
+  thead: React.ReactNode;
+  containerHeight?: number;
+  className?: string;
+  tableClassName?: string;
+  overscan?: number;
+}
+
+export function VirtualHtmlTable<T>({
+  items,
+  rowHeight,
+  renderRow,
+  thead,
+  containerHeight = 600,
+  className,
+  tableClassName,
+  overscan = 10,
+}: VirtualHtmlTableProps<T>) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => rowHeight,
+    overscan,
+  });
+
+  const virtualItems = virtualizer.getVirtualItems();
+
+  return (
+    <div className={cn("overflow-hidden", className)}>
+      <div
+        ref={parentRef}
+        className="overflow-auto"
+        style={{ maxHeight: containerHeight }}
+      >
+        <table className={cn("w-full", tableClassName)}>
+          {thead}
+          <tbody>
+            {virtualItems.length > 0 && (
+              <tr style={{ height: virtualItems[0].start }} aria-hidden>
+                <td colSpan={999} />
+              </tr>
+            )}
+            {virtualItems.map((virtualItem) => {
+              const item = items[virtualItem.index];
+              return (
+                <React.Fragment key={virtualItem.key}>
+                  {renderRow(item, virtualItem.index)}
+                </React.Fragment>
+              );
+            })}
+            {virtualItems.length > 0 && (
+              <tr
+                style={{
+                  height:
+                    virtualizer.getTotalSize() -
+                    (virtualItems[virtualItems.length - 1].end),
+                }}
+                aria-hidden
+              >
+                <td colSpan={999} />
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

@@ -13,6 +13,7 @@
  */
 
 import { haversineDistanceKm } from "@/lib/geo/distance";
+import { countryFilterIso2FromStorage } from "@beautonomi/utils";
 
 export interface MapboxConfig {
   accessToken: string;
@@ -106,8 +107,14 @@ class MapboxService {
     if (options?.proximity) {
       params.append("proximity", `${options.proximity.longitude},${options.proximity.latitude}`);
     }
-    if (options?.country) {
-      params.append("country", options.country);
+    if (options?.country?.trim()) {
+      const raw = options.country.trim();
+      const iso = /^[A-Za-z]{2}$/.test(raw)
+        ? raw.toUpperCase()
+        : countryFilterIso2FromStorage(raw);
+      if (iso) {
+        params.append("country", iso);
+      }
     }
     if (options?.types) {
       params.append("types", options.types.join(","));
@@ -340,6 +347,11 @@ class MapboxService {
 
 // Singleton instance
 let mapboxInstance: MapboxService | null = null;
+
+/** Call after updating the secret token in admin so the next server request reloads credentials. */
+export function clearMapboxServiceSingleton(): void {
+  mapboxInstance = null;
+}
 
 export async function getMapboxService(): Promise<MapboxService> {
   if (!mapboxInstance) {

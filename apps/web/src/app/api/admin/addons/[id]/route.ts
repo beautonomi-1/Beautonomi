@@ -62,29 +62,6 @@ export async function GET(
       );
     }
 
-    const addonRow = addon as AddonRow;
-    if (authUser.role === "provider_owner" && addonRow.provider_id) {
-      const { data: provider } = await supabase
-        .from("providers")
-        .select("id")
-        .eq("id", addonRow.provider_id)
-        .eq("user_id", authUser.id)
-        .single();
-
-      if (!provider) {
-        return NextResponse.json(
-          {
-            data: null,
-            error: {
-              message: "Access denied",
-              code: "FORBIDDEN",
-            },
-          },
-          { status: 403 }
-        );
-      }
-    }
-
     const addonData = addon as AddonRow & Record<string, unknown>;
     return NextResponse.json({
       data: {
@@ -165,29 +142,6 @@ export async function PUT(
         },
         { status: 404 }
       );
-    }
-
-    const existingRow = existing as AddonRow;
-    if (authUser.role === "provider_owner" && existingRow.provider_id) {
-      const { data: provider } = await supabase
-        .from("providers")
-        .select("id")
-        .eq("id", existingRow.provider_id)
-        .eq("user_id", authUser.id)
-        .single();
-
-      if (!provider) {
-        return NextResponse.json(
-          {
-            data: null,
-            error: {
-              message: "Access denied",
-              code: "FORBIDDEN",
-            },
-          },
-          { status: 403 }
-        );
-      }
     }
 
     const { service_ids, ...updateData } = validationResult.data;
@@ -310,27 +264,6 @@ export async function DELETE(
     }
 
     const existingDel = existing as AddonRow;
-    if (authUser.role === "provider_owner" && existingDel.provider_id) {
-      const { data: provider } = await supabase
-        .from("providers")
-        .select("id")
-        .eq("id", existingDel.provider_id)
-        .eq("user_id", authUser.id)
-        .single();
-
-      if (!provider) {
-        return NextResponse.json(
-          {
-            data: null,
-            error: {
-              message: "Access denied",
-              code: "FORBIDDEN",
-            },
-          },
-          { status: 403 }
-        );
-      }
-    }
 
     const { error } = await supabase
       .from("service_addons")

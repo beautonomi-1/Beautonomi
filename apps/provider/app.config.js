@@ -40,11 +40,20 @@ const appJson = require("./app.json");
 /** Merge env and plugins into base config. Function form so Expo passes app.json as base (satisfies expo-doctor). */
 module.exports = ({ config }) => {
   const base = config?.expo ? config : { expo: appJson.expo };
+  const iosStoreId =
+    envFromFile.EXPO_PUBLIC_IOS_APP_STORE_ID ?? process.env.EXPO_PUBLIC_IOS_APP_STORE_ID ?? "";
   return {
     ...base,
     expo: {
       ...base.expo,
       plugins: resolvePlugins(base.expo?.plugins),
+      ios: {
+        ...base.expo?.ios,
+        entitlements: {
+          ...(base.expo?.ios?.entitlements || {}),
+          "aps-environment": appEnv === "production" ? "production" : "development",
+        },
+      },
       extra: {
         ...(base.expo?.extra || {}),
         EXPO_PUBLIC_SUPABASE_URL: envFromFile.EXPO_PUBLIC_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL,
@@ -52,6 +61,8 @@ module.exports = ({ config }) => {
         EXPO_PUBLIC_APP_URL: envFromFile.EXPO_PUBLIC_APP_URL ?? process.env.EXPO_PUBLIC_APP_URL,
         EXPO_PUBLIC_ONESIGNAL_APP_ID: envFromFile.EXPO_PUBLIC_ONESIGNAL_APP_ID ?? process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID,
         EXPO_PUBLIC_SENTRY_DSN: envFromFile.EXPO_PUBLIC_SENTRY_DSN ?? process.env.EXPO_PUBLIC_SENTRY_DSN,
+        EXPO_PUBLIC_IOS_APP_STORE_ID: iosStoreId,
+        iosAppId: iosStoreId,
         APP_ENV: appEnv,
       },
     },

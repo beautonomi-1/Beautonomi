@@ -75,6 +75,20 @@ const getAppointmentStyle = (status: Appointment["status"]) => {
   }
 };
 
+const parseTimeToMinutes = (time?: string): number => {
+  if (typeof time !== "string") return 0;
+  const [h, m] = time.split(":").map(Number);
+  const hour = Number.isFinite(h) ? h : 0;
+  const minute = Number.isFinite(m) ? m : 0;
+  return hour * 60 + minute;
+};
+
+const parseHourFromTime = (time?: string): number => {
+  if (typeof time !== "string") return 0;
+  const [hourRaw] = time.split(":").map(Number);
+  return Number.isFinite(hourRaw) ? Math.max(0, Math.min(23, hourRaw)) : 0;
+};
+
 export function CalendarGrid({
   appointments,
   teamMembers,
@@ -121,10 +135,10 @@ export function CalendarGrid({
       if (apt.scheduled_date !== dateStr || apt.team_member_id !== teamMemberId) {
         return false;
       }
-      const [aptHour, _aptMin] = apt.scheduled_time.split(":").map(Number);
-      const [slotHour] = time.split(":").map(Number);
-      const endTime = aptHour + apt.duration_minutes / 60;
-      return aptHour <= slotHour && slotHour < endTime;
+      const aptStartMinutes = parseTimeToMinutes(apt.scheduled_time);
+      const slotMinutes = parseTimeToMinutes(time);
+      const aptEndMinutes = aptStartMinutes + Math.max(0, apt.duration_minutes || 0);
+      return aptStartMinutes <= slotMinutes && slotMinutes < aptEndMinutes;
     });
   };
 
@@ -179,7 +193,7 @@ export function CalendarGrid({
                     className="h-16 border-b text-xs sm:text-sm text-gray-600 px-2 sm:px-3 py-1 flex items-center font-medium"
                   >
                     <span className="hidden sm:inline">{time}</span>
-                    <span className="sm:hidden">{time.split(":")[0]}</span>
+                    <span className="sm:hidden">{parseHourFromTime(time).toString().padStart(2, "0")}</span>
                   </div>
                 ))}
               </div>
@@ -203,8 +217,7 @@ export function CalendarGrid({
                         onClick={() => onTimeSlotClick?.(date, time, member.id)}
                       >
                         {isFirstSlot && slotAppointments.map((apt) => {
-                          const [_hour, min] = apt.scheduled_time.split(":").map(Number);
-                          const topOffset = (min / 60) * 64; // 64px per hour
+                          const topOffset = (parseTimeToMinutes(apt.scheduled_time) % 60 / 60) * 64; // 64px per hour
                           const height = (apt.duration_minutes / 60) * 64;
                           const style = getAppointmentStyle(apt.status);
                           const StatusIcon = style.icon;

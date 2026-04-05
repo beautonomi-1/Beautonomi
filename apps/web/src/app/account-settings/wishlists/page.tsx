@@ -34,11 +34,29 @@ type WishlistSummary = {
   cover_images: string[];
 };
 
+type SavedProduct = {
+  id: string;
+  name: string;
+  brand?: string | null;
+  image_urls: string[];
+  retail_price: number;
+  currency: string;
+  in_stock: boolean;
+  added_at: string;
+  provider: {
+    id: string;
+    business_name: string;
+    slug: string;
+    logo_url?: string | null;
+  };
+};
+
 const Page = () => {
   const { user, isLoading } = useAuth();
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [wishlists, setWishlists] = useState<WishlistSummary[]>([]);
   const [savedProviders, setSavedProviders] = useState<PublicProviderCard[]>([]);
+  const [savedProducts, setSavedProducts] = useState<SavedProduct[]>([]);
   const [savedPosts, setSavedPosts] = useState<ExplorePost[]>([]);
   const [savedPostsLoading, setSavedPostsLoading] = useState(false);
   const [collections, setCollections] = useState<ExploreCollectionSummary[]>([]);
@@ -122,6 +140,15 @@ const Page = () => {
           setSavedProviders([]);
         }
 
+        // Load saved products from all wishlists
+        try {
+          const products = await fetcher.get<{ data: SavedProduct[] }>("/api/me/wishlists/products", { cache: "no-store" });
+          setSavedProducts(products.data || []);
+        } catch (productsErr) {
+          console.error("Error loading saved products:", productsErr);
+          setSavedProducts([]);
+        }
+
         // Load saved posts for unified Saved experience
         try {
           setSavedPostsLoading(true);
@@ -188,7 +215,11 @@ const Page = () => {
             </div>
           </div>
         </div>
-        <LoginModal open={isLoginModalOpen} setOpen={setIsLoginModalOpen} />
+        <LoginModal
+          open={isLoginModalOpen}
+          setOpen={setIsLoginModalOpen}
+          initialMode="login"
+        />
       </div>
     );
   }
@@ -243,11 +274,11 @@ const Page = () => {
           description={dataError}
           action={{ label: "Try Again", onClick: () => window.location.reload() }}
         />
-      ) : savedProviders.length === 0 && savedPosts.length === 0 && !savedPostsLoading ? (
+      ) : savedProviders.length === 0 && savedProducts.length === 0 && savedPosts.length === 0 && !savedPostsLoading ? (
         <div className="py-12">
           <EmptyState
-            title="No saved posts or providers yet"
-            description="Save posts from Explore and save your favorite providers to see them here."
+            title="No saved items yet"
+            description="Save products, posts, and providers to see them here."
             action={{
               label: "Explore",
               onClick: () => window.location.href = "/explore"
@@ -398,6 +429,55 @@ const Page = () => {
                     provider={provider}
                     isInWishlistProp={true}
                   />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Saved products section */}
+          <div>
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Saved products</h3>
+            {savedProducts.length === 0 ? (
+              <p className="text-sm text-gray-600">No saved products yet. Tap “Save to wishlist” on product pages.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {savedProducts.map((product) => (
+                  <Link
+                    key={product.id}
+                    href={`/shop/${product.id}${product.provider?.slug ? `?provider=${encodeURIComponent(product.provider.slug)}` : ""}`}
+                    className="group block overflow-hidden rounded-xl border border-gray-200 bg-white transition hover:border-[#FF0077]/30 hover:shadow-md"
+                  >
+                    <div className="relative aspect-square bg-gray-50">
+                      {product.image_urls?.[0] ? (
+                        <Image
+                          src={product.image_urls[0]}
+                          alt={product.name}
+                          fill
+                          sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+                          className="object-contain p-3"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-gray-300">
+                          <span className="text-xs">No image</span>
+                        </div>
+                      )}
+                      {!product.in_stock && (
+                        <span className="absolute left-2 top-2 rounded-full bg-red-100 px-2 py-1 text-[11px] font-medium text-red-700">
+                          Out of stock
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-3">
+                      <p className="line-clamp-1 text-xs text-gray-500">{product.provider?.business_name}</p>
+                      <p className="line-clamp-2 text-sm font-semibold text-gray-900 mt-1">{product.name}</p>
+                      {product.brand ? (
+                        <p className="line-clamp-1 text-xs text-gray-500 mt-1">{product.brand}</p>
+                      ) : null}
+                      <p className="mt-2 font-bold text-[#FF0077]">
+                        {product.currency} {Number(product.retail_price || 0).toFixed(2)}
+                      </p>
+                    </div>
+                  </Link>
                 ))}
               </div>
             )}

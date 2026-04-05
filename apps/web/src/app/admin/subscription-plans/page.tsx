@@ -35,6 +35,7 @@ import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 // Complex feature gating structure matching migration 133
 interface FeatureGating {
@@ -210,7 +211,7 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
     description: "",
     price_monthly: "",
     price_yearly: "",
-    currency: "ZAR",
+    currency: LAST_RESORT_CURRENCY as string,
     features: getDefaultFeatures(),
     is_free: false,
     is_active: true,
@@ -282,7 +283,7 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
       description: "",
       price_monthly: "",
       price_yearly: "",
-      currency: "ZAR",
+      currency: LAST_RESORT_CURRENCY as string,
       features: getDefaultFeatures(),
       is_free: false,
       is_active: true,

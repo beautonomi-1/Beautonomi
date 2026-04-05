@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, notFoundResponse, handleApiError, requireRoleInApi } from "@/lib/supabase/api-helpers";
 import type { User } from "@/types/beautonomi";
 
@@ -18,6 +19,7 @@ type UserRow = {
   emergency_contact_email?: string | null;
   emergency_contact_country_code?: string | null;
   preferred_language?: string | null;
+  signup_source?: string | null;
   identity_verification_status?: string | null;
   password_changed_at?: string | null;
   [key: string]: unknown;
@@ -195,12 +197,56 @@ export async function PATCH(request: NextRequest) {
     // Handle other user fields
     if (body.phone !== undefined) updates.phone = body.phone;
     if (body.avatar_url !== undefined) updates.avatar_url = body.avatar_url;
-    if (body.date_of_birth !== undefined) updates.date_of_birth = body.date_of_birth;
+    if (body.date_of_birth !== undefined) {
+      // Server-side minimum age check (13+, POPIA / GDPR requirement)
+      if (body.date_of_birth !== null) {
+        const dob = new Date(body.date_of_birth as string);
+        if (isNaN(dob.getTime())) {
+          throw new Error("Invalid date_of_birth format. Expected YYYY-MM-DD.");
+        }
+        const minAgeDate = new Date();
+        minAgeDate.setFullYear(minAgeDate.getFullYear() - 13);
+        if (dob > minAgeDate) {
+          throw new Error("You must be at least 13 years old to use Beautonomi.");
+        }
+      }
+      updates.date_of_birth = body.date_of_birth;
+    }
     if (body.preferred_language !== undefined) updates.preferred_language = body.preferred_language;
+    if (body.signup_source !== undefined) {
+      const allowed: string[] = [
+        "google", "social_instagram", "social_facebook", "social_twitter",
+        "friend_or_family", "blog_or_article", "app_store", "provider_referral", "other",
+      ];
+      const v = body.signup_source === null || body.signup_source === "" ? null : String(body.signup_source).trim();
+      updates.signup_source = v && allowed.includes(v) ? v : (v ? "other" : null);
+    }
     if (body.preferred_currency !== undefined) updates.preferred_currency = body.preferred_currency;
     if (body.timezone !== undefined) updates.timezone = body.timezone;
-    if (body.email_verified !== undefined) updates.email_verified = body.email_verified;
-    if (body.phone_verified !== undefined) updates.phone_verified = body.phone_verified;
+    if (body.preferred_home_tenant_id !== undefined) {
+      const v = body.preferred_home_tenant_id;
+      if (v === null || v === "") {
+        updates.preferred_home_tenant_id = null;
+      } else {
+        const admin = getSupabaseAdmin();
+        const { data: trow } = await admin
+          .from("tenants")
+          .select("id")
+          .eq("id", v)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (!trow?.id) {
+          throw new Error("Invalid preferred_home_tenant_id");
+        }
+        updates.preferred_home_tenant_id = v;
+      }
+    }
+    // email_verified and phone_verified are INTENTIONALLY excluded from client PATCH.
+    // They are set only by trusted server paths:
+    //   - email_verified: Supabase auth webhook / POST /api/me/phone/verify
+    //   - phone_verified: POST /api/me/phone/verify (reads supabase.auth.getUser() phone_confirmed_at)
+    // Accepting these from the request body would allow any authenticated user to bypass
+    // verification by sending { phone_verified: true } directly.
 
     // Handle emergency_contact object
     if (body.emergency_contact !== undefined) {

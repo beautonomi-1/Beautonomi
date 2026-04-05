@@ -6,8 +6,15 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import { z } from "zod";
+import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
+import { notifyProviderTeamUsers } from "@/lib/notifications/notify-provider-team";
+import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlements";
+import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
+import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { percentOf, sumMoney, roundCurrency } from "@beautonomi/utils";
 
 const createOrderSchema = z.object({
   provider_id: z.string().uuid(),
@@ -30,12 +37,29 @@ export async function GET(request: NextRequest) {
       request,
     );
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
     const status = searchParams.get("status");
     const offset = (page - 1) * limit;
+    const { data: tenantProviders } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("tenant_id", tenantId);
+    const tenantProviderIds = (tenantProviders ?? []).map((p) => p.id);
+    if (tenantProviderIds.length === 0) {
+      return successResponse({
+        orders: [],
+        pagination: {
+          page,
+          limit,
+          total: 0,
+          totalPages: 0,
+        },
+      });
+    }
 
     let query = (supabase.from("product_orders") as any)
       .select(
@@ -51,6 +75,7 @@ export async function GET(request: NextRequest) {
         { count: "exact" },
       )
       .eq("customer_id", user.id)
+      .in("provider_id", tenantProviderIds)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -89,6 +114,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = createOrderSchema.parse(body);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     if (parsed.fulfillment_type === "delivery" && !parsed.delivery_address_id) {
       return errorResponse("Delivery address is required for delivery orders", "VALIDATION", 400);
@@ -97,10 +123,22 @@ export async function POST(request: NextRequest) {
       return errorResponse("Collection location is required", "VALIDATION", 400);
     }
 
+    const { data: providerForTenant } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", parsed.provider_id)
+      .maybeSingle();
+    const orderTenantId =
+      (providerForTenant as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+    if (!orderTenantId || orderTenantId !== tenantId) {
+      return errorResponse("Provider not available in this market", "TENANT_MISMATCH", 404);
+    }
+
     const paymentMethod = parsed.payment_method ?? "paystack";
+    const paymentFlags = await getPaymentFeatureFlagsForTenant(orderTenantId);
+    const paymentTypes = await getPlatformPaymentTypesForTenant(supabase as any, orderTenantId);
     if (paymentMethod === "paystack") {
-      const paystackEnabled = await isFeatureEnabledServer("payment_paystack");
-      if (!paystackEnabled) {
+      if (!paymentFlags.payment_paystack) {
         return errorResponse(
           "Online card payment is currently unavailable. Please choose pay on delivery or another method.",
           "FEATURE_DISABLED",
@@ -108,9 +146,15 @@ export async function POST(request: NextRequest) {
         );
       }
     }
+    if ((paymentMethod === "cash" || paymentMethod === "card_on_delivery") && !paymentTypes.cash) {
+      return errorResponse(
+        "Pay-on-delivery is currently unavailable. Please pay online.",
+        "FEATURE_DISABLED",
+        400,
+      );
+    }
     if (parsed.use_wallet === true) {
-      const walletEnabled = await isFeatureEnabledServer("payment_wallet");
-      if (!walletEnabled) {
+      if (!paymentFlags.payment_wallet) {
         return errorResponse(
           "Wallet payment is currently unavailable.",
           "FEATURE_DISABLED",
@@ -203,7 +247,7 @@ export async function POST(request: NextRequest) {
       const variant = item.product_variant;
       const unitPrice = variant ? parseFloat(variant.retail_price) : parseFloat(p.retail_price);
       const lineTotal = unitPrice * item.quantity;
-      const lineTax = lineTotal * (parseFloat(p.tax_rate || "0") / 100);
+      const lineTax = percentOf(lineTotal, parseFloat(p.tax_rate || "0"));
       subtotal += lineTotal;
       taxAmount += lineTax;
       orderItems.push({
@@ -219,29 +263,32 @@ export async function POST(request: NextRequest) {
 
     // Calculate platform fee for online orders
     let platformFee = 0;
-    const isOnline = !["cash", "yoco"].includes(parsed.payment_method ?? "paystack");
+    const isOnline = !["cash", "yoco", "card_on_delivery"].includes(parsed.payment_method ?? "paystack");
     if (isOnline) {
-      const { data: settingsRow } = await (supabase.from("platform_settings") as any)
-        .select("settings")
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle();
-
-      const payouts = (settingsRow?.settings as Record<string, any>)?.payouts as Record<string, any> | undefined;
+      const scopedSettings = await fetchScopedSingle<Record<string, unknown>>({
+        supabase,
+        table: "platform_settings",
+        tenantId,
+        select: "settings",
+        apply: (q) => q.eq("is_active", true),
+        orderBy: { column: "updated_at", ascending: false },
+      });
+      const settings = (scopedSettings.data as { settings?: Record<string, unknown> } | null)?.settings;
+      const payouts = (settings as Record<string, any> | undefined)?.payouts as Record<string, any> | undefined;
       if (payouts) {
         const feeType = (payouts.platform_service_fee_type as string) || "percentage";
         if (feeType === "fixed") {
           platformFee = Number(payouts.platform_service_fee_fixed) || 0;
         } else {
           const pct = Number(payouts.platform_service_fee_percentage) || 5;
-          platformFee = Math.round(subtotal * pct) / 100;
+          platformFee = percentOf(subtotal, pct);
         }
       } else {
-        platformFee = Math.round(subtotal * 5) / 100;
+        platformFee = percentOf(subtotal, 5);
       }
     }
 
-    const totalAmount = subtotal + taxAmount + deliveryFee + platformFee;
+    const totalAmount = sumMoney(subtotal, taxAmount, deliveryFee, platformFee);
 
     // Determine wallet amount to apply (debit happens after order is created so we have order id)
     let walletAmountApplied = 0;
@@ -266,6 +313,7 @@ export async function POST(request: NextRequest) {
     // Create order (wallet_amount and payment_status when paid by wallet)
     const { data: order, error: orderErr } = await (supabase.from("product_orders") as any)
       .insert({
+        tenant_id: orderTenantId,
         order_number: orderNum,
         customer_id: user.id,
         provider_id: parsed.provider_id,
@@ -295,6 +343,19 @@ export async function POST(request: NextRequest) {
         p_description: `Product order ${order.order_number}`,
         p_reference_id: order.id,
         p_reference_type: "product_order",
+        p_tenant_id: orderTenantId,
+      });
+    }
+
+    if (paidWithWalletOnly) {
+      await recordProductOrderPayment({
+        supabase: supabase as any,
+        productOrderId: order.id,
+        reference: `wallet_product_order_${order.id}`,
+        amountMajor: totalAmount,
+        feesMajor: 0,
+        source: "wallet_checkout",
+        provider: "wallet",
       });
     }
 
@@ -332,26 +393,19 @@ export async function POST(request: NextRequest) {
       .eq("user_id", user.id)
       .eq("provider_id", parsed.provider_id);
 
-    // Notify provider of new order
-    const { data: provider } = await (supabase.from("providers") as any)
-      .select("owner_id")
-      .eq("id", parsed.provider_id)
-      .single();
-
-    if (provider?.owner_id) {
-      await supabase.from("notifications").insert({
-        user_id: provider.owner_id,
-        type: "product_order_placed",
-        title: "New Product Order",
-        message: `New order ${orderNum} received — R${totalAmount.toFixed(2)} (${orderItems.length} items)`,
-        metadata: {
-          product_order_id: order.id,
-          order_number: orderNum,
-          total_amount: totalAmount,
-        },
-        link: "/provider/ecommerce/orders",
-      }).then(() => {}, () => {});
-    }
+    // Notify provider team (owner + active staff with linked accounts)
+    const { format: formatOrderTotal } = await getTenantMoneyFormatter(orderTenantId);
+    await notifyProviderTeamUsers(parsed.provider_id, {
+      type: "product_order_placed",
+      title: "New Product Order",
+      message: `New order ${orderNum} received — ${formatOrderTotal(totalAmount)} (${orderItems.length} items)`,
+      metadata: {
+        product_order_id: order.id,
+        order_number: orderNum,
+        total_amount: totalAmount,
+      },
+      link: "/provider/ecommerce/orders",
+    });
 
     // Order confirmation to customer via OneSignal notification template (push + email)
     try {

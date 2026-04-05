@@ -151,6 +151,9 @@ jobs:
       - name: Build web
         run: pnpm --filter web build
 
+      - name: Check bundle size budget
+        run: pnpm --filter web check-bundle
+
   build-mobile:
     name: Build Mobile Apps (Typecheck)
     needs: [typecheck, lint]
@@ -183,13 +186,40 @@ jobs:
       - name: Build packages
         run: pnpm --filter './packages/*' build
 
-      - name: Export customer app
-        run: pnpm --filter customer export
-        continue-on-error: true
+      # Validates app.json / plugins / env (no EAS binary export in this repo)
+      - name: Validate Expo config (customer)
+        run: pnpm --filter customer exec expo config --type public
 
-      - name: Export provider app
-        run: pnpm --filter provider export
-        continue-on-error: true
+      - name: Validate Expo config (provider)
+        run: pnpm --filter provider exec expo config --type public
+
+  security:
+    name: Dependency Audit
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+            tooling/*/node_modules
+          key: modules-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Audit dependencies (high + critical)
+        run: pnpm audit --audit-level=high
 
   test:
     name: Test
@@ -215,6 +245,9 @@ jobs:
             packages/*/node_modules
             tooling/*/node_modules
           key: modules-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Run multi-tenant audits (strict tenant hints)
+        run: pnpm audit:multi-tenant:strict
 
       - name: Run tests
         run: pnpm test

@@ -32,8 +32,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Money } from "@/components/provider-portal/Money";
 import { toast } from "sonner";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 
 export default function RecurringAppointmentsPage() {
+  const { selectedLocationId } = useProviderPortal();
   const [appointments, setAppointments] = useState<RecurringAppointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -48,6 +50,7 @@ export default function RecurringAppointmentsPage() {
       setIsLoading(true);
       const filters: FilterParams = {
         search: searchQuery || undefined,
+        location_id: selectedLocationId || undefined,
       };
 
       const pagination: PaginationParams = { page, limit: 20 };
@@ -60,7 +63,7 @@ export default function RecurringAppointmentsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, searchQuery]);
+  }, [page, searchQuery, selectedLocationId]);
 
   useEffect(() => {
     loadAppointments();

@@ -15,16 +15,20 @@ import { twStyle } from "@/lib/twStyle";
 
 const TRIGGER_TYPES = [
   { label: "Booking completed", value: "booking_completed" },
-  { label: "No-show", value: "no_show" },
-  { label: "Birthday", value: "birthday" },
-  { label: "Booking confirmed", value: "booking_confirmed" },
-  { label: "Custom", value: "custom" },
+  { label: "Appointment reminder", value: "appointment_reminder" },
+  { label: "No-show", value: "appointment_no_show" },
+  { label: "Birthday", value: "client_birthday" },
+  { label: "Client inactive (win-back)", value: "client_inactive" },
+  { label: "Visit milestone", value: "visit_milestone" },
+  { label: "Referral received", value: "referral_received" },
+  { label: "Seasonal promotion", value: "seasonal_promotion" },
 ];
 
 const ACTION_TYPES = [
   { label: "Email", value: "email" },
   { label: "SMS", value: "sms" },
   { label: "Push notification", value: "notification" },
+  { label: "WhatsApp", value: "whatsapp" },
 ] as const;
 
 export default function AutomationsCreateScreen() {
@@ -32,7 +36,7 @@ export default function AutomationsCreateScreen() {
   const { screenPadding } = useResponsive();
   const [name, setName] = useState("");
   const [triggerType, setTriggerType] = useState("booking_completed");
-  const [actionType, setActionType] = useState<"email" | "sms" | "notification">("email");
+  const [actionType, setActionType] = useState<"email" | "sms" | "notification" | "whatsapp">("email");
   const [delayMinutes, setDelayMinutes] = useState("0");
 
   const { execute: create, loading } = useApiMutation("post");

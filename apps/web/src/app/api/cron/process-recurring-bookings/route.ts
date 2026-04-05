@@ -1,27 +1,26 @@
 import { NextRequest } from "next/server";
+import { format } from "date-fns";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyCronRequest } from "@/lib/cron-auth";
+import { nextRecurringOccurrenceDate, isDateOnOrBeforeEnd } from "@/lib/recurring/next-due-date";
+import { createBookingFromRecurringSeries } from "@/lib/recurring/create-booking-from-series";
 
 /**
  * GET /api/cron/process-recurring-bookings
- * 
- * Cron job to create bookings from active recurring appointments
- * Should be called daily
+ *
+ * Daily cron: create the next due booking for each active series (does not charge cards).
  */
 export async function GET(request: NextRequest) {
   try {
-    // Verify cron request (secret + Vercel origin)
     const auth = verifyCronRequest(request);
     if (!auth.valid) {
       return new Response(auth.error || "Unauthorized", { status: 401 });
     }
 
     const supabaseAdmin = getSupabaseAdmin();
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
+    const todayStr = format(new Date(), "yyyy-MM-dd");
 
-    // Get active recurring appointments
     const { data: recurring, error } = await supabaseAdmin
       .from("recurring_appointments")
       .select("*")
@@ -45,60 +44,50 @@ export async function GET(request: NextRequest) {
 
     for (const appointment of recurring) {
       try {
-        // Calculate next booking date based on frequency
-        const lastBookingDate = appointment.last_booking_date 
-          ? new Date(appointment.last_booking_date)
-          : new Date(appointment.start_date);
+        const lastRaw = appointment.last_booking_date;
+        const lastBookingDate =
+          typeof lastRaw === "string" && lastRaw
+            ? lastRaw
+            : lastRaw instanceof Date
+              ? format(lastRaw, "yyyy-MM-dd")
+              : null;
 
-        const daysToAdd = appointment.frequency === "weekly" 
-          ? 7
-          : appointment.frequency === "biweekly"
-          ? 14
-          : 30; // monthly
+        const nextDue = nextRecurringOccurrenceDate({
+          startDate: appointment.start_date,
+          lastBookingDate,
+          frequency: appointment.frequency,
+          recurrenceRule: appointment.recurrence_rule,
+        });
 
-        const nextBookingDate = new Date(lastBookingDate.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
-        const nextBookingDateStr = nextBookingDate.toISOString().split("T")[0];
-
-        // Check if booking should be created today
-        if (nextBookingDateStr === todayStr) {
-          // Create booking
-          const [hours, minutes] = appointment.preferred_time.split(":");
-          const scheduledAt = new Date(nextBookingDate);
-          scheduledAt.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-
-          const services = appointment.metadata?.services || [];
-          if (services.length === 0) {
-            continue;
-          }
-
-          // Create booking (simplified - would need full booking creation logic)
-          const { error: bookingError } = await supabaseAdmin
-            .from("bookings")
-            .insert({
-              customer_id: appointment.customer_id,
-              provider_id: appointment.provider_id,
-              status: "confirmed",
-              location_type: appointment.location_type,
-              location_id: appointment.location_id,
-              scheduled_at: scheduledAt.toISOString(),
-              // Other booking fields would be set here
-            });
-
-          if (bookingError) {
-            errors.push(`Failed to create booking for recurring ${appointment.id}: ${bookingError.message}`);
-            continue;
-          }
-
-          // Update last_booking_date
-          await supabaseAdmin
-            .from("recurring_appointments")
-            .update({ last_booking_date: nextBookingDateStr })
-            .eq("id", appointment.id);
-
-          processed++;
+        if (!nextDue || !isDateOnOrBeforeEnd(nextDue, appointment.end_date)) {
+          continue;
         }
-      } catch (err: any) {
-        errors.push(`Error processing recurring ${appointment.id}: ${err.message}`);
+
+        if (nextDue > todayStr) {
+          continue;
+        }
+
+        const created = await createBookingFromRecurringSeries(supabaseAdmin, appointment, nextDue);
+
+        if ("error" in created) {
+          errors.push(`${appointment.id}: ${created.error}`);
+          continue;
+        }
+
+        const { error: updErr } = await supabaseAdmin
+          .from("recurring_appointments")
+          .update({ last_booking_date: nextDue, updated_at: new Date().toISOString() })
+          .eq("id", appointment.id);
+
+        if (updErr) {
+          errors.push(`${appointment.id}: last_booking_date update failed: ${updErr.message}`);
+          continue;
+        }
+
+        processed++;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        errors.push(`${appointment.id}: ${msg}`);
       }
     }
 

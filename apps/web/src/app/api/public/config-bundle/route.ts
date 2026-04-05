@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPublicConfigBundle } from "@/lib/config";
 import type { Platform, Environment } from "@/lib/config/types";
+import { resolveActiveMarketFromRequest } from "@/lib/tenant/resolve-active-market";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 300;
@@ -22,7 +24,7 @@ function parseEnvironment(s: string | null): Environment {
  * GET /api/public/config-bundle
  * Public bootstrap config: amplitude, third_party, branding, flags, modules.
  * No auth required. Never returns secrets.
- * Query: platform=web|customer|provider, environment=production|staging|development, app_version=...
+ * Query: platform=web|customer|provider, environment=production|staging|development, app_version=..., country= (optional ISO2 override).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -34,6 +36,19 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get("user_id") ?? null;
     const providerId = searchParams.get("provider_id") ?? null;
 
+    const market = resolveActiveMarketFromRequest(request, searchParams.get("country"));
+
+    let resolvedTenantId: string | null = null;
+    try {
+      resolvedTenantId = await resolveTenantIdWithZaFallback(request);
+    } catch (tenantErr) {
+      console.warn(
+        "Tenant resolution failed in /api/public/config-bundle (bundle may use platform defaults):",
+        tenantErr,
+      );
+      resolvedTenantId = null;
+    }
+
     const bundle = await getPublicConfigBundle({
       platform,
       environment,
@@ -41,9 +56,17 @@ export async function GET(request: NextRequest) {
       role: role || undefined,
       userId: userId || undefined,
       providerId: providerId || undefined,
+      tenantId: resolvedTenantId,
     });
 
-    const body = JSON.stringify(bundle);
+    const body = JSON.stringify({
+      ...bundle,
+      meta: {
+        ...bundle.meta,
+        active_market_country: market.countryCode,
+        active_market_source: market.source,
+      },
+    });
     const etag = `"${Buffer.from(body).toString("base64").slice(0, 32)}"`;
 
     return new NextResponse(body, {
@@ -60,12 +83,15 @@ export async function GET(request: NextRequest) {
     const platform = parsePlatform(searchParams.get("platform"));
     const environment = parseEnvironment(searchParams.get("environment"));
     const appVersion = searchParams.get("app_version") ?? null;
+    const market = resolveActiveMarketFromRequest(request, searchParams.get("country"));
     const fallback = {
         meta: {
           env: environment,
           platform,
           version: appVersion,
           fetched_at: new Date().toISOString(),
+          active_market_country: market.countryCode,
+          active_market_source: market.source,
         },
         amplitude: {
           api_key_public: null,
@@ -82,7 +108,7 @@ export async function GET(request: NextRequest) {
         branding: {
           site_name: "Beautonomi",
           logo_url: "/images/logo.svg",
-          favicon_url: "/favicon.ico",
+          favicon_url: "/icon.svg",
           primary_color: "#FF0077",
           secondary_color: "#D60565",
         },

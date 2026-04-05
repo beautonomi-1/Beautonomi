@@ -5,7 +5,14 @@ import { Button } from "@/components/ui/button";
 import RateCustomerModal from "./rate-customer-modal";
 import { fetcher } from "@/lib/http/fetcher";
 import { Star } from "lucide-react";
-import type { Review } from "@/types/beautonomi";
+interface ProviderClientRatingRow {
+  id: string;
+  booking_id: string;
+  rating: number;
+  comment?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
 
 interface CustomerRatingButtonProps {
   bookingId: string;
@@ -27,31 +34,33 @@ export default function CustomerRatingButton({
   onRatingSubmitted,
 }: CustomerRatingButtonProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [existingRating, setExistingRating] = useState<Review | null>(null);
+  const [existingRating, setExistingRating] = useState<ProviderClientRatingRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadExistingRating = useCallback(async () => {
     try {
-      const response = await fetcher.get<{ data: Review }>(
-        `/api/me/reviews?booking_id=${bookingId}`
-      );
-      if (response.data && response.data.customer_rating) {
-        setExistingRating(response.data);
+      const response = await fetcher.get<{
+        data?: { has_rating?: boolean; rating?: ProviderClientRatingRow | null };
+      }>(`/api/provider/ratings?booking_id=${encodeURIComponent(bookingId)}`);
+      const payload = response.data;
+      if (payload?.rating && typeof payload.rating.rating === "number") {
+        setExistingRating(payload.rating);
+      } else {
+        setExistingRating(null);
       }
     } catch {
-      // Review might not exist yet, that's okay
-      console.log("No existing rating found");
+      setExistingRating(null);
     } finally {
       setIsLoading(false);
     }
   }, [bookingId]);
 
   useEffect(() => {
-    // Only load rating if booking is completed
-    if (bookingStatus === "completed") {
+    if (bookingStatus === "completed" || bookingStatus === "no_show") {
       loadExistingRating();
     } else {
       setIsLoading(false);
+      setExistingRating(null);
     }
   }, [bookingStatus, loadExistingRating]);
 
@@ -60,8 +69,7 @@ export default function CustomerRatingButton({
     onRatingSubmitted?.();
   };
 
-  // Don't show button if booking is not completed
-  if (bookingStatus !== "completed") {
+  if (bookingStatus !== "completed" && bookingStatus !== "no_show") {
     return null;
   }
 
@@ -74,13 +82,13 @@ export default function CustomerRatingButton({
   }
 
   // If already rated, show the rating
-  if (existingRating?.customer_rating) {
+  if (existingRating?.rating) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-gray-50">
         <div className="flex items-center gap-1">
           <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
           <span className="text-sm font-medium">
-            {existingRating.customer_rating}/5
+            {existingRating.rating}/5
           </span>
         </div>
         <span className="text-xs text-gray-500">Rated</span>
@@ -112,6 +120,9 @@ export default function CustomerRatingButton({
         onOpenChange={setIsModalOpen}
         bookingId={bookingId}
         customerName={customerName}
+        providerRatingId={existingRating?.id}
+        initialRating={existingRating?.rating}
+        initialComment={existingRating?.comment ?? ""}
         onSuccess={handleRatingSuccess}
       />
     </>

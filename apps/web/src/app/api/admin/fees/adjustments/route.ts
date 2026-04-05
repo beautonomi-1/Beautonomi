@@ -1,72 +1,278 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import {
+  fetchBookingInAdminTenant,
+  fetchProviderInAdminTenant,
+} from "@/lib/tenant/admin-booking-tenant";
 
 function isTableMissingError(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : typeof e === "object" && e !== null && "message" in e && typeof (e as { message: unknown }).message === "string" ? (e as { message: string }).message : "";
-  return msg.includes("schema cache") || (msg.includes("relation ") && msg.includes("does not exist")) || msg.includes("Could not find the table");
+  const msg =
+    e instanceof Error
+      ? e.message
+      : typeof e === "object" &&
+          e !== null &&
+          "message" in e &&
+          typeof (e as { message: unknown }).message === "string"
+        ? (e as { message: string }).message
+        : "";
+  return (
+    msg.includes("schema cache") ||
+    (msg.includes("relation ") && msg.includes("does not exist")) ||
+    msg.includes("Could not find the table")
+  );
+}
+
+const ADJUSTMENT_SELECT = `
+        *,
+        payment_transaction:payment_transaction_id(id, reference, amount, fees, provider),
+        finance_transaction:finance_transaction_id(id, transaction_type, amount, fees)
+      `;
+
+async function ensurePaymentTransactionInTenant(
+  supabase: SupabaseClient,
+  paymentTransactionId: string,
+  tenantId: string
+): Promise<NextResponse | null> {
+  const { data: tx } = await supabase
+    .from("payment_transactions")
+    .select("booking_id, provider_id")
+    .eq("id", paymentTransactionId)
+    .maybeSingle();
+  if (!tx) {
+    return notFoundResponse("Payment transaction not found");
+  }
+  const row = tx as { booking_id?: string | null; provider_id?: string | null };
+  if (row.booking_id) {
+    const r = await fetchBookingInAdminTenant(supabase, row.booking_id, tenantId, "id");
+    return "error" in r ? r.error : null;
+  }
+  if (row.provider_id) {
+    const r = await fetchProviderInAdminTenant(supabase, row.provider_id, tenantId, "id");
+    return "error" in r ? r.error : null;
+  }
+  return notFoundResponse("Payment transaction not found");
+}
+
+async function ensureFinanceTransactionInTenant(
+  supabase: SupabaseClient,
+  financeTransactionId: string,
+  tenantId: string
+): Promise<NextResponse | null> {
+  const { data: ft } = await supabase
+    .from("finance_transactions")
+    .select("provider_id, booking_id")
+    .eq("id", financeTransactionId)
+    .maybeSingle();
+  const row = ft as { provider_id?: string | null; booking_id?: string | null } | null;
+  if (!row) {
+    return notFoundResponse("Finance transaction not found");
+  }
+  if (row.booking_id) {
+    const r = await fetchBookingInAdminTenant(supabase, row.booking_id, tenantId, "id");
+    return "error" in r ? r.error : null;
+  }
+  if (row.provider_id) {
+    const r = await fetchProviderInAdminTenant(supabase, row.provider_id, tenantId, "id");
+    return "error" in r ? r.error : null;
+  }
+  return notFoundResponse("Finance transaction not found");
 }
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
+    if (!supabase) {
+      return NextResponse.json({
+        data: [],
+        meta: { page: 1, limit: 50, total: 0, has_more: false },
+        error: null,
+      });
+    }
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { searchParams } = new URL(request.url);
     const paymentTransactionId = searchParams.get("payment_transaction_id");
     const financeTransactionId = searchParams.get("finance_transaction_id");
     const reconciled = searchParams.get("reconciled");
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "50");
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = parseInt(searchParams.get("limit") || "50", 10);
     const offset = (page - 1) * limit;
 
-    let query = supabase
-      .from("payment_fee_adjustments")
-      .select(
-        `
+    const applyReconciled = <T extends { eq: (a: string, b: boolean) => T }>(q: T) => {
+      if (reconciled !== null && reconciled !== "") {
+        return q.eq("reconciled", reconciled === "true");
+      }
+      return q;
+    };
+
+    // Single-tx filters: verify tenant, then list (no cross-tenant leakage)
+    if (paymentTransactionId) {
+      const deny = await ensurePaymentTransactionInTenant(supabase, paymentTransactionId, tenantId);
+      if (deny) return deny;
+      let query = supabase
+        .from("payment_fee_adjustments")
+        .select(ADJUSTMENT_SELECT, { count: "exact" })
+        .eq("payment_transaction_id", paymentTransactionId)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+      query = applyReconciled(query);
+      const { data, error, count } = await query;
+      if (error) {
+        if (isTableMissingError(error)) {
+          return NextResponse.json({
+            data: [],
+            meta: { page, limit, total: 0, has_more: false },
+            error: null,
+          });
+        }
+        throw error;
+      }
+      const total = count ?? 0;
+      return NextResponse.json({
+        data: data || [],
+        meta: { page, limit, total, has_more: total > offset + limit },
+        error: null,
+      });
+    }
+
+    if (financeTransactionId) {
+      const deny = await ensureFinanceTransactionInTenant(supabase, financeTransactionId, tenantId);
+      if (deny) return deny;
+      let query = supabase
+        .from("payment_fee_adjustments")
+        .select(ADJUSTMENT_SELECT, { count: "exact" })
+        .eq("finance_transaction_id", financeTransactionId)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+      query = applyReconciled(query);
+      const { data, error, count } = await query;
+      if (error) {
+        if (isTableMissingError(error)) {
+          return NextResponse.json({
+            data: [],
+            meta: { page, limit, total: 0, has_more: false },
+            error: null,
+          });
+        }
+        throw error;
+      }
+      const total = count ?? 0;
+      return NextResponse.json({
+        data: data || [],
+        meta: { page, limit, total, has_more: total > offset + limit },
+        error: null,
+      });
+    }
+
+    const selectPayBooking = `
+        *,
+        payment_transaction:payment_transaction_id!inner(id, reference, amount, fees, provider, booking:bookings!inner(tenant_id)),
+        finance_transaction:finance_transaction_id(id, transaction_type, amount, fees)
+      `;
+    const selectPayProviderOnly = `
+        *,
+        payment_transaction:payment_transaction_id!inner(id, reference, amount, fees, provider, booking_id, providers!inner(tenant_id)),
+        finance_transaction:finance_transaction_id(id, transaction_type, amount, fees)
+      `;
+    const selectFin = `
         *,
         payment_transaction:payment_transaction_id(id, reference, amount, fees, provider),
-        finance_transaction:finance_transaction_id(id, transaction_type, amount, fees)
-      `,
-        { count: "exact" }
-      )
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
+        finance_transaction:finance_transaction_id!inner(id, transaction_type, amount, fees, providers!inner(tenant_id))
+      `;
+    const selectFinBooking = `
+        *,
+        payment_transaction:payment_transaction_id(id, reference, amount, fees, provider),
+        finance_transaction:finance_transaction_id!inner(id, transaction_type, amount, fees, bookings!inner(tenant_id))
+      `;
 
-    if (paymentTransactionId) {
-      query = query.eq("payment_transaction_id", paymentTransactionId);
+    let q1 = supabase
+      .from("payment_fee_adjustments")
+      .select(selectPayBooking)
+      .eq("payment_transaction.booking.tenant_id", tenantId)
+      .order("created_at", { ascending: false });
+    q1 = applyReconciled(q1);
+
+    let q1b = supabase
+      .from("payment_fee_adjustments")
+      .select(selectPayProviderOnly)
+      .eq("payment_transaction.providers.tenant_id", tenantId)
+      .is("payment_transaction.booking_id", null)
+      .order("created_at", { ascending: false });
+    q1b = applyReconciled(q1b);
+
+    let q2 = supabase
+      .from("payment_fee_adjustments")
+      .select(selectFin)
+      .eq("finance_transaction.providers.tenant_id", tenantId)
+      .is("payment_transaction_id", null)
+      .order("created_at", { ascending: false });
+    q2 = applyReconciled(q2);
+
+    let q2b = supabase
+      .from("payment_fee_adjustments")
+      .select(selectFinBooking)
+      .eq("finance_transaction.bookings.tenant_id", tenantId)
+      .is("payment_transaction_id", null)
+      .not("finance_transaction_id", "is", null)
+      .order("created_at", { ascending: false });
+    q2b = applyReconciled(q2b);
+
+    const [r1, r1b, r2, r2b] = await Promise.all([q1, q1b, q2, q2b]);
+
+    if (r1.error && !isTableMissingError(r1.error)) throw r1.error;
+    if (r1b.error && !isTableMissingError(r1b.error)) throw r1b.error;
+    if (r2.error && !isTableMissingError(r2.error)) throw r2.error;
+    if (r2b.error && !isTableMissingError(r2b.error)) throw r2b.error;
+
+    const byId = new Map<string, object>();
+    for (const row of (r1.data || []) as object[]) {
+      const id = (row as { id: string }).id;
+      byId.set(id, row);
     }
-    if (financeTransactionId) {
-      query = query.eq("finance_transaction_id", financeTransactionId);
+    for (const row of (r1b.data || []) as object[]) {
+      const id = (row as { id: string }).id;
+      byId.set(id, row);
     }
-    if (reconciled !== null && reconciled !== undefined) {
-      query = query.eq("reconciled", reconciled === "true");
+    for (const row of (r2.data || []) as object[]) {
+      const id = (row as { id: string }).id;
+      byId.set(id, row);
+    }
+    for (const row of (r2b.data || []) as object[]) {
+      const id = (row as { id: string }).id;
+      byId.set(id, row);
     }
 
-    const { data, error, count } = await query;
-
-    if (error) {
-      if (isTableMissingError(error)) {
-        return NextResponse.json({ data: [], meta: { page, limit, total: 0, has_more: false }, error: null });
-      }
-      throw error;
-    }
+    const merged = [...byId.values()].sort(
+      (a, b) =>
+        new Date((b as { created_at: string }).created_at).getTime() -
+        new Date((a as { created_at: string }).created_at).getTime()
+    );
+    const total = merged.length;
+    const pageSlice = merged.slice(offset, offset + limit);
 
     return NextResponse.json({
-      data: data || [],
+      data: pageSlice,
       meta: {
         page,
         limit,
-        total: count || 0,
-        has_more: (count || 0) > offset + limit,
+        total,
+        has_more: total > offset + limit,
       },
       error: null,
     });
   } catch (error: unknown) {
     console.error("Error fetching fee adjustments:", error);
     if (isTableMissingError(error)) {
-      return NextResponse.json({ data: [], meta: { page: 1, limit: 50, total: 0, has_more: false }, error: null });
+      return NextResponse.json({
+        data: [],
+        meta: { page: 1, limit: 50, total: 0, has_more: false },
+        error: null,
+      });
     }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to fetch fee adjustments" },
@@ -79,6 +285,10 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = getSupabaseAdmin();
+    if (!supabase) {
+      return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+    }
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const body = await request.json();
     const {
@@ -91,11 +301,7 @@ export async function POST(request: NextRequest) {
       notes,
     } = body;
 
-    // Validate required fields
-    if (
-      !payment_transaction_id &&
-      !finance_transaction_id
-    ) {
+    if (!payment_transaction_id && !finance_transaction_id) {
       return NextResponse.json(
         { error: "Either payment_transaction_id or finance_transaction_id is required" },
         { status: 400 }
@@ -108,31 +314,43 @@ export async function POST(request: NextRequest) {
       !adjustment_reason ||
       !adjustment_type
     ) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Get the original transaction to verify fee
+    if (payment_transaction_id) {
+      const deny = await ensurePaymentTransactionInTenant(
+        supabase,
+        payment_transaction_id as string,
+        tenantId
+      );
+      if (deny) return deny;
+    }
+    if (finance_transaction_id) {
+      const deny = await ensureFinanceTransactionInTenant(
+        supabase,
+        finance_transaction_id as string,
+        tenantId
+      );
+      if (deny) return deny;
+    }
+
     let originalFee = original_fee_amount;
     if (payment_transaction_id) {
       const { data: tx } = await supabase
         .from("payment_transactions")
         .select("fees")
-        .eq("id", payment_transaction_id)
-        .single();
-      if (tx) originalFee = tx.fees;
+        .eq("id", payment_transaction_id as string)
+        .maybeSingle();
+      if (tx) originalFee = (tx as { fees: number }).fees;
     } else if (finance_transaction_id) {
       const { data: tx } = await supabase
         .from("finance_transactions")
         .select("fees")
-        .eq("id", finance_transaction_id)
-        .single();
-      if (tx) originalFee = tx.fees;
+        .eq("id", finance_transaction_id as string)
+        .maybeSingle();
+      if (tx) originalFee = (tx as { fees: number }).fees;
     }
 
-    // Create the adjustment
     const { data: adjustment, error: adjustmentError } = await supabase
       .from("payment_fee_adjustments")
       .insert({
@@ -150,7 +368,6 @@ export async function POST(request: NextRequest) {
 
     if (adjustmentError) throw adjustmentError;
 
-    // Update the actual transaction fee
     if (payment_transaction_id) {
       const { error: updateError } = await supabase
         .from("payment_transactions")
@@ -158,11 +375,10 @@ export async function POST(request: NextRequest) {
           fees: adjusted_fee_amount,
           net_amount: () => `amount - ${adjusted_fee_amount}`,
         })
-        .eq("id", payment_transaction_id);
+        .eq("id", payment_transaction_id as string);
 
       if (updateError) {
         console.error("Error updating payment_transaction fee:", updateError);
-        // Don't fail the request, just log it
       }
     } else if (finance_transaction_id) {
       const { error: updateError } = await supabase
@@ -171,11 +387,10 @@ export async function POST(request: NextRequest) {
           fees: adjusted_fee_amount,
           net: () => `amount - ${adjusted_fee_amount} - commission`,
         })
-        .eq("id", finance_transaction_id);
+        .eq("id", finance_transaction_id as string);
 
       if (updateError) {
         console.error("Error updating finance_transaction fee:", updateError);
-        // Don't fail the request, just log it
       }
     }
 

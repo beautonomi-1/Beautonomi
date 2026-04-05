@@ -11,6 +11,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
+import { router } from "expo-router";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
 import { ScreenFrame } from "@/components/ScreenFrame";
@@ -18,8 +19,17 @@ import { useBiometricAuth } from "@/hooks/useBiometricAuth";
 import { useAuth } from "@/providers/AuthProvider";
 import { Colors } from "@/constants/colors";
 import { PhoneInputWithCountry } from "@/components/PhoneInputWithCountry";
+import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { parsePhoneToCountryAndNational } from "@/constants/phone";
+import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 import { getApiErrorMessage } from "@/lib/api-error";
+import {
+  normalizeSupabaseAuthPhone,
+  normalizeSupabaseSmsOtpToken,
+  isCompleteSupabaseSmsOtp,
+  SUPABASE_AUTH_OTP_LENGTH,
+  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+} from "@/lib/supabase-sms-otp";
 
 type PhoneStep = "enter_phone" | "enter_otp" | null;
 
@@ -38,7 +48,7 @@ export default function LoginAndSecurityScreen() {
   const [emailChangePending, setEmailChangePending] = useState(false);
 
   const [phoneStep, setPhoneStep] = useState<PhoneStep>(null);
-  const [phoneCountryCode, setPhoneCountryCode] = useState("+27");
+  const [phoneCountryCode, setPhoneCountryCode] = useState(getDeviceDefaultCountryDial);
   const [phoneNational, setPhoneNational] = useState("");
   const [pendingPhoneE164, setPendingPhoneE164] = useState("");
   const [phoneOtpCode, setPhoneOtpCode] = useState("");
@@ -134,8 +144,9 @@ export default function LoginAndSecurityScreen() {
 
   const handleSendPhoneOtp = async () => {
     const fullPhone = `${phoneCountryCode}${phoneNational.replace(/\D/g, "")}`.trim();
-    const e164 = fullPhone.startsWith("+") ? fullPhone : `+${fullPhone}`;
-    if (e164.length < 10) {
+    const raw = fullPhone.startsWith("+") ? fullPhone : `+${fullPhone}`;
+    const e164 = normalizeSupabaseAuthPhone(raw);
+    if (e164.replace(/\D/g, "").length < 10) {
       Alert.alert("Error", "Enter a valid phone number");
       return;
     }
@@ -146,7 +157,10 @@ export default function LoginAndSecurityScreen() {
       setPendingPhoneE164(e164);
       setPhoneStep("enter_otp");
       setPhoneOtpCode("");
-      Alert.alert("Code sent", "Enter the verification code sent to your phone.");
+      Alert.alert(
+        "Code sent",
+        `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code sent to your phone (valid about ${Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))} ${Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).`,
+      );
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "Failed to send code. Please try again.");
     } finally {
@@ -154,21 +168,23 @@ export default function LoginAndSecurityScreen() {
     }
   };
 
-  const handleVerifyPhoneOtp = async () => {
-    const code = phoneOtpCode.trim();
-    if (!code || !pendingPhoneE164) {
-      Alert.alert("Error", "Enter the verification code");
+  const handleVerifyPhoneOtp = async (otpOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(otpOverride ?? phoneOtpCode);
+    if (!pendingPhoneE164 || !isCompleteSupabaseSmsOtp(token)) {
+      Alert.alert("Error", `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS`);
       return;
     }
     setPhoneVerifying(true);
     try {
       const { error: verifyError } = await supabase.auth.verifyOtp({
-        phone: pendingPhoneE164,
-        token: code,
+        phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
+        token,
         type: "phone_change",
       });
       if (verifyError) throw verifyError;
-      const res = await api.patch<any>("/api/me/profile", { phone: pendingPhoneE164 });
+      const res = await api.patch<any>("/api/me/profile", {
+        phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
+      });
       if (res.error) throw new Error(res.error.message ?? "Failed to save phone");
       setPhoneStep(null);
       setPendingPhoneE164("");
@@ -196,7 +212,7 @@ export default function LoginAndSecurityScreen() {
 
   const currentEmail = profile?.email ?? user?.email ?? "";
   const currentPhone = profile?.phone ?? user?.phone ?? "";
-  const parsedPhone = parsePhoneToCountryAndNational(currentPhone);
+  const parsedPhone = parsePhoneToCountryAndNational(currentPhone, getDeviceDefaultCountryDial());
 
   return (
     <KeyboardAvoidingView
@@ -318,6 +334,11 @@ export default function LoginAndSecurityScreen() {
                     placeholder="New phone number"
                     accessibilityLabel="New phone number"
                   />
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 8, lineHeight: 18 }}>
+                    We&apos;ll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid about{" "}
+                    {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
+                    {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).
+                  </Text>
                   <TouchableOpacity
                     onPress={handleSendPhoneOtp}
                     disabled={phoneSending}
@@ -341,24 +362,18 @@ export default function LoginAndSecurityScreen() {
                   <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>
                     Code sent to {pendingPhoneE164.replace(/(\+\d{2,3})(\d{3})(\d+)(\d{4})/, "$1 $2 *** $4")}
                   </Text>
-                  <TextInput
-                    style={{
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: Colors.gray[300],
-                      backgroundColor: Colors.white,
-                      paddingHorizontal: 16,
-                      paddingVertical: 14,
-                      fontSize: 18,
-                      color: Colors.gray[900],
-                      letterSpacing: 4,
-                    }}
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 10 }}>
+                    Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS
+                  </Text>
+                  <OtpDigitRow
                     value={phoneOtpCode}
-                    onChangeText={setPhoneOtpCode}
-                    placeholder="000000"
-                    placeholderTextColor={Colors.gray[400]}
-                    keyboardType="number-pad"
-                    maxLength={6}
+                    onChange={setPhoneOtpCode}
+                    onComplete={(code) => {
+                      if (!phoneVerifying && isCompleteSupabaseSmsOtp(code)) void handleVerifyPhoneOtp(code);
+                    }}
+                    disabled={phoneVerifying}
+                    autoFocus
+                    accessibilityLabelPrefix="Phone change verification code"
                   />
                   <View style={{ flexDirection: "row", gap: 12, marginTop: 12 }}>
                     <TouchableOpacity
@@ -379,8 +394,8 @@ export default function LoginAndSecurityScreen() {
                       <Text style={{ color: Colors.gray[700], fontWeight: "600" }}>Cancel</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={handleVerifyPhoneOtp}
-                      disabled={phoneVerifying || !phoneOtpCode.trim()}
+                      onPress={() => void handleVerifyPhoneOtp()}
+                      disabled={phoneVerifying || !isCompleteSupabaseSmsOtp(phoneOtpCode)}
                       style={{
                         flex: 1,
                         backgroundColor: Colors.primary,
@@ -483,6 +498,29 @@ export default function LoginAndSecurityScreen() {
                 <Text style={{ color: Colors.white, fontWeight: "600" }}>
                   {updating ? "Updating..." : "Update password"}
                 </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ marginTop: 32 }}>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Account</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12, lineHeight: 20 }}>
+                Temporarily disable your account. You can reactivate later by signing in again.
+              </Text>
+              <TouchableOpacity
+                onPress={() => router.push("/(app)/account-settings/deactivate-account")}
+                style={{
+                  borderWidth: 1,
+                  borderColor: "#fecaca",
+                  backgroundColor: "#FEF2F2",
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
+                  alignItems: "center",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Deactivate account"
+              >
+                <Text style={{ color: "#b91c1c", fontWeight: "700", fontSize: 16 }}>Deactivate account</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>

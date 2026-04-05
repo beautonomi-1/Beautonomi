@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
+import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 /**
  * GET /api/public/faqs
@@ -9,43 +11,28 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   try {
     const supabase = await getSupabaseServer();
+    const tenant = await resolveTenantFromRequest(request);
+    const tenantId = tenant?.id ?? "";
     const { searchParams } = new URL(request.url);
     const category = searchParams.get("category");
     const limit = searchParams.get("limit");
 
-    let query = supabase
-      .from("faqs")
-      .select("*")
-      .eq("is_active", true)
-      .order("display_order", { ascending: true })
-      .order("created_at", { ascending: false });
-
-    if (category) {
-      query = query.eq("category", category);
-    }
-
-    if (limit) {
-      const limitNum = parseInt(limit, 10);
-      if (!isNaN(limitNum) && limitNum > 0) {
-        query = query.limit(limitNum);
-      }
-    }
-
-    const { data: faqs, error } = await query;
-
-    if (error) {
-      console.error("Error fetching FAQs:", error);
-      return NextResponse.json(
-        {
-          data: [],
-          error: {
-            message: "Failed to fetch FAQs",
-            code: "FETCH_ERROR",
-          },
-        },
-        { status: 500 }
-      );
-    }
+    const limitNum = limit ? parseInt(limit, 10) : NaN;
+    const scoped = await fetchScopedListMerged<Record<string, any>>({
+      supabase,
+      table: "faqs",
+      tenantId,
+      select: "*",
+      apply: (q) => {
+        let r = q.eq("is_active", true);
+        if (category) r = r.eq("category", category);
+        if (!isNaN(limitNum) && limitNum > 0) r = r.limit(limitNum);
+        return r;
+      },
+      dedupeKey: (row) => `${String(row.category ?? "")}::${String(row.question ?? row.id ?? "")}`,
+      orderBy: { column: "display_order", ascending: true },
+    });
+    const faqs = scoped.data;
 
     return NextResponse.json({
       data: faqs || [],

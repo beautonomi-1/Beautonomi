@@ -185,14 +185,27 @@ describe("POST /api/mapbox/check-zone", () => {
       data: [{ zone_id: "pz-1", zone_name: "Cape Metro" }],
       error: null,
     });
-    const chain = {
+    // Route only uses PostGIS results when active platform_zones exist (count query).
+    const platformZonesCountChain = {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
-      then: (onFulfilled?: (v: { data: unknown[]; error: null }) => unknown) =>
-        thenable({ data: [], error: null }).then(onFulfilled as (v: { data: unknown[]; error: null }) => unknown),
-      catch: (onRejected?: (e: unknown) => unknown) => thenable({ data: [], error: null }).catch(onRejected),
+      then: (onFulfilled?: (v: { count: number; data: null; error: null }) => unknown) =>
+        thenable({ count: 1, data: null, error: null }).then(
+          onFulfilled as (v: { count: number; data: null; error: null }) => unknown
+        ),
+      catch: (onRejected?: (e: unknown) => unknown) =>
+        thenable({ count: 1, data: null, error: null }).catch(onRejected),
     };
-    client.from.mockReturnValue(chain);
+    client.from.mockImplementation((table: string) => {
+      if (table === "platform_zones") return platformZonesCountChain;
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        then: (onFulfilled?: (v: { data: unknown[]; error: null }) => unknown) =>
+          thenable({ data: [], error: null }).then(onFulfilled as (v: { data: unknown[]; error: null }) => unknown),
+        catch: (onRejected?: (e: unknown) => unknown) => thenable({ data: [], error: null }).catch(onRejected),
+      };
+    });
     mockGetSupabaseServer.mockResolvedValue(client);
 
     const { POST } = await import("../route");

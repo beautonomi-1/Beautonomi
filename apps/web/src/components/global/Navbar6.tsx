@@ -13,6 +13,7 @@ import Pinterest from "./../../../public/images/pinterest-icon.svg";
 import Instagram from "./../../../public/images/instagram-icon.svg";
 import Tiktok from "./../../../public/images/tiktok-icon.svg";
 import { Input } from "../ui/input";
+import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 
 const Navbar6 = () => {
   const [isDropdownOpen, setDropdownOpen] = useState(false);
@@ -39,7 +40,7 @@ const Navbar6 = () => {
     { text: "About Us", href: "/about-us" },
     { text: "Media Assets", href: "/media-assets" },
     { text: "Product Releases", href: "/product-releases" },
-    { text: "Contact", href: "/contact" },
+    { text: "Contact", href: PLATFORM_CONTACT_HREF },
   ];
 
   const languages = [

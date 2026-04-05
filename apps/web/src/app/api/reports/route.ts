@@ -7,6 +7,7 @@ import {
   requireAuthInApi,
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
  * POST /api/reports
@@ -16,6 +17,7 @@ import {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
+    const requestTenantId = await resolveTenantIdWithZaFallback(request);
     const body = await request.json();
 
     const reportType = body.report_type;
@@ -35,6 +37,7 @@ export async function POST(request: NextRequest) {
     }
 
     let reportedUserId: string;
+    let customerReportProviderTenantId: string | null = null;
     if (reportType === "customer_reported_provider") {
       const providerId =
         typeof body.provider_id === "string" ? body.provider_id.trim() : "";
@@ -48,13 +51,20 @@ export async function POST(request: NextRequest) {
       const supabaseProvider = await getSupabaseAdmin();
       const { data: prov } = await supabaseProvider
         .from("providers")
-        .select("user_id")
+        .select("user_id, tenant_id")
         .eq("id", providerId)
         .single();
       if (!prov?.user_id) {
         return errorResponse("Provider not found", "NOT_FOUND", 404);
       }
+      const providerTenantId =
+        (prov as { tenant_id?: string | null }).tenant_id ?? null;
+      if (!providerTenantId || providerTenantId !== requestTenantId) {
+        return errorResponse("Provider not available in this market", "TENANT_MISMATCH", 404);
+      }
       reportedUserId = prov.user_id;
+      customerReportProviderTenantId =
+        providerTenantId;
     } else {
       reportedUserId =
         typeof body.reported_user_id === "string"
@@ -94,6 +104,35 @@ export async function POST(request: NextRequest) {
 
     const supabase = await getSupabaseAdmin();
 
+    let reportTenantId: string | null = null;
+    let reporterProviderId: string | null = null;
+    if (bookingId) {
+      const { data: b } = await supabase
+        .from("bookings")
+        .select("tenant_id")
+        .eq("id", bookingId)
+        .maybeSingle();
+      reportTenantId = (b as { tenant_id?: string } | null)?.tenant_id ?? null;
+    } else if (reportType === "customer_reported_provider") {
+      reportTenantId = customerReportProviderTenantId;
+    } else {
+      reporterProviderId = await getProviderIdForUser(user.id);
+      if (reporterProviderId) {
+        const { data: p } = await supabase
+          .from("providers")
+          .select("tenant_id")
+          .eq("id", reporterProviderId)
+          .maybeSingle();
+        reportTenantId = (p as { tenant_id?: string } | null)?.tenant_id ?? null;
+        if (reportTenantId && reportTenantId !== requestTenantId) {
+          return errorResponse("Provider not available in this market", "TENANT_MISMATCH", 404);
+        }
+      }
+    }
+    if (!reportTenantId) {
+      reportTenantId = requestTenantId;
+    }
+
     const { data: reporter } = await supabase
       .from("users")
       .select("id, role")
@@ -114,8 +153,10 @@ export async function POST(request: NextRequest) {
       // Allow any authenticated user to report a provider (customer, partner, etc.)
       // No role restriction so reporting works regardless of user role.
     } else {
-      const providerId = await getProviderIdForUser(user.id);
-      if (!providerId) {
+      if (!reporterProviderId) {
+        reporterProviderId = await getProviderIdForUser(user.id);
+      }
+      if (!reporterProviderId) {
         return errorResponse(
           "Only providers can report customers",
           "FORBIDDEN",
@@ -139,6 +180,7 @@ export async function POST(request: NextRequest) {
         report_type: reportType,
         description,
         booking_id: bookingId,
+        tenant_id: reportTenantId,
         status: "pending",
       })
       .select("id, reporter_id, reported_user_id, report_type, description, status, created_at")

@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -38,6 +39,7 @@ interface ProductSalesData {
 }
 
 export default function ProductSalesReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -135,7 +137,7 @@ export default function ProductSalesReport() {
             variant="outline" 
             onClick={() => {
               if (!data) return;
-              const exportData = formatReportDataForExport(data as unknown as ReportRow, "product-sales");
+              const exportData = formatReportDataForExport(data as unknown as ReportRow, "product-sales", exportCurrency);
               exportToCSV(exportData, "product-sales-report");
             }} 
             className="gap-2 min-h-[44px] touch-manipulation"
@@ -180,7 +182,7 @@ export default function ProductSalesReport() {
               <div className="flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-green-600" />
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalRevenue.toLocaleString()}
+                  {fmt(data.totalRevenue)}
                 </p>
               </div>
             </CardContent>
@@ -196,7 +198,7 @@ export default function ProductSalesReport() {
               <div className="flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-purple-600" />
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {(data.totalProfit ?? data.totalRevenue - (data.totalCost ?? 0)).toLocaleString()}
+                  {fmt(data.totalProfit ?? data.totalRevenue - (data.totalCost ?? 0))}
                 </p>
               </div>
             </CardContent>
@@ -212,7 +214,7 @@ export default function ProductSalesReport() {
               <div className="flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-gray-500" />
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.averageProductValue.toLocaleString()}
+                  {fmt(data.averageProductValue)}
                 </p>
               </div>
             </CardContent>
@@ -245,18 +247,18 @@ export default function ProductSalesReport() {
                           {product.quantitySold} sold
                         </p>
                         <p className="text-xs text-gray-500">
-                          Avg: ZAR {product.averagePrice.toLocaleString()}
+                          Avg: {fmt(product.averagePrice)}
                         </p>
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold text-gray-900">
-                      ZAR {product.revenue.toLocaleString()}
+                      {fmt(product.revenue)}
                     </p>
                     {product.profit != null && (
                       <p className="text-xs text-gray-500 mt-0.5">
-                        Profit: ZAR {product.profit.toLocaleString()}
+                        Profit: {fmt(product.profit)}
                       </p>
                     )}
                   </div>
@@ -298,9 +300,9 @@ export default function ProductSalesReport() {
                       {category.quantitySold} sold
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
-                      Revenue: ZAR {category.revenue.toLocaleString()}
+                      Revenue: {fmt(category.revenue)}
                       {category.profit != null && (
-                        <> · Profit: ZAR {category.profit.toLocaleString()}</>
+                        <> · Profit: {fmt(category.profit)}</>
                       )}
                     </p>
                   </div>

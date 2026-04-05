@@ -2,6 +2,13 @@ import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { collectTenantScopedUserIds } from "@/lib/tenant/admin-tenant-scope";
+import {
+  fetchFinanceLedgerExportRowsForTenant,
+  fetchFinanceLedgerRowsForTenant,
+  resolveFinanceLedgerRowProviderId,
+} from "@/lib/admin/finance-ledger-tenant";
 
 type ProviderRow = { id: string; business_name?: string; owner_name?: string; rating_average?: number; status?: string; created_at?: string };
 
@@ -9,6 +16,7 @@ export async function GET(request: NextRequest) {
   try {
     // Require superadmin role
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const supabase = getSupabaseAdmin();
 
@@ -16,6 +24,8 @@ export async function GET(request: NextRequest) {
       console.error("Failed to get Supabase admin client");
       return handleApiError(new Error("Database connection failed"), 'Failed to load Gods Eye data');
     }
+
+    const scopedUserIds = await collectTenantScopedUserIds(supabase, tenantId);
 
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
@@ -34,13 +44,24 @@ export async function GET(request: NextRequest) {
       { count: houseCallBookings } = { count: 0 },
       { count: salonBookings } = { count: 0 },
     ] = await Promise.all([
-      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'customer'),
-      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-      supabase.from('bookings').select('*', { count: 'exact', head: true }),
-      supabase.from('bookings').select('*', { count: 'exact', head: true }).in('status', ['confirmed', 'pending', 'in_progress']),
-      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'pending_approval'),
-      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('location_type', 'at_home'),
-      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('location_type', 'at_salon'),
+      (() => {
+        let q = supabase
+          .from("users")
+          .select("*", { count: "exact", head: true })
+          .eq("role", "customer");
+        if (scopedUserIds.length > 0) {
+          q = q.or(`preferred_home_tenant_id.eq.${tenantId},id.in.(${scopedUserIds.join(",")})`);
+        } else {
+          q = q.eq("preferred_home_tenant_id", tenantId);
+        }
+        return q;
+      })(),
+      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'active').eq('tenant_id', tenantId),
+      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId),
+      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).in('status', ['confirmed', 'pending', 'in_progress']),
+      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'pending_approval').eq('tenant_id', tenantId),
+      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('location_type', 'at_home'),
+      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('location_type', 'at_salon'),
     ]);
 
     // Get bookings by status
@@ -50,35 +71,22 @@ export async function GET(request: NextRequest) {
       { count: cancelledBookings } = { count: 0 },
       { count: completedBookings } = { count: 0 },
     ] = await Promise.all([
-      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('status', 'confirmed'),
-      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('status', 'cancelled'),
-      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('status', 'completed'),
+      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'confirmed'),
+      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'pending'),
+      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'cancelled'),
+      supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'completed'),
     ]);
 
-    // Get revenue breakdown (GMV = sum of amount for payment types)
+    // GMV from merged ledger (provider in tenant OR booking in tenant).
     const getRevenue = async (startISO: string, endISO?: string) => {
       try {
-        let query = supabase
-          .from("finance_transactions")
-          .select("transaction_type, amount")
-          .in("transaction_type", ["payment", "additional_charge_payment"])
-          .gte("created_at", startISO);
-
-        if (endISO) {
-          query = query.lte("created_at", endISO);
-        }
-
-        const { data, error } = await query;
-
-        if (error) {
-          console.error("Error fetching revenue:", error);
-          return 0;
-        }
-
-        const rows = data || [];
-        type RevenueRow = { amount?: number };
-        return (rows as RevenueRow[]).reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+        const rows = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
+          start: startISO,
+          end: endISO ?? null,
+        }, {
+          transactionTypes: ["payment", "additional_charge_payment"],
+        });
+        return rows.reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
       } catch (err) {
         console.error("Error calculating revenue:", err);
         return 0;
@@ -96,25 +104,29 @@ export async function GET(request: NextRequest) {
     const { data: activeProvidersData } = await supabase
       .from('providers')
       .select('id, business_name, owner_name, rating_average, status')
+      .eq('tenant_id', tenantId)
       .limit(20);
 
     const allProviderIds = (activeProvidersData || []).map((p: ProviderRow) => p.id);
 
-    // Revenue from finance_transactions (provider_earnings, travel_fee, tip)
+    // Revenue from merged ledger (provider_earnings, travel_fee, tip), scoped to listed providers
     const providerRevenue: Record<string, number> = {};
     if (allProviderIds.length > 0) {
-      const { data: providerTxRows } = await supabase
-        .from('finance_transactions')
-        .select('provider_id, net, amount')
-        .in('provider_id', allProviderIds)
-        .in('transaction_type', ['provider_earnings', 'travel_fee', 'tip']);
-      type TxRow = { provider_id?: string; net?: number; amount?: number };
-      (providerTxRows || []).forEach((t: TxRow) => {
-        const id = t.provider_id;
-        if (!id) return;
-        if (!providerRevenue[id]) providerRevenue[id] = 0;
-        providerRevenue[id] += Number(t.net ?? t.amount ?? 0);
-      });
+      try {
+        const merged = await fetchFinanceLedgerExportRowsForTenant(supabase, tenantId, {}, {
+          transactionTypes: ["provider_earnings", "travel_fee", "tip"],
+          restrictProviderIds: allProviderIds,
+        });
+        const idSet = new Set(allProviderIds);
+        for (const row of merged) {
+          const id = resolveFinanceLedgerRowProviderId(row);
+          if (!id || !idSet.has(id)) continue;
+          if (!providerRevenue[id]) providerRevenue[id] = 0;
+          providerRevenue[id] += Number(row.net ?? row.amount ?? 0);
+        }
+      } catch (err) {
+        console.error("Error loading gods-eye provider revenue ledger:", err);
+      }
     }
 
     // Bookings count per provider
@@ -123,6 +135,7 @@ export async function GET(request: NextRequest) {
       const { data: bookingRows } = await supabase
         .from('bookings')
         .select('provider_id')
+        .eq('tenant_id', tenantId)
         .in('provider_id', allProviderIds);
       (bookingRows || []).forEach((b: { provider_id?: string }) => {
         bookingsCounts[b.provider_id] = (bookingsCounts[b.provider_id] || 0) + 1;
@@ -140,12 +153,17 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
 
-    // Get top customers (by total spent) - finance_transactions has booking_id not customer_id, so derive via bookings
-    const { data: topCustomersData } = await supabase
-      .from('users')
-      .select('id, full_name, email')
-      .eq('role', 'customer')
-      .limit(20);
+    // Top customers: same tenant scoping as admin users list (preferred home + activity sample).
+    let topCustomersQuery = supabase
+      .from("users")
+      .select("id, full_name, email")
+      .eq("role", "customer");
+    if (scopedUserIds.length > 0) {
+      topCustomersQuery = topCustomersQuery.in("id", scopedUserIds);
+    } else {
+      topCustomersQuery = topCustomersQuery.eq("preferred_home_tenant_id", tenantId);
+    }
+    const { data: topCustomersData } = await topCustomersQuery.limit(20);
 
     type CustomerRow = { id: string; full_name?: string; email?: string };
     const customerIds = (topCustomersData || []).map((c: CustomerRow) => c.id);
@@ -156,29 +174,39 @@ export async function GET(request: NextRequest) {
       const { data: customerBookings } = await supabase
         .from('bookings')
         .select('id, customer_id')
+        .eq('tenant_id', tenantId)
         .in('customer_id', customerIds);
       type BookingRef = { id: string; customer_id?: string };
       (customerBookings || []).forEach((b: BookingRef) => {
         customerBookingsCounts[b.customer_id ?? ""] = (customerBookingsCounts[b.customer_id ?? ""] || 0) + 1;
       });
       const bookingIds = (customerBookings || []).map((b: BookingRef) => b.id);
+      const bookingToCustomer: Record<string, string> = {};
+      (customerBookings || []).forEach((b: BookingRef) => {
+        bookingToCustomer[b.id] = b.customer_id ?? "";
+      });
+      const customerIdSet = new Set(customerIds);
       if (bookingIds.length > 0) {
-        const { data: txRows } = await supabase
-          .from('finance_transactions')
-          .select('booking_id, amount')
-          .in('booking_id', bookingIds)
-          .in('transaction_type', ['payment', 'additional_charge_payment']);
-        const bookingToCustomer: Record<string, string> = {};
-        (customerBookings || []).forEach((b: BookingRef) => {
-          bookingToCustomer[b.id] = b.customer_id ?? "";
-        });
-        type TxRow = { booking_id?: string; amount?: number };
-        (txRows || []).forEach((t: TxRow) => {
-          const cid = bookingToCustomer[t.booking_id];
-          if (cid) {
-            customerSpent[cid] = (customerSpent[cid] || 0) + Number(t.amount || 0);
+        try {
+          const ledgerRows = await fetchFinanceLedgerRowsForTenant(
+            supabase,
+            tenantId,
+            {},
+            {
+              transactionTypes: ["payment", "additional_charge_payment"],
+              restrictBookingIds: bookingIds,
+            },
+          );
+          for (const row of ledgerRows) {
+            const bid = row.booking_id;
+            if (!bid) continue;
+            const cid = bookingToCustomer[bid];
+            if (!cid || !customerIdSet.has(cid)) continue;
+            customerSpent[cid] = (customerSpent[cid] || 0) + Number(row.amount ?? 0);
           }
-        });
+        } catch (err) {
+          console.error("Error loading gods-eye customer spend ledger:", err);
+        }
       }
     }
 
@@ -204,6 +232,7 @@ export async function GET(request: NextRequest) {
     const { data: recentBookings } = await supabase
       .from('bookings')
       .select('id, booking_number, status, created_at')
+      .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
       .limit(20);
 
@@ -222,11 +251,18 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Recent users
-    const { data: recentUsers } = await supabase
-      .from('users')
-      .select('id, full_name, email, created_at')
-      .order('created_at', { ascending: false })
+    let recentUsersQuery = supabase
+      .from("users")
+      .select("id, full_name, email, created_at");
+    if (scopedUserIds.length > 0) {
+      recentUsersQuery = recentUsersQuery.or(
+        `preferred_home_tenant_id.eq.${tenantId},id.in.(${scopedUserIds.join(",")})`
+      );
+    } else {
+      recentUsersQuery = recentUsersQuery.eq("preferred_home_tenant_id", tenantId);
+    }
+    const { data: recentUsers } = await recentUsersQuery
+      .order("created_at", { ascending: false })
       .limit(10);
 
     if (recentUsers) {
@@ -248,6 +284,7 @@ export async function GET(request: NextRequest) {
     const { data: recentProviders } = await supabase
       .from('providers')
       .select('id, business_name, status, created_at')
+      .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
       .limit(10);
 

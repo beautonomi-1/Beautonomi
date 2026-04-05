@@ -23,6 +23,14 @@ import {
 import { PhoneInput } from "@/components/ui/phone-input";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { normalizeFullPhoneToE164 } from "@/lib/phone";
+import {
+  SUPABASE_AUTH_OTP_LENGTH,
+  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+  normalizeSupabaseAuthPhone,
+  normalizeSupabaseSmsOtpToken,
+  isCompleteSupabaseSmsOtp,
+} from "@/lib/supabase/auth-sms-otp";
+import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 
 const tabs = [
   { value: "step1", label: "LOGIN" },
@@ -231,12 +239,13 @@ const LoginAccount = () => {
 
   const handleSendPhoneOtp = async (e164: string) => {
     if (!e164 || !e164.startsWith("+")) return;
+    const normalized = normalizeSupabaseAuthPhone(e164);
     setIsSendingPhoneOtp(true);
     try {
       const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.updateUser({ phone: e164 });
+      const { error } = await supabase.auth.updateUser({ phone: normalized });
       if (error) throw error;
-      setPendingPhoneE164(e164);
+      setPendingPhoneE164(normalized);
       setPhoneStep("enter_otp");
       setPhoneOtpCode("");
       toast.success("Verification code sent to your phone.");
@@ -247,20 +256,22 @@ const LoginAccount = () => {
     }
   };
 
-  const handleVerifyPhoneOtp = async () => {
-    if (!phoneOtpCode.trim() || !pendingPhoneE164) return;
+  const handleVerifyPhoneOtp = async (otpOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(otpOverride ?? phoneOtpCode);
+    if (!pendingPhoneE164 || !isCompleteSupabaseSmsOtp(token)) return;
     setIsVerifyingPhoneOtp(true);
     try {
       const supabase = getSupabaseClient();
+      const phone = normalizeSupabaseAuthPhone(pendingPhoneE164);
       const { error } = await supabase.auth.verifyOtp({
-        phone: pendingPhoneE164,
-        token: phoneOtpCode.trim(),
+        phone,
+        token,
         type: "phone_change",
       });
       if (error) throw error;
-      await fetcher.patch("/api/me/profile", { phone: pendingPhoneE164 });
-      const digits = pendingPhoneE164.replace(/\D/g, "");
-      setProfilePhone(digits.length >= 4 ? `${digits.substring(0, 3)} *** ***${digits.substring(digits.length - 4)}` : pendingPhoneE164);
+      await fetcher.patch("/api/me/profile", { phone });
+      const digits = phone.replace(/\D/g, "");
+      setProfilePhone(digits.length >= 4 ? `${digits.substring(0, 3)} *** ***${digits.substring(digits.length - 4)}` : phone);
       setShowPhoneDialog(false);
       setPhoneStep("enter_phone");
       setPendingPhoneE164("");
@@ -663,30 +674,39 @@ const LoginAccount = () => {
             <DialogTitle className="text-xl font-semibold tracking-tighter text-gray-900">Change phone number</DialogTitle>
             <DialogDescription className="text-sm text-gray-600 font-light">
               {phoneStep === "enter_phone"
-                ? "Enter your new phone number. We'll send a verification code."
-                : "Enter the 6-digit code we sent to your phone."}
+                ? `Enter your new phone number. We'll SMS a ${SUPABASE_AUTH_OTP_LENGTH}-digit code (valid about ${Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))} ${Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).`
+                : `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code we sent to your phone.`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {phoneStep === "enter_phone" ? (
               <PhoneInput
+                inputId="account-settings-change-phone"
+                label=""
+                inputAriaLabel="New phone number"
                 value={dialogPhoneValue}
                 onChange={(v) => setDialogPhoneValue(v)}
-                defaultCountryCode="+27"
                 placeholder="Phone number"
                 className="backdrop-blur-sm bg-white/60 border-white/40"
               />
             ) : (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Verification code</label>
-                <Input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
+                <p className="text-sm font-medium text-gray-900 mb-1">Enter verification code</p>
+                <p className="mb-3 text-sm text-gray-600">
+                  {SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS
+                </p>
+                <OtpDigitInput
+                  length={SUPABASE_AUTH_OTP_LENGTH}
                   value={phoneOtpCode}
-                  onChange={(e) => setPhoneOtpCode(e.target.value.replace(/\D/g, ""))}
-                  placeholder="000000"
-                  className="backdrop-blur-sm bg-white/60 border-white/40"
+                  onChange={setPhoneOtpCode}
+                  onComplete={(code) => {
+                    if (!isVerifyingPhoneOtp && isCompleteSupabaseSmsOtp(code)) {
+                      void handleVerifyPhoneOtp(code);
+                    }
+                  }}
+                  disabled={isVerifyingPhoneOtp}
+                  autoFocus
+                  label="Phone verification code"
                 />
               </div>
             )}
@@ -704,8 +724,8 @@ const LoginAccount = () => {
                 </Button>
                 <Button
                   type="button"
-                  onClick={handleVerifyPhoneOtp}
-                  disabled={isVerifyingPhoneOtp || !phoneOtpCode.trim()}
+                  onClick={() => void handleVerifyPhoneOtp()}
+                  disabled={isVerifyingPhoneOtp || !isCompleteSupabaseSmsOtp(phoneOtpCode)}
                   className="bg-primary hover:bg-primary-hover text-white"
                 >
                   {isVerifyingPhoneOtp ? "Verifying…" : "Verify & save"}

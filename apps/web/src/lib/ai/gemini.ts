@@ -40,10 +40,37 @@ interface GeminiResponse {
   usageMetadata?: GeminiUsageMetadata;
 }
 
+const GEMINI_WINDOW_MS = 60_000;
+const GEMINI_MAX_PER_MINUTE = 30;
+const geminiCounts = new Map<string, { count: number; firstAt: number }>();
+
+function checkGeminiQuota(providerId: string): boolean {
+  const now = Date.now();
+  const entry = geminiCounts.get(providerId);
+  if (!entry || now - entry.firstAt > GEMINI_WINDOW_MS) {
+    geminiCounts.set(providerId, { count: 1, firstAt: now });
+    return true;
+  }
+  if (entry.count >= GEMINI_MAX_PER_MINUTE) return false;
+  entry.count++;
+  return true;
+}
+
 /**
  * Call Gemini generateContent. Returns raw text and token counts.
+ * Enforces a per-provider rate limit of 30 requests/minute.
  */
-export async function callGemini(params: CallGeminiParams): Promise<CallGeminiResult> {
+export async function callGemini(params: CallGeminiParams & { providerId?: string }): Promise<CallGeminiResult> {
+  if (params.providerId && !checkGeminiQuota(params.providerId)) {
+    return {
+      text: "",
+      tokensIn: 0,
+      tokensOut: 0,
+      success: false,
+      errorCode: "GEMINI_RATE_LIMITED",
+    };
+  }
+
   const {
     apiKey,
     model,

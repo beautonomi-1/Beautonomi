@@ -21,6 +21,13 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { twStyle } from "@/lib/twStyle";
+import { E164PhoneField } from "@/components/E164PhoneField";
+import { validateE164Phone } from "@/lib/phone-country-codes";
+import { getCachedConfigBundle } from "@/lib/config-bundle";
+
+function tenantCountryFallback(): string {
+  return getCachedConfigBundle()?.meta?.tenant_region?.name?.trim() || "";
+}
 
 /* ─── types ─── */
 interface Location {
@@ -59,7 +66,7 @@ const EMPTY_FORM: LocationForm = {
   city: "",
   state: "",
   postal_code: "",
-  country: "South Africa",
+  country: "",
   phone: "",
   email: "",
   latitude: null,
@@ -119,7 +126,7 @@ export default function LocationsSettingsScreen() {
     data: locations,
     loading,
     refresh,
-  } = useApi<Location[]>("/api/provider/locations");
+  } = useApi<Location[]>("/api/provider/locations?include_inactive=true");
   const { execute: createLocation, loading: creating } = useApiPost<
     LocationForm,
     Location
@@ -140,7 +147,7 @@ export default function LocationsSettingsScreen() {
 
   function openAddSheet() {
     setEditingId(null);
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, country: tenantCountryFallback() });
     setErrors({});
     setSheetVisible(true);
   }
@@ -155,7 +162,7 @@ export default function LocationsSettingsScreen() {
       city: loc.city,
       state: loc.state ?? "",
       postal_code: loc.postal_code ?? "",
-      country: loc.country ?? "South Africa",
+      country: loc.country ?? tenantCountryFallback(),
       phone: loc.phone ?? "",
       email: loc.email ?? "",
       latitude: (loc as unknown as Record<string, unknown>).latitude as number | null ?? null,
@@ -173,8 +180,13 @@ export default function LocationsSettingsScreen() {
     if (!form.name.trim()) newErrors.name = "Location name is required";
     if (!form.address_line1.trim()) newErrors.address_line1 = "Address is required";
     if (!form.city.trim()) newErrors.city = "City is required";
+    if (!form.country.trim()) newErrors.country = "Country is required";
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
       newErrors.email = "Invalid email address";
+    }
+    if (form.phone?.trim()) {
+      const phoneErr = validateE164Phone(form.phone.trim());
+      if (phoneErr) newErrors.phone = phoneErr;
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -461,17 +473,28 @@ export default function LocationsSettingsScreen() {
             <FormField
               label="Country"
               value={form.country}
-              onChangeText={(v) => updateField("country", v)}
+              onChangeText={(v) => {
+                updateField("country", v);
+                setErrors((prev) => ({ ...prev, country: undefined }));
+              }}
+              required
+              error={errors.country}
             />
           </View>
         </View>
 
-        <FormField
-          label="Phone"
-          value={form.phone}
-          onChangeText={(v) => updateField("phone", v)}
-          keyboardType="phone-pad"
+        <E164PhoneField
+          label="Phone (optional)"
+          valueE164={form.phone}
+          onChangeE164={(v) => {
+            updateField("phone", v);
+            setErrors((prev) => ({ ...prev, phone: undefined }));
+          }}
+          showHint
         />
+        {errors.phone ? (
+          <Text style={twStyle("text-sm text-red-600 mt-1")}>{errors.phone}</Text>
+        ) : null}
         <FormField
           label="Email"
           value={form.email}

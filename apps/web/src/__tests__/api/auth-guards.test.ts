@@ -129,7 +129,9 @@ describe("Paystack routes – authentication", () => {
     vi.clearAllMocks();
   });
 
-  it("POST /api/paystack/initialize rejects unauthenticated requests", async () => {
+  it(
+    "POST /api/paystack/initialize rejects unauthenticated requests",
+    async () => {
     rejectAuth();
 
     // The route handler catches the thrown error and returns an error response
@@ -145,7 +147,9 @@ describe("Paystack routes – authentication", () => {
 
     const res = await POST(req as NextRequest);
     await expectAuthError(res);
-  });
+  },
+    20_000,
+  );
 
   it("POST /api/paystack/initialize accepts authenticated customer", async () => {
     allowAuth(MOCK_USERS.customer);
@@ -181,6 +185,21 @@ describe("Paystack routes – authentication", () => {
       method: "GET",
       url: "http://localhost:3000/api/paystack/verify",
       searchParams: { reference: "ref_12345" },
+    });
+
+    const res = await GET(req as NextRequest);
+    await expectAuthError(res);
+  });
+
+  it("GET /api/paystack/verify-reference rejects unauthenticated requests", async () => {
+    rejectAuth();
+
+    const { GET } = await import("@/app/api/paystack/verify-reference/route");
+
+    const req = createMockNextRequest({
+      method: "GET",
+      url: "http://localhost:3000/api/paystack/verify-reference",
+      searchParams: { reference: "ref_12345", booking_id: "00000000-0000-0000-0000-000000000001" },
     });
 
     const res = await GET(req as NextRequest);
@@ -309,6 +328,26 @@ describe("Admin routes – superadmin requirement", () => {
     expect(res.status).not.toBe(403);
   });
 
+  it("POST /api/admin/users rejects non-superadmin roles", async () => {
+    rejectRole("Insufficient permissions: requires one of superadmin");
+
+    const { POST } = await import("@/app/api/admin/users/route");
+
+    const req = createMockNextRequest({
+      method: "POST",
+      url: "http://localhost:3000/api/admin/users",
+      body: {
+        email: "new.user@example.com",
+        password: "password123",
+        full_name: "New User",
+        role: "customer",
+      },
+    });
+
+    const res = await POST(req as NextRequest);
+    await expectAuthError(res);
+  });
+
   it("GET /api/admin/bookings rejects unauthenticated requests", async () => {
     rejectAuth();
 
@@ -346,6 +385,110 @@ describe("Admin routes – superadmin requirement", () => {
     const req = createMockNextRequest({
       method: "GET",
       url: "http://localhost:3000/api/admin/platform-fees",
+    });
+
+    const res = await GET(req as NextRequest);
+    await expectAuthError(res);
+  });
+
+  it("PUT /api/admin/users/[id]/role rejects non-superadmin roles", async () => {
+    rejectRole("Insufficient permissions: requires one of superadmin");
+
+    const { PUT } = await import("@/app/api/admin/users/[id]/role/route");
+    const req = createMockNextRequest({
+      method: "PUT",
+      url: "http://localhost:3000/api/admin/users/abc/role",
+      body: { role: "customer" },
+    });
+
+    const res = await PUT(req as NextRequest, {
+      params: Promise.resolve({ id: "abc" }),
+    } as { params: Promise<{ id: string }> });
+    await expectAuthError(res);
+  });
+
+  it("POST /api/admin/users/[id]/impersonate rejects non-superadmin roles", async () => {
+    rejectRole("Insufficient permissions: requires one of superadmin");
+
+    const { POST } = await import("@/app/api/admin/users/[id]/impersonate/route");
+    const req = createMockNextRequest({
+      method: "POST",
+      url: "http://localhost:3000/api/admin/users/abc/impersonate",
+      body: { reason: "Support investigation" },
+    });
+
+    const res = await POST(req as NextRequest, {
+      params: Promise.resolve({ id: "abc" }),
+    } as { params: Promise<{ id: string }> });
+    await expectAuthError(res);
+  });
+
+  it("POST /api/admin/support-tickets rejects customer role", async () => {
+    rejectRole("Insufficient permissions: requires one of superadmin, support_agent, admin_support");
+
+    const { POST } = await import("@/app/api/admin/support-tickets/route");
+    const req = createMockNextRequest({
+      method: "POST",
+      url: "http://localhost:3000/api/admin/support-tickets",
+      body: { subject: "Help", description: "Need assistance" },
+    });
+
+    const res = await POST(req as NextRequest);
+    await expectAuthError(res);
+  });
+
+  it("POST /api/admin/support-tickets/[id]/messages rejects customer role", async () => {
+    rejectRole("Insufficient permissions: requires one of superadmin, support_agent");
+
+    const { POST } = await import("@/app/api/admin/support-tickets/[id]/messages/route");
+    const req = createMockNextRequest({
+      method: "POST",
+      url: "http://localhost:3000/api/admin/support-tickets/abc/messages",
+      body: { message: "Need update" },
+    });
+
+    const res = await POST(req as NextRequest, {
+      params: Promise.resolve({ id: "abc" }),
+    } as { params: Promise<{ id: string }> });
+    await expectAuthError(res);
+  });
+
+  it("POST /api/admin/support-tickets/[id]/notes rejects customer role", async () => {
+    rejectRole("Insufficient permissions: requires one of superadmin, support_agent, admin_support");
+
+    const { POST } = await import("@/app/api/admin/support-tickets/[id]/notes/route");
+    const req = createMockNextRequest({
+      method: "POST",
+      url: "http://localhost:3000/api/admin/support-tickets/abc/notes",
+      body: { note: "Internal note" },
+    });
+
+    const res = await POST(req as NextRequest, {
+      params: Promise.resolve({ id: "abc" }),
+    } as { params: Promise<{ id: string }> });
+    await expectAuthError(res);
+  });
+
+  it("GET /api/admin/mapbox/service-zones rejects provider_owner role", async () => {
+    rejectRole("Insufficient permissions: access to section 'integrations_dev' required");
+
+    const { GET } = await import("@/app/api/admin/mapbox/service-zones/route");
+    const req = createMockNextRequest({
+      method: "GET",
+      url: "http://localhost:3000/api/admin/mapbox/service-zones",
+    });
+
+    const res = await GET(req as NextRequest);
+    await expectAuthError(res);
+  });
+
+  it("GET /api/admin/travel-fees rejects provider_owner role", async () => {
+    rejectRole("Insufficient permissions: access to section 'integrations_dev' required");
+
+    const { GET } = await import("@/app/api/admin/travel-fees/route");
+    const req = createMockNextRequest({
+      method: "GET",
+      url: "http://localhost:3000/api/admin/travel-fees",
     });
 
     const res = await GET(req as NextRequest);

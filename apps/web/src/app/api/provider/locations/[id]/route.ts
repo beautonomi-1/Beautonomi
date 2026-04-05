@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
+import { ensureProviderHasPrimaryLocation } from "@/lib/provider/location-maintenance";
 
 /**
  * GET /api/provider/locations/[id]
@@ -113,17 +114,32 @@ export async function PATCH(
     // Map operating_hours to working_hours for database
     if (body.operating_hours !== undefined) updateData.working_hours = body.operating_hours;
 
-    // Handle coordinates
-    let finalLatitude = body.latitude !== undefined ? (body.latitude ? parseFloat(body.latitude.toString()) : null) : (existingLocationData as any)?.latitude;
-    let finalLongitude = body.longitude !== undefined ? (body.longitude ? parseFloat(body.longitude.toString()) : null) : (existingLocationData as any)?.longitude;
+    const coordsInBody = body.latitude !== undefined || body.longitude !== undefined;
 
-    // Re-geocode if address fields changed and coordinates not explicitly provided
+    // Handle coordinates (preserve existing when not sent)
+    let finalLatitude =
+      body.latitude !== undefined
+        ? body.latitude != null && String(body.latitude) !== ""
+          ? parseFloat(body.latitude.toString())
+          : null
+        : (existingLocationData as any)?.latitude;
+    let finalLongitude =
+      body.longitude !== undefined
+        ? body.longitude != null && String(body.longitude) !== ""
+          ? parseFloat(body.longitude.toString())
+          : null
+        : (existingLocationData as any)?.longitude;
+
+    // Re-geocode when address changed but client did not send new coordinates (avoid stale pins)
     const addressChanged =
       body.address_line1 !== undefined ||
+      body.address_line2 !== undefined ||
       body.city !== undefined ||
+      body.state !== undefined ||
+      body.postal_code !== undefined ||
       body.country !== undefined;
 
-    if (addressChanged && (!finalLatitude || !finalLongitude)) {
+    if (addressChanged && !coordsInBody) {
       try {
         const mapbox = await getMapboxService();
         const fullAddress = [
@@ -159,7 +175,7 @@ export async function PATCH(
       await supabase
         .from("provider_locations")
         .update({ is_primary: false } as any)
-        .eq("provider_id", existingLocationData?.provider_id)
+        .eq("provider_id", providerId)
         .neq("id", id);
     }
 
@@ -174,6 +190,8 @@ export async function PATCH(
       throw updateError || new Error("Failed to update location");
     }
 
+    await ensureProviderHasPrimaryLocation(supabase, providerId);
+
     // Map working_hours to operating_hours for frontend consistency
     const mappedLocation = {
       ...updatedLocation,
@@ -183,7 +201,7 @@ export async function PATCH(
     // If this location is being set as primary or address changed, check for suggested zones
     const isPrimary = (updatedLocation as any).is_primary;
     
-    if ((isPrimary || addressChanged) && finalLatitude && finalLongitude) {
+    if ((isPrimary || addressChanged) && finalLatitude != null && finalLongitude != null) {
       try {
         const { getMapboxService: getMapbox } = await import("@/lib/mapbox/mapbox");
         const mapbox = await getMapbox();
@@ -322,7 +340,7 @@ export async function DELETE(
     // Verify location belongs to provider
     const { data: existingLocation } = await supabase
       .from("provider_locations")
-      .select("id")
+      .select("id, is_primary")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -338,9 +356,11 @@ export async function DELETE(
       .eq("id", id);
 
     if (deleteError) {
-      const code = (deleteError as { code?: string }).code;
-      // PostgreSQL FK violation = location is in use
-      if (code === "23503") {
+      const errAny = deleteError as { code?: string; message?: string };
+      const code = errAny.code;
+      const msg = (errAny.message || "").toLowerCase();
+      // PostgreSQL FK violation = location is in use (code shape varies by PostgREST/driver)
+      if (code === "23503" || msg.includes("foreign key") || msg.includes("violates foreign key")) {
         const { error: updateError } = await (supabase
           .from("provider_locations") as any)
           .update({ is_active: false })
@@ -352,11 +372,13 @@ export async function DELETE(
             400
           );
         }
+        await ensureProviderHasPrimaryLocation(supabase, providerId);
         return successResponse({ success: true, deactivated: true });
       }
       throw deleteError;
     }
 
+    await ensureProviderHasPrimaryLocation(supabase, providerId);
     return successResponse({ success: true });
   } catch (error) {
     return handleApiError(error, "Failed to delete location");

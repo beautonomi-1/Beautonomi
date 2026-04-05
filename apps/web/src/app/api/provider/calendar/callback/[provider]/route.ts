@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { decodeCalendarOAuthState } from "@/lib/calendar/oauth-state";
 
 /**
  * Get OAuth credentials from database (with environment variable fallback)
@@ -67,101 +67,145 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ provider: string }> }
 ) {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const redirectSuccess = `${baseUrl}/provider/settings/calendar-integration?success=true&provider=`;
+  const redirectError = `${baseUrl}/provider/settings/calendar-integration?error=`;
+
   try {
     const { provider } = await params;
     const { searchParams } = new URL(request.url);
     const code = searchParams.get("code");
-    const _state = searchParams.get("state");
+    const stateParam = searchParams.get("state");
     const error = searchParams.get("error");
 
     if (error) {
-      return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/provider/settings/calendar-integration?error=${encodeURIComponent(error)}`
-      );
+      return NextResponse.redirect(redirectError + encodeURIComponent(error));
     }
 
     if (!code) {
-      return NextResponse.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/provider/settings/calendar-integration?error=no_code`
-      );
+      return NextResponse.redirect(redirectError + "no_code");
     }
 
-    const _supabase = await getSupabaseServer(request);
+    if (provider !== "google" && provider !== "outlook") {
+      return NextResponse.redirect(redirectError + "invalid_provider");
+    }
 
-    // Exchange code for tokens
-    let _tokens: any = {};
+    const providerId = decodeCalendarOAuthState(stateParam);
+    if (!providerId) {
+      return NextResponse.redirect(redirectError + "invalid_state");
+    }
+
+    const redirectUri = `${baseUrl}/api/provider/calendar/callback/${provider}`;
+    let accessToken: string;
+    let refreshToken: string | null = null;
+    let calendarId: string | null = "primary"; // Google primary calendar
+    let expiresIn: number | null = null;
 
     if (provider === "google") {
       const credentials = await getCalendarOAuthCredentials("google");
       if (!credentials) {
         throw new Error("Google Calendar OAuth credentials not configured");
       }
-      
-      const clientId = credentials.clientId;
-      const clientSecret = credentials.clientSecret;
-      const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/provider/calendar/callback/${provider}`;
 
       const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           code,
-          client_id: clientId || "",
-          client_secret: clientSecret || "",
+          client_id: credentials.clientId,
+          client_secret: credentials.clientSecret,
           redirect_uri: redirectUri,
           grant_type: "authorization_code",
         }),
       });
 
       if (!tokenResponse.ok) {
+        const errBody = await tokenResponse.text();
+        console.error("Google token exchange failed:", errBody);
         throw new Error("Failed to exchange code for tokens");
       }
 
-      _tokens = await tokenResponse.json();
-    } else if (provider === "outlook") {
+      const tokens = (await tokenResponse.json()) as {
+        access_token: string;
+        refresh_token?: string;
+        expires_in?: number;
+      };
+      accessToken = tokens.access_token;
+      refreshToken = tokens.refresh_token ?? null;
+      expiresIn = tokens.expires_in ?? null;
+    } else {
       const credentials = await getCalendarOAuthCredentials("outlook");
       if (!credentials) {
         throw new Error("Outlook OAuth credentials not configured");
       }
-      
-      const clientId = credentials.clientId;
-      const clientSecret = credentials.clientSecret;
-      const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/provider/calendar/callback/${provider}`;
 
       const tokenResponse = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           code,
-          client_id: clientId || "",
-          client_secret: clientSecret || "",
+          client_id: credentials.clientId,
+          client_secret: credentials.clientSecret,
           redirect_uri: redirectUri,
           grant_type: "authorization_code",
         }),
       });
 
       if (!tokenResponse.ok) {
+        const errBody = await tokenResponse.text();
+        console.error("Outlook token exchange failed:", errBody);
         throw new Error("Failed to exchange code for tokens");
       }
 
-      _tokens = await tokenResponse.json();
+      const tokens = (await tokenResponse.json()) as {
+        access_token: string;
+        refresh_token?: string;
+        expires_in?: number;
+      };
+      accessToken = tokens.access_token;
+      refreshToken = tokens.refresh_token ?? null;
+      expiresIn = tokens.expires_in ?? null;
+      calendarId = null; // Outlook calendar id can be resolved when syncing
     }
 
-    // Get user info to get calendar ID
-    // In production, store tokens securely (encrypted) and calendar sync settings
-    // For now, redirect back to settings page with success
+    const supabaseAdmin = await getSupabaseAdmin();
 
-    return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/provider/settings/calendar-integration?success=true&provider=${provider}`
-    );
+    const metadata: Record<string, unknown> = {};
+    if (expiresIn != null) metadata.expires_in = expiresIn;
+
+    const { data: existing } = await supabaseAdmin
+      .from("calendar_syncs")
+      .select("id")
+      .eq("provider_id", providerId)
+      .eq("provider", provider)
+      .maybeSingle();
+
+    const row = {
+      provider_id: providerId,
+      provider,
+      calendar_id: calendarId,
+      calendar_name: provider === "google" ? "Google Calendar" : "Outlook Calendar",
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      sync_direction: "app_to_calendar",
+      is_active: true,
+      sync_error: null,
+      metadata,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existing) {
+      await supabaseAdmin
+        .from("calendar_syncs")
+        .update(row)
+        .eq("id", existing.id);
+    } else {
+      await supabaseAdmin.from("calendar_syncs").insert(row);
+    }
+
+    return NextResponse.redirect(redirectSuccess + provider);
   } catch (error) {
     console.error("Error handling calendar callback:", error);
-    return NextResponse.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/provider/settings/calendar-integration?error=callback_failed`
-    );
+    return NextResponse.redirect(redirectError + "callback_failed");
   }
 }

@@ -35,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RADIX_SELECT_ALL } from "@/lib/ui/select-radix-sentinels";
 
 interface NotificationTemplate {
   id: string;
@@ -865,14 +866,19 @@ function SendNotificationTab({ onSend }: { onSend: () => void }) {
                 <div>
                   <Label htmlFor="segment_role" className="text-sm">Role</Label>
                   <Select
-                    value={segmentFilters.role}
-                    onValueChange={(v) => setSegmentFilters({ ...segmentFilters, role: v })}
+                    value={segmentFilters.role || RADIX_SELECT_ALL}
+                    onValueChange={(v) =>
+                      setSegmentFilters({
+                        ...segmentFilters,
+                        role: v === RADIX_SELECT_ALL ? "" : v,
+                      })
+                    }
                   >
                     <SelectTrigger id="segment_role">
                       <SelectValue placeholder="All roles" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Roles</SelectItem>
+                      <SelectItem value={RADIX_SELECT_ALL}>All Roles</SelectItem>
                       <SelectItem value="customer">Customer</SelectItem>
                       <SelectItem value="provider_owner">Provider Owner</SelectItem>
                       <SelectItem value="provider_staff">Provider Staff</SelectItem>
@@ -882,14 +888,19 @@ function SendNotificationTab({ onSend }: { onSend: () => void }) {
                 <div>
                   <Label htmlFor="segment_verified" className="text-sm">Verification Status</Label>
                   <Select
-                    value={segmentFilters.verified}
-                    onValueChange={(v) => setSegmentFilters({ ...segmentFilters, verified: v })}
+                    value={segmentFilters.verified || RADIX_SELECT_ALL}
+                    onValueChange={(v) =>
+                      setSegmentFilters({
+                        ...segmentFilters,
+                        verified: v === RADIX_SELECT_ALL ? "" : v,
+                      })
+                    }
                   >
                     <SelectTrigger id="segment_verified">
                       <SelectValue placeholder="All" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All</SelectItem>
+                      <SelectItem value={RADIX_SELECT_ALL}>All</SelectItem>
                       <SelectItem value="verified">Verified Only</SelectItem>
                       <SelectItem value="unverified">Unverified Only</SelectItem>
                     </SelectContent>

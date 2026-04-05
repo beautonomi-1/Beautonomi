@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/providers
@@ -12,6 +13,7 @@ export async function GET(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
 
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
     const statusFilter = searchParams.get("status");
 
@@ -32,6 +34,7 @@ export async function GET(request: NextRequest) {
         created_at,
         provider_locations (city, country)
       `)
+      .eq("tenant_id", tenantId)
       .order("business_name", { ascending: true });
 
     if (statusFilter && statusFilter !== "all") {

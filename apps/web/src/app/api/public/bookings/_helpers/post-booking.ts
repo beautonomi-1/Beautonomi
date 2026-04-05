@@ -4,6 +4,7 @@ import {
   EVENT_BOOKING_CONFIRMED,
   EVENT_BOOKING_HOLD_CREATED,
 } from "@/lib/analytics/amplitude/types";
+import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
 import type { BookingDraft } from "@/types/beautonomi";
 import type { ValidatedBookingData } from "./validate-booking";
 
@@ -12,7 +13,7 @@ import type { ValidatedBookingData } from "./validate-booking";
 export interface PostBookingInput {
   supabase: SupabaseClient;
   draft: BookingDraft;
-  validatedDraft: Record<string, any>;
+  validatedDraft: PublicBookingValidatedBody;
   v: ValidatedBookingData;
   booking: any;
   paymentUrl: string | null;
@@ -65,6 +66,18 @@ export async function postBookingEffects(input: PostBookingInput): Promise<void>
     console.error("Error notifying provider of new booking:", notifError);
   }
 
+  // ── Notify customer that their booking is confirmed ────────────────────────
+  try {
+    const { notifyBookingConfirmed } = await import("@/lib/notifications/notification-service");
+    await notifyBookingConfirmed(booking.id, ["push", "email"]);
+  } catch (notifError) {
+    console.error("Error sending booking confirmation to customer:", notifError);
+  }
+
+  void import("@/lib/subscriptions/subscription-limit-notifications")
+    .then((m) => m.maybeNotifyProviderSubscriptionLimits(draft.provider_id))
+    .catch((e) => console.warn("Subscription usage notification:", e));
+
   // ── Amplitude analytics ──────────────────────────────────────────────────
   try {
     const userId = v.customerId || null;
@@ -84,6 +97,16 @@ export async function postBookingEffects(input: PostBookingInput): Promise<void>
       );
     }
 
+    const pm = validatedDraft.payment_method || "card";
+    const paymentMethodLabel =
+      pm === "cash"
+        ? "cash"
+        : pm === "giftcard"
+          ? "gift_card"
+          : savedPaymentMethodId
+            ? "saved_card"
+            : "new_card";
+
     await trackServer(
       EVENT_BOOKING_CONFIRMED,
       {
@@ -94,7 +117,8 @@ export async function postBookingEffects(input: PostBookingInput): Promise<void>
         currency: v.currency,
         service_ids: draft.services.map((s) => s.offering_id),
         location_type: draft.location_type,
-        payment_method: savedPaymentMethodId ? "saved_card" : "new_card",
+        payment_method: paymentMethodLabel,
+        payment_pending_redirect: input.paymentUrl != null,
       },
       userId
     );

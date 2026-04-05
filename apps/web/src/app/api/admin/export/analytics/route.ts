@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 /**
@@ -22,6 +24,7 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get("period") || "30d";
@@ -53,7 +56,7 @@ export async function GET(request: NextRequest) {
       { count: totalUsers } = { count: 0 },
       { count: totalProviders } = { count: 0 },
       { count: totalBookings } = { count: 0 },
-      { data: revenueData } = { data: [] },
+      revenueData = [],
     ] = await Promise.all([
       supabase
         .from("users")
@@ -63,19 +66,33 @@ export async function GET(request: NextRequest) {
       supabase
         .from("providers")
         .select("*", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
         .gte("created_at", startDate.toISOString()),
       supabase
         .from("bookings")
         .select("*", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
         .gte("created_at", startDate.toISOString()),
-      supabase
-        .from("finance_transactions")
-        .select("net, transaction_type")
-        .gte("created_at", startDate.toISOString())
-        .in("transaction_type", ["payment", "additional_charge_payment"]),
+      (async () => {
+        try {
+          return await fetchFinanceLedgerRowsForTenant(
+            supabase,
+            tenantId,
+            { start: startDate.toISOString(), end: now.toISOString() },
+            {
+              transactionTypes: ["payment", "additional_charge_payment"],
+            }
+          );
+        } catch {
+          return [];
+        }
+      })(),
     ]);
 
-    const totalRevenue = (revenueData || []).reduce((sum, t) => sum + Math.abs(t.net || 0), 0);
+    const totalRevenue = (revenueData || []).reduce(
+      (sum, t) => sum + Math.abs(Number(t.net || 0)),
+      0
+    );
 
     // Convert to CSV
     const headers = ["Metric", "Value", "Period", "Date Range"];

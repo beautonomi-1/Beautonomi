@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
  * GET /api/public/apps
@@ -82,11 +83,29 @@ export async function GET(request: NextRequest) {
   try {
     let appsSettings: any = null;
     const supabase = await getSupabaseServer(request);
+    const tenant = await resolveTenantFromRequest(request as Request);
+    const tenantId = tenant?.id ?? "";
     if (supabase) {
-      const { data: settings, error: settingsError } = await supabase
+      let tenantSettings: { settings?: unknown } | null = null;
+      let tenantSettingsError: unknown = null;
+      if (tenantId) {
+        const tenantRes = await supabase
+          .from("platform_settings")
+          .select("settings")
+          .eq("is_active", true)
+          .eq("tenant_id", tenantId)
+          .maybeSingle();
+        tenantSettings = (tenantRes.data as { settings?: unknown } | null) ?? null;
+        tenantSettingsError = tenantRes.error ?? null;
+      }
+      const { data: globalSettings, error: globalSettingsError } = await supabase
         .from("platform_settings")
         .select("settings")
+        .eq("is_active", true)
+        .is("tenant_id", null)
         .maybeSingle();
+      const settings = tenantSettings ?? globalSettings;
+      const settingsError = tenantSettingsError ?? globalSettingsError;
 
       if (!settingsError && settings && typeof settings === "object" && settings !== null && "settings" in settings) {
         const s = (settings as { settings?: { apps?: any } }).settings;

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,10 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import Image from "next/image";
 import { Sparkles, X, Upload } from "lucide-react";
+import { RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { mergeCurrencyChoiceCodes, currencySelectLabel } from "@/lib/locale/currency";
 
 interface CustomOfferModalProps {
   isOpen: boolean;
@@ -30,10 +34,16 @@ export default function CustomOfferModal({
   editOfferId,
   onSuccess,
 }: CustomOfferModalProps) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [serviceName, setServiceName] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
-  const [currency, setCurrency] = useState("ZAR");
+  const [currency, setCurrency] = useState(tenantCurrency);
+  const currencyOptions = useMemo(
+    () => mergeCurrencyChoiceCodes(tenantCurrency, currency),
+    [tenantCurrency, currency]
+  );
   const [durationMinutes, setDurationMinutes] = useState("60");
   const [locationType, setLocationType] = useState<"at_home" | "at_salon">("at_salon");
   const [expirationDays, setExpirationDays] = useState("7");
@@ -59,9 +69,11 @@ export default function CustomOfferModal({
       loadStaffMembers();
       if (editOfferId) {
         loadOfferForEdit(editOfferId);
+      } else {
+        setCurrency(tenantCurrency);
       }
     }
-  }, [isOpen, editOfferId]);
+  }, [isOpen, editOfferId, tenantCurrency]);
 
   const loadOfferForEdit = async (offerId: string) => {
     try {
@@ -70,7 +82,7 @@ export default function CustomOfferModal({
       if (!offer) return;
       const req = offer.request;
       setPrice(String(offer.price ?? ""));
-      setCurrency(offer.currency ?? "ZAR");
+      setCurrency(offer.currency ?? tenantCurrency);
       setDurationMinutes(String(offer.duration_minutes ?? 60));
       setNotes(offer.notes ?? "");
       setStaffId(offer.staff_id ?? null);
@@ -232,7 +244,7 @@ export default function CustomOfferModal({
     setServiceName("");
     setDescription("");
     setPrice("");
-    setCurrency("ZAR");
+    setCurrency(tenantCurrency);
     setDurationMinutes("60");
     setLocationType("at_salon");
     setExpirationDays("7");
@@ -363,10 +375,11 @@ export default function CustomOfferModal({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ZAR">ZAR (South African Rand)</SelectItem>
-                  <SelectItem value="USD">USD (US Dollar)</SelectItem>
-                  <SelectItem value="EUR">EUR (Euro)</SelectItem>
-                  <SelectItem value="GBP">GBP (British Pound)</SelectItem>
+                  {currencyOptions.map((code) => (
+                    <SelectItem key={code} value={code}>
+                      {currencySelectLabel(code)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -465,7 +478,7 @@ export default function CustomOfferModal({
                 </div>
               </div>
               <div className="space-y-2">
-                <Label className="text-sm font-semibold">Travel fee (optional, ZAR)</Label>
+                <Label className="text-sm font-semibold">Travel fee (optional, {tenantCurrency})</Label>
                 <Input
                   type="number"
                   min="0"
@@ -485,12 +498,17 @@ export default function CustomOfferModal({
               <Label htmlFor="category" className="text-sm font-semibold">
                 Service Category (optional)
               </Label>
-              <Select value={serviceCategoryId || ""} onValueChange={(value) => setServiceCategoryId(value || null)}>
+              <Select
+                value={serviceCategoryId || RADIX_SELECT_NONE}
+                onValueChange={(value) =>
+                  setServiceCategoryId(value === RADIX_SELECT_NONE ? null : value)
+                }
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a category (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value={RADIX_SELECT_NONE}>None</SelectItem>
                   {categories.map((cat) => (
                     <SelectItem key={cat.id} value={cat.id}>
                       {cat.name}
@@ -507,12 +525,15 @@ export default function CustomOfferModal({
               <Label htmlFor="staff" className="text-sm font-semibold">
                 Assign to Staff Member (optional)
               </Label>
-              <Select value={staffId || ""} onValueChange={(value) => setStaffId(value || null)}>
+              <Select
+                value={staffId || RADIX_SELECT_NONE}
+                onValueChange={(value) => setStaffId(value === RADIX_SELECT_NONE ? null : value)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select a staff member (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No specific assignment</SelectItem>
+                  <SelectItem value={RADIX_SELECT_NONE}>No specific assignment</SelectItem>
                   {staffMembers.map((staff) => (
                     <SelectItem key={staff.id} value={staff.id}>
                       {staff.name}

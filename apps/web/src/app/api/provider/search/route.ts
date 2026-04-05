@@ -7,6 +7,10 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 export interface ProviderSearchSuggestion {
   type: "client" | "appointment" | "service";
@@ -39,6 +43,23 @@ export async function GET(request: NextRequest) {
     if (!providerId) {
       return successResponse({ suggestions: [] });
     }
+
+    const { data: provRow } = await supabaseAdmin
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const tenantId =
+      (provRow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const intlLocale = getTenantLocaleTagFromRegionConfig(tenantRegion);
+    const searchCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    const formatServicePrice = (amount: number) =>
+      new Intl.NumberFormat(intlLocale, {
+        style: "currency",
+        currency: searchCurrency,
+      }).format(amount);
 
     const { searchParams } = new URL(request.url);
     const q = searchParams.get("q")?.trim() || "";
@@ -114,7 +135,7 @@ export async function GET(request: NextRequest) {
         const customerName = customer?.full_name || customer?.email || "";
         const scheduledDate = (b as any).scheduled_start_at
           ? new Date((b as any).scheduled_start_at).toLocaleDateString(
-              "en-ZA",
+              intlLocale,
               {
                 month: "short",
                 day: "numeric",
@@ -168,7 +189,7 @@ export async function GET(request: NextRequest) {
             const customer = (b as any).customers;
             const scheduledDate = (b as any).scheduled_start_at
               ? new Date((b as any).scheduled_start_at).toLocaleDateString(
-                  "en-ZA",
+                  intlLocale,
                   {
                     month: "short",
                     day: "numeric",
@@ -204,7 +225,7 @@ export async function GET(request: NextRequest) {
     if (services) {
       for (const s of services) {
         const priceStr = (s as any).price
-          ? `R${Number((s as any).price).toFixed(0)}`
+          ? formatServicePrice(Number((s as any).price))
           : "";
         const durationStr = (s as any).duration_minutes
           ? `${(s as any).duration_minutes} min`

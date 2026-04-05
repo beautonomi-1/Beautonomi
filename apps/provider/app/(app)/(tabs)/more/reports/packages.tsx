@@ -15,6 +15,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -51,7 +52,7 @@ export default function PackageReportScreen() {
   const [period, setPeriod] = useState("month");
 
   const packagesUrl = `/api/provider/reports/packages?period=${period}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
-  const { data: reportData, loading, refresh } = useApi<{
+  const { data: reportData, loading, error: dataError, refresh } = useApi<{
     stats: PackageStats;
     packages: PackageReport[];
   }>(packagesUrl);
@@ -110,6 +111,8 @@ export default function PackageReportScreen() {
 
       {loading && !reportData ? (
         <SkeletonList rows={5} />
+      ) : !loading && dataError && !reportData ? (
+        <ErrorState message={dataError} onRetry={refresh} />
       ) : packages.length === 0 ? (
         <EmptyState icon="layers-outline" title="No package data" description="Package sales will appear here" />
       ) : (

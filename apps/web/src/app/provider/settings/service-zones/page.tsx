@@ -18,6 +18,8 @@ import { Plus, Edit, Trash2, Loader2, TrendingUp, CheckCircle2, XCircle, Sparkle
 import { Badge } from "@/components/ui/badge";
 import ZoneMapViewer from "@/components/mapbox/ZoneMapViewer";
 import { OnboardingTour } from "@/components/onboarding/OnboardingTour";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface PlatformZone {
   id: string;
@@ -50,6 +52,8 @@ interface ZoneWithSelection {
 }
 
 export default function ServiceZonesPage() {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [zonesWithSelections, setZonesWithSelections] = useState<ZoneWithSelection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -58,7 +62,7 @@ export default function ServiceZonesPage() {
   const [editingSelection, setEditingSelection] = useState<ZoneSelection | null>(null);
   const [formData, setFormData] = useState({
     travel_fee: 0,
-    currency: "ZAR",
+    currency: tenantCurrency,
     travel_time_minutes: 30,
     description: "",
     is_active: true,
@@ -146,7 +150,7 @@ export default function ServiceZonesPage() {
     setEditingSelection(null);
     setFormData({
       travel_fee: 0,
-      currency: "ZAR",
+      currency: tenantCurrency,
       travel_time_minutes: 30,
       description: "",
       is_active: true,

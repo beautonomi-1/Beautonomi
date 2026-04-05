@@ -8,27 +8,36 @@ import LoginModal from "@/components/global/login-modal";
 
 export default function BottomNav() {
   const pathname = usePathname();
-  const { user, isLoading: _isLoading } = useAuth();
+  const { user, isLoading } = useAuth();
   const [isVisible, setIsVisible] = useState(true);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
   const lastScrollY = useRef(0);
   const isScrollingUp = useRef(false);
 
-  // Dynamic tabs based on auth state
-  const tabs = user
-    ? [
-        { name: "Home", icon: Home, link: "/", isLink: true },
-        { name: "Explore", icon: Search, link: "/explore", isLink: true },
-        { name: "Bookings", icon: Calendar, link: "/bookings", isLink: true },
-        { name: "Chats", icon: MessageSquare, link: "/inbox", isLink: true },
-        { name: "Profile", icon: User, link: "/profile", isLink: true },
-      ]
-    : [
-        { name: "Home", icon: Home, link: "/", isLink: true },
-        { name: "Explore", icon: Search, link: "/explore", isLink: true },
-        { name: "Wishlists", icon: Heart, link: "/account-settings/wishlists", isLink: true },
-        { name: "Log in", icon: User, link: "#", isLink: false }, // Not a link, opens modal
-      ];
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  const loggedInTabs = [
+    { name: "Home", icon: Home, link: "/", isLink: true },
+    { name: "Explore", icon: Search, link: "/explore", isLink: true },
+    { name: "Bookings", icon: Calendar, link: "/bookings", isLink: true },
+    { name: "Chats", icon: MessageSquare, link: "/inbox", isLink: true },
+    { name: "Profile", icon: User, link: "/profile", isLink: true },
+  ] as const;
+
+  const guestTabs = [
+    { name: "Home", icon: Home, link: "/", isLink: true },
+    { name: "Explore", icon: Search, link: "/explore", isLink: true },
+    { name: "Wishlists", icon: Heart, link: "/account-settings/wishlists", isLink: true },
+    { name: "Log in", icon: User, link: "#", isLink: false },
+  ] as const;
+
+  // SSR has no session in this client tree; first paint must match to avoid hydration errors.
+  // After mount + auth settle, switch to signed-in tabs when applicable.
+  const showSignedInNav = hasMounted && !isLoading && Boolean(user);
+  const tabs = showSignedInNav ? loggedInTabs : guestTabs;
 
   // Determine active tab based on current pathname
   const getActiveTab = () => {
@@ -40,15 +49,18 @@ export default function BottomNav() {
     if (pathname?.startsWith("/bookings") || pathname?.startsWith("/account-settings/bookings")) return "Bookings";
     // Chats: check both /inbox and /account-settings/messages
     if (pathname?.startsWith("/inbox") || pathname?.startsWith("/account-settings/messages")) return "Chats";
-    if (user && pathname?.startsWith("/profile")) return "Profile";
+    if (showSignedInNav && pathname?.startsWith("/profile")) return "Profile";
     // Don't show Profile as active for all account settings, only for specific pages
-    if (user && pathname?.startsWith("/account-settings") && 
-        !pathname?.startsWith("/account-settings/bookings") && 
-        !pathname?.startsWith("/account-settings/messages") &&
-        !pathname?.startsWith("/account-settings/wishlists")) {
+    if (
+      showSignedInNav &&
+      pathname?.startsWith("/account-settings") &&
+      !pathname?.startsWith("/account-settings/bookings") &&
+      !pathname?.startsWith("/account-settings/messages") &&
+      !pathname?.startsWith("/account-settings/wishlists")
+    ) {
       return "Profile";
     }
-    if (!user && pathname?.startsWith("/account-settings")) return "Log in";
+    if (!showSignedInNav && pathname?.startsWith("/account-settings")) return "Log in";
     return "Explore";
   };
 
@@ -127,7 +139,11 @@ export default function BottomNav() {
           );
         })}
       </nav>
-      <LoginModal open={isLoginModalOpen} setOpen={setIsLoginModalOpen} />
+      <LoginModal
+        open={isLoginModalOpen}
+        setOpen={setIsLoginModalOpen}
+        initialMode="login"
+      />
     </div>
   );
 }

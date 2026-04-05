@@ -1,10 +1,21 @@
+/**
+ * @deprecated Use /api/payments/webhook instead.
+ * This legacy endpoint is kept to avoid breaking existing Paystack dashboard
+ * configurations. New integrations must use /api/payments/webhook.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { getPaystackSecretKey } from '@/lib/payments/paystack-server';
+import { resolveTenantFromRequest } from '@/lib/tenant/resolve-tenant-from-db';
+import { resolveTenantIdForFinanceLedger } from '@/lib/finance/resolve-tenant-id-for-ledger';
+import { getTenantRegionConfig } from '@/lib/regions/config';
+import { formatCurrency } from '@/lib/locale/currency';
+import { LAST_RESORT_CURRENCY } from '@/lib/regions/last-resort-currency';
+import { syncBookingAfterPaystackSuccess } from '@/lib/bookings/sync-booking-after-paystack-success';
 
 /**
- * Paystack Webhook Handler
+ * Paystack Webhook Handler (LEGACY)
  * 
  * Handles Paystack webhook events for payment confirmations
  * Reference: https://paystack.com/docs/payments/webhooks/
@@ -28,7 +39,10 @@ function verifyPaystackWebhook(
     .update(payload)
     .digest('hex');
   
-  return hash === signature;
+  const sigBuf = Buffer.from(signature, 'hex');
+  const hashBuf = Buffer.from(hash, 'hex');
+  if (sigBuf.length !== hashBuf.length) return false;
+  return crypto.timingSafeEqual(sigBuf, hashBuf);
 }
 
 /**
@@ -50,8 +64,9 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Get Paystack secret key for signature verification
-    const secretKey = await getPaystackSecretKey();
+    // Host → tenant for webhook signing secret (must match the Paystack account used at init).
+    const hostTenant = await resolveTenantFromRequest(request);
+    const secretKey = await getPaystackSecretKey({ tenantId: hostTenant?.id ?? null });
     
     // Verify webhook signature
     const isValid = verifyPaystackWebhook(body, signature, secretKey);
@@ -78,7 +93,7 @@ export async function POST(request: NextRequest) {
         
         console.log('Processing successful payment:', {
           reference,
-          amount: amount / 100, // Convert from kobo to ZAR
+          amount: amount / 100, // Paystack minor units → major (e.g. kobo → main currency)
           transactionId: id,
         });
         
@@ -95,7 +110,7 @@ export async function POST(request: NextRequest) {
         // Get booking details
         const { data: booking, error: bookingError } = await supabase
           .from('bookings')
-          .select('id, customer_id, total_amount, ref_number')
+          .select('id, customer_id, total_amount, ref_number, tenant_id, status, cancelled_at')
           .eq('id', bookingId)
           .single();
         
@@ -103,19 +118,59 @@ export async function POST(request: NextRequest) {
           console.error('Paystack webhook: Booking not found', { bookingId, error: bookingError });
           return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
         }
+
+        const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id ?? null;
+        if (
+          hostTenant?.id &&
+          bookingTenantId &&
+          hostTenant.id !== bookingTenantId
+        ) {
+          console.error('Paystack webhook: Host tenant does not match booking market', {
+            bookingId,
+            hostTenantId: hostTenant.id,
+            bookingTenantId,
+          });
+          return NextResponse.json(
+            { error: 'Tenant mismatch', code: 'TENANT_MISMATCH' },
+            { status: 403 },
+          );
+        }
+
+        const paystackTxId =
+          id !== undefined && id !== null ? String(id) : null;
+        if (paystackTxId) {
+          const { data: existingPayment } = await supabase
+            .from('booking_payments')
+            .select('id')
+            .eq('payment_provider', 'paystack')
+            .eq('payment_provider_id', paystackTxId)
+            .maybeSingle();
+          if (existingPayment) {
+            console.log('Paystack legacy webhook: duplicate charge.success, already recorded', {
+              paystackTxId,
+              bookingId,
+            });
+            return NextResponse.json({
+              received: true,
+              duplicate: true,
+              event: event.event,
+            });
+          }
+        }
         
         // Record payment in database
         const { data: payment, error: paymentError } = await supabase
           .from('booking_payments')
           .insert({
             booking_id: bookingId,
-            amount: amount / 100, // Convert from kobo to ZAR
+            ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
+            amount: amount / 100,
             payment_method: 'card', // Paystack supports multiple methods, default to card
             payment_provider: 'paystack',
-            payment_provider_id: id, // Paystack transaction ID
+            payment_provider_id: paystackTxId ?? String(id),
             status: 'completed',
             notes: `Payment processed via Paystack. Ref: ${reference}`,
-            metadata: {
+            payment_provider_data: {
               paystack_reference: reference,
               paystack_customer: customer,
               paystack_metadata: metadata,
@@ -124,15 +179,36 @@ export async function POST(request: NextRequest) {
           .select()
           .single();
         
-        if (paymentError || !payment) {
-          console.error('Paystack webhook: Failed to record payment', { 
-            bookingId, 
-            error: paymentError 
+        if (paymentError) {
+          if (paymentError.code === '23505') {
+            console.log('Paystack legacy webhook: duplicate insert (unique index / race)', {
+              paystackTxId,
+              bookingId,
+            });
+            return NextResponse.json({
+              received: true,
+              duplicate: true,
+              event: event.event,
+            });
+          }
+          console.error('Paystack webhook: Failed to record payment', {
+            bookingId,
+            error: paymentError,
           });
+          return NextResponse.json({ error: 'Failed to record payment' }, { status: 500 });
+        }
+        if (!payment) {
           return NextResponse.json({ error: 'Failed to record payment' }, { status: 500 });
         }
         
         console.log('Payment recorded successfully:', payment.id);
+
+        if (!(booking as { cancelled_at?: string | null }).cancelled_at && (booking as { status?: string }).status !== 'cancelled') {
+          await syncBookingAfterPaystackSuccess(supabase, bookingId, {
+            paymentReference: reference,
+            paymentProvider: "paystack",
+          });
+        }
 
         // If payment was from hold flow, mark hold as consumed (idempotent)
         const holdId = metadata?.hold_id;
@@ -152,11 +228,16 @@ export async function POST(request: NextRequest) {
         // Send confirmation notification via OneSignal
         try {
           const { sendToUser } = await import('@/lib/notifications/onesignal');
+          const payCurrency =
+            (bookingTenantId
+              ? (await getTenantRegionConfig(bookingTenantId))?.defaultCurrency
+              : null) ?? LAST_RESORT_CURRENCY;
+          const amountMajor = amount / 100;
           await sendToUser(
             booking.customer_id,
             {
               title: 'Payment Confirmed',
-              message: `Your payment of R${(amount / 100).toFixed(2)} has been received and confirmed.`,
+              message: `Your payment of ${formatCurrency(amountMajor, payCurrency)} has been received and confirmed.`,
               type: 'payment_received',
               bookingId: bookingId,
               url: `/account-settings/bookings/${bookingId}`,
@@ -207,7 +288,7 @@ export async function POST(request: NextRequest) {
         // Find the original payment by Paystack transaction ID
         const { data: originalPayment } = await supabase
           .from('booking_payments')
-          .select('id, booking_id, booking:bookings(customer_id)')
+          .select('id, booking_id, booking:bookings(customer_id, tenant_id, provider_id)')
           .eq('payment_provider_id', transaction)
           .single();
         
@@ -231,18 +312,55 @@ export async function POST(request: NextRequest) {
           
           if (!refundError && refund) {
             console.log('Refund recorded successfully:', refund.id);
+
+            const bookingForRefund = originalPayment.booking as {
+              tenant_id?: string | null;
+              provider_id?: string | null;
+              customer_id?: string | null;
+            } | null;
+
+            try {
+              const refundAmt = amount / 100;
+              const psRefundTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+                tenant_id: bookingForRefund?.tenant_id,
+                provider_id: bookingForRefund?.provider_id ?? null,
+              });
+              const { error: psFinanceErr } = await supabase.from('finance_transactions').insert({
+                tenant_id: psRefundTenantId,
+                booking_id: originalPayment.booking_id,
+                provider_id: bookingForRefund?.provider_id ?? null,
+                transaction_type: 'refund',
+                amount: -refundAmt,
+                fees: 0,
+                commission: 0,
+                net: -refundAmt,
+                description: `Paystack refund (${id})`,
+                created_at: new Date().toISOString(),
+              });
+              if (psFinanceErr) {
+                console.error('Paystack webhook: finance ledger insert after booking_refund:', psFinanceErr);
+              }
+            } catch (ledgerErr) {
+              console.error('Paystack webhook: finance ledger resolution failed:', ledgerErr);
+            }
             
             // Send refund notification
             try {
               const { sendToUser } = await import('@/lib/notifications/onesignal');
-              const customerId = (originalPayment.booking as any)?.customer_id;
-              
+              const customerId = bookingForRefund?.customer_id ?? null;
+
               if (customerId) {
+                const refundTenantId = bookingForRefund?.tenant_id ?? null;
+                const refundCurrency =
+                  (refundTenantId
+                    ? (await getTenantRegionConfig(refundTenantId))?.defaultCurrency
+                    : null) ?? LAST_RESORT_CURRENCY;
+                const refundMajor = amount / 100;
                 await sendToUser(
                   customerId,
                   {
                     title: 'Refund Processed',
-                    message: `A refund of R${(amount / 100).toFixed(2)} has been processed to your original payment method.`,
+                    message: `A refund of ${formatCurrency(refundMajor, refundCurrency)} has been processed to your original payment method.`,
                     type: 'refund_processed',
                     bookingId: originalPayment.booking_id,
                     url: `/account-settings/bookings/${originalPayment.booking_id}`,
@@ -278,12 +396,9 @@ export async function POST(request: NextRequest) {
     
   } catch (error: any) {
     console.error('Paystack webhook error:', error);
-    
-    // Return 200 even on error to prevent Paystack from retrying
-    // (we've already logged the error)
     return NextResponse.json(
-      { received: true, error: error.message },
-      { status: 200 }
+      { error: 'Webhook processing failed' },
+      { status: 500 }
     );
   }
 }

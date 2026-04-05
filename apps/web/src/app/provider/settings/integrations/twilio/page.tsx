@@ -16,6 +16,8 @@ import { toast } from "sonner";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { SubscriptionGate } from "@/components/provider/SubscriptionGate";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
 
 interface TwilioIntegration {
   id?: string;
@@ -104,6 +106,17 @@ export default function TwilioIntegrationPage() {
       return;
     }
 
+    const smsFrom = formData.sms_from_number?.trim() || "";
+    const waFrom = formData.whatsapp_from_number?.trim() || "";
+    if (smsFrom && !isCompleteE164(smsFrom)) {
+      toast.error("SMS From Number must be a valid E.164 phone (e.g. +1234567890).");
+      return;
+    }
+    if (waFrom && !isCompleteE164(waFrom)) {
+      toast.error("WhatsApp From Number must be a valid E.164 phone.");
+      return;
+    }
+
     try {
       setIsSaving(true);
       const response = await fetcher.put<{ data: TwilioIntegration }>(
@@ -177,15 +190,11 @@ export default function TwilioIntegrationPage() {
   };
 
   const handleTest = async () => {
-    if (!testPhone) {
+    if (!testPhone?.trim()) {
       toast.error("Please enter a test phone number");
       return;
     }
-
-    // Validate phone number format
-    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-    const cleanPhone = testPhone.replace(/\D/g, "");
-    if (!phoneRegex.test(cleanPhone)) {
+    if (!isCompleteE164(testPhone)) {
       toast.error("Please enter a valid phone number in E.164 format (e.g., +1234567890)");
       return;
     }
@@ -375,14 +384,13 @@ export default function TwilioIntegrationPage() {
               </div>
 
               <div>
-                <Label htmlFor="sms_from_number">SMS From Number</Label>
-                <Input
-                  id="sms_from_number"
-                  type="tel"
-                  placeholder="+1234567890"
+                <PhoneInput
+                  inputId="twilio-sms-from"
+                  label="SMS From Number"
+                  placeholder="Phone number"
                   value={formData.sms_from_number}
-                  onChange={(e) =>
-                    setFormData({ ...formData, sms_from_number: e.target.value })
+                  onChange={(e164) =>
+                    setFormData({ ...formData, sms_from_number: e164 })
                   }
                   className="mt-1"
                 />
@@ -393,14 +401,13 @@ export default function TwilioIntegrationPage() {
               </div>
 
               <div>
-                <Label htmlFor="whatsapp_from_number">WhatsApp From Number</Label>
-                <Input
-                  id="whatsapp_from_number"
-                  type="tel"
-                  placeholder="+14155238886"
+                <PhoneInput
+                  inputId="twilio-whatsapp-from"
+                  label="WhatsApp From Number"
+                  placeholder="Phone number"
                   value={formData.whatsapp_from_number}
-                  onChange={(e) =>
-                    setFormData({ ...formData, whatsapp_from_number: e.target.value })
+                  onChange={(e164) =>
+                    setFormData({ ...formData, whatsapp_from_number: e164 })
                   }
                   className="mt-1"
                 />
@@ -498,18 +505,17 @@ export default function TwilioIntegrationPage() {
                 )}
                 
                 <div>
-                  <Label htmlFor="test_phone_sms">Test Phone Number</Label>
-                  <Input
-                    id="test_phone_sms"
-                    type="tel"
-                    placeholder="+1234567890"
+                  <PhoneInput
+                    inputId="twilio-test-phone-sms"
+                    label="Test Phone Number"
+                    placeholder="Phone number"
                     value={testPhone}
-                    onChange={(e) => setTestPhone(e.target.value)}
+                    onChange={setTestPhone}
                     className="mt-1"
                   />
                 </div>
 
-                <Button onClick={handleTest} disabled={isTesting || !testPhone}>
+                <Button onClick={handleTest} disabled={isTesting || !isCompleteE164(testPhone)}>
                   {isTesting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Phone className="w-4 h-4 mr-2" />}
                   Send Test SMS
                 </Button>
@@ -536,18 +542,17 @@ export default function TwilioIntegrationPage() {
                 )}
                 
                 <div>
-                  <Label htmlFor="test_phone_whatsapp">Test Phone Number</Label>
-                  <Input
-                    id="test_phone_whatsapp"
-                    type="tel"
-                    placeholder="+1234567890"
+                  <PhoneInput
+                    inputId="twilio-test-phone-whatsapp"
+                    label="Test Phone Number"
+                    placeholder="Phone number"
                     value={testPhone}
-                    onChange={(e) => setTestPhone(e.target.value)}
+                    onChange={setTestPhone}
                     className="mt-1"
                   />
                 </div>
 
-                <Button onClick={handleTest} disabled={isTesting || !testPhone}>
+                <Button onClick={handleTest} disabled={isTesting || !isCompleteE164(testPhone)}>
                   {isTesting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MessageSquare className="w-4 h-4 mr-2" />}
                   Send Test WhatsApp
                 </Button>

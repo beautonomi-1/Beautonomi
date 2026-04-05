@@ -8,6 +8,8 @@
  * const url = await getDirectionsUrl({ latitude: -26.1234, longitude: 28.5678 }, "123 Main St, Johannesburg");
  */
 
+import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
+
 export interface Coordinates {
   latitude: number;
   longitude: number;
@@ -44,24 +46,22 @@ const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
  * Fetch directions configuration from the API
  */
 async function fetchDirectionsConfig(): Promise<DirectionsConfig> {
-  // Check cache first
   if (cachedConfig && Date.now() - cacheTimestamp < CACHE_DURATION_MS) {
     return cachedConfig;
   }
 
   try {
-    const response = await fetch("/api/public/directions-config");
-    if (response.ok) {
-      const data = await response.json();
-      cachedConfig = data.data || { provider: "google" };
-      cacheTimestamp = Date.now();
-      return cachedConfig!;
-    }
+    const cfg = await fetchMapboxPublicMapConfig();
+    cachedConfig = {
+      provider: cfg.provider === "mapbox" ? "mapbox" : "google",
+      mapboxPublicToken: cfg.accessToken ?? undefined,
+    };
+    cacheTimestamp = Date.now();
+    return cachedConfig;
   } catch (error) {
     console.error("Failed to fetch directions config:", error);
   }
 
-  // Default to Google Maps as fallback
   return { provider: "google" };
 }
 

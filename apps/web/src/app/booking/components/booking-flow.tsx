@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useSearchParams, useRouter } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
+import { useAmplitude } from "@/hooks/useAmplitude";
+import { EVENT_CHECKOUT_START } from "@/lib/analytics/amplitude/types";
 import StepVenueChoice from "./steps/step-venue-choice";
 import StepServiceSelection from "./steps/step-service-selection";
 import StepGroupParticipants from "./steps/step-group-participants";
@@ -14,6 +16,18 @@ import StepYourInfo from "./steps/step-your-info";
 import StepPayment from "./steps/step-payment";
 import BookingActionBar from "./booking-action-bar";
 import { ChevronLeft, X } from "lucide-react";
+import { fetcher } from "@/lib/http/fetcher";
+import {
+  BOOKING_STATE_STORAGE_KEY,
+  clearBookingFlowStorage,
+  computeBookingFlowKey,
+  restoreBookingFlowFromStorage,
+  shouldForceFreshStartFromUrl,
+} from "./booking-flow-persistence";
+import { isCompleteE164 } from "@/lib/phone";
+
+/** Same pattern as step-your-info (Continue gating must match that step). */
+const BOOKING_CLIENT_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type BookingMode = "salon" | "mobile";
 export type BookingStep = "services" | "groupParticipants" | "venue" | "packages" | "calendar" | "promotions" | "yourInfo" | "payment";
@@ -99,6 +113,8 @@ export interface BookingState {
   taxAmount?: number;
   taxRate?: number;
   tipAmount?: number;
+  /** When set, percentage tip buttons stay highlighted after refresh (synced from payment step). */
+  tipPercentSelection?: number | null;
   providerId?: string;
   isGroupBooking?: boolean;
   groupParticipants?: Array<{
@@ -109,7 +125,8 @@ export interface BookingState {
     serviceIds: string[];
     notes?: string;
   }>;
-  currentStepIndex?: number; // Used by step-payment to navigate back on conflict
+  /** @deprecated Do not use — step navigation is via `onNavigateToStep` on payment. */
+  currentStepIndex?: number;
   clientInfo: {
     firstName: string;
     lastName: string;
@@ -139,71 +156,132 @@ const slideVariants = {
   }),
 };
 
+function defaultBookingState(
+  user: { full_name?: string | null; email?: string | null; phone?: string | null } | null | undefined
+): BookingState {
+  return {
+    mode: null,
+    address: null,
+    selectedServices: [],
+    selectedAddons: [],
+    selectedProducts: [],
+    selectedDate: null,
+    selectedTimeSlot: null,
+    promotions: {},
+    clientInfo: user
+      ? {
+          firstName: user.full_name?.split(" ")[0] || "",
+          lastName: user.full_name?.split(" ").slice(1).join(" ") || "",
+          email: user.email || "",
+          phone: user.phone || "",
+        }
+      : null,
+  };
+}
+
+/** Empty draft while keeping the same entry URL (slug + service + mode) when present. */
+function freshBookingStateForUrl(
+  user: { full_name?: string | null; email?: string | null; phone?: string | null } | null | undefined,
+  searchParams: { get: (k: string) => string | null }
+): BookingState {
+  const fresh = defaultBookingState(user);
+  const providerSlug = searchParams.get("slug") || searchParams.get("partnerId");
+  const serviceId = searchParams.get("serviceId") || searchParams.get("service");
+  const modeParam = searchParams.get("mode");
+  if (providerSlug && serviceId) {
+    return {
+      ...fresh,
+      mode: modeParam ? (modeParam as "salon" | "mobile") : "salon",
+    };
+  }
+  return fresh;
+}
+
 export default function BookingFlow() {
   const { user, isLoading: _authLoading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const { track, isReady } = useAmplitude();
+  const checkoutTrackedRef = useRef(false);
+  const prevFlowKeyRef = useRef<string | null>(null);
   const [direction, setDirection] = useState(0);
-  
-  // Restore booking state from localStorage if available (e.g., after OAuth redirect)
-  const getInitialBookingState = (): BookingState => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('booking_state');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          // Only restore if it's recent (within 1 hour)
-          if (parsed.timestamp && Date.now() - parsed.timestamp < 3600000) {
-            return parsed.state;
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to restore booking state:', e);
-      }
+
+  const [currentStepIndex, setCurrentStepIndex] = useState(() => {
+    if (typeof window === "undefined") return 0;
+    if (shouldForceFreshStartFromUrl()) {
+      clearBookingFlowStorage();
+      return 0;
     }
-    
-    return {
-      mode: null,
-      address: null,
-      selectedServices: [],
-      selectedAddons: [],
-      selectedProducts: [],
-      selectedDate: null,
-      selectedTimeSlot: null,
-      promotions: {},
-      clientInfo: user ? {
-        firstName: user.full_name?.split(" ")[0] || "",
-        lastName: user.full_name?.split(" ").slice(1).join(" ") || "",
-        email: user.email || "",
-        phone: user.phone || "",
-      } : null,
-    };
-  };
-  
-  const [bookingState, setBookingState] = useState<BookingState>(getInitialBookingState);
-  
-  // Save booking state to localStorage whenever it changes
+    const fk = computeBookingFlowKey(searchParams);
+    const r = restoreBookingFlowFromStorage(searchParams, fk);
+    return r?.stepIndex ?? 0;
+  });
+
+  const [bookingState, setBookingState] = useState<BookingState>(() => {
+    if (typeof window === "undefined") {
+      return defaultBookingState(null);
+    }
+    if (shouldForceFreshStartFromUrl()) {
+      clearBookingFlowStorage();
+      return freshBookingStateForUrl(user, searchParams);
+    }
+    const fk = computeBookingFlowKey(searchParams);
+    const r = restoreBookingFlowFromStorage(searchParams, fk);
+    if (r) return r.state;
+    return defaultBookingState(user);
+  });
+
+  // Persist draft + step + URL fingerprint so refresh resumes checkout and tip UI can sync.
   useEffect(() => {
-    if (typeof window !== 'undefined' && bookingState.selectedServices.length > 0) {
-      try {
-        localStorage.setItem('booking_state', JSON.stringify({
+    if (typeof window === "undefined") return;
+    if (bookingState.selectedServices.length === 0) return;
+    try {
+      const flowKey = computeBookingFlowKey(searchParams);
+      localStorage.setItem(
+        BOOKING_STATE_STORAGE_KEY,
+        JSON.stringify({
           state: bookingState,
           timestamp: Date.now(),
-        }));
-      } catch (e) {
-        console.warn('Failed to save booking state:', e);
-      }
+          flowKey,
+          stepIndex: currentStepIndex,
+        })
+      );
+    } catch (e) {
+      console.warn("Failed to save booking state:", e);
     }
-  }, [bookingState]);
-  
-  // Clear saved state after successful booking
-  const _clearSavedState = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('booking_state');
-      localStorage.removeItem('booking_redirect_state');
+  }, [bookingState, currentStepIndex, searchParams]);
+
+  const applyFreshBookingStart = useCallback(() => {
+    clearBookingFlowStorage();
+    setCurrentStepIndex(0);
+    setDirection(0);
+    checkoutTrackedRef.current = false;
+    setBookingState(freshBookingStateForUrl(user, searchParams));
+    prevFlowKeyRef.current = computeBookingFlowKey(searchParams);
+  }, [user, searchParams]);
+
+  // ?reset=1 — shareable “start over” link; reset React state then remove the param.
+  useEffect(() => {
+    if (searchParams.get("reset") !== "1") return;
+    applyFreshBookingStart();
+    const u = new URLSearchParams(searchParams.toString());
+    u.delete("reset");
+    const q = u.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams, applyFreshBookingStart]);
+
+  const handleStartOver = useCallback(() => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "Discard this booking and start over? Your selections and add-ons will be cleared."
+      )
+    ) {
+      return;
     }
-  };
+    applyFreshBookingStart();
+  }, [applyFreshBookingStart]);
 
   const currentStep = STEP_ORDER[currentStepIndex];
   const [platformFeeSettings, setPlatformFeeSettings] = useState<{
@@ -217,6 +295,13 @@ export default function BookingFlow() {
   useEffect(() => {
     console.log(`[Booking Flow] Current step: ${currentStep} (index: ${currentStepIndex})`);
   }, [currentStep, currentStepIndex]);
+
+  useEffect(() => {
+    if (isReady && currentStep === "payment" && !checkoutTrackedRef.current) {
+      checkoutTrackedRef.current = true;
+      track(EVENT_CHECKOUT_START, { provider_id: bookingState.providerId });
+    }
+  }, [isReady, currentStep, bookingState.providerId, track]);
 
   // Load platform fee settings
   useEffect(() => {
@@ -318,6 +403,16 @@ export default function BookingFlow() {
           if (data.data?.id) {
             updateBookingState({ providerId: data.data.id });
           }
+          // If provider opted out of search engine indexing, inject a noindex meta into this page
+          if (data.data?.seo_indexable === false) {
+            let robotsMeta = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+            if (!robotsMeta) {
+              robotsMeta = document.createElement("meta");
+              robotsMeta.name = "robots";
+              document.head.appendChild(robotsMeta);
+            }
+            robotsMeta.content = "noindex, nofollow";
+          }
         } catch (error) {
           console.error("Error loading provider ID:", error);
         }
@@ -327,61 +422,59 @@ export default function BookingFlow() {
      
   }, [searchParams, bookingState.providerId]);
 
-  // Load pre-selected service from URL
+  // When slug / serviceId / mode in the URL changes, treat as a new booking entry and restart at step 0.
   useEffect(() => {
-    const serviceId = searchParams.get("serviceId");
-    const serviceParam = searchParams.get("service"); // Legacy support
+    const fk = computeBookingFlowKey(searchParams);
+    if (prevFlowKeyRef.current === null) {
+      prevFlowKeyRef.current = fk;
+      return;
+    }
+    if (fk !== prevFlowKeyRef.current) {
+      prevFlowKeyRef.current = fk;
+      setCurrentStepIndex(0);
+    }
+  }, [searchParams]);
+
+  // Load pre-selected service from URL (mode only — step is driven by persistence + flowKey effect above)
+  useEffect(() => {
+    const rawService = searchParams.get("serviceId") || searchParams.get("service");
     const providerSlug = searchParams.get("slug") || searchParams.get("partnerId");
     const modeParam = searchParams.get("mode"); // Optional mode from URL
-    
-    if (serviceId && providerSlug) {
-      // Pre-select service - will be handled in service selection step
-      // Set default mode if not provided (default to salon)
+
+    if (rawService && providerSlug) {
       if (!bookingState.mode) {
         const mode = modeParam ? (modeParam as "salon" | "mobile") : "salon";
         updateBookingState({ mode });
-        console.log(`[Booking Flow] Setting default mode to: ${mode}`);
-      }
-      // Services is now step 0, so we stay at step 0 when service is pre-selected
-      setCurrentStepIndex(0); // Start at services step (now first step)
-      console.log(`[Booking Flow] Starting at services step with serviceId: ${serviceId}`);
-    } else if (serviceParam && providerSlug) {
-      // Legacy format support - parse JSON service data
-      try {
-        const _serviceData = JSON.parse(decodeURIComponent(serviceParam));
-        // Set default mode if not provided
-        if (!bookingState.mode) {
-          const mode = modeParam ? (modeParam as "salon" | "mobile") : "salon";
-          updateBookingState({ mode });
-        }
-        // Pre-select will be handled in service selection step
-        setCurrentStepIndex(0); // Start at services step (now first step)
-      } catch (error) {
-        console.error("Error parsing service data:", error);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // Get effective step order (skip yourInfo if user is logged in, skip groupParticipants if not group booking)
-  const getEffectiveStepOrder = (): BookingStep[] => {
+  const effectiveStepOrder = useMemo((): BookingStep[] => {
     const steps = [...STEP_ORDER];
-    // Skip "yourInfo" step if user is logged in and has complete info
     if (user && bookingState.clientInfo) {
       const index = steps.indexOf("yourInfo");
       if (index > -1) steps.splice(index, 1);
     }
-    // Skip "groupParticipants" step if not group booking
     if (!bookingState.isGroupBooking) {
       const index = steps.indexOf("groupParticipants");
       if (index > -1) steps.splice(index, 1);
     }
     return steps;
-  };
+  }, [user, bookingState.clientInfo, bookingState.isGroupBooking]);
 
-  const effectiveStepOrder = getEffectiveStepOrder();
   const effectiveStepIndex = effectiveStepOrder.indexOf(currentStep);
-  
+  const progressStepIndex = effectiveStepIndex < 0 ? 0 : effectiveStepIndex;
+
+  useLayoutEffect(() => {
+    if (effectiveStepOrder.indexOf(currentStep) >= 0) return;
+    const fallback = STEP_ORDER.find(
+      (s) =>
+        STEP_ORDER.indexOf(s) >= currentStepIndex && effectiveStepOrder.includes(s)
+    );
+    if (fallback) setCurrentStepIndex(STEP_ORDER.indexOf(fallback));
+  }, [currentStep, currentStepIndex, effectiveStepOrder]);
+
   const handleNext = () => {
     if (effectiveStepIndex < effectiveStepOrder.length - 1) {
       setDirection(1);
@@ -390,6 +483,14 @@ export default function BookingFlow() {
       setCurrentStepIndex(nextIndex);
     }
   };
+
+  const handleNextRef = useRef(handleNext);
+  handleNextRef.current = handleNext;
+
+  /** Navigate to a step by STEP_ORDER index (e.g. 0 = services, 4 = calendar). Do not persist in bookingState — avoids sync loops. */
+  const navigateToBookingStep = useCallback((stepIndex: number) => {
+    setCurrentStepIndex(Math.max(0, Math.min(STEP_ORDER.length - 1, stepIndex)));
+  }, []);
 
   const handleBack = () => {
     if (effectiveStepIndex > 0) {
@@ -406,12 +507,77 @@ export default function BookingFlow() {
     setBookingState((prev) => ({ ...prev, ...updates }));
   };
 
-  // Sync step when step-payment sets currentStepIndex on conflict (go back to calendar)
+  /** Apply `?package=` bundle metadata when selected services match the package definition (legacy `/booking` flow). */
   useEffect(() => {
-    if (typeof bookingState.currentStepIndex === 'number' && bookingState.currentStepIndex !== currentStepIndex) {
-      setCurrentStepIndex(bookingState.currentStepIndex);
-    }
-  }, [bookingState.currentStepIndex, currentStepIndex]);
+    const pkgId = searchParams.get("package")?.trim();
+    const slug = searchParams.get("slug") || searchParams.get("partnerId");
+    if (!pkgId || !slug || bookingState.selectedServices.length === 0) return;
+    if (bookingState.selectedPackage?.id === pkgId) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetcher.get<{ data?: unknown } | unknown[]>(
+          `/api/public/providers/${encodeURIComponent(slug)}/packages`
+        );
+        const raw = (res as { data?: unknown }).data ?? res;
+        const list = Array.isArray(raw) ? raw : [];
+        type Pkg = {
+          id: string;
+          name?: string;
+          title?: string;
+          price?: number;
+          discount_percentage?: number;
+          services?: Array<{ id: string }>;
+          items?: Array<{ id?: string; type?: string }>;
+        };
+        const pkg = (list as Pkg[]).find((p) => p.id === pkgId);
+        if (!pkg || cancelled) return;
+        const svcItems =
+          pkg.services && pkg.services.length > 0
+            ? pkg.services
+            : (pkg.items ?? []).filter((x) => x.type === "service" || !x.type);
+        const wantIds = new Set(svcItems.map((s) => s.id).filter(Boolean) as string[]);
+        if (wantIds.size === 0) return;
+        const gotIds = new Set(bookingState.selectedServices.map((s) => s.id));
+        if (wantIds.size !== gotIds.size) return;
+        for (const w of wantIds) {
+          if (!gotIds.has(w)) return;
+        }
+        const servicesTotal = bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0);
+        const discount =
+          typeof pkg.price === "number" && pkg.price < servicesTotal
+            ? servicesTotal - pkg.price
+            : pkg.discount_percentage
+              ? (servicesTotal * pkg.discount_percentage) / 100
+              : 0;
+        updateBookingState({
+          selectedPackage: {
+            id: pkg.id,
+            title: pkg.title || pkg.name || "Package",
+            price: pkg.price ?? Math.max(0, servicesTotal - discount),
+            discount,
+          },
+        });
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, bookingState.selectedServices, bookingState.selectedPackage?.id]);
+
+  /** Skip the packages step when the URL package is already applied (same UX as empty packages list). */
+  useEffect(() => {
+    if (currentStep !== "packages") return;
+    const pkgId = searchParams.get("package")?.trim();
+    if (!pkgId || bookingState.selectedPackage?.id !== pkgId) return;
+    const t = setTimeout(() => {
+      handleNextRef.current();
+    }, 80);
+    return () => clearTimeout(t);
+  }, [currentStep, searchParams, bookingState.selectedPackage?.id]);
 
   const canProceed = () => {
     switch (currentStep) {
@@ -448,12 +614,16 @@ export default function BookingFlow() {
         return bookingState.selectedDate !== null && bookingState.selectedTimeSlot !== null;
       case "promotions":
         return true; // Optional step
-      case "yourInfo":
-        return bookingState.clientInfo !== null &&
-               bookingState.clientInfo.firstName.trim() !== "" &&
-               bookingState.clientInfo.lastName.trim() !== "" &&
-               bookingState.clientInfo.email.trim() !== "" &&
-               bookingState.clientInfo.phone.trim() !== "";
+      case "yourInfo": {
+        const c = bookingState.clientInfo;
+        if (!c) return false;
+        return (
+          c.firstName.trim() !== "" &&
+          c.lastName.trim() !== "" &&
+          BOOKING_CLIENT_EMAIL_REGEX.test(c.email.trim()) &&
+          isCompleteE164(c.phone)
+        );
+      }
       case "payment":
         return bookingState.paymentMethod !== undefined;
       default:
@@ -498,7 +668,10 @@ export default function BookingFlow() {
           </button>
           <h1 className="text-lg font-semibold text-gray-900">{getStepTitle()}</h1>
           <button
-            onClick={() => router.push("/")}
+            onClick={() => {
+              clearBookingFlowStorage();
+              router.push("/");
+            }}
             className="p-2 -mr-2 rounded-full hover:bg-gray-100 transition-colors touch-target"
             aria-label="Close"
           >
@@ -509,10 +682,10 @@ export default function BookingFlow() {
         {/* Progress Indicator */}
         <div className="px-4 pb-3">
           <div className="flex items-center gap-2">
-            {getEffectiveStepOrder().map((step, index) => {
+            {effectiveStepOrder.map((step, index) => {
               // Show step as completed if we've passed it
-              const isCompleted = index < effectiveStepIndex;
-              const isCurrent = index === effectiveStepIndex;
+              const isCompleted = index < progressStepIndex;
+              const isCurrent = index === progressStepIndex;
               
               return (
                 <div
@@ -522,14 +695,23 @@ export default function BookingFlow() {
                       ? "bg-primary"
                       : "bg-gray-200"
                   }`}
-                  aria-label={`Step ${index + 1} of ${getEffectiveStepOrder().length}: ${step}`}
+                  aria-label={`Step ${index + 1} of ${effectiveStepOrder.length}: ${step}`}
                   aria-current={isCurrent ? "step" : undefined}
                 />
               );
             })}
           </div>
           <div className="text-xs text-gray-500 mt-1 text-center">
-            Step {effectiveStepIndex + 1} of {getEffectiveStepOrder().length}
+            Step {progressStepIndex + 1} of {effectiveStepOrder.length}
+          </div>
+          <div className="flex justify-center mt-2">
+            <button
+              type="button"
+              onClick={handleStartOver}
+              className="text-xs font-medium text-gray-500 hover:text-gray-800 underline underline-offset-2 decoration-gray-400 hover:decoration-gray-700"
+            >
+              Start over
+            </button>
           </div>
         </div>
       </header>
@@ -609,6 +791,7 @@ export default function BookingFlow() {
                 <StepPayment
                   bookingState={bookingState}
                   updateBookingState={updateBookingState}
+                  onNavigateToStep={navigateToBookingStep}
                 />
               ) : (
                 <div className="p-8 text-center text-gray-500">

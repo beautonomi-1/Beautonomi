@@ -32,7 +32,7 @@ export async function GET(
         `*,
         order:product_orders(*,items:product_order_items(*)),
         customer:users!product_return_requests_customer_id_fkey(id, full_name, email, phone),
-        provider:providers(id, business_name, owner_id)`,
+        provider:providers(id, business_name, user_id)`,
       )
       .eq("id", id)
       .single();

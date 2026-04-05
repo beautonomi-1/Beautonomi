@@ -14,6 +14,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 interface FinanceEarnings {
   total_earnings: number;
@@ -52,12 +53,24 @@ interface FinanceData {
   transactions: FinanceTransaction[];
 }
 
-function formatCurrency(amount: number): string {
+function formatDateTimeSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatCurrency(amount: number, currency: string): string {
   const abs = Math.abs(amount);
   const sign = amount < 0 ? "−" : "";
-  if (abs >= 1_000_000) return `${sign}R${(abs / 1e6).toFixed(2)}m`;
-  if (abs >= 1_000) return `${sign}R${(abs / 1000).toFixed(2)}k`;
-  return `${sign}R${abs.toFixed(2)}`;
+  if (abs >= 1_000_000) return `${sign}${currency}${(abs / 1e6).toFixed(2)}m`;
+  if (abs >= 1_000) return `${sign}${currency}${(abs / 1000).toFixed(2)}k`;
+  return `${sign}${currency}${abs.toFixed(2)}`;
 }
 
 function formatType(type: string): string {
@@ -85,6 +98,7 @@ export function FinanceOverviewContent() {
   const [range, setRange] = useState<"week" | "month" | "year">("month");
   const { screenPadding } = useResponsive();
   const { selectedLocationId } = useProvider();
+  const currency = getTenantDefaultCurrency();
   const url = `/api/provider/finance?range=${range}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
   const { data, loading, error, refresh } = useApi<FinanceData>(url);
 
@@ -140,34 +154,36 @@ export function FinanceOverviewContent() {
         <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-emerald-50/50 p-4")}>
           <Text style={twStyle("text-sm font-medium text-gray-600")}>Available balance</Text>
           <Text style={twStyle("mt-1 text-2xl font-bold text-gray-900")}>
-            {formatCurrency(earnings.available_balance ?? 0)}
+            {formatCurrency(earnings.available_balance ?? 0, currency)}
           </Text>
           {(earnings.pending_payouts ?? 0) > 0 && (
             <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-              Pending payouts: {formatCurrency(earnings.pending_payouts)}
+              Pending payouts: {formatCurrency(earnings.pending_payouts, currency)}
             </Text>
           )}
         </View>
 
         <View style={twStyle("mb-4 flex-row")}>
           <View style={[twStyle("flex-1 rounded-2xl border border-gray-100 bg-white p-4"), { marginRight: 12 }]}>
-            <Text style={twStyle("text-xs font-medium text-gray-500")}>This month</Text>
+            <Text style={twStyle("text-xs font-medium text-gray-500")}>
+              {range === "week" ? "This week" : range === "year" ? "This year" : "This month"}
+            </Text>
             <Text style={twStyle("mt-1 text-lg font-bold text-gray-900")}>
-              {formatCurrency(earnings.this_month ?? 0)}
+              {formatCurrency(earnings.this_month ?? 0, currency)}
             </Text>
             {(earnings.growth_percentage ?? 0) !== 0 && (
               <Text
                 style={twStyle(`mt-0.5 text-xs font-medium ${(earnings.growth_percentage ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`)}
               >
                 {(earnings.growth_percentage ?? 0) >= 0 ? "+" : ""}
-                {earnings.growth_percentage}% vs last month
+                {earnings.growth_percentage}% vs last {range === "week" ? "week" : range === "year" ? "year" : "month"}
               </Text>
             )}
           </View>
           <View style={twStyle("flex-1 rounded-2xl border border-gray-100 bg-white p-4")}>
             <Text style={twStyle("text-xs font-medium text-gray-500")}>Total earnings</Text>
             <Text style={twStyle("mt-1 text-lg font-bold text-gray-900")}>
-              {formatCurrency(earnings.total_earnings ?? 0)}
+              {formatCurrency(earnings.total_earnings ?? 0, currency)}
             </Text>
           </View>
         </View>
@@ -176,7 +192,7 @@ export function FinanceOverviewContent() {
           <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-gray-50/80 p-3")}>
             <Text style={twStyle("text-xs font-medium text-gray-600")}>Walk-in add-ons (this period)</Text>
             <Text style={twStyle("mt-0.5 text-base font-semibold text-gray-800")}>
-              {formatCurrency(earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0)}
+              {formatCurrency(earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0, currency)}
             </Text>
             <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>Cash/card at salon — not in payout balance</Text>
           </View>
@@ -206,19 +222,14 @@ export function FinanceOverviewContent() {
                     {formatType(tx.transaction_type)}
                   </Text>
                   <Text style={twStyle("text-xs text-gray-500")}>
-                    {new Date(tx.date).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {formatDateTimeSafe(tx.date)}
                   </Text>
                 </View>
                 <Text
                   style={twStyle(`text-sm font-semibold ${tx.net >= 0 ? "text-green-600" : "text-red-600"}`)}
                 >
                   {tx.net >= 0 ? "" : "−"}
-                  {formatCurrency(Math.abs(tx.net))}
+                  {formatCurrency(Math.abs(tx.net), currency)}
                 </Text>
               </View>
             ))}

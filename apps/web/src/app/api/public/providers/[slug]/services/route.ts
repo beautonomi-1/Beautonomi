@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
 interface ServiceWithVariants {
   id: string;
@@ -8,6 +9,7 @@ interface ServiceWithVariants {
   description: string | null;
   price: number;
   duration_minutes: number;
+  buffer_minutes: number;
   currency: string;
   service_type: string;
   category_id: string | null;
@@ -31,6 +33,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+
     const { slug: providerSlug } = await params;
     const supabase = await getSupabaseServer();
 
@@ -39,6 +45,7 @@ export async function GET(
       .from("providers")
       .select("id, business_name, slug")
       .eq("slug", providerSlug)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (providerError || !provider) {
@@ -54,6 +61,7 @@ export async function GET(
         description,
         price,
         duration_minutes,
+        buffer_minutes,
         currency,
         service_type,
         service_available_for,
@@ -99,6 +107,7 @@ export async function GET(
           description: service.description,
           price: service.price,
           duration_minutes: service.duration_minutes,
+          buffer_minutes: service.buffer_minutes ?? 15,
           currency: service.currency,
           variant_sort_order: service.variant_sort_order,
         });
@@ -120,6 +129,7 @@ export async function GET(
         description: service.description,
         price: service.price,
         duration_minutes: service.duration_minutes,
+        buffer_minutes: service.buffer_minutes ?? 15,
         currency: service.currency,
         service_type: service.service_type,
         service_available_for: service.service_available_for,
@@ -167,7 +177,7 @@ export async function GET(
         return orderA - orderB;
       });
 
-    return successResponse({
+    const res = successResponse({
       provider: {
         id: provider.id,
         business_name: provider.business_name,
@@ -176,6 +186,8 @@ export async function GET(
       categories: sortedCategories,
       total_services: servicesWithVariants.length,
     });
+    res.headers.set("Cache-Control", "public, s-maxage=120, stale-while-revalidate=300");
+    return res;
   } catch (error) {
     return handleApiError(error, "Failed to fetch services");
   }

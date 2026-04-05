@@ -30,9 +30,13 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
+import { toast } from "sonner";
 import { format } from "date-fns";
 import type { TeamMember, ServiceCategory } from "@/lib/provider-portal/types";
 import { snapToIncrement, formatTime12h } from "@/lib/scheduling/mangomintAdapter";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
 interface WalkInButtonProps {
   className?: string;
@@ -78,6 +82,7 @@ export function WalkInButton({
   onClick,
   variant = "default",
 }: WalkInButtonProps) {
+  const { format: formatMoney } = useProviderMoneyFormat();
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -122,6 +127,11 @@ export function WalkInButton({
     e.preventDefault();
     
     if (!clientName.trim() || !staffId || !serviceId || !selectedService || !onCreateWalkIn) {
+      return;
+    }
+
+    if (clientPhone.trim() && !isCompleteE164(clientPhone)) {
+      toast.error("Enter a valid phone number or leave the field blank.");
       return;
     }
     
@@ -229,12 +239,11 @@ export function WalkInButton({
             
             {/* Client Phone (Optional) */}
             <div className="space-y-2">
-              <Label htmlFor="client-phone">Phone (optional)</Label>
-              <Input
-                id="client-phone"
-                type="tel"
+              <PhoneInput
+                inputId="calendar-walk-in-client-phone"
+                label="Phone (optional)"
                 value={clientPhone}
-                onChange={(e) => setClientPhone(e.target.value)}
+                onChange={setClientPhone}
                 placeholder="Phone number"
               />
             </div>
@@ -262,7 +271,7 @@ export function WalkInButton({
                           <div className="flex justify-between w-full">
                             <span>{service.name}</span>
                             <span className="text-muted-foreground ml-2">
-                              R{service.price} • {service.duration_minutes}min
+                              {formatMoney(Number(service.price))} • {service.duration_minutes}min
                             </span>
                           </div>
                         </SelectItem>
@@ -276,7 +285,7 @@ export function WalkInButton({
                 <div className="flex items-center justify-between text-sm text-muted-foreground px-1">
                   <span>{selectedService.duration_minutes} minutes</span>
                   <span className="font-medium text-foreground">
-                    R{selectedService.price.toFixed(2)}
+                    {formatMoney(Number(selectedService.price))}
                   </span>
                 </div>
               )}

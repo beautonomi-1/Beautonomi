@@ -23,6 +23,14 @@ export async function writeAuditLog(entry: AuditLogEntry) {
 
   if (error) {
     console.error("Failed to write audit log:", error);
+    try {
+      const Sentry = await import("@sentry/nextjs");
+      Sentry.captureException(new Error(`Audit log write failed: ${error.message}`), {
+        extra: { entry, dbError: error },
+      });
+    } catch {
+      // Sentry not available
+    }
   }
 }
 

@@ -7,7 +7,11 @@ import { z } from "zod";
 const updateAutomationSchema = z.object({
   name: z.string().min(1).optional(),
   is_active: z.boolean().optional(),
+  trigger_type: z.string().min(1).optional(),
+  trigger_config: z.record(z.string(), z.any()).optional(),
+  action_type: z.enum(["email", "sms", "notification", "whatsapp"]).optional(),
   action_config: z.record(z.string(), z.any()).optional(),
+  delay_minutes: z.number().int().nonnegative().optional(),
 });
 
 /**
@@ -78,10 +82,10 @@ export async function PATCH(
     const body = await request.json();
     const validated = updateAutomationSchema.parse(body);
 
-    // Get existing automation to merge action_config
+    // Get existing automation to merge configs
     const { data: existing } = await supabase
       .from("marketing_automations")
-      .select("action_config")
+      .select("action_config, trigger_config")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -101,7 +105,11 @@ export async function PATCH(
       .update({
         ...(validated.name && { name: validated.name }),
         ...(validated.is_active !== undefined && { is_active: validated.is_active }),
+        ...(validated.trigger_type && { trigger_type: validated.trigger_type }),
+        ...(validated.trigger_config && { trigger_config: { ...(existing.trigger_config ?? {}), ...validated.trigger_config } }),
+        ...(validated.action_type && { action_type: validated.action_type }),
         ...(validated.action_config && { action_config: updatedActionConfig }),
+        ...(validated.delay_minutes !== undefined && { delay_minutes: validated.delay_minutes }),
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)

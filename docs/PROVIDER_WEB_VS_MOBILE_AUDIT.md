@@ -16,7 +16,7 @@ All provider UI lives under `apps/web/src/app/provider/`. Below: URL path, purpo
 | `/provider` | Provider root / redirect | `GET /api/me/portal` |
 | `/provider/dashboard` | Dashboard metrics | `GET /api/provider/dashboard` (optional `location_id`) |
 | `/provider/get-started` | Setup checklist | `GET /api/provider/setup-status` |
-| `/provider/onboarding` | Onboarding flow | `GET/POST /api/provider/onboarding/draft`, `POST /api/provider/onboarding`, verify-phone, suggest-zones |
+| `/provider/onboarding` | Onboarding flow | `GET/POST /api/provider/onboarding/draft`, `POST /api/provider/onboarding`, suggest-zones; phone OTP via Supabase Auth (`updateUser` / `verifyOtp`) + `PATCH /api/me/profile` |
 
 ### 1.2 Bookings and schedule
 

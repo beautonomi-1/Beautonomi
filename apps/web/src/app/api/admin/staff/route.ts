@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 
@@ -13,14 +12,11 @@ import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
  * - Provider staff: /api/provider/staff returns only staff for the current provider (via getProviderIdForUser).
  *   Use case: provider manages their own team, invite, permissions.
  * - Both query provider_staff table; admin has no separate "platform staff" table.
- * - Permission: admin requires superadmin; provider requires provider_owner/provider_staff.
+ * - Permission: admin endpoints are section-gated via ADMIN_SECTION_PROVIDERS_OPERATIONS.
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
-    if (!user) {
-      return unauthorizedResponse("Authentication required");
-    }
+    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
 
     const supabase = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);

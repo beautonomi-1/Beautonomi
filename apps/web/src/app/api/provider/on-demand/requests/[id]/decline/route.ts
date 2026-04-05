@@ -77,11 +77,33 @@ export async function POST(
       message:
         "The provider was unable to accept your request. You can try another time or book a scheduled appointment.",
       data: {
+        type: "on_demand_declined",
         subtype: "on_demand_declined",
         on_demand_request_id: id,
         provider_response: providerResponsePayload,
       },
     });
+
+    try {
+      const { sendToUsers } = await import("@/lib/notifications/onesignal");
+      await sendToUsers(
+        [data.customer_id as string],
+        {
+          title: "Request not accepted",
+          message:
+            "The provider could not accept this time. Tap to see options or book a scheduled appointment.",
+          data: {
+            type: "on_demand_declined",
+            on_demand_request_id: id,
+            subtype: "on_demand_declined",
+          },
+        },
+        ["push"],
+        { appType: "customer", supabaseClient: admin }
+      );
+    } catch (pushErr) {
+      console.error("Failed to send on-demand decline push to customer:", pushErr);
+    }
 
     return successResponse(data);
   } catch (error) {

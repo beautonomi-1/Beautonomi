@@ -5,7 +5,12 @@ import {
   notFoundResponse,
   handleApiError,
   getProviderIdForUser,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
+import {
+  isProviderSubscriptionFeatureEnabled,
+  SUBSCRIPTION_FEATURE_KEYS,
+} from "@/lib/subscriptions/feature-access";
 import { requirePermission } from "@/lib/auth/requirePermission";
 
 /**
@@ -70,6 +75,18 @@ export async function PUT(
 
     const providerId = await getProviderIdForUser(permissionCheck.user!.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
+
+    const resourcesOk = await isProviderSubscriptionFeatureEnabled(
+      providerId,
+      SUBSCRIPTION_FEATURE_KEYS.serviceResources
+    );
+    if (!resourcesOk) {
+      return errorResponse(
+        "Service resource requirements are not included in your current subscription plan.",
+        "SUBSCRIPTION_FEATURE_DISABLED",
+        403
+      );
+    }
 
     const { data: offering } = await supabase
       .from("offerings")

@@ -1,9 +1,14 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { Provider, Salon } from "@/lib/provider-portal/types";
-import { fetcher, FetchTimeoutError } from "@/lib/http/fetcher";
+import {
+  fetcher,
+  FetchTimeoutError,
+  PROVIDER_BOOTSTRAP_TIMEOUT_MS,
+} from "@/lib/http/fetcher";
 
 interface ProviderPortalState {
   provider: Provider | null;
@@ -35,16 +40,30 @@ let cachedProviderData: {
   timestamp: number;
 } | null = null;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache - longer for stability
-const STORAGE_KEY = 'provider_portal_cache';
+const STORAGE_KEY = "provider_portal_cache_v2";
 
 // Load from sessionStorage on module load
 if (typeof window !== 'undefined') {
   try {
     const stored = sessionStorage.getItem(STORAGE_KEY);
     if (stored) {
-      const parsed = JSON.parse(stored);
+      const parsed = JSON.parse(stored) as {
+        provider?: { id?: string } | null;
+        salons?: Salon[];
+        setupCompletion?: number;
+        timestamp?: number;
+      };
       if (parsed.timestamp && Date.now() - parsed.timestamp < CACHE_DURATION) {
-        cachedProviderData = parsed;
+        const p = parsed.provider;
+        if (p && typeof p === "object" && p.id) {
+          cachedProviderData = parsed as NonNullable<typeof cachedProviderData>;
+        } else {
+          try {
+            sessionStorage.removeItem(STORAGE_KEY);
+          } catch {
+            // ignore
+          }
+        }
       }
     }
   } catch {
@@ -56,6 +75,7 @@ if (typeof window !== 'undefined') {
 const pendingRequests = new Map<string, Promise<any>>();
 
 export function ProviderPortalProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const [state, setState] = useState<ProviderPortalState>({
     provider: null,
     salons: [],
@@ -68,8 +88,9 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const isLoadingRef = useRef(false);
+  const loadProviderRef = useRef<(skipCache?: boolean, silent?: boolean) => Promise<void>>(async () => {});
 
-  const loadProvider = async (skipCache = false) => {
+  const loadProvider = async (skipCache = false, silent = false) => {
     // Prevent concurrent loads - use request deduplication
     const requestKey = 'loadProvider';
     if (pendingRequests.has(requestKey)) {
@@ -98,7 +119,7 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
       const cacheAge = Date.now() - cachedProviderData.timestamp;
       if (cacheAge > 2 * 60 * 1000) {
         // Background refresh without blocking UI
-        loadProvider(true).catch(() => {
+        loadProvider(true, true).catch(() => {
           // Silently fail background refresh
         });
       }
@@ -109,26 +130,42 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
     const requestPromise = (async () => {
       try {
         isLoadingRef.current = true;
-        setIsLoading(true);
+        if (!silent) setIsLoading(true);
         setLoadError(null);
         
-        // Load critical data first, then setup status in parallel
-        const [provider, salons] = await Promise.all([
-          providerApi.getProvider().catch((err) => {
-            console.error("Failed to get provider:", err);
-            throw err;
-          }),
-          providerApi.getSalons().catch((err) => {
-            console.error("Failed to get salons:", err);
-            return []; // Return empty array on error - this is acceptable
-          }),
-        ]);
+        const provider = await providerApi.getProvider();
+        const bootstrapSalons = Array.isArray(provider?.locations) ? provider.locations : [];
+        const salons =
+          bootstrapSalons.length > 0
+            ? bootstrapSalons
+            : await providerApi.getSalons().catch(() => []);
+
+        if (!provider?.id) {
+          cachedProviderData = null;
+          if (typeof window !== "undefined") {
+            try {
+              sessionStorage.removeItem(STORAGE_KEY);
+            } catch {
+              // ignore
+            }
+          }
+          setState((prev) => ({
+            ...prev,
+            provider: null,
+            salons,
+            selectedLocationId: null,
+            setupCompletion: 0,
+          }));
+          setLoadError(null);
+          router.replace("/provider/get-started");
+          return;
+        }
 
         // Load saved location from localStorage, or use provider's selected_location_id, or first salon
         const savedLocationId = typeof window !== 'undefined'
           ? localStorage.getItem('provider_selected_location_id')
           : null;
-        const locationId = savedLocationId || provider.selected_location_id || salons[0]?.id || null;
+        const locationId = savedLocationId || provider?.selected_location_id || salons[0]?.id || null;
         
         // Update UI immediately with provider and salons (optimistic update)
         const newState = {
@@ -142,33 +179,31 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
           ...newState,
         }));
 
-        // Load setup status in background (non-blocking)
-        // Use provider's setup_completion as immediate value, fetch fresh in background
-        const setupCompletion = provider.setup_completion || 0;
+        // Resolve setup completion from live setup-status first, then fallback to profile/cached values.
+        let setupCompletion =
+          typeof provider?.setup_completion === "number" ? provider.setup_completion : 0;
+
+        try {
+          const setupStatus = await fetcher.get<{ data: { completionPercentage: number } }>(
+            "/api/provider/setup-status",
+            { timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS }
+          );
+          if (typeof setupStatus?.data?.completionPercentage === "number") {
+            setupCompletion = setupStatus.data.completionPercentage;
+          } else if (cachedProviderData?.setupCompletion !== undefined) {
+            setupCompletion = cachedProviderData.setupCompletion;
+          }
+        } catch {
+          if (cachedProviderData?.setupCompletion !== undefined) {
+            setupCompletion = cachedProviderData.setupCompletion;
+          }
+        }
         setState((prev) => ({
           ...prev,
           setupCompletion,
         }));
         
-        // Load fresh setup status in background (non-blocking, with shorter timeout)
-        fetcher.get<{ data: { completionPercentage: number } }>("/api/provider/setup-status", { timeoutMs: 5000 }) // Reduced from 20s to 5s
-          .then((setupStatus) => {
-            if (setupStatus?.data?.completionPercentage !== undefined) {
-              setState((prev) => ({
-                ...prev,
-                setupCompletion: setupStatus.data.completionPercentage,
-              }));
-            }
-          })
-          .catch((error) => {
-            // Suppress AbortErrors from cancelled requests (component unmounts)
-            if (error instanceof FetchTimeoutError && error.message.includes('cancelled')) {
-              return; // Silently ignore cancelled requests
-            }
-            // Ignore other setup status errors - use provider.setup_completion as fallback
-          });
-
-        // Update cache
+        // Persist initial cache immediately so live refresh can always overwrite it.
         const cacheData = {
           provider,
           salons,
@@ -186,6 +221,33 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        // Keep setup completion fresh in the background for long-lived sessions.
+        fetcher
+          .get<{ data: { completionPercentage: number } }>("/api/provider/setup-status", {
+            timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS,
+          })
+          .then((setupStatus) => {
+            if (typeof setupStatus?.data?.completionPercentage !== "number") return;
+            const liveCompletion = setupStatus.data.completionPercentage;
+            setState((prev) => ({ ...prev, setupCompletion: liveCompletion }));
+            cachedProviderData = {
+              provider,
+              salons,
+              setupCompletion: liveCompletion,
+              timestamp: Date.now(),
+            };
+            if (typeof window !== "undefined") {
+              try {
+                sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cachedProviderData));
+              } catch {
+                // Ignore storage errors
+              }
+            }
+          })
+          .catch((error) => {
+            if (error instanceof FetchTimeoutError && error.message.includes("cancelled")) return;
+          });
+
         setState((prev) => ({
           ...prev,
           setupCompletion,
@@ -195,12 +257,9 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
         console.error("Failed to load provider data:", error);
         const errorMessage = error instanceof Error ? error.message : "Failed to load provider data";
         setLoadError(errorMessage);
-        // Don't throw - allow page to render even if provider data fails
-        // The page components should handle missing provider data gracefully
-        throw error; // Re-throw for request deduplication
       } finally {
         isLoadingRef.current = false;
-        setIsLoading(false);
+        if (!silent) setIsLoading(false);
         pendingRequests.delete(requestKey);
       }
     })();
@@ -208,6 +267,31 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
     pendingRequests.set(requestKey, requestPromise);
     await requestPromise;
   };
+
+  loadProviderRef.current = loadProvider;
+
+  // After dev-server restart / ECONNRESET, profile load can fail once; retry when tab is visible or network is back.
+  useEffect(() => {
+    if (!loadError) return;
+    const retry = () => {
+      void loadProviderRef.current(true, false);
+    };
+    const onVisible = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        retry();
+      }
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", retry);
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisible);
+    }
+    return () => {
+      window.removeEventListener("online", retry);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [loadError]);
 
   useEffect(() => {
     // Load selected location from localStorage on mount
@@ -310,7 +394,7 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
         // Ignore storage errors
       }
     }
-    await loadProvider(true);
+    await loadProvider(true, false);
   };
 
   return (

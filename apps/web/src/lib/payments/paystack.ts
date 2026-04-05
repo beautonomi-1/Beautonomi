@@ -5,6 +5,8 @@
  * Following official Paystack API documentation: https://paystack.com/docs/api/
  */
 
+import { toCents, fromCents } from "@beautonomi/utils";
+
 /**
  * Verify Paystack configuration
  */
@@ -28,14 +30,14 @@ export function verifyPaystackConfig(): {
  * Convert amount to Paystack's smallest currency unit (kobo/cents)
  */
 export function convertToSmallestUnit(amount: number): number {
-  return Math.round(amount * 100);
+  return toCents(amount);
 }
 
 /**
  * Convert from Paystack's smallest currency unit to regular amount
  */
 export function convertFromSmallestUnit(amount: number): number {
-  return amount / 100;
+  return fromCents(amount);
 }
 
 /**

@@ -2,33 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
     const includeInactive = searchParams.get("include_inactive") === "true";
 
-    let query = supabase
-      .from("footer_app_links")
-      .select("*")
-      .order("display_order", { ascending: true });
-
-    if (!includeInactive) {
-      query = query.eq("is_active", true);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error("Error fetching app links:", error);
-      return NextResponse.json(
-        { error: "Failed to fetch app links" },
-        { status: 500 }
-      );
-    }
+    const scoped = await fetchScopedListMerged<Record<string, unknown>>({
+      supabase,
+      table: "footer_app_links",
+      tenantId,
+      select: "*",
+      apply: (q) => (!includeInactive ? q.eq("is_active", true) : q),
+      dedupeKey: (row) => String(row.platform ?? row.id ?? ""),
+      orderBy: { column: "display_order", ascending: true },
+    });
+    const data = scoped.data;
 
     return NextResponse.json({ data, error: null });
   } catch (error: unknown) {
@@ -50,6 +45,7 @@ export async function POST(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     const { platform, title, href, display_order, is_active } = body;
@@ -64,6 +60,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from("footer_app_links")
       .insert({
+        tenant_id: tenantId,
         platform,
         title,
         href,

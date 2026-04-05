@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/select";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
 
 export type CustomFieldDefinition = {
   id: string;
@@ -140,6 +142,21 @@ export function CustomFieldsForm({
 
   const handleSave = async () => {
     if (!entityId) return;
+    for (const f of definitions) {
+      if (f.field_type !== "phone") continue;
+      const v = String(values[f.name] ?? "").trim();
+      if (!v) {
+        if (f.is_required) {
+          toast.error(`Please enter ${f.label || f.name}`);
+          return;
+        }
+        continue;
+      }
+      if (!isCompleteE164(v)) {
+        toast.error(`Enter a valid phone number for ${f.label || f.name}`);
+        return;
+      }
+    }
     setSaving(true);
     try {
       await fetcher.put("/api/custom-fields/values", {
@@ -216,11 +233,14 @@ export function CustomFieldsForm({
             />
           )}
           {field.field_type === "phone" && (
-            <Input
-              type="tel"
+            <PhoneInput
+              inputId={`cf-${entityType}-phone-${field.name}`}
+              label=""
               value={String(values[field.name] ?? "")}
-              onChange={(e) => updateValue(field.name, e.target.value)}
-              placeholder={field.placeholder ?? undefined}
+              onChange={(e164) => updateValue(field.name, e164)}
+              placeholder={field.placeholder ?? "Phone number"}
+              required={field.is_required}
+              className={compact ? "space-y-1" : undefined}
             />
           )}
           {field.field_type === "date" && (

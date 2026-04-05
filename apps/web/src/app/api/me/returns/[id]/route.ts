@@ -7,6 +7,7 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
  * GET /api/me/returns/[id] — customer views a return request detail
@@ -19,6 +20,7 @@ export async function GET(
     const { id } = await params;
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     const { data, error } = await (supabase.from("product_return_requests") as any)
       .select(
@@ -29,6 +31,15 @@ export async function GET(
       .single();
 
     if (error || !data) return notFoundResponse("Return request not found");
+    const providerId = (data as any)?.order?.provider?.id as string | undefined;
+    if (!providerId) return notFoundResponse("Return request not found");
+    const { data: provider } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("id", providerId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!provider?.id) return notFoundResponse("Return request not found");
     return successResponse({ return_request: data });
   } catch (err) {
     return handleApiError(err, "Failed to fetch return request");
@@ -47,14 +58,22 @@ export async function PATCH(
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
     const body = await request.json();
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     const { data: req } = await (supabase.from("product_return_requests") as any)
-      .select("id, status, customer_id")
+      .select("id, status, customer_id, provider_id")
       .eq("id", id)
       .eq("customer_id", user.id)
       .single();
 
     if (!req) return notFoundResponse("Return request not found");
+    const { data: provider } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("id", req.provider_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!provider?.id) return notFoundResponse("Return request not found");
 
     const update: Record<string, any> = {};
 

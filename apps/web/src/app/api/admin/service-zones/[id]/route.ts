@@ -11,8 +11,12 @@ import { z } from "zod";
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
+  /** ISO-3166-1 alpha-2. Only while there are no included areas, or when fixing a null country. */
+  country_code: z.string().length(2).optional(),
   status: z.enum(["draft", "active", "archived"]).optional(),
   version: z.number().int().optional(),
+  /** Shallow-merged into existing ops_metadata (rollout mode, notes, target dates). */
+  ops_metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**
@@ -46,6 +50,9 @@ export async function GET(
       .select("id, type, ref_code, ref_name, created_at")
       .eq("zone_id", id);
 
+    type ZoneFull = typeof zone & { published_at?: string | null; ops_metadata?: Record<string, unknown> | null };
+    const zf = zone as ZoneFull;
+
     const out: Record<string, unknown> = {
       id: zone.id,
       name: zone.name,
@@ -56,6 +63,8 @@ export async function GET(
       centroid: zone.centroid,
       created_at: zone.created_at,
       updated_at: zone.updated_at,
+      published_at: zf.published_at ?? null,
+      ops_metadata: zf.ops_metadata && typeof zf.ops_metadata === "object" ? zf.ops_metadata : {},
       inclusions: inclusions || [],
       exclusions: exclusions || [],
     };
@@ -117,20 +126,55 @@ export async function PATCH(
 
     const { data: existing } = await supabase
       .from("platform_zones")
-      .select("id, version")
+      .select("id, version, ops_metadata, country_code")
       .eq("id", id)
       .single();
 
     if (!existing) return notFoundResponse("Zone not found");
 
-    const existingRow = existing as { version?: number };
+    const existingRow = existing as {
+      version?: number;
+      ops_metadata?: Record<string, unknown> | null;
+      country_code?: string | null;
+    };
     if (parse.data.version != null && existingRow.version !== parse.data.version) {
       return errorResponse("Version conflict; refresh and retry", "CONFLICT", 409);
     }
 
+    if (parse.data.country_code !== undefined) {
+      const nextCc = parse.data.country_code.toUpperCase();
+      const prevCc = (existingRow.country_code || "").trim().toUpperCase();
+      if (nextCc !== prevCc) {
+        const { count, error: cntErr } = await supabase
+          .from("platform_zone_inclusions")
+          .select("id", { count: "exact", head: true })
+          .eq("zone_id", id);
+        if (cntErr) throw cntErr;
+        const incCount = count ?? 0;
+        if (incCount > 0) {
+          return errorResponse(
+            "Cannot change country while this market has included areas. Remove inclusions first, then set country.",
+            "VALIDATION_ERROR",
+            400
+          );
+        }
+      }
+    }
+
     const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (parse.data.name !== undefined) update.name = parse.data.name;
-    if (parse.data.status !== undefined) update.status = parse.data.status;
+    if (parse.data.country_code !== undefined) update.country_code = parse.data.country_code.toUpperCase();
+    if (parse.data.status !== undefined) {
+      update.status = parse.data.status;
+      update.is_active = parse.data.status === "active";
+    }
+    if (parse.data.ops_metadata !== undefined) {
+      const cur =
+        existingRow.ops_metadata && typeof existingRow.ops_metadata === "object"
+          ? existingRow.ops_metadata
+          : {};
+      update.ops_metadata = { ...cur, ...parse.data.ops_metadata };
+    }
 
     const { data: zone, error } = await supabase
       .from("platform_zones")

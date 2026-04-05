@@ -2,25 +2,29 @@ import { NextRequest } from "next/server";
 import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 import { z } from "zod";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const createGiftCardSchema = z.object({
   code: z.string().min(1, "Code is required"),
   initial_balance: z.number().positive("Initial balance must be positive"),
-  currency: z.string().min(3).max(6).default("ZAR"),
+  currency: z.string().min(3).max(6).optional(),
   expires_at: z.string().nullable().optional(),
   metadata: z.record(z.string(), z.any()).optional(),
 });
 
 /**
  * GET /api/admin/gift-cards
- * List all gift cards (superadmin only)
+ * List gift cards for the resolved admin tenant (Host → tenant_domains / za fallback).
  */
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search");
@@ -32,6 +36,7 @@ export async function GET(request: NextRequest) {
     let query = supabaseAdmin
       .from("gift_cards")
       .select("*", { count: "exact" })
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -71,13 +76,16 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/admin/gift-cards
- * Create a new gift card (superadmin only)
+ * Create a gift card in the resolved admin tenant.
  */
 export async function POST(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
+    const lastResortCurrency =
+      (await getTenantRegionConfig(tenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const body = await request.json();
     const validationResult = createGiftCardSchema.safeParse(body);
@@ -87,6 +95,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { code, initial_balance, currency, expires_at, metadata } = validationResult.data;
+    const resolvedCurrency = currency ?? lastResortCurrency;
 
     // Check if code already exists
     const { data: existing } = await supabaseAdmin
@@ -105,10 +114,11 @@ export async function POST(request: NextRequest) {
         code: code.toUpperCase(),
         initial_balance,
         balance: initial_balance,
-        currency,
+        currency: resolvedCurrency,
         expires_at: expires_at ? new Date(expires_at).toISOString() : null,
         metadata: metadata || {},
         is_active: true,
+        tenant_id: tenantId,
       })
       .select()
       .single();

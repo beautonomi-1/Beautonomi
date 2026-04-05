@@ -2,16 +2,38 @@ import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser } from '@/lib/supabase/api-helpers';
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 import { z } from 'zod';
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
-const travelFeesSchema = z.object({
-  enabled: z.boolean().optional(),
-  rate_per_km: z.number().min(0).optional(),
-  minimum_fee: z.number().min(0).optional(),
-  maximum_fee: z.number().min(0).nullable().optional(),
-  currency: z.string().optional(),
-  use_platform_default: z.boolean().optional(),
+const travelFeeTierSchema = z.object({
+  max_km: z.number().min(0),
+  fee: z.number().min(0),
 });
+
+const travelFeesSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    rate_per_km: z.number().min(0).optional(),
+    minimum_fee: z.number().min(0).optional(),
+    maximum_fee: z.number().min(0).nullable().optional(),
+    currency: z.string().optional(),
+    use_platform_default: z.boolean().optional(),
+    pricing_model: z.enum(["per_km", "tiered"]).nullable().optional(),
+    tiers: z.array(travelFeeTierSchema).optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.pricing_model !== "tiered") return true;
+      const tiers = data.tiers;
+      if (!tiers || tiers.length === 0) return false;
+      for (let i = 1; i < tiers.length; i++) {
+        if (tiers[i].max_km <= tiers[i - 1].max_km) return false;
+      }
+      return true;
+    },
+    { message: "When pricing_model is tiered, tiers must be non-empty and sorted by max_km ascending", path: ["tiers"] }
+  );
 
 /**
  * GET /api/provider/travel-fees
@@ -49,13 +71,25 @@ export async function GET(request: NextRequest) {
 
     // Return default if not found
     if (error && error.code === 'PGRST116') {
+      let defaultCurrency: string = LAST_RESORT_CURRENCY;
+      if (providerId) {
+        const { data: provRow } = await supabase
+          .from("providers")
+          .select("tenant_id")
+          .eq("id", providerId)
+          .maybeSingle();
+        const tr = provRow?.tenant_id ? await getTenantRegionConfig(provRow.tenant_id as string) : null;
+        defaultCurrency = tr?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+      }
       return successResponse({
         enabled: true,
         rate_per_km: null,
         minimum_fee: null,
         maximum_fee: null,
-        currency: 'ZAR',
+        currency: defaultCurrency,
         use_platform_default: true,
+        pricing_model: null,
+        tiers: null,
       });
     }
 
@@ -63,7 +97,11 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    return successResponse(travelFeeSettings);
+    return successResponse({
+      ...travelFeeSettings,
+      pricing_model: travelFeeSettings.pricing_model ?? null,
+      tiers: travelFeeSettings.tiers ?? null,
+    });
   } catch (error) {
     return handleApiError(error, 'Failed to fetch travel fee settings');
   }
@@ -98,6 +136,16 @@ export async function PATCH(request: NextRequest) {
     }
 
     const validatedData = travelFeesSchema.parse(body);
+
+    const { data: provForTenant } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId!)
+      .maybeSingle();
+    const tenantRegionForCurrency = provForTenant?.tenant_id
+      ? await getTenantRegionConfig(provForTenant.tenant_id as string)
+      : null;
+    const tenantDefaultCurrency = tenantRegionForCurrency?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Get platform settings to validate against limits
     const { data: platformSettings } = await supabase
@@ -135,23 +183,39 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    if (
+      !validatedData.use_platform_default &&
+      validatedData.pricing_model === 'tiered' &&
+      validatedData.tiers?.length
+    ) {
+      if (travelFees.allow_provider_tiered === false) {
+        return handleApiError(
+          new Error('Tiered pricing is not allowed by platform. Use per-km or platform default.'),
+          'Validation failed',
+          'VALIDATION_ERROR',
+          400
+        );
+      }
+    }
+
+    const upsertPayload: Record<string, unknown> = {
+      provider_id: providerId,
+      enabled: validatedData.enabled !== false,
+      maximum_fee: validatedData.maximum_fee ?? null,
+      currency: validatedData.currency || tenantDefaultCurrency,
+      use_platform_default: validatedData.use_platform_default !== false,
+      updated_at: new Date().toISOString(),
+    };
+    if (validatedData.rate_per_km !== undefined) upsertPayload.rate_per_km = validatedData.rate_per_km;
+    if (validatedData.minimum_fee !== undefined) upsertPayload.minimum_fee = validatedData.minimum_fee;
+    if (validatedData.pricing_model !== undefined) upsertPayload.pricing_model = validatedData.pricing_model;
+    if (validatedData.tiers !== undefined) upsertPayload.tiers = validatedData.tiers;
+
     const { data: settings, error } = await supabase
       .from('provider_travel_fee_settings')
-      .upsert(
-        {
-          provider_id: providerId,
-          enabled: validatedData.enabled !== false,
-          rate_per_km: validatedData.rate_per_km,
-          minimum_fee: validatedData.minimum_fee,
-          maximum_fee: validatedData.maximum_fee ?? null,
-          currency: validatedData.currency || 'ZAR',
-          use_platform_default: validatedData.use_platform_default !== false,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'provider_id',
-        }
-      )
+      .upsert(upsertPayload, {
+        onConflict: 'provider_id',
+      })
       .select()
       .single();
 

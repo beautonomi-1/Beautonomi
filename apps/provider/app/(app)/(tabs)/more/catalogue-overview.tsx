@@ -19,6 +19,14 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
+import { formatCurrency } from "@/lib/format";
+
+function currencySymbol(currency: string | undefined): string {
+  const c = currency || getTenantDefaultCurrency();
+  return c === LAST_RESORT_CURRENCY ? "R" : c;
+}
 
 interface ServiceCategory {
   id: string;
@@ -159,7 +167,7 @@ export default function CatalogueOverviewScreen() {
                 <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
                   <Text style={{ fontWeight: "600", color: Colors.gray[900] }} numberOfLines={1}>{s.title}</Text>
                   <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }}>
-                    {s.currency === "ZAR" ? "R" : s.currency} {Number(s.price).toFixed(2)}
+                    {currencySymbol(s.currency)} {Number(s.price).toFixed(2)}
                     {" · "}
                     {s.duration_minutes} min
                     {categoryName(s) ? ` · ${categoryName(s)}` : ""}
@@ -199,7 +207,7 @@ export default function CatalogueOverviewScreen() {
               {products.slice(0, 3).map((p) => (
                 <View key={p.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
                   <Text style={{ flex: 1, fontSize: 14, color: Colors.gray[700] }} numberOfLines={1}>{p.name}</Text>
-                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>R {Number(p.retail_price).toFixed(2)}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[600] }}>{formatCurrency(Number(p.retail_price))}</Text>
                 </View>
               ))}
               {productsTotal > 3 && (
@@ -215,7 +223,7 @@ export default function CatalogueOverviewScreen() {
           visible={!!viewService}
           onClose={() => setViewService(null)}
           title={viewService.title}
-          subtitle={`${viewService.currency === "ZAR" ? "R" : viewService.currency} ${Number(viewService.price).toFixed(2)} · ${viewService.duration_minutes} min`}
+          subtitle={`${currencySymbol(viewService.currency)} ${Number(viewService.price).toFixed(2)} · ${viewService.duration_minutes} min`}
         >
           {loadingDetail ? (
             <View style={{ alignItems: "center", paddingVertical: 24 }}>
@@ -241,7 +249,7 @@ export default function CatalogueOverviewScreen() {
                   </View>
                 ) : null}
               </View>
-              <Text style={{ marginTop: 16, fontSize: 12, color: Colors.gray[500] }}>To edit this service, use the provider portal.</Text>
+              <Text style={{ marginTop: 16, fontSize: 12, color: Colors.gray[500] }}>Edit service details from your in-app catalogue management flow.</Text>
             </>
           ) : null}
         </BottomSheet>

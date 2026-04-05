@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Alert, Linking, Platform } from "react-native";
 import Constants from "expo-constants";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, IOS_APP_STORE_ID, withWebApiTenantHeaders } from "@/config/public-env";
 
 interface VersionInfo {
-  minVersion: string;
-  latestVersion: string;
-  updateUrl: string;
+  minVersion: string | null;
+  latestVersion: string | null;
+  updateUrl: string | null;
   forceUpdate: boolean;
 }
 
@@ -32,14 +32,21 @@ export function useForceUpdate() {
 
     const check = async () => {
       try {
+        const v = encodeURIComponent(currentVersion);
         const res = await fetch(
-          `${APP_URL}/api/public/app-version?app=provider&platform=${Platform.OS}`,
+          `${APP_URL}/api/public/app-version?app=provider&platform=${Platform.OS}&version=${v}`,
+          withWebApiTenantHeaders(),
         );
         if (!res.ok) return;
 
         const data: VersionInfo = await res.json();
 
-        if (data.forceUpdate && compareVersions(currentVersion, data.minVersion) < 0) {
+        if (
+          data.forceUpdate &&
+          typeof data.minVersion === "string" &&
+          data.minVersion.length > 0 &&
+          compareVersions(currentVersion, data.minVersion) < 0
+        ) {
           setUpdateRequired(true);
           Alert.alert(
             "Update Required",
@@ -53,7 +60,7 @@ export function useForceUpdate() {
                   } else {
                     const storeUrl =
                       Platform.OS === "ios"
-                        ? "https://apps.apple.com/app/beautonomi-provider/id0000000000"
+                        ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
                         : "https://play.google.com/store/apps/details?id=com.beautonomi.partner";
                     Linking.openURL(storeUrl);
                   }
@@ -62,7 +69,11 @@ export function useForceUpdate() {
             ],
             { cancelable: false },
           );
-        } else if (compareVersions(currentVersion, data.latestVersion) < 0) {
+        } else if (
+          typeof data.latestVersion === "string" &&
+          data.latestVersion.length > 0 &&
+          compareVersions(currentVersion, data.latestVersion) < 0
+        ) {
           // Optional update available
           Alert.alert(
             "Update Available",
@@ -75,7 +86,7 @@ export function useForceUpdate() {
                   const storeUrl =
                     data.updateUrl ??
                     (Platform.OS === "ios"
-                      ? "https://apps.apple.com/app/beautonomi-provider/id0000000000"
+                      ? `https://apps.apple.com/app/id${IOS_APP_STORE_ID}`
                       : "https://play.google.com/store/apps/details?id=com.beautonomi.partner");
                   Linking.openURL(storeUrl);
                 },

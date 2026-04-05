@@ -13,6 +13,8 @@ import { api } from "@/lib/api-client";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { getTenantLocaleTag } from "@/lib/locale";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -37,8 +39,17 @@ interface RecurringBookingsResponse {
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
+function parseValidDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-ZA", {
+  if (!iso) return "—";
+  const parsed = parseValidDate(iso);
+  if (!parsed) return "—";
+  return parsed.toLocaleDateString(getTenantLocaleTag(), {
     weekday: "short",
     year: "numeric",
     month: "short",
@@ -60,21 +71,77 @@ function statusStyle(status: RecurringBooking["status"]): { bg: string; text: st
 }
 
 /** Map API row (enriched or raw) to RecurringBooking for display. */
+function formatFrequencyLabel(raw: string | undefined): string {
+  const f = (raw ?? "weekly").toLowerCase();
+  if (f === "biweekly") return "Every 2 weeks";
+  if (f === "monthly") return "Monthly";
+  if (f === "weekly") return "Weekly";
+  return raw ?? "Recurring";
+}
+
+/** Align with provider app / RRULE from API when `frequency` is absent (portal-created series). */
+function humanizeRecurrenceRule(rule: string): string {
+  if (!rule) return "Recurring";
+  const r = rule.toUpperCase();
+  if (r.startsWith("FREQ=")) {
+    const match = r.match(/FREQ=(\w+)/);
+    const interval = r.match(/INTERVAL=(\d+)/);
+    const freq = match?.[1];
+    const n = interval ? parseInt(interval[1]!, 10) : 1;
+    const freqMap: Record<string, string> = {
+      DAILY: n === 1 ? "Every day" : `Every ${n} days`,
+      WEEKLY: n === 1 ? "Every week" : `Every ${n} weeks`,
+      BIWEEKLY: "Every 2 weeks",
+      MONTHLY: n === 1 ? "Every month" : `Every ${n} months`,
+      YEARLY: "Every year",
+    };
+    return freqMap[freq ?? ""] ?? rule;
+  }
+  const simple: Record<string, string> = {
+    DAILY: "Every day",
+    WEEKLY: "Every week",
+    BIWEEKLY: "Every 2 weeks",
+    MONTHLY: "Every month",
+    YEARLY: "Every year",
+    "2WEEKLY": "Every 2 weeks",
+    "4WEEKLY": "Every 4 weeks",
+  };
+  return simple[r] ?? rule;
+}
+
+function scheduleLabelFromRow(row: { frequency?: string | null; recurrence_rule?: string | null }): string {
+  if (row.frequency && String(row.frequency).trim()) {
+    return formatFrequencyLabel(String(row.frequency));
+  }
+  if (row.recurrence_rule && String(row.recurrence_rule).trim()) {
+    return humanizeRecurrenceRule(String(row.recurrence_rule));
+  }
+  return "Recurring";
+}
+
 function normalizeRecurringItem(row: any): RecurringBooking {
   const provider = row.provider;
   const providerName = row.provider_name ?? provider?.business_name ?? "Provider";
   const serviceName = row.service_name ?? "Recurring appointment";
-  const nextDate = row.next_date ?? row.start_date ?? new Date().toISOString().split("T")[0];
+  const nextDate =
+    typeof row.next_date === "string" && row.next_date
+      ? row.next_date
+      : typeof row.start_date === "string" && row.start_date
+        ? row.start_date
+        : "";
   let status: RecurringBooking["status"] = "active";
-  if (row.status === "cancelled" || row.status === "paused") status = row.status;
-  else if (row.is_active === false) status = "paused";
+  if (row.status === "cancelled" || row.status === "paused" || row.status === "active") {
+    status = row.status;
+  } else if (row.is_active === false) {
+    status = "paused";
+  }
   const price = typeof row.price === "number" ? row.price : 0;
-  const currency = row.currency ?? "ZAR";
+  const currency = row.currency ?? getTenantDefaultCurrency();
   return {
     id: row.id,
     service_name: serviceName,
     provider_name: providerName,
-    frequency: row.frequency ?? "weekly",
+    frequency: scheduleLabelFromRow(row),
     next_date: nextDate,
     price,
     currency,
@@ -121,39 +188,8 @@ export default function RecurringBookingsScreen() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await api.get<RecurringBookingsResponse>("/api/recurring-bookings");
-        if (cancelled) return;
-        if (res.error) {
-          setError(res.error.message || "Failed to load recurring bookings");
-          setBookings([]);
-        } else {
-          const data = res.data;
-          const raw = Array.isArray(data) ? (data as unknown as any[]) : data?.recurring ?? [];
-          const items = (Array.isArray(raw) ? raw : []).map(normalizeRecurringItem);
-          setBookings(items);
-        }
-      } catch (e) {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Failed to load recurring bookings");
-        setBookings([]);
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchData();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    load();
+  }, [load]);
 
   const togglePauseResume = useCallback(
     async (booking: RecurringBooking) => {
@@ -294,7 +330,12 @@ export default function RecurringBookingsScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
         <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>No recurring bookings yet</Text>
-        <Text style={{ textAlign: "center", color: Colors.gray[500] }}>Set up recurring appointments from any booking detail page</Text>
+        <Text style={{ textAlign: "center", color: Colors.gray[500], paddingHorizontal: 8 }}>
+          When available, you can start a repeat schedule from the website (Account → Recurring bookings) or from booking flows your provider enables. This list shows schedules tied to your account.
+        </Text>
+        <Text style={{ textAlign: "center", color: Colors.gray[500], paddingHorizontal: 16, marginTop: 14, fontSize: 13, lineHeight: 18 }}>
+          You pay per visit—being on a repeat schedule does not charge your saved card by itself.
+        </Text>
       </View>
     );
   }
@@ -305,6 +346,22 @@ export default function RecurringBookingsScreen() {
         data={bookings}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
+        ListHeaderComponent={
+          <View
+            style={{
+              backgroundColor: "#F0F9FF",
+              borderWidth: 1,
+              borderColor: "#BAE6FD",
+              borderRadius: 12,
+              padding: 14,
+              marginBottom: 16,
+            }}
+          >
+            <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 19 }}>
+              Each visit is booked automatically on the schedule below. You pay per appointment (or as you usually do with this provider)—recurring does not charge your card by itself.
+            </Text>
+          </View>
+        }
         contentContainerStyle={{
           padding: contentPadding,
           paddingBottom: STACK_CONTENT_PADDING_BOTTOM,

@@ -4,6 +4,7 @@
  */
 
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { toast } from "sonner";
 
 /** Mark provider arrived (at-home only). Uses POST bookings/[id]/arrive. */
@@ -14,6 +15,22 @@ export async function arriveAtHome(bookingId: string): Promise<boolean> {
     return true;
   } catch (err) {
     const msg = err instanceof FetchError ? err.message : "Failed to mark arrived";
+    toast.error(msg);
+    return false;
+  }
+}
+
+/** Confirm a booking that is still pending in the DB. Uses PATCH bookings/[id] (provider status → booked / DB → confirmed). */
+export async function confirmBooking(bookingId: string, version?: number): Promise<boolean> {
+  try {
+    await fetcher.patch(`/api/provider/bookings/${bookingId}`, {
+      status: "booked",
+      version,
+    });
+    toast.success("Booking confirmed");
+    return true;
+  } catch (err) {
+    const msg = err instanceof FetchError ? err.message : "Failed to confirm booking";
     toast.error(msg);
     return false;
   }
@@ -144,7 +161,7 @@ export async function recordYocoPayment(
 export async function createYocoTerminalPaymentAndMarkPaid(
   bookingId: string,
   amount: number,
-  _currency: string = "ZAR"
+  _currency: string = LAST_RESORT_CURRENCY
 ): Promise<boolean> {
   try {
     const devicesRes = await fetcher.get<{ data?: { id: string; name: string; is_active?: boolean }[] }>(

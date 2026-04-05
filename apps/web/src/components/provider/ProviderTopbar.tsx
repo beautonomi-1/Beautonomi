@@ -30,96 +30,26 @@ import { LocationSwitcher } from "./LocationSwitcher";
 import PlatformLogo from "@/components/platform/PlatformLogo";
 import { useAuth } from "@/providers/AuthProvider";
 import { usePlatformSettings } from "@/providers/PlatformSettingsProvider";
-import { fetcher } from "@/lib/http/fetcher";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 export function ProviderTopbar() {
   const pathname = usePathname();
-  const { provider, salons, selectedLocationId, setSelectedLocation } = useProviderPortal();
-  const { signOut } = useAuth();
+  const { provider, salons, selectedLocationId, setSelectedLocation, setupCompletion } = useProviderPortal();
+  // Use AuthProvider directly — it already holds avatar_url/full_name and handles
+  // its own caching/refresh.  No separate /api/me/profile poll needed.
+  const { user, signOut, refreshUser } = useAuth();
   const { branding } = usePlatformSettings();
-  const [setupCompletion, setSetupCompletion] = useState(0);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-  const [userProfile, setUserProfile] = useState<{ avatar_url: string | null; full_name: string | null } | null>(null);
-  const setupStatusIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load user profile for avatar and name
+  // Re-fetch user profile when the app fires a 'profile-updated' event
+  // (e.g. after the user saves their avatar on the settings page).
   useEffect(() => {
-    const loadUserProfile = async () => {
-      try {
-        const response = await fetcher.get<{ data: { avatar_url: string | null; full_name: string | null } }>(
-          "/api/me/profile"
-        );
-        setUserProfile({
-          avatar_url: response.data?.avatar_url || null,
-          full_name: response.data?.full_name || null,
-        });
-      } catch (error) {
-        console.error("Failed to load user profile:", error);
-      }
-    };
-
-    loadUserProfile();
-    
-    // Listen for profile update events
-    const handleProfileUpdate = () => {
-      loadUserProfile();
-    };
-    
-    if (typeof window !== 'undefined') {
-      window.addEventListener('profile-updated', handleProfileUpdate);
-    }
-    
-    // Refresh profile every 30 seconds to catch updates
-    const interval = setInterval(loadUserProfile, 30000);
-    
-    return () => {
-      clearInterval(interval);
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('profile-updated', handleProfileUpdate);
-      }
-    };
-  }, []);
-
-  // Fetch setup completion from API
-  useEffect(() => {
-    const loadSetupStatus = async () => {
-      try {
-        const response = await fetcher.get<{ data: { completionPercentage: number } }>(
-          "/api/provider/setup-status"
-        );
-        const completion = response.data?.completionPercentage || 0;
-        setSetupCompletion(completion);
-        
-        // Stop polling if setup is complete (100%)
-        if (completion >= 100 && setupStatusIntervalRef.current) {
-          clearInterval(setupStatusIntervalRef.current);
-          setupStatusIntervalRef.current = null;
-        }
-      } catch (error) {
-        console.error("Failed to load setup status:", error);
-        setSetupCompletion(0);
-      }
-    };
-
-    // Load immediately on mount
-    loadSetupStatus();
-    
-    // Only poll if setup is incomplete
-    // Poll every 5 minutes (300000ms) instead of 30 seconds
-    // This reduces API calls by 10x (from every 30s to every 5min)
-    // The interval will automatically stop when setup reaches 100%
-    setupStatusIntervalRef.current = setInterval(loadSetupStatus, 300000); // 5 minutes
-    
-    return () => {
-      if (setupStatusIntervalRef.current) {
-        clearInterval(setupStatusIntervalRef.current);
-        setupStatusIntervalRef.current = null;
-      }
-    };
-  }, []);
+    const handleProfileUpdate = () => { refreshUser().catch(() => {}); };
+    window.addEventListener("profile-updated", handleProfileUpdate);
+    return () => window.removeEventListener("profile-updated", handleProfileUpdate);
+  }, [refreshUser]);
 
   const handleLogout = async () => {
     try {
@@ -129,31 +59,68 @@ export function ProviderTopbar() {
     }
   };
 
-  // Determine if we're on the calendar page
   const isCalendarPage = pathname?.startsWith("/provider/calendar");
+
+  const mobilePageTitle = (() => {
+    if (!pathname) return provider?.business_name || branding?.site_name || "Beautonomi";
+    const segments: [string, string][] = [
+      ["/provider/calendar", "Calendar"],
+      ["/provider/dashboard", "Dashboard"],
+      ["/provider/clients", "Clients"],
+      ["/provider/bookings", "Bookings"],
+      ["/provider/appointments", "Appointments"],
+      ["/provider/sales", "Sales"],
+      ["/provider/finance", "Finance"],
+      ["/provider/analytics", "Analytics"],
+      ["/provider/reports", "Reports"],
+      ["/provider/messaging", "Messages"],
+      ["/provider/settings", "Settings"],
+      ["/provider/team", "Team"],
+      ["/provider/catalogue", "Catalogue"],
+      ["/provider/ecommerce", "E-Commerce"],
+      ["/provider/notifications", "Notifications"],
+      ["/provider/waitlist", "Waitlist"],
+      ["/provider/waiting-room", "Waiting Room"],
+      ["/provider/explore", "Explore"],
+      ["/provider/packages", "Packages"],
+      ["/provider/payouts", "Payouts"],
+      ["/provider/reviews", "Reviews"],
+      ["/provider/schedule", "Schedule"],
+      ["/provider/forms", "Forms"],
+      ["/provider/resources", "Resources"],
+      ["/provider/subscription", "Subscription"],
+      ["/provider/orders", "Orders"],
+    ];
+    for (const [prefix, title] of segments) {
+      if (pathname.startsWith(prefix)) return title;
+    }
+    return provider?.business_name || branding?.site_name || "Beautonomi";
+  })();
 
   return (
     <div className="sticky top-0 z-30 bg-white border-b border-gray-200 w-full max-w-full overflow-x-hidden box-border">
-      <div className="h-16 flex items-center justify-between px-4 sm:px-4 md:px-6 lg:px-8 xl:px-12 max-w-[1800px] mx-auto w-full max-w-full box-border overflow-x-hidden">
+      <div className="h-14 md:h-16 flex items-center justify-between px-3 sm:px-4 md:px-6 lg:px-8 xl:px-12 mx-auto w-full max-w-full box-border overflow-x-hidden">
         {/* Left: Logo + Mobile Nav + Breadcrumb */}
         <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-1 min-w-0 overflow-x-hidden box-border">
-          {/* Logo - Desktop */}
-          <Link href="/provider/dashboard" className="hidden md:flex items-center flex-shrink-0">
-            <PlatformLogo alt="Beautonomi Logo" className="h-8 w-auto" />
+          <Link
+            href="/provider/dashboard"
+            className="hidden md:flex items-center justify-center flex-shrink-0 rounded-lg bg-white p-1 shadow-sm ring-1 ring-primary/20 hover:ring-primary/35 transition-shadow"
+          >
+            <PlatformLogo
+              alt={branding?.site_name ? `${branding.site_name} logo` : "Beautonomi logo"}
+              className="h-7 w-auto max-h-7 object-contain"
+            />
           </Link>
           
-          {/* Mobile Menu Toggle */}
           <ProviderMobileNav />
           
-          {/* Breadcrumb - Desktop */}
           <div className="hidden md:block flex-1 min-w-0 overflow-x-hidden overflow-y-visible box-border">
             <ProviderBreadcrumb />
           </div>
 
-          {/* Mobile: Page Title */}
           <div className="md:hidden flex-1 min-w-0">
-            <h1 className="text-lg font-semibold truncate">
-              {isCalendarPage ? "Calendar" : provider?.business_name || branding?.site_name || "Beautonomi"}
+            <h1 className="text-base font-semibold truncate">
+              {mobilePageTitle}
             </h1>
           </div>
         </div>
@@ -180,12 +147,13 @@ export function ProviderTopbar() {
         </div>
 
         {/* Right: Actions */}
-        <div className="flex items-center gap-2 sm:gap-2 md:gap-3 lg:gap-4 flex-shrink-0 min-w-0 overflow-x-hidden box-border">
-          {/* Quick Add Button - Desktop */}
+        <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 lg:gap-4 flex-shrink-0 min-w-0 overflow-x-hidden box-border">
+          {/* Quick Add Button - all viewports */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button 
-                className="hidden md:flex h-9 gap-2 px-4"
+                aria-label="Quick actions"
+                className="h-9 w-9 md:w-auto md:gap-2 md:px-4 p-0 md:p-2 rounded-full md:rounded-md"
                 style={{
                   backgroundColor: branding?.primary_color || "#FF0077",
                 }}
@@ -354,26 +322,23 @@ export function ProviderTopbar() {
                 )}
               >
                 <Avatar className="w-8 h-8 ring-2 ring-gray-100">
-                  <AvatarImage 
-                    src={userProfile?.avatar_url || undefined} 
-                    alt={userProfile?.full_name || "User"}
-                    onError={(e) => {
-                      // Hide image on error, show fallback
-                      e.currentTarget.style.display = 'none';
-                    }}
+                  <AvatarImage
+                    src={user?.avatar_url || undefined}
+                    alt={user?.full_name || "User"}
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
                   />
-                  <AvatarFallback 
+                  <AvatarFallback
                     className="text-white text-sm font-semibold"
                     style={{
                       background: `linear-gradient(to bottom right, ${branding?.primary_color || "#FF0077"}, ${branding?.secondary_color || "#4fd1c5"})`,
                     }}
                   >
-                    {userProfile?.full_name?.charAt(0)?.toUpperCase() || provider?.owner_name?.charAt(0)?.toUpperCase() || "U"}
+                    {user?.full_name?.charAt(0)?.toUpperCase() || provider?.owner_name?.charAt(0)?.toUpperCase() || "U"}
                   </AvatarFallback>
                 </Avatar>
                 <div className="hidden lg:flex flex-col items-start">
                   <span className="text-sm font-medium truncate max-w-[100px]">
-                    {userProfile?.full_name || provider?.owner_name || "User"}
+                    {user?.full_name || provider?.owner_name || "User"}
                   </span>
                   <span className="text-[10px] text-gray-500 truncate max-w-[100px]">
                     {provider?.business_name || "Business"}
@@ -385,7 +350,7 @@ export function ProviderTopbar() {
             <DropdownMenuContent align="end" className="w-56">
               {/* User Info Header */}
               <div className="px-3 py-2 border-b">
-                <p className="font-medium">{userProfile?.full_name || provider?.owner_name || "User"}</p>
+                <p className="font-medium">{user?.full_name || provider?.owner_name || "User"}</p>
                 <p className="text-xs text-gray-500 truncate">{provider?.business_name}</p>
               </div>
               
@@ -437,11 +402,11 @@ export function ProviderTopbar() {
         </div>
       </div>
 
-      {/* Mobile Search Bar (shown below header on mobile) */}
-      <div className="md:hidden px-4 pb-3 -mt-1 w-full max-w-full box-border overflow-x-hidden">
+      {/* Mobile Search Bar — collapsed by default, tap to expand */}
+      <div className="md:hidden px-3 pb-2 -mt-0.5 w-full max-w-full box-border overflow-x-hidden">
         <ProviderGlobalSearch
-          placeholder="Search clients, appointments, services..."
-          inputClassName="h-10 w-full max-w-full box-border"
+          placeholder="Search..."
+          inputClassName="h-9 w-full max-w-full box-border text-sm"
         />
       </div>
     </div>

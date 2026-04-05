@@ -14,6 +14,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency } from "@/lib/format";
@@ -66,7 +67,7 @@ export default function PaymentsReport() {
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const { from, to } = getDateParams(dateRange);
   const paymentsReportUrl = `/api/provider/reports/payments?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
-  const { data, loading } = useApi<PaymentsData>(paymentsReportUrl);
+  const { data, loading, error: dataError, refresh } = useApi<PaymentsData>(paymentsReportUrl);
 
   const handleExport = useCallback(async () => {
     if (!data) return;
@@ -99,7 +100,8 @@ export default function PaymentsReport() {
       </ScrollView>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#0ea5e9" />}
-      {!loading && !data && <EmptyState icon="card-outline" title="No payment data" description="Payment analytics will appear here" />}
+      {!loading && dataError && !data && <ErrorState message={dataError} onRetry={refresh} />}
+      {!loading && !data && !dataError && <EmptyState icon="card-outline" title="No payment data" description="Payment analytics will appear here" />}
 
       {data && (
         <View>

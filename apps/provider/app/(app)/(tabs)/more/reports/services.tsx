@@ -14,6 +14,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency } from "@/lib/format";
@@ -57,7 +58,7 @@ export default function ServicesReport() {
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const { from, to } = getDateParams(dateRange);
   const servicesReportUrl = `/api/provider/reports/services?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
-  const { data, loading } = useApi<ServicesData>(servicesReportUrl);
+  const { data, loading, error: dataError, refresh } = useApi<ServicesData>(servicesReportUrl);
 
   const handleExport = useCallback(async () => {
     if (!data) return;
@@ -91,7 +92,8 @@ export default function ServicesReport() {
       </ScrollView>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#f59e0b" />}
-      {!loading && !data && <EmptyState icon="cut-outline" title="No service data" description="Service analytics will appear here" />}
+      {!loading && dataError && !data && <ErrorState message={dataError} onRetry={refresh} />}
+      {!loading && !data && !dataError && <EmptyState icon="cut-outline" title="No service data" description="Service analytics will appear here" />}
 
       {data && (
         <View>

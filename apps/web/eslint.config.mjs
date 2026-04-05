@@ -1,12 +1,16 @@
 import { defineConfig, globalIgnores } from "eslint/config";
+import { createRequire } from "module";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 import unusedImports from "eslint-plugin-unused-imports";
 
+const require = createRequire(import.meta.url);
+const perfPlugin = require("./eslint-rules/index.js");
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "node_modules/**"]),
+  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "node_modules/**", "eslint-rules/**"]),
   // Scripts and config: allow require() where common (Node/CommonJS).
   {
     files: ["scripts/**/*.js", "scripts/**/*.mjs", "scripts/**/*.cjs", "tailwind.config.ts"],
@@ -59,6 +63,18 @@ const eslintConfig = defineConfig([
     files: ["tailwind.config.ts"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+  // Performance guardrails — custom rules to catch common perf regressions.
+  {
+    files: ["**/*.ts", "**/*.tsx"],
+    plugins: { perf: perfPlugin },
+    rules: {
+      "perf/no-client-page": "warn",
+      "perf/no-inline-render-item": "warn",
+      "perf/no-heavy-barrel-import": "warn",
+      "perf/no-static-mapbox": "error",
+      "perf/no-framer-in-list": "warn",
     },
   },
 ]);

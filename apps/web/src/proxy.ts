@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { csrfCheck, setCsrfCookie } from '@/lib/csrf';
 
 const ALLOWED_ORIGINS = [
   'http://localhost:8081',
@@ -44,6 +45,15 @@ export async function proxy(request: NextRequest) {
       if (request.method === 'OPTIONS') {
         return new NextResponse(null, { status: 204, headers: corsHeaders(origin) });
       }
+
+      // CSRF protection for cookie-authenticated mutations.
+      // Auth routes are exempt: they are pre-authentication endpoints with no
+      // session cookie to protect, and the CSRF cookie may not exist yet.
+      if (!pathname.startsWith("/api/auth/")) {
+        const csrfError = csrfCheck(request);
+        if (csrfError) return csrfError;
+      }
+
       const response = NextResponse.next();
       if (origin && isAllowedOrigin(origin)) {
         const headers = corsHeaders(origin);
@@ -51,7 +61,7 @@ export async function proxy(request: NextRequest) {
           response.headers.set(key, value);
         });
       }
-      return response;
+      return setCsrfCookie(response);
     }
 
     // Public routes - no protection needed
@@ -163,13 +173,15 @@ export async function proxy(request: NextRequest) {
       },
     });
 
+    // Ensure CSRF cookie is set on page loads so it's available for API calls
+    setCsrfCookie(response);
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseAnonKey) {
-      // If Supabase not configured, allow through (will fail at API level)
-      console.warn("Supabase not configured in proxy");
-      return response;
+      console.error("Supabase not configured in proxy — blocking protected routes");
+      return new NextResponse('Service Unavailable', { status: 503 });
     }
 
     let supabase;
@@ -200,8 +212,9 @@ export async function proxy(request: NextRequest) {
       }
     } catch (error) {
       console.error("Error creating Supabase client or getting session:", error);
-      // On error, allow through - let the page handle auth
-      return response;
+      const failUrl = new URL('/', request.nextUrl.origin);
+      failUrl.searchParams.set('auth_error', '1');
+      return NextResponse.redirect(failUrl);
     }
 
     // Helper function to redirect to login
@@ -263,11 +276,11 @@ export async function proxy(request: NextRequest) {
       }
     };
 
-    // Customer routes - require authentication (any role)
+    // Customer account routes - require authentication (any role)
+    // NOTE: `/booking` is intentionally public for guest checkout entry.
     if (
       pathname.startsWith('/account-settings') ||
       pathname.startsWith('/checkout') ||
-      pathname.startsWith('/booking') ||
       pathname.startsWith('/profile')
     ) {
       if (!user) {
@@ -280,6 +293,11 @@ export async function proxy(request: NextRequest) {
     // Provider routes - require provider role (except onboarding which allows customers)
     if (pathname.startsWith('/provider')) {
       try {
+        // Public: marketing/login entry and OAuth flows
+        if (pathname === '/provider' || pathname.startsWith('/provider/auth')) {
+          return response;
+        }
+
         if (!user) {
           return redirectToLogin(pathname);
         }
@@ -328,6 +346,7 @@ export async function proxy(request: NextRequest) {
         // Allow any admin role (superadmin + section admins); RoleGuard enforces section access client-side
         const adminRoles = [
           'superadmin',
+          'support_agent',
           'admin_support',
           'admin_finance',
           'admin_trust',
@@ -353,22 +372,20 @@ export async function proxy(request: NextRequest) {
     // Default: allow through (for any other routes we haven't explicitly handled)
     return response;
   } catch (innerError) {
-    // Catch errors in auth logic
     console.error("Error in proxy auth logic:", innerError);
-    // Allow through on error
-    return NextResponse.next();
+    const failUrl = new URL('/', request.nextUrl.origin);
+    failUrl.searchParams.set('auth_error', '1');
+    return NextResponse.redirect(failUrl);
   }
   } catch (error) {
-    // Catch any unexpected errors in proxy (including pathname access)
     console.error("Unexpected error in proxy:", error);
-    // Return a response to prevent 500 error
-    return NextResponse.next();
+    return new NextResponse('Service Unavailable', { status: 503 });
   }
 }
 
 export const config = {
   matcher: [
     '/api/:path*',
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

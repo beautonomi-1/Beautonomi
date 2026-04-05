@@ -1,37 +1,41 @@
-"use client";
-
-import React, { useEffect, useState } from "react";
+import type { Metadata } from "next";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import SearchBox from "./components/searchbox";
 import CTA from "./components/cta";
-import { fetcher } from "@/lib/http/fetcher";
+import {
+  getPublicPageContent,
+  type PublicPageContent,
+} from "@/lib/content/getPublicPageContent";
+import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
 
-interface PageContent {
+export interface HelpPageContent {
   [sectionKey: string]: {
     content: string;
     content_type: string;
-    metadata: Record<string, any>;
+    metadata: Record<string, unknown>;
   };
 }
 
-const Page = () => {
-  const [_content, setContent] = useState<PageContent | null>(null);
-  const [_isLoading, _setIsLoading] = useState(false);
+export const metadata: Metadata = {
+  title: "Help Centre",
+  description:
+    "Find answers, browse common help articles, and contact Beautonomi support.",
+  alternates: {
+    canonical: "/help",
+    languages: getHreflangAlternateUrls("/help"),
+  },
+};
 
-  useEffect(() => {
-    const loadContent = async () => {
-      try {
-        const response = await fetcher.get<{ data: PageContent }>("/api/public/page-content?page_slug=help");
-        setContent(response.data);
-      } catch (error) {
-        console.error("Failed to load help page content:", error);
-        // Continue with default content if CMS fails
-      }
-    };
-    loadContent();
-  }, []);
+export const revalidate = 300;
+
+async function getHelpPageContent(): Promise<HelpPageContent | null> {
+  return (await getPublicPageContent("help")) as PublicPageContent | null;
+}
+
+const Page = async () => {
+  const content = await getHelpPageContent();
 
   return (
     <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
@@ -39,8 +43,8 @@ const Page = () => {
       <div className="text-center pt-4 pb-0">
         <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Help centre</p>
       </div>
-      <SearchBox />
-      <CTA />
+      <SearchBox content={content} />
+      <CTA content={content} />
       <Footer />
       <BottomNav />
     </div>

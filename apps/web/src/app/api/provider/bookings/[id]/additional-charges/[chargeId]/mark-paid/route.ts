@@ -3,6 +3,12 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 
 /**
  * POST /api/provider/bookings/[id]/additional-charges/[chargeId]/mark-paid
@@ -24,6 +30,9 @@ export async function POST(
 
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = await getSupabaseAdmin();
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { id: bookingId, chargeId } = await params;
     const body = await request.json();
 
@@ -51,13 +60,37 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, provider_id, customer_id, booking_number, ref_number, currency, total_amount")
+      .select("id, provider_id, tenant_id, customer_id, booking_number, ref_number, currency, total_amount, location_id")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
 
     if (bookingError || !booking) {
       return notFoundResponse("Booking not found");
+    }
+
+    if (
+      !resourceTenantMatchesHostTenant(
+        tenantId,
+        (booking as { tenant_id?: string | null }).tenant_id,
+      )
+    ) {
+      return errorResponse(
+        "This booking belongs to a different market. Use the provider site or app for the correct region.",
+        "TENANT_MISMATCH",
+        403,
+      );
+    }
+
+    const branchAccess = await assertProviderUserCanAccessBookingBranch(
+      supabaseAdmin,
+      user.id,
+      user.role,
+      providerId,
+      (booking as { location_id?: string | null }).location_id ?? null
+    );
+    if (branchAccess.allowed === false) {
+      return errorResponse(branchAccess.message, "FORBIDDEN", 403);
     }
 
     // Get additional charge
@@ -82,7 +115,7 @@ export async function POST(
     }
 
     const chargeAmount = Number(charge.amount);
-    const currency = charge.currency || booking.currency || "ZAR";
+    const currency = charge.currency || booking.currency || lastResortCurrency;
 
     // Determine payment provider based on method
     let paymentProvider = 'other';
@@ -92,6 +125,7 @@ export async function POST(
       paymentProvider = 'yoco'; // Yoco card terminal or manual terminal
     }
 
+    const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id;
     // Create payment record for the additional charge
     const paymentData: any = {
       booking_id: bookingId,
@@ -101,6 +135,7 @@ export async function POST(
       status: 'completed',
       notes: notes || `Additional charge payment: ${charge.description} (via ${payment_method})`,
       created_by: user.id,
+      ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
       metadata: {
         additional_charge_id: chargeId,
         charge_description: charge.description,
@@ -155,10 +190,16 @@ export async function POST(
       console.warn("Error updating booking total_amount:", bookingUpdateError);
     }
 
+    const walkInLedgerTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
+      tenant_id: (booking as { tenant_id?: string | null }).tenant_id ?? null,
+      provider_id: (booking as { provider_id?: string | null }).provider_id ?? null,
+    });
+
     // Audit/reporting ledger row (walk-in = provider took payment; not included in payout balance)
     await supabaseAdmin.from("finance_transactions").insert({
       booking_id: bookingId,
       provider_id: booking.provider_id,
+      tenant_id: walkInLedgerTenantId,
       transaction_type: "walk_in_additional_charge",
       amount: chargeAmount,
       fees: 0,
@@ -186,18 +227,19 @@ export async function POST(
 
     // Notify customer
     try {
-      await supabaseAdmin.from("notifications").insert({
+      const { insertNotification } = await import("@/lib/notifications/insert-notification");
+      await insertNotification({
         user_id: booking.customer_id,
         type: "additional_charge_paid",
         title: "Additional Charge Paid",
         message: `Your additional charge of ${currency} ${chargeAmount.toFixed(2)} has been paid and confirmed.`,
-        metadata: {
+        data: {
           booking_id: bookingId,
           charge_id: chargeId,
           amount: chargeAmount,
           payment_method,
         },
-        link: `/account-settings/bookings/${bookingId}`,
+        action_url: `/account-settings/bookings/${bookingId}`,
       });
 
       // Send push notification

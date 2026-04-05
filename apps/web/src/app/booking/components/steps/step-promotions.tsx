@@ -10,6 +10,8 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/providers/AuthProvider";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface StepPromotionsProps {
   bookingState: BookingState;
@@ -22,6 +24,8 @@ export default function StepPromotions({
   updateBookingState,
   onNext: _onNext,
 }: StepPromotionsProps) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const { user } = useAuth();
   const [couponCode, setCouponCode] = useState("");
   const [giftCardCode, setGiftCardCode] = useState("");
@@ -35,13 +39,21 @@ export default function StepPromotions({
     show_service_fee_to_customer: boolean;
   } | null>(null);
 
-  // Calculate cart total
-  const cartTotal = bookingState.selectedServices.reduce(
-    (sum, s) => sum + s.price,
-    0
-  ) +
+  /** Services + add-ons + products + travel — must match payment step `getSubtotalAfterDiscounts` inputs (excludes tax & service fee). */
+  const cartTotal =
+    bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0) +
     bookingState.selectedAddons.reduce((sum, a) => sum + a.price, 0) +
+    bookingState.selectedProducts.reduce((sum, p) => sum + p.price * p.quantity, 0) +
     (bookingState.address?.travelFee || 0);
+
+  const subtotalAfterPromotions = Math.max(
+    0,
+    cartTotal -
+      (bookingState.promotions.couponDiscount || 0) -
+      (bookingState.promotions.giftCardAmount || 0) -
+      (bookingState.promotions.loyaltyDiscount || 0) -
+      (bookingState.promotions.membershipDiscount || 0)
+  );
 
   // Load platform fee settings
   useEffect(() => {
@@ -55,7 +67,8 @@ export default function StepPromotions({
       const discounts =
         (bookingState.promotions.couponDiscount || 0) +
         (bookingState.promotions.giftCardAmount || 0) +
-        (bookingState.promotions.loyaltyDiscount || 0);
+        (bookingState.promotions.loyaltyDiscount || 0) +
+        (bookingState.promotions.membershipDiscount || 0);
       const subtotalAfterDiscounts = Math.max(0, subtotal - discounts);
 
       const serviceFeeAmount =
@@ -267,7 +280,7 @@ export default function StepPromotions({
                 {bookingState.promotions.couponCode}
               </p>
               <p className="text-sm text-green-700">
-                Discount: {formatCurrency(bookingState.promotions.couponDiscount || 0, "ZAR")}
+                Discount: {formatCurrency(bookingState.promotions.couponDiscount || 0, tenantCurrency)}
               </p>
             </div>
             <button
@@ -311,7 +324,7 @@ export default function StepPromotions({
                 Gift Card: {bookingState.promotions.giftCardCode}
               </p>
               <p className="text-sm text-green-700">
-                Amount: {formatCurrency(bookingState.promotions.giftCardAmount || 0, "ZAR")}
+                Amount: {formatCurrency(bookingState.promotions.giftCardAmount || 0, tenantCurrency)}
               </p>
             </div>
             <button
@@ -355,7 +368,8 @@ export default function StepPromotions({
               You have {loyaltyBalance.toLocaleString()} points
             </p>
             <p className="text-xs text-blue-700 mb-3">
-              Value: {formatCurrency(loyaltyBalance * 0.1, "ZAR")} (1 point = 0.1 {bookingState.selectedServices[0]?.currency || "ZAR"})
+              Value: {formatCurrency(loyaltyBalance * 0.1, tenantCurrency)} (1 point = 0.1{" "}
+              {bookingState.selectedServices[0]?.currency || tenantCurrency})
             </p>
             {bookingState.promotions.loyaltyPointsUsed ? (
               <div className="flex items-center justify-between">
@@ -396,41 +410,36 @@ export default function StepPromotions({
       {/* Summary */}
       <div className="p-4 bg-gray-50 rounded-lg space-y-2">
         <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Subtotal</span>
-          <span className="font-medium">{formatCurrency(cartTotal, "ZAR")}</span>
+          <span className="text-gray-600">Order subtotal</span>
+          <span className="font-medium">{formatCurrency(cartTotal, tenantCurrency)}</span>
         </div>
         {bookingState.promotions.couponDiscount && (
           <div className="flex justify-between text-sm text-green-600">
             <span>Coupon Discount</span>
-            <span>-{formatCurrency(bookingState.promotions.couponDiscount, "ZAR")}</span>
+            <span>-{formatCurrency(bookingState.promotions.couponDiscount, tenantCurrency)}</span>
           </div>
         )}
         {bookingState.promotions.giftCardAmount && (
           <div className="flex justify-between text-sm text-green-600">
             <span>Gift Card</span>
-            <span>-{formatCurrency(bookingState.promotions.giftCardAmount, "ZAR")}</span>
+            <span>-{formatCurrency(bookingState.promotions.giftCardAmount, tenantCurrency)}</span>
           </div>
         )}
         {bookingState.promotions.loyaltyDiscount && (
           <div className="flex justify-between text-sm text-green-600">
             <span>Loyalty Points</span>
-            <span>-{formatCurrency(bookingState.promotions.loyaltyDiscount, "ZAR")}</span>
+            <span>-{formatCurrency(bookingState.promotions.loyaltyDiscount, tenantCurrency)}</span>
           </div>
         )}
         {bookingState.promotions.membershipDiscount && (
           <div className="flex justify-between text-sm text-green-600">
             <span>Membership Discount</span>
-            <span>-{formatCurrency(bookingState.promotions.membershipDiscount, "ZAR")}</span>
+            <span>-{formatCurrency(bookingState.promotions.membershipDiscount, tenantCurrency)}</span>
           </div>
         )}
-        <div className="flex justify-between text-base font-semibold pt-2 border-t">
-          <span>Subtotal</span>
-          <span>
-            {formatCurrency(
-              Math.max(0, cartTotal - (bookingState.promotions.couponDiscount || 0) - (bookingState.promotions.giftCardAmount || 0) - (bookingState.promotions.loyaltyDiscount || 0) - (bookingState.promotions.membershipDiscount || 0)),
-              "ZAR"
-            )}
-          </span>
+        <div className="flex justify-between text-base font-semibold pt-2 border-t border-gray-200">
+          <span className="text-gray-900">After promotions</span>
+          <span>{formatCurrency(subtotalAfterPromotions, tenantCurrency)}</span>
         </div>
       </div>
     </div>

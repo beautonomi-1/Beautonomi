@@ -42,19 +42,42 @@ export function getDateFromISO(isoString: string): string {
 }
 
 /**
- * Create Date object from date string and time string
+ * Create Date object from date string and time string in a specific timezone.
+ * When timezone is provided, the returned Date represents the correct UTC instant
+ * for the given wall-clock time in that zone.
  */
-export function combineDateAndTime(dateStr: string, timeStr: string, _timezone?: string): Date {
-  // Parse time (HH:MM:SS or HH:MM)
-  const timeParts = timeStr.split(':');
+export function combineDateAndTime(dateStr: string, timeStr: string, timezone?: string): Date {
+  const timeParts = timeStr.split(":");
   const hours = parseInt(timeParts[0], 10);
   const minutes = parseInt(timeParts[1], 10);
   const seconds = timeParts[2] ? parseInt(timeParts[2], 10) : 0;
 
-  // Combine date and time
+  if (timezone) {
+    const iso = `${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+
+    const utcGuess = new Date(iso + "Z");
+    const parts = formatter.formatToParts(utcGuess);
+    const get = (type: string) => parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
+    const wallHour = get("hour") === 24 ? 0 : get("hour");
+    const diffMs =
+      (wallHour - hours) * 3600000 +
+      (get("minute") - minutes) * 60000 +
+      (get("second") - seconds) * 1000;
+    return new Date(utcGuess.getTime() - diffMs);
+  }
+
   const date = new Date(dateStr);
   date.setHours(hours, minutes, seconds, 0);
-
   return date;
 }
 

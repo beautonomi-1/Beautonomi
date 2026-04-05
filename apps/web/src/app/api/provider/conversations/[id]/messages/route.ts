@@ -307,6 +307,10 @@ export async function POST(
       console.error("Failed to send message notification:", notifError);
     }
 
+    void import("@/lib/subscriptions/subscription-limit-notifications")
+      .then((m) => m.maybeNotifyProviderSubscriptionLimits(providerId))
+      .catch((e) => console.warn("Subscription usage notification:", e));
+
     // Conversation unread counts + last message preview handled by DB trigger.
 
     return successResponse({

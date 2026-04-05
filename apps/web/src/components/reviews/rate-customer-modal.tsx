@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,6 +20,10 @@ interface RateCustomerModalProps {
   onOpenChange: (open: boolean) => void;
   bookingId: string;
   customerName: string;
+  /** When set, submit updates this provider_client_ratings row (PATCH). */
+  providerRatingId?: string | null;
+  initialRating?: number;
+  initialComment?: string;
   onSuccess?: () => void;
 }
 
@@ -28,12 +32,23 @@ export default function RateCustomerModal({
   onOpenChange,
   bookingId,
   customerName,
+  providerRatingId,
+  initialRating,
+  initialComment,
   onSuccess,
 }: RateCustomerModalProps) {
   const [rating, setRating] = useState<number>(0);
   const [hoveredRating, setHoveredRating] = useState<number>(0);
   const [comment, setComment] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setRating(
+      typeof initialRating === "number" && initialRating >= 1 && initialRating <= 5 ? initialRating : 0
+    );
+    setComment(typeof initialComment === "string" ? initialComment : "");
+  }, [open, initialRating, initialComment]);
 
   const handleSubmit = async () => {
     if (rating === 0) {
@@ -43,31 +58,20 @@ export default function RateCustomerModal({
 
     try {
       setIsSubmitting(true);
-      // First, check if a review exists for this booking
-      const reviewResponse = await fetcher.get<{ data?: { id: string } }>(
-        `/api/me/reviews?booking_id=${bookingId}`
-      );
-
-      const reviewId = reviewResponse.data?.id;
-
-      if (!reviewId) {
-        // If no review exists, we need to create one first (this should be done by customer)
-        // For now, we'll try to update the review with customer rating
-        toast.error("Review not found. Customer must review first.");
-        return;
+      if (providerRatingId) {
+        await fetcher.patch(`/api/provider/ratings/${providerRatingId}`, {
+          rating,
+          comment: comment.trim() || undefined,
+        });
+        toast.success("Rating updated successfully!");
+      } else {
+        await fetcher.post("/api/provider/ratings", {
+          booking_id: bookingId,
+          rating,
+          comment: comment.trim() || undefined,
+        });
+        toast.success("Rating submitted successfully!");
       }
-
-      // Update the review with customer rating
-      const response = await fetcher.patch<{ data?: unknown; error?: { message?: string } }>(`/api/reviews/${reviewId}`, {
-        customer_rating: rating,
-        customer_comment: comment || null,
-      });
-
-      if (response.error) {
-        throw new Error(response.error.message || "Failed to submit rating");
-      }
-
-      toast.success("Rating submitted successfully!");
       onSuccess?.();
       onOpenChange(false);
       // Reset form
@@ -95,7 +99,7 @@ export default function RateCustomerModal({
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="text-2xl font-semibold">
-            Rate {customerName}
+            {providerRatingId ? "Update rating" : "Rate"} {customerName}
           </DialogTitle>
           <DialogDescription>
             Share your experience with this customer to help other providers.

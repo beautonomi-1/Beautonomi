@@ -31,6 +31,7 @@ Source: `apps/web/.env.example`, `apps/web/next.config.mjs`, and API routes.
 | NEXT_PUBLIC_GOOGLE_PLACES_API_KEY | Optional | Optional | Optional | Google Places |
 | NEXT_PUBLIC_GOOGLE_ANALYTICS_ID | Optional | Optional | Optional | GA4 |
 | NEXT_PUBLIC_GOOGLE_VERIFICATION | Optional | Optional | Optional | Search console meta tag |
+| NEXT_PUBLIC_SENTRY_DSN | Optional | Recommended | Required for scale-gated rollout | Required by `scripts/prod/verify-observability-gates.mjs` |
 
 ### SECRET (server-only; never in client bundle)
 
@@ -40,6 +41,12 @@ Source: `apps/web/.env.example`, `apps/web/next.config.mjs`, and API routes.
 | PAYSTACK_SECRET_KEY | Payments, refunds, webhooks | Required for Paystack API |
 | PAYSTACK_WEBHOOK_SECRET | Optional | Override webhook secret (else from platform_secrets) |
 | CRON_SECRET | /api/cron/* | Authorize cron triggers |
+| STRICT_TENANT_HOST_RESOLUTION | Tenant resolution | Set `true` for global-ready production to fail closed on unknown hosts (no implicit ZA fallback) |
+| SUPPORTED_MARKET_COUNTRIES | Market availability | Comma-separated launched markets (ISO2), e.g. `ZA,UK,US` |
+| RESTRICTED_COUNTRIES | Compliance | Optional ISO2 deny list for legal/restricted access handling |
+| TENANT_HOST_COUNTRY_MAP | Market hints | Optional JSON host->ISO2 mapping for market domains. Do not map the global-entry host here. |
+| MARKET_AUTO_SWITCH_ENABLED | Routing control | Kill-switch for global-entry auto-switch behavior (`true` by default) |
+| MARKET_AUTO_SWITCH_ALLOWED_COUNTRIES | Routing rollout | Optional ISO2 allow-list for staged auto-switch rollout; empty means all launched markets |
 | INTERNAL_API_SECRET | Fallback for cron | Optional |
 | AMPLITUDE_SERVER_API_KEY | Server-side Amplitude | Optional |
 | ONESIGNAL_APP_ID | Admin settings, server notifications | Optional |
@@ -52,6 +59,9 @@ Source: `apps/web/.env.example`, `apps/web/next.config.mjs`, and API routes.
 | Variable | Purpose |
 |----------|---------|
 | NODE_ENV | development / production |
+| NEXT_PUBLIC_GLOBAL_ENTRY_HOST | Host treated as global entry context for unsupported-country popup (default `beautonomi.com`) |
+| NEXT_PUBLIC_DEFAULT_MARKET_HOST | Market host used for "Switch to available market" action (default `beautonomi.co.za`) |
+| NEXT_PUBLIC_MARKET_OVERRIDE_TTL_HOURS | Hours to honor manual market override before auto-switch resumes (default 24) |
 | VERCEL_ENV | production / preview (Vercel) |
 | VERCEL_URL | Preview URL (Vercel) |
 | ANALYZE | true to enable bundle analyzer |
@@ -69,9 +79,14 @@ Source: `apps/customer/.env.example`, `apps/customer/app.config.js`, `apps/custo
 | EXPO_PUBLIC_SUPABASE_URL | ✓ | ✓ | ✓ |
 | EXPO_PUBLIC_SUPABASE_ANON_KEY | ✓ | ✓ | ✓ |
 | EXPO_PUBLIC_APP_URL | http://localhost:3000 or LAN IP | Staging URL | https://yourdomain.com |
+| EXPO_PUBLIC_WEB_API_TENANT_HOST | Optional (recommended) | Recommended | Recommended (e.g. beautonomi.co.za) |
+| EXPO_PUBLIC_GLOBAL_ENTRY_HOST | Optional | Optional | Recommended | Global entry host for unsupported-country routing UX (e.g. beautonomi.com) |
+| EXPO_PUBLIC_DEFAULT_MARKET_HOST | Optional | Optional | Recommended | Default transactional market host for market switch fallback |
+| EXPO_PUBLIC_MARKET_HOST_OPTIONS | Optional | Optional | Optional | Comma list `host|Label` for native in-app market selector |
+| EXPO_PUBLIC_MARKET_OVERRIDE_TTL_HOURS | Optional | Optional | Optional | Hours to honor manual override before auto-switch resumes (default 24) |
 | EXPO_PUBLIC_ONESIGNAL_APP_ID | Optional | Optional | Optional |
 | EXPO_PUBLIC_AMPLITUDE_API_KEY | Optional | Optional | Optional (usually from /api/public/analytics-config) |
-| EXPO_PUBLIC_SENTRY_DSN | Optional | Optional | Optional | Sentry error reporting (see docs/SENTRY_WEB_SETUP.md) |
+| EXPO_PUBLIC_SENTRY_DSN | Optional | Recommended | Recommended | Sentry error reporting (see docs/SENTRY_WEB_SETUP.md) |
 
 ### SECRET
 
@@ -90,13 +105,18 @@ Source: `apps/provider/.env.example`, `apps/provider/app.config.js`, `apps/provi
 | EXPO_PUBLIC_SUPABASE_URL | ✓ | ✓ | ✓ |
 | EXPO_PUBLIC_SUPABASE_ANON_KEY | ✓ | ✓ | ✓ |
 | EXPO_PUBLIC_APP_URL | http://localhost:3000 or LAN IP | Staging URL | https://yourdomain.com |
+| EXPO_PUBLIC_WEB_API_TENANT_HOST | Optional (recommended) | Recommended | Recommended (e.g. beautonomi.co.za) |
+| EXPO_PUBLIC_GLOBAL_ENTRY_HOST | Optional | Optional | Recommended | Global entry host for unsupported-country routing UX (e.g. beautonomi.com) |
+| EXPO_PUBLIC_DEFAULT_MARKET_HOST | Optional | Optional | Recommended | Default transactional market host for market switch fallback |
+| EXPO_PUBLIC_MARKET_HOST_OPTIONS | Optional | Optional | Optional | Comma list `host|Label` for native in-app market selector |
+| EXPO_PUBLIC_MARKET_OVERRIDE_TTL_HOURS | Optional | Optional | Optional | Hours to honor manual override before auto-switch resumes (default 24) |
 | EXPO_PUBLIC_ONESIGNAL_APP_ID | Optional | Optional | Optional |
 
 ### Optional
 
 | Variable | Notes |
 |----------|-------|
-| EXPO_PUBLIC_SENTRY_DSN | Sentry error reporting; set in `.env.local` and in app.config.js extra (see docs/SENTRY_WEB_SETUP.md) |
+| EXPO_PUBLIC_SENTRY_DSN | Sentry error reporting; recommended for staged/prod and used by observability policy |
 
 ---
 
@@ -116,8 +136,41 @@ All of the above must return only whitelisted fields (no secret_key, webhook_sec
 
 ---
 
+## Production Env Vars – Quick Reference (Global Platform)
+
+### Web (Vercel)
+
+```env
+STRICT_TENANT_HOST_RESOLUTION=true
+NEXT_PUBLIC_GLOBAL_ENTRY_HOST=beautonomi.com
+NEXT_PUBLIC_DEFAULT_MARKET_HOST=beautonomi.co.za
+SUPPORTED_MARKET_COUNTRIES=ZA
+RESTRICTED_COUNTRIES=
+TENANT_HOST_COUNTRY_MAP={"beautonomi.co.za":"ZA","www.beautonomi.co.za":"ZA"}
+MARKET_AUTO_SWITCH_ENABLED=true
+MARKET_AUTO_SWITCH_ALLOWED_COUNTRIES=ZA
+NEXT_PUBLIC_MARKET_OVERRIDE_TTL_HOURS=24
+NEXT_PUBLIC_SENTRY_DSN=<your-web-sentry-dsn>
+NEXT_PUBLIC_APP_URL=https://beautonomi.com
+```
+
+### Mobile (Provider + Customer, EAS)
+
+```env
+EXPO_PUBLIC_APP_URL=https://beautonomi.com
+EXPO_PUBLIC_WEB_API_TENANT_HOST=beautonomi.co.za
+EXPO_PUBLIC_GLOBAL_ENTRY_HOST=beautonomi.com
+EXPO_PUBLIC_DEFAULT_MARKET_HOST=beautonomi.co.za
+EXPO_PUBLIC_MARKET_HOST_OPTIONS=beautonomi.co.za|South Africa
+EXPO_PUBLIC_MARKET_OVERRIDE_TTL_HOURS=24
+```
+
+> When expanding to more markets, update `SUPPORTED_MARKET_COUNTRIES`, `TENANT_HOST_COUNTRY_MAP`, `MARKET_AUTO_SWITCH_ALLOWED_COUNTRIES`, and `EXPO_PUBLIC_MARKET_HOST_OPTIONS` accordingly.
+
+---
+
 ## Per-environment checklist
 
 - **Development:** NEXT_PUBLIC_APP_URL / EXPO_PUBLIC_APP_URL = http://localhost:3000 (or LAN IP for devices). SERVICE_ROLE and PAYSTACK_SECRET_KEY in .env.local only.
 - **Staging:** Same vars as production with staging URLs and keys. No production secrets.
-- **Production:** All PUBLIC vars set; SECRET vars only in host (Vercel/host) env; CRON_SECRET set if using cron.
+- **Production:** All PUBLIC vars set; SECRET vars only in host (Vercel/host) env; CRON_SECRET set if using cron. See quick reference above for global platform vars.

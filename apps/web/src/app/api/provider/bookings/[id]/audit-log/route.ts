@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 
 /**
  * GET /api/provider/bookings/[id]/audit-log
@@ -26,13 +28,25 @@ export async function GET(
     // Verify booking belongs to provider
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id")
+      .select("id, location_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
     if (!booking) {
       return successResponse([]);
+    }
+
+    const supabaseAdminAudit = getSupabaseAdmin();
+    const branchAccess = await assertProviderUserCanAccessBookingBranch(
+      supabaseAdminAudit,
+      user.id,
+      user.role,
+      providerId,
+      (booking as { location_id?: string | null }).location_id ?? null
+    );
+    if (branchAccess.allowed === false) {
+      return errorResponse(branchAccess.message, "FORBIDDEN", 403);
     }
 
     // Get audit log entries

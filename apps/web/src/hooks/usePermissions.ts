@@ -16,8 +16,12 @@ interface UsePermissionsResult {
 
 // Cache permissions to survive tab switches and temporary role loss
 const permissionsCache = new Map<string, { permissions: StaffPermissions; isOwner: boolean; timestamp: number }>();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
 const STORAGE_KEY = 'beautonomi_permissions_cache';
+const pendingPermissionsRequests = new Map<
+  string,
+  Promise<{ permissions: StaffPermissions; isOwner: boolean }>
+>();
 
 // Load from localStorage on module load
 if (typeof window !== 'undefined') {
@@ -95,6 +99,30 @@ export function usePermissions(): UsePermissionsResult {
       lastUserIdRef.current = user.id;
       lastRoleRef.current = role;
 
+      // Provider owners have full access; avoid unnecessary permissions API request.
+      if (role === "provider_owner") {
+        const ownerCacheData = {
+          permissions: {} as StaffPermissions,
+          isOwner: true,
+          timestamp: Date.now(),
+        };
+        permissionsCache.set(user.id, ownerCacheData);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+              userId: user.id,
+              ...ownerCacheData,
+            }));
+          } catch {
+            // Ignore storage errors
+          }
+        }
+        setPermissions(ownerCacheData.permissions);
+        setIsOwner(true);
+        setIsLoading(false);
+        return;
+      }
+
       // Check cache first (memory, then localStorage)
       let cached = permissionsCache.get(user.id);
       if (!cached && typeof window !== 'undefined') {
@@ -126,21 +154,34 @@ export function usePermissions(): UsePermissionsResult {
 
       try {
         setIsLoading(true);
-        const response = await fetcher.get<{
-          data: {
-            isOwner: boolean;
-            permissions: StaffPermissions;
-          };
-        }>("/api/provider/permissions");
+        const requestKey = user.id;
+        let pending = pendingPermissionsRequests.get(requestKey);
+        if (!pending) {
+          pending = (async () => {
+            const response = await fetcher.get<{
+              data: {
+                isOwner: boolean;
+                permissions: StaffPermissions;
+              };
+            }>("/api/provider/permissions");
+            return {
+              permissions: response.data.permissions,
+              isOwner: response.data.isOwner,
+            };
+          })();
+          pendingPermissionsRequests.set(requestKey, pending);
+        }
+
+        const fetched = await pending;
 
         // Cache the permissions in memory and localStorage
         const cacheData = {
-          permissions: response.data.permissions,
-          isOwner: response.data.isOwner,
+          permissions: fetched.permissions,
+          isOwner: fetched.isOwner,
           timestamp: Date.now(),
         };
         permissionsCache.set(user.id, cacheData);
-        
+
         // Also persist to localStorage
         if (typeof window !== 'undefined') {
           try {
@@ -153,8 +194,8 @@ export function usePermissions(): UsePermissionsResult {
           }
         }
 
-        setPermissions(response.data.permissions);
-        setIsOwner(response.data.isOwner);
+        setPermissions(fetched.permissions);
+        setIsOwner(fetched.isOwner);
       } catch (error) {
         console.error("Failed to load permissions:", error);
         // On error, try to use cached permissions if available
@@ -167,6 +208,7 @@ export function usePermissions(): UsePermissionsResult {
           setIsOwner(false);
         }
       } finally {
+        pendingPermissionsRequests.delete(user.id);
         setIsLoading(false);
       }
     };
@@ -178,8 +220,8 @@ export function usePermissions(): UsePermissionsResult {
     // If we're the owner, always allow
     if (isOwner) return true;
     
-    // If permissions are loading or not available, be permissive (fail open)
-    // This prevents menu items from disappearing during tab switches
+    // If permissions are loading or unavailable, use cache only; otherwise fail closed.
+    // This avoids briefly exposing restricted actions to staff users.
     if (isLoading || !permissions) {
       // Check cache as fallback
       if (user) {
@@ -188,9 +230,7 @@ export function usePermissions(): UsePermissionsResult {
           return cached.permissions[permission] === true || cached.isOwner;
         }
       }
-      // If no cache, be permissive during loading/unavailable state
-      // Better to show items that might be restricted than hide items that should be visible
-      return true;
+      return false;
     }
     
     return permissions[permission] === true;

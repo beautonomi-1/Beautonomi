@@ -1,25 +1,29 @@
 /**
  * Formatting utilities for currency, dates, durations, etc.
  */
-import { format, formatDistanceToNow, isToday, isTomorrow, isYesterday, parseISO } from "date-fns";
+import { format, formatDistanceToNow, isToday, isTomorrow, isYesterday, isValid, parseISO } from "date-fns";
+import { formatMoney, formatMoneyCompact } from "@beautonomi/utils";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
-export function formatCurrency(amount: number, currency = "ZAR"): string {
-  if (!Number.isFinite(amount)) amount = 0;
-  const symbol = currency === "ZAR" ? "R" : currency === "USD" ? "$" : currency;
-  return `${symbol}${amount.toFixed(2)}`;
+function parseIsoSafe(dateStr: string | null | undefined): Date | null {
+  if (!dateStr) return null;
+  const parsed = parseISO(dateStr);
+  return isValid(parsed) ? parsed : null;
 }
 
-export function formatCurrencyShort(amount: number): string {
-  if (!Number.isFinite(amount)) amount = 0;
-  if (amount >= 1_000_000) return `R${(amount / 1_000_000).toFixed(1)}M`;
-  if (amount >= 1_000) return `R${(amount / 1_000).toFixed(1)}K`;
-  return `R${amount.toFixed(0)}`;
+export function formatCurrency(amount: number, currency = getTenantDefaultCurrency()): string {
+  return formatMoney(amount, currency);
+}
+
+export function formatCurrencyShort(amount: number, currency = getTenantDefaultCurrency()): string {
+  return formatMoneyCompact(amount, currency);
 }
 
 export function formatDate(dateStr: string | null | undefined, fmt = "MMM d, yyyy"): string {
   if (!dateStr) return "";
   try {
-    return format(parseISO(dateStr), fmt);
+    const parsed = parseIsoSafe(dateStr);
+    return parsed ? format(parsed, fmt) : dateStr;
   } catch {
     return dateStr;
   }
@@ -28,7 +32,8 @@ export function formatDate(dateStr: string | null | undefined, fmt = "MMM d, yyy
 export function formatTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
   try {
-    return format(parseISO(dateStr), "HH:mm");
+    const parsed = parseIsoSafe(dateStr);
+    return parsed ? format(parsed, "HH:mm") : dateStr;
   } catch {
     return dateStr;
   }
@@ -37,7 +42,8 @@ export function formatTime(dateStr: string | null | undefined): string {
 export function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
   try {
-    return format(parseISO(dateStr), "MMM d, yyyy 'at' HH:mm");
+    const parsed = parseIsoSafe(dateStr);
+    return parsed ? format(parsed, "MMM d, yyyy 'at' HH:mm") : dateStr;
   } catch {
     return dateStr;
   }
@@ -46,7 +52,8 @@ export function formatDateTime(dateStr: string | null | undefined): string {
 export function formatRelativeDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
   try {
-    const date = parseISO(dateStr);
+    const date = parseIsoSafe(dateStr);
+    if (!date) return dateStr;
     if (isToday(date)) return `Today at ${format(date, "HH:mm")}`;
     if (isTomorrow(date)) return `Tomorrow at ${format(date, "HH:mm")}`;
     if (isYesterday(date)) return `Yesterday at ${format(date, "HH:mm")}`;
@@ -59,7 +66,8 @@ export function formatRelativeDate(dateStr: string | null | undefined): string {
 export function formatTimeAgo(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
   try {
-    return formatDistanceToNow(parseISO(dateStr), { addSuffix: true });
+    const parsed = parseIsoSafe(dateStr);
+    return parsed ? formatDistanceToNow(parsed, { addSuffix: true }) : dateStr;
   } catch {
     return dateStr;
   }

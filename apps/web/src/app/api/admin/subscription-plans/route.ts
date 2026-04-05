@@ -6,6 +6,10 @@ import { z } from 'zod';
 import { createPlan, updatePlan } from '@/lib/payments/paystack-complete';
 import { convertToSmallestUnit } from '@/lib/payments/paystack';
 import { getPaystackSecretKey } from '@/lib/payments/paystack-server';
+import { resolveAdminTenantContext } from '@/lib/tenant/scoped-overrides';
+import { resolveAdminApiTenantId } from '@/lib/tenant/admin-request-tenant';
+import { getTenantRegionConfig } from '@/lib/regions/config';
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 // Complex feature gating structure matching migration 133
 const featureGatingSchema = z.object({
@@ -72,7 +76,7 @@ const createPlanSchema = z.object({
   description: z.string().optional(),
   price_monthly: z.number().min(0).optional(),
   price_yearly: z.number().min(0).optional(),
-  currency: z.string().default('ZAR'),
+  currency: z.string().optional(),
   features: z.union([featureGatingSchema, z.record(z.string(), z.any())]).optional(), // Support both complex structure and legacy array
   is_free: z.boolean().default(false),
   is_active: z.boolean().default(true),
@@ -115,17 +119,27 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
+    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(
+      request,
+      body as Record<string, unknown>,
+      user.role ?? null
+    );
+    const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
     const data = createPlanSchema.parse(body);
+    const tenantForCurrency = scopeTenantId ?? (await resolveAdminApiTenantId(request));
+    const lastResortCurrency =
+      (await getTenantRegionConfig(tenantForCurrency))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    const planCurrency = data.currency ?? lastResortCurrency;
 
     // If not free, create Paystack plans
     let paystackPlanCodeMonthly: string | null = null;
     let paystackPlanCodeYearly: string | null = null;
 
     if (!data.is_free) {
-      const _secretKey = await getPaystackSecretKey();
+      const _secretKey = await getPaystackSecretKey({ tenantId: scopeTenantId });
 
       // Create monthly plan in Paystack if price is set
       if (data.price_monthly && data.price_monthly > 0) {
@@ -134,8 +148,8 @@ export async function POST(request: NextRequest) {
             name: `${data.name} (Monthly)`,
             interval: 'monthly',
             amount: convertToSmallestUnit(data.price_monthly),
-            currency: data.currency,
-          });
+            currency: planCurrency,
+          }, { tenantId: scopeTenantId });
           paystackPlanCodeMonthly = monthlyPlan.data?.plan_code || null;
         } catch (err: unknown) {
           console.error('Failed to create Paystack monthly plan:', err);
@@ -151,8 +165,8 @@ export async function POST(request: NextRequest) {
             name: `${data.name} (Yearly)`,
             interval: 'annually',
             amount: convertToSmallestUnit(data.price_yearly),
-            currency: data.currency,
-          });
+            currency: planCurrency,
+          }, { tenantId: scopeTenantId });
           paystackPlanCodeYearly = yearlyPlan.data?.plan_code || null;
         } catch (err: unknown) {
           console.error('Failed to create Paystack yearly plan:', err);
@@ -179,7 +193,7 @@ export async function POST(request: NextRequest) {
         description: data.description,
         price_monthly: data.price_monthly,
         price_yearly: data.price_yearly,
-        currency: data.currency,
+        currency: planCurrency,
         features: featuresJsonb,
         is_free: data.is_free,
         is_active: data.is_active,
@@ -216,9 +230,15 @@ export async function POST(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
+    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(
+      request,
+      body as Record<string, unknown>,
+      user.role ?? null
+    );
+    const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
     const { id, ...updates } = body;
 
     if (!id) {
@@ -257,7 +277,8 @@ export async function PUT(request: NextRequest) {
               name: `${data.name || existingPlan.name} (Monthly)`,
               amount: data.price_monthly ? convertToSmallestUnit(data.price_monthly) : undefined,
               ...commonOpts,
-            }
+            },
+            { tenantId: scopeTenantId }
           );
         } catch (err: unknown) {
           console.error('Failed to update Paystack monthly plan:', err);
@@ -272,7 +293,8 @@ export async function PUT(request: NextRequest) {
               name: `${data.name || existingPlan.name} (Yearly)`,
               amount: data.price_yearly ? convertToSmallestUnit(data.price_yearly) : undefined,
               ...commonOpts,
-            }
+            },
+            { tenantId: scopeTenantId }
           );
         } catch (err: unknown) {
           console.error('Failed to update Paystack yearly plan:', err);

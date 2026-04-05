@@ -1,6 +1,6 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { checkResourceAvailability } from "@/lib/resources/assignment";
 
 /**
@@ -15,6 +15,10 @@ export async function POST(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+
     const supabase = await getSupabaseServer();
     const { slug } = await params;
     const body = await request.json().catch(() => ({}));
@@ -57,6 +61,7 @@ export async function POST(
       .select("id")
       .eq("slug", decodeURIComponent(slug))
       .eq("status", "active")
+      .eq("tenant_id", tenantId)
       .maybeSingle();
 
     if (!provider) {

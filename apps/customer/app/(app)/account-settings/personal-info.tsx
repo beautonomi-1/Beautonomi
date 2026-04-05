@@ -10,8 +10,17 @@ import { useImagePicker } from "@/hooks/useImagePicker";
 import { Colors } from "@/constants/colors";
 import { SCREEN_PADDING, RADIUS_CARD, RADIUS_INPUT, RADIUS_BUTTON, STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 import { PhoneInputWithCountry } from "@/components/PhoneInputWithCountry";
+import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
+import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { parsePhoneToCountryAndNational, getNationalFromStored } from "@/constants/phone";
 import { supabase } from "@/lib/supabase/client";
+import {
+  normalizeSupabaseAuthPhone,
+  normalizeSupabaseSmsOtpToken,
+  isCompleteSupabaseSmsOtp,
+  SUPABASE_AUTH_OTP_LENGTH,
+  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+} from "@/lib/supabase-sms-otp";
 
 export default function PersonalInfoScreen() {
   useScreenTracking("Personal Info");
@@ -20,10 +29,10 @@ export default function PersonalInfoScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
-  const [phoneCountryCode, setPhoneCountryCode] = useState("+27");
+  const [phoneCountryCode, setPhoneCountryCode] = useState(getDeviceDefaultCountryDial);
   const [phoneNational, setPhoneNational] = useState("");
   const [emergencyName, setEmergencyName] = useState("");
-  const [emergencyCountryCode, setEmergencyCountryCode] = useState("+27");
+  const [emergencyCountryCode, setEmergencyCountryCode] = useState(getDeviceDefaultCountryDial);
   const [emergencyPhoneNational, setEmergencyPhoneNational] = useState("");
   const [emergencyRelationship, setEmergencyRelationship] = useState("");
   const [about, setAbout] = useState("");
@@ -35,7 +44,7 @@ export default function PersonalInfoScreen() {
   const [emailSending, setEmailSending] = useState(false);
   const [emailChangePending, setEmailChangePending] = useState(false);
   const [phoneStep, setPhoneStep] = useState<"enter_phone" | "enter_otp" | null>(null);
-  const [phoneModalCountryCode, setPhoneModalCountryCode] = useState("+27");
+  const [phoneModalCountryCode, setPhoneModalCountryCode] = useState(getDeviceDefaultCountryDial);
   const [phoneModalNational, setPhoneModalNational] = useState("");
   const [pendingPhoneE164, setPendingPhoneE164] = useState("");
   const [phoneOtpCode, setPhoneOtpCode] = useState("");
@@ -60,12 +69,13 @@ export default function PersonalInfoScreen() {
         setProfile(p);
         setEmailChangePending(!!(p as { email_change_pending?: boolean })?.email_change_pending);
         setFullName(p?.full_name || [p?.first_name, p?.last_name].filter(Boolean).join(" ") || "");
-        const main = parsePhoneToCountryAndNational(p?.phone);
+        const deviceDial = getDeviceDefaultCountryDial();
+        const main = parsePhoneToCountryAndNational(p?.phone, deviceDial);
         setPhoneCountryCode(main.countryCode);
         setPhoneNational(main.national);
         const ec = p?.emergency_contact;
         setEmergencyName(ec?.name ?? "");
-        setEmergencyCountryCode(ec?.country_code || "+27");
+        setEmergencyCountryCode(ec?.country_code || deviceDial);
         setEmergencyPhoneNational(getNationalFromStored(ec?.country_code, ec?.phone));
         setEmergencyRelationship(ec?.relationship ?? "");
       }
@@ -117,8 +127,9 @@ export default function PersonalInfoScreen() {
 
   const handleSendPhoneOtp = async () => {
     const fullPhone = `${phoneModalCountryCode}${phoneModalNational.replace(/\D/g, "")}`.trim();
-    const e164 = fullPhone.startsWith("+") ? fullPhone : `+${fullPhone}`;
-    if (e164.length < 10) {
+    const raw = fullPhone.startsWith("+") ? fullPhone : `+${fullPhone}`;
+    const e164 = normalizeSupabaseAuthPhone(raw);
+    if (e164.replace(/\D/g, "").length < 10) {
       Alert.alert("Error", "Enter a valid phone number");
       return;
     }
@@ -129,7 +140,10 @@ export default function PersonalInfoScreen() {
       setPendingPhoneE164(e164);
       setPhoneStep("enter_otp");
       setPhoneOtpCode("");
-      Alert.alert("Code sent", "Enter the verification code sent to your phone.");
+      Alert.alert(
+        "Code sent",
+        `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code sent to your phone (valid about ${Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))} ${Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).`,
+      );
     } catch (e: unknown) {
       Alert.alert("Error", (e as { message?: string })?.message ?? "Failed to send code. Please try again.");
     } finally {
@@ -137,21 +151,23 @@ export default function PersonalInfoScreen() {
     }
   };
 
-  const handleVerifyPhoneOtp = async () => {
-    const code = phoneOtpCode.trim();
-    if (!code || !pendingPhoneE164) {
-      Alert.alert("Error", "Enter the verification code");
+  const handleVerifyPhoneOtp = async (otpOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(otpOverride ?? phoneOtpCode);
+    if (!pendingPhoneE164 || !isCompleteSupabaseSmsOtp(token)) {
+      Alert.alert("Error", `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS`);
       return;
     }
     setPhoneVerifying(true);
     try {
       const { error: verifyError } = await supabase.auth.verifyOtp({
-        phone: pendingPhoneE164,
-        token: code,
+        phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
+        token,
         type: "phone_change",
       });
       if (verifyError) throw verifyError;
-      const res = await api.patch<any>("/api/me/profile", { phone: pendingPhoneE164 });
+      const res = await api.patch<any>("/api/me/profile", {
+        phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
+      });
       if (res.error) throw new Error(res.error.message ?? "Failed to save phone");
       setShowPhoneModal(false);
       setPhoneStep(null);
@@ -450,7 +466,11 @@ export default function PersonalInfoScreen() {
               </View>
               {phoneStep === "enter_phone" ? (
                 <>
-                  <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>We&apos;ll send a verification code to your new number.</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>
+                    We&apos;ll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid about{" "}
+                    {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
+                    {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}). Your number only updates after you verify.
+                  </Text>
                   <PhoneInputWithCountry
                     countryCode={phoneModalCountryCode}
                     onCountryCodeChange={setPhoneModalCountryCode}
@@ -471,20 +491,26 @@ export default function PersonalInfoScreen() {
               ) : (
                 <>
                   <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Code sent to {pendingPhoneE164.replace(/(\+\d{2,3})(\d{3})(\d+)(\d{4})/, "$1 $2 *** $4")}</Text>
-                  <TextInput
-                    style={{ borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14, fontSize: 18, color: Colors.gray[900], letterSpacing: 4, marginBottom: 16 }}
-                    value={phoneOtpCode}
-                    onChangeText={setPhoneOtpCode}
-                    placeholder="000000"
-                    placeholderTextColor={Colors.gray[400]}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                  />
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 10 }}>
+                    Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS
+                  </Text>
+                  <View style={{ marginBottom: 16 }}>
+                    <OtpDigitRow
+                      value={phoneOtpCode}
+                      onChange={setPhoneOtpCode}
+                      onComplete={(code) => {
+                        if (!phoneVerifying && isCompleteSupabaseSmsOtp(code)) void handleVerifyPhoneOtp(code);
+                      }}
+                      disabled={phoneVerifying}
+                      autoFocus
+                      accessibilityLabelPrefix="Phone change verification code"
+                    />
+                  </View>
                   <View style={{ flexDirection: "row" }}>
                     <TouchableOpacity onPress={() => { setPhoneStep("enter_phone"); setPhoneOtpCode(""); setPendingPhoneE164(""); }} style={{ flex: 1, marginRight: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
                       <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>Back</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={handleVerifyPhoneOtp} disabled={phoneVerifying || !phoneOtpCode.trim()} style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center" }}>
+                    <TouchableOpacity onPress={() => void handleVerifyPhoneOtp()} disabled={phoneVerifying || !isCompleteSupabaseSmsOtp(phoneOtpCode)} style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center" }}>
                       {phoneVerifying ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontWeight: "600", color: Colors.white }}>Verify & save</Text>}
                     </TouchableOpacity>
                   </View>

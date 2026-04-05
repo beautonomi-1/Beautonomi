@@ -11,6 +11,9 @@ import { useRouter } from "next/navigation";
 import { Sparkles, Calendar, Clock, MapPin, Image as ImageIcon, DollarSign, X, Upload, Loader2, Info, CheckCircle2, AlertCircle } from "lucide-react";
 import Image from "next/image";
 import EmptyState from "@/components/ui/empty-state";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getCurrencySymbol } from "@/lib/locale/currency";
 
 type Props = {
   providerId: string;
@@ -19,6 +22,9 @@ type Props = {
 };
 
 export default function RequestCustomServicePage({ providerId, acceptsCustomRequests = true, businessName }: Props) {
+  const { bundle } = useConfigBundle();
+  const currencyCode = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+  const currencySymbol = getCurrencySymbol(currencyCode);
   const router = useRouter();
   const [description, setDescription] = useState("");
   const [budgetMin, setBudgetMin] = useState<string>("");
@@ -284,10 +290,10 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="budgetMin" className="text-xs text-gray-600 font-medium">
-                    Minimum (ZAR)
+                    Minimum ({currencyCode})
                   </Label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">R</span>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">{currencySymbol}</span>
                     <Input 
                       id="budgetMin"
                       value={budgetMin} 
@@ -301,10 +307,10 @@ export default function RequestCustomServicePage({ providerId, acceptsCustomRequ
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="budgetMax" className="text-xs text-gray-600 font-medium">
-                    Maximum (ZAR)
+                    Maximum ({currencyCode})
                   </Label>
                   <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">R</span>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">{currencySymbol}</span>
                     <Input 
                       id="budgetMax"
                       value={budgetMax} 

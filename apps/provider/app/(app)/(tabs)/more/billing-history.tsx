@@ -6,7 +6,7 @@ import {
   ScrollView,
   RefreshControl,
 } from "react-native";
-import { useRouter } from "expo-router";
+import * as Linking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -26,9 +26,15 @@ export interface BillingItem {
   invoice_url?: string | null;
 }
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
+
 /** Content-only for use in Settings hub tab. */
 export function BillingHistoryContent() {
-  const router = useRouter();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<BillingItem[]>(
@@ -44,13 +50,7 @@ export function BillingHistoryContent() {
   const openInvoice = (item: BillingItem) => {
     const url = item.invoice_url?.trim();
     if (!url) return;
-    router.push({
-      pathname: "/(app)/(tabs)/more/in-app-browser",
-      params: {
-        url: encodeURIComponent(url),
-        title: "Invoice",
-      },
-    } as never);
+    Linking.openURL(url);
   };
 
   if (loading && !data) {
@@ -104,7 +104,7 @@ export function BillingHistoryContent() {
                 {item.currency} {Number(item.amount).toFixed(2)}
               </Text>
               <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
-                {new Date(item.created_at).toLocaleDateString()}
+                {formatDateSafe(item.created_at)}
               </Text>
             </View>
             <View

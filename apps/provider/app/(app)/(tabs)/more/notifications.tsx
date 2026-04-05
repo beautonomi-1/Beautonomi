@@ -3,10 +3,10 @@ import {
   View,
   Text,
   TouchableOpacity,
-  FlatList,
   Animated,
   Alert,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -17,6 +17,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatTimeAgo } from "@/lib/format";
 import { Colors } from "@/constants/colors";
@@ -34,6 +35,7 @@ interface Notification {
     client_id?: string;
     review_id?: string;
     payment_id?: string;
+    conversation_id?: string;
   };
 }
 
@@ -65,9 +67,13 @@ function getNotificationIcon(type: string): {
     case "booking_completed":
       return { name: "checkmark-circle-outline", color: "#22c55e", bg: "#f0fdf4" };
     case "new_review":
+    case "provider_new_review":
       return { name: "star-outline", color: "#f59e0b", bg: "#fffbeb" };
     case "new_message":
+    case "provider_new_message":
       return { name: "chatbubble-outline", color: "#3b82f6", bg: "#eff6ff" };
+    case "low_stock_alert":
+      return { name: "cube-outline", color: "#d97706", bg: "#fffbeb" };
     case "payment_received":
     case "payout_sent":
       return { name: "cash-outline", color: "#22c55e", bg: "#f0fdf4" };
@@ -88,23 +94,75 @@ function getNotificationRoute(notif: Notification): string | null {
   if (notif.data?.client_id) {
     return `/(app)/(tabs)/more/clients/${notif.data.client_id}`;
   }
-  if (notif.type === "new_message") {
-    return "/(app)/(tabs)/chats";
+  const conversationId = notif.data?.conversation_id;
+  if (
+    conversationId &&
+    (notif.type === "new_message" || notif.type === "provider_new_message")
+  ) {
+    return `/(app)/(tabs)/more/messaging/${conversationId}`;
   }
-  if (notif.type === "new_review") {
+  if (notif.type === "new_message" || notif.type === "provider_new_message") {
+    return "/(app)/(tabs)/more/messaging";
+  }
+  if (notif.type === "new_review" || notif.type === "provider_new_review") {
     return "/(app)/(tabs)/more/reviews";
+  }
+  if (notif.type === "low_stock_alert") {
+    return "/(app)/(tabs)/more/products";
   }
   if (
     notif.type === "payment_received" ||
     notif.type === "payout_sent" ||
-    notif.type === "payment_failed"
+    notif.type === "payment_failed" ||
+    notif.type.startsWith("provider_payout_") ||
+    notif.type === "provider_earnings_summary" ||
+    notif.type === "custom_order_paid"
   ) {
     return "/(app)/(tabs)/more/finance";
+  }
+  if (
+    notif.type === "staff_invitation" ||
+    notif.type === "staff_schedule_change" ||
+    notif.type === "team_update"
+  ) {
+    return "/(app)/(tabs)/more/team";
+  }
+  if (
+    notif.type === "provider_availability_changed" ||
+    notif.type === "provider_holiday_mode" ||
+    notif.type === "provider_holiday_mode_ending"
+  ) {
+    return "/(app)/(tabs)/more/settings/hours";
+  }
+  if (notif.type === "provider_break_scheduled") {
+    return "/(app)/(tabs)/calendar";
+  }
+  if (
+    notif.type === "provider_onboarding_welcome" ||
+    notif.type === "provider_profile_approved" ||
+    notif.type === "provider_profile_rejected"
+  ) {
+    return "/(app)/(tabs)/more/settings/verification";
   }
   return null;
 }
 
 function isBookingType(type: string): boolean {
+  if (type.startsWith("provider_booking_")) return true;
+  if (
+    [
+      "provider_new_customer",
+      "provider_recurring_customer",
+      "provider_preferred_customer",
+      "provider_special_instructions",
+      "allergy_alert_provider",
+      "provider_weather_alert",
+      "provider_dispute_opened",
+      "provider_dispute_resolved",
+    ].includes(type)
+  ) {
+    return true;
+  }
   return [
     "new_booking",
     "booking_cancelled",
@@ -114,7 +172,13 @@ function isBookingType(type: string): boolean {
 }
 
 function isPaymentType(type: string): boolean {
-  return ["payment_received", "payout_sent", "payment_failed"].includes(type);
+  return (
+    ["payment_received", "payout_sent", "payment_failed", "custom_order_paid"].includes(
+      type,
+    ) ||
+    type.startsWith("provider_payout_") ||
+    type === "provider_earnings_summary"
+  );
 }
 
 function SwipeableNotificationItem({
@@ -204,12 +268,22 @@ export default function NotificationsScreen() {
   const {
     data: rawData,
     loading,
+    error: notificationsError,
     refresh,
     mutate: mutateRaw,
   } = useApi<NotificationsResponse>("/api/provider/notifications", { enabled: !!session });
   const notifications = rawData?.notifications ?? null;
   const isUnread = (n: Notification) => !(n.read_at || (n as any).read === true || (n as any).is_read === true);
-  const mutate = (updated: Notification[]) => mutateRaw({ notifications: updated, total_unread: updated.filter((n) => isUnread(n)).length });
+  const mutate = useCallback(
+    (updated: Notification[]) =>
+      mutateRaw({
+        notifications: updated,
+        total_unread: updated.filter(
+          (n) => !(n.read_at || (n as any).read === true || (n as any).is_read === true),
+        ).length,
+      }),
+    [mutateRaw],
+  );
   const { execute: patchNotification } = useApiMutation("patch");
   const { execute: postAction } = useApiMutation("post");
   const { execute: deleteNotification } = useApiMutation("delete");
@@ -255,44 +329,67 @@ export default function NotificationsScreen() {
     }
   }
 
-  async function handleMarkRead(notif: Notification) {
-    if (notif.read_at || (notif as any).is_read || (notif as any).read) {
-      navigateToNotification(notif);
-      return;
-    }
-    const { error } = await patchNotification(
-      `/api/provider/notifications/${notif.id}`,
-      { read_at: new Date().toISOString(), is_read: true }
-    );
-    if (!error && notifications) {
-      const updated = notifications.map((n) =>
-        n.id === notif.id ? { ...n, read_at: new Date().toISOString(), is_read: true } : n
+  const navigateToNotification = useCallback(
+    (notif: Notification) => {
+      const route = getNotificationRoute(notif);
+      if (route) {
+        router.push(route as any);
+      }
+    },
+    [router],
+  );
+
+  const handleMarkRead = useCallback(
+    async (notif: Notification) => {
+      if (notif.read_at || (notif as any).is_read || (notif as any).read) {
+        navigateToNotification(notif);
+        return;
+      }
+      const { error } = await patchNotification(
+        `/api/provider/notifications/${notif.id}`,
+        { read_at: new Date().toISOString(), is_read: true }
       );
-      mutate(updated);
-      await refreshCount();
-    }
-    navigateToNotification(notif);
-  }
+      if (!error && notifications) {
+        const updated = notifications.map((n) =>
+          n.id === notif.id ? { ...n, read_at: new Date().toISOString(), is_read: true } : n
+        );
+        mutate(updated);
+        await refreshCount();
+      }
+      navigateToNotification(notif);
+    },
+    [notifications, patchNotification, mutate, refreshCount, navigateToNotification],
+  );
 
-  function navigateToNotification(notif: Notification) {
-    const route = getNotificationRoute(notif);
-    if (route) {
-      router.push(route as any);
-    }
-  }
+  const handleDelete = useCallback(
+    async (notif: Notification) => {
+      const { error } = await deleteNotification(
+        `/api/provider/notifications/${notif.id}`
+      );
+      if (error) {
+        Alert.alert("Error", error);
+      } else if (notifications) {
+        const updated = notifications.filter((n) => n.id !== notif.id);
+        mutate(updated);
+        await refreshCount();
+      }
+    },
+    [notifications, deleteNotification, mutate, refreshCount],
+  );
 
-  async function handleDelete(notif: Notification) {
-    const { error } = await deleteNotification(
-      `/api/provider/notifications/${notif.id}`
-    );
-    if (error) {
-      Alert.alert("Error", error);
-    } else if (notifications) {
-      const updated = notifications.filter((n) => n.id !== notif.id);
-      mutate(updated);
-      await refreshCount();
-    }
-  }
+  const notifKeyExtractor = useCallback((n: Notification) => n.id, []);
+
+  const renderNotificationItem = useCallback(
+    ({ item: notif }: { item: Notification }) => (
+      <SwipeableNotificationItem
+        notif={notif}
+        isUnread={isUnread(notif)}
+        onPress={() => handleMarkRead(notif)}
+        onDelete={() => handleDelete(notif)}
+      />
+    ),
+    [handleMarkRead, handleDelete],
+  );
 
   return (
     <ScreenContainer scrollable={false}>
@@ -326,6 +423,8 @@ export default function NotificationsScreen() {
 
       {loading && !notifications ? (
         <SkeletonList rows={5} />
+      ) : notificationsError && !notifications ? (
+        <ErrorState message={notificationsError} onRetry={refresh} />
       ) : filteredNotifications.length === 0 ? (
         <EmptyState
           icon="notifications-outline"
@@ -343,22 +442,14 @@ export default function NotificationsScreen() {
           }
         />
       ) : (
-        <FlatList
+        <FlashList
           data={filteredNotifications}
-          keyExtractor={(n: Notification) => n.id}
-          style={{ flex: 1, minHeight: 0 }}
+          keyExtractor={notifKeyExtractor}
+          renderItem={renderNotificationItem}
           showsVerticalScrollIndicator={true}
           refreshing={refreshing}
           onRefresh={handleRefresh}
           contentContainerStyle={{ paddingBottom: 120 }}
-          renderItem={({ item: notif }: { item: Notification }) => (
-            <SwipeableNotificationItem
-              notif={notif}
-              isUnread={isUnread(notif)}
-              onPress={() => handleMarkRead(notif)}
-              onDelete={() => handleDelete(notif)}
-            />
-          )}
         />
       )}
 

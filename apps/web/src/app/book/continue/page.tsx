@@ -1,5 +1,7 @@
 "use client";
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
@@ -7,9 +9,9 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
-import { CreditCard, Banknote, Loader2, Tag, Heart, FileText, Zap } from "lucide-react";
+import { CreditCard, Banknote, Loader2, Tag, Heart, FileText, Zap, Clock, MapPin } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
-import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
+import { useModuleConfig, useFeatureFlag, useConfigBundle } from "@/providers/ConfigBundleProvider";
 import {
   BOOKING_ACCENT,
   BOOKING_BG,
@@ -21,7 +23,10 @@ import {
   BOOKING_BORDER,
   BOOKING_WAITLIST_TEXT,
 } from "../constants";
-import { normalizePhoneToE164, DEFAULT_PHONE_COUNTRY_CODE } from "@/lib/phone";
+import { isCompleteE164, normalizePhoneToE164 } from "@/lib/phone";
+import { defaultPhoneCountryDigitsForNormalize } from "@/lib/user-default-phone-dial";
+import { syncBookingDraftTenantFromServer } from "@/lib/booking/booking-draft-tenant";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { CustomFieldsForm } from "@/components/custom-fields/CustomFieldsForm";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -68,9 +73,17 @@ interface HoldData {
   hold_status: string;
   expires_at: string;
   metadata?: Record<string, any>;
+  /** From hold metadata when the slot was reserved with a service package */
+  package_id?: string;
   travel_fee?: number;
   travel_distance_km?: number;
   provider_on_demand_accept_enabled?: boolean;
+  /** From provider + tenant feature_flags — same as payment routes. */
+  deposit_required?: boolean;
+  deposit_percentage?: number;
+  payment_paystack?: boolean;
+  payment_wallet?: boolean;
+  gift_cards?: boolean;
 }
 
 interface AddonInfo {
@@ -78,6 +91,83 @@ interface AddonInfo {
   title: string;
   price: number;
   currency: string;
+}
+
+type CatalogProduct = {
+  id: string;
+  name?: string;
+  price?: number;
+  variants?: Array<{ id: string; retail_price: number }>;
+};
+
+function resolvePrefillProductLines(
+  catalog: CatalogProduct[],
+  lines: Array<{ product_id: string; quantity: number; product_variant_id?: string | null }>
+) {
+  const out: Array<{
+    productId: string;
+    productVariantId?: string | null;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+    name: string;
+  }> = [];
+  for (const line of lines) {
+    const p = catalog.find((x) => x.id === line.product_id);
+    if (!p) continue;
+    let unitPrice = Number(p.price ?? 0) || 0;
+    const variantId = line.product_variant_id ?? null;
+    if (variantId && Array.isArray(p.variants)) {
+      const v = p.variants.find((vv) => vv.id === variantId);
+      if (v) unitPrice = Number(v.retail_price ?? 0) || unitPrice;
+    }
+    const q = Math.max(1, Math.floor(Number(line.quantity) || 1));
+    out.push({
+      productId: line.product_id,
+      productVariantId: variantId,
+      quantity: q,
+      unitPrice,
+      totalPrice: unitPrice * q,
+      name: (p.name ?? "Product").trim() || "Product",
+    });
+  }
+  return out;
+}
+
+const IOS_APP_URL_CONTINUE = "https://apps.apple.com/app/beautonomi";
+const ANDROID_APP_URL_CONTINUE = "https://play.google.com/store/apps/details?id=com.beautonomi";
+
+function MobileAppNudge() {
+  const [show, setShow] = useState(false);
+  const [storeUrl, setStoreUrl] = useState("");
+  const [label, setLabel] = useState("");
+
+  useEffect(() => {
+    if (typeof navigator === "undefined") return;
+    try { if (sessionStorage.getItem("beautonomi_app_banner_dismissed") === "1") return; } catch {}
+    const ua = navigator.userAgent;
+    const isIos = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
+    const isAndroid = /android/i.test(ua);
+    if (isIos) { setStoreUrl(IOS_APP_URL_CONTINUE); setLabel("App Store"); setShow(true); }
+    else if (isAndroid) { setStoreUrl(ANDROID_APP_URL_CONTINUE); setLabel("Google Play"); setShow(true); }
+  }, []);
+
+  if (!show) return null;
+  return (
+    <p className="text-center text-xs mt-3" style={{ color: BOOKING_TEXT_SECONDARY }}>
+      For the best experience,{" "}
+      <a
+        href={storeUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-semibold underline"
+        style={{ color: BOOKING_ACCENT }}
+      >
+        download the Beautonomi app
+      </a>{" "}
+      on {label} — manage bookings, get reminders &amp; rebook easily.
+    </p>
+  );
 }
 
 function BookContinueContent() {
@@ -106,8 +196,17 @@ function BookContinueContent() {
   const [bookingCustomDefinitions, setBookingCustomDefinitions] = useState<CustomFieldDefinition[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [addonDetails, setAddonDetails] = useState<AddonInfo[]>([]);
+  /** From express-link prefill → sessionStorage, merged with catalog prices for consume payload */
+  const [prefillConsumeProducts, setPrefillConsumeProducts] = useState<
+    Array<{ productId: string; productVariantId?: string | null; quantity: number; unitPrice: number; totalPrice: number; name: string }>
+  >([]);
+  const [prefillGiftCardCode, setPrefillGiftCardCode] = useState("");
+  /** From booking flow when a service package was selected (`?package=` or Packages UI) — forwarded to consume as `package_id`. */
+  const [consumePackageId, setConsumePackageId] = useState<string | null>(null);
   const [requestingNow, setRequestingNow] = useState(false);
   const { user } = useAuth();
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const onDemandConfig = useModuleConfig("on_demand");
   const onDemandAcceptEnabled = useFeatureFlag("on_demand_accept_customer_enabled");
   /** Client details when not loaded from session (e.g. direct link); used for form and submit */
@@ -117,6 +216,10 @@ function BookContinueContent() {
     email: "",
     phone: "",
   });
+
+  useEffect(() => {
+    void syncBookingDraftTenantFromServer();
+  }, []);
 
   useEffect(() => {
     if (!holdId) {
@@ -146,9 +249,20 @@ function BookContinueContent() {
           hold_status: data.hold_status,
           expires_at: data.expires_at,
           metadata: data.metadata,
+          package_id: typeof (data as { package_id?: string }).package_id === "string"
+            ? (data as { package_id: string }).package_id
+            : undefined,
           travel_fee: data.travel_fee != null ? Number(data.travel_fee) : undefined,
           travel_distance_km: data.travel_distance_km != null ? Number(data.travel_distance_km) : undefined,
           provider_on_demand_accept_enabled: Boolean((data as { provider_on_demand_accept_enabled?: boolean }).provider_on_demand_accept_enabled),
+          deposit_required: Boolean((data as { deposit_required?: boolean }).deposit_required),
+          deposit_percentage:
+            (data as { deposit_percentage?: number }).deposit_percentage != null
+              ? Number((data as { deposit_percentage?: number }).deposit_percentage)
+              : undefined,
+          payment_paystack: (data as { payment_paystack?: boolean }).payment_paystack,
+          payment_wallet: (data as { payment_wallet?: boolean }).payment_wallet,
+          gift_cards: (data as { gift_cards?: boolean }).gift_cards,
         };
         setHold(holdData);
 
@@ -170,6 +284,25 @@ function BookContinueContent() {
           if (savedAddons) {
             const parsed = JSON.parse(savedAddons) as string[];
             setAddonIds(Array.isArray(parsed) ? parsed : []);
+          }
+          const savedPromo = sessionStorage.getItem("beautonomi_booking_promotion_code");
+          if (savedPromo?.trim()) setPromotionCode(savedPromo.trim());
+          const savedGift = sessionStorage.getItem("beautonomi_booking_gift_card_code");
+          if (savedGift?.trim()) setPrefillGiftCardCode(savedGift.trim());
+          const savedPackageId = sessionStorage.getItem("beautonomi_booking_package_id");
+          if (savedPackageId?.trim()) {
+            setConsumePackageId(savedPackageId.trim());
+          } else {
+            const meta = (data.metadata as Record<string, unknown> | undefined) ?? {};
+            const fromHold =
+              typeof (data as { package_id?: string }).package_id === "string" && (data as { package_id: string }).package_id.trim()
+                ? (data as { package_id: string }).package_id.trim()
+                : typeof meta.package_id === "string" && meta.package_id.trim()
+                  ? (meta.package_id as string).trim()
+                  : typeof meta.primary_package_id === "string" && meta.primary_package_id.trim()
+                    ? (meta.primary_package_id as string).trim()
+                    : null;
+            setConsumePackageId(fromHold);
           }
           if (savedRequests != null) setSpecialRequests(savedRequests);
           if (savedProviderFormResponses) {
@@ -222,6 +355,21 @@ function BookContinueContent() {
   }, [holdId]);
 
   useEffect(() => {
+    if (!hold) return;
+    const pct = hold.deposit_percentage ?? 0;
+    const depositChoice = Boolean(hold.deposit_required) && pct > 0;
+    if (!depositChoice) setPaymentOption("full");
+  }, [hold]);
+
+  useEffect(() => {
+    if (!hold) return;
+    const paystackEnabled = hold.payment_paystack !== false;
+    if (paymentMethod === "card" && !paystackEnabled && allowPayInPerson) {
+      setPaymentMethod("cash");
+    }
+  }, [hold, paymentMethod, allowPayInPerson]);
+
+  useEffect(() => {
     if (!hold?.provider_id || status !== "review") return;
     fetcher
       .get<{ data?: { forms?: ProviderForm[] }; forms?: ProviderForm[] }>(
@@ -234,6 +382,45 @@ function BookContinueContent() {
       })
       .catch(() => setProviderForms([]));
   }, [hold?.provider_id, status]);
+
+  useEffect(() => {
+    if (status !== "review" || !hold?.provider_slug) {
+      if (status !== "review") setPrefillConsumeProducts([]);
+      return;
+    }
+    const raw = sessionStorage.getItem("beautonomi_booking_product_cart");
+    if (!raw?.trim()) {
+      setPrefillConsumeProducts([]);
+      return;
+    }
+    let lines: Array<{ product_id: string; quantity: number; product_variant_id?: string | null }>;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) {
+        setPrefillConsumeProducts([]);
+        return;
+      }
+      lines = parsed as Array<{ product_id: string; quantity: number; product_variant_id?: string | null }>;
+    } catch {
+      setPrefillConsumeProducts([]);
+      return;
+    }
+    let cancelled = false;
+    fetcher
+      .get<CatalogProduct[] | { data?: CatalogProduct[] }>(
+        `/api/public/providers/${encodeURIComponent(hold.provider_slug)}/products`
+      )
+      .then((res) => {
+        if (cancelled) return;
+        const rawP = (res as { data?: CatalogProduct[] })?.data ?? res;
+        const catalog = Array.isArray(rawP) ? rawP : [];
+        setPrefillConsumeProducts(resolvePrefillProductLines(catalog, lines));
+      })
+      .catch(() => setPrefillConsumeProducts([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [hold?.provider_slug, status]);
 
   // Fetch addon details from all services in the hold so we resolve addons from any selected service
   useEffect(() => {
@@ -356,6 +543,12 @@ function BookContinueContent() {
       return;
     }
 
+    const rawContinuePhone = (effectiveClient.phone ?? "").trim();
+    if (rawContinuePhone && !isCompleteE164(rawContinuePhone)) {
+      setValidationError("Enter a valid phone number or leave the phone field blank.");
+      return;
+    }
+
     const requiredCustomNames = bookingCustomDefinitions.filter((d) => d.is_required).map((d) => d.name);
     const missingCustom = requiredCustomNames.filter(
       (name) =>
@@ -394,13 +587,28 @@ function BookContinueContent() {
         special_requests: specialRequests.trim() || undefined,
         tip_amount: tipAmount > 0 ? tipAmount : undefined,
         promotion_code: promotionCode.trim() || undefined,
+        gift_card_code: prefillGiftCardCode.trim() || undefined,
       };
+      if (prefillConsumeProducts.length > 0) {
+        payload.products = prefillConsumeProducts.map((r) => ({
+          productId: r.productId,
+          productVariantId: r.productVariantId ?? undefined,
+          quantity: r.quantity,
+          unitPrice: r.unitPrice,
+          totalPrice: r.totalPrice,
+        }));
+      }
+      if (consumePackageId) {
+        payload.package_id = consumePackageId;
+        payload.primary_package_id = consumePackageId;
+      }
       if (rescheduleBookingId) payload.reschedule_booking_id = rescheduleBookingId;
       if (effectiveClient && (effectiveClient.firstName || effectiveClient.lastName || effectiveClient.email || effectiveClient.phone)) {
         const rawPhone = effectiveClient.phone?.trim();
         const phoneE164 =
           rawPhone
-            ? normalizePhoneToE164(rawPhone, DEFAULT_PHONE_COUNTRY_CODE) || normalizePhoneToE164(rawPhone)
+            ? normalizePhoneToE164(rawPhone, defaultPhoneCountryDigitsForNormalize()) ||
+              normalizePhoneToE164(rawPhone)
             : undefined;
         payload.client_info = {
           firstName: effectiveClient.firstName.trim() || "Guest",
@@ -427,7 +635,9 @@ function BookContinueContent() {
           booking_number?: string;
           payment_url?: string | null;
         };
-      }>(`/api/public/booking-holds/${holdId}/consume`, payload);
+      }>(`/api/public/booking-holds/${holdId}/consume`, payload, {
+        timeoutMs: 120_000,
+      });
 
       const data = (res as any)?.data ?? res;
       const paymentUrl = data?.payment_url;
@@ -447,18 +657,23 @@ function BookContinueContent() {
         sessionStorage.removeItem("beautonomi_booking_provider_form_responses");
         sessionStorage.removeItem("beautonomi_booking_custom_field_values");
         sessionStorage.removeItem("beautonomi_booking_group");
+        sessionStorage.removeItem("beautonomi_booking_promotion_code");
+        sessionStorage.removeItem("beautonomi_booking_gift_card_code");
+        sessionStorage.removeItem("beautonomi_booking_product_cart");
+        sessionStorage.removeItem("beautonomi_booking_package_id");
       } catch {}
       const successUrl = bookingId
         ? `/checkout/success?booking_id=${bookingId}${bookingNumber ? `&booking_number=${bookingNumber}` : ""}`
         : "/checkout/success";
       router.replace(successUrl);
     } catch (err) {
+      /* Keep the review screen so the user can retry without losing form data. */
       const msg =
         err instanceof FetchError
           ? err.message
           : "Failed to complete booking. Please try again.";
-      setErrorMessage(msg);
-      setStatus("error");
+      setValidationError(msg);
+      setStatus("review");
     }
   };
 
@@ -499,7 +714,8 @@ function BookContinueContent() {
     try {
       const servicesTotal = hold.booking_services_snapshot.reduce((sum, s) => sum + (s.price || 0), 0);
       const addonsSum = addonDetails.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
-      const amount = servicesTotal + addonsSum + (hold.travel_fee ?? 0);
+      const productsSum = prefillConsumeProducts.reduce((s, p) => s + p.totalPrice, 0);
+      const amount = servicesTotal + addonsSum + productsSum + (hold.travel_fee ?? 0);
       const res = await fetcher.get<{ valid?: boolean; discount_value?: number; message?: string }>(
         `/api/public/promo-codes/validate?code=${encodeURIComponent(promotionCode.trim())}&amount=${amount}`
       );
@@ -524,12 +740,13 @@ function BookContinueContent() {
       0
     );
     const addonsTotal = addonDetails.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+    const productsFromLinkTotal = prefillConsumeProducts.reduce((s, p) => s + p.totalPrice, 0);
     const travelFee = hold.travel_fee ?? 0;
     const promoDiscountAmount = promoDiscount ?? 0;
-    const subtotalBeforePromo = servicesTotal + addonsTotal + travelFee;
+    const subtotalBeforePromo = servicesTotal + addonsTotal + productsFromLinkTotal + travelFee;
     const subtotalAfterPromo = Math.max(0, subtotalBeforePromo - promoDiscountAmount);
     const totalAmount = subtotalAfterPromo + tipAmount;
-    const currency = hold.booking_services_snapshot[0]?.currency ?? "ZAR";
+    const currency = hold.booking_services_snapshot[0]?.currency ?? tenantCurrency;
     const startDate = new Date(hold.start_at);
     const timeStr = startDate.toLocaleTimeString([], {
       hour: "2-digit",
@@ -540,6 +757,13 @@ function BookContinueContent() {
       month: "short",
       day: "numeric",
     });
+
+    const paystackEnabled = hold.payment_paystack !== false;
+    const depositPct = hold.deposit_percentage ?? 0;
+    const showDepositChoice = Boolean(hold.deposit_required) && depositPct > 0;
+    const depositAmount = showDepositChoice ? Math.ceil((totalAmount * depositPct) / 100) : 0;
+    const remainingAfterDeposit = Math.max(0, totalAmount - depositAmount);
+    const cardOnlineBlocked = !paystackEnabled && !allowPayInPerson;
 
     const cardStyle = {
       background: BOOKING_GLASS_BG,
@@ -581,6 +805,18 @@ function BookContinueContent() {
                 <span className="opacity-95">{formatCurrency(Number(a.price), a.currency || currency)}</span>
               </div>
             ))}
+            {prefillConsumeProducts.length > 0 &&
+              prefillConsumeProducts.map((p) => (
+                <div
+                  key={`${p.productId}-${p.productVariantId ?? "base"}`}
+                  className="flex justify-between text-sm border-b border-white/10 pb-2"
+                >
+                  <span className="opacity-90">
+                    {p.name} ×{p.quantity}
+                  </span>
+                  <span className="opacity-95">{formatCurrency(p.totalPrice, currency)}</span>
+                </div>
+              ))}
             {travelFee > 0 && (
               <div className="flex justify-between text-sm border-b border-white/10 pb-2">
                 <span className="opacity-80">
@@ -608,19 +844,58 @@ function BookContinueContent() {
             </div>
           </div>
 
-          <div className="rounded-3xl p-5 text-sm space-y-1 border" style={{ ...cardStyle }}>
-            <h2 className="font-medium mb-2" style={{ color: BOOKING_TEXT_PRIMARY }}>Booking details</h2>
-            <p style={{ color: BOOKING_TEXT_PRIMARY }}>
-              <strong>When:</strong> {dateStr} at {timeStr}
-            </p>
-            <p style={{ color: BOOKING_TEXT_PRIMARY }}>
-              <strong>Where:</strong>{" "}
-              {hold.location_type === "at_salon"
-                ? "At salon"
-                : hold.address_snapshot?.line1
-                ? String(hold.address_snapshot.line1)
-                : "At your location"}
-            </p>
+          <div className="rounded-3xl p-5 text-sm space-y-2 border" style={{ ...cardStyle }}>
+            <h2 className="font-medium mb-3" style={{ color: BOOKING_TEXT_PRIMARY }}>Booking details</h2>
+            <div className="flex gap-3 items-start">
+              <Clock className="h-4 w-4 mt-0.5 shrink-0" style={{ color: BOOKING_ACCENT }} />
+              <div>
+                <p className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>{dateStr} at {timeStr}</p>
+              </div>
+            </div>
+            <div className="flex gap-3 items-start">
+              <MapPin className="h-4 w-4 mt-0.5 shrink-0" style={{ color: BOOKING_ACCENT }} />
+              <div className="space-y-0.5">
+                {hold.location_type === "at_salon" ? (
+                  <p style={{ color: BOOKING_TEXT_PRIMARY }}>At salon</p>
+                ) : (() => {
+                  const snap = hold.address_snapshot;
+                  if (!snap) return <p style={{ color: BOOKING_TEXT_SECONDARY }}>At your location</p>;
+                  const addressParts = [snap.line1, snap.line2, snap.city, snap.postal_code].filter(Boolean);
+                  const extras = [
+                    snap.apartment_unit ? `Apt/Unit: ${snap.apartment_unit}` : null,
+                    snap.building_name ? `Building: ${snap.building_name}` : null,
+                    snap.floor_number ? `Floor: ${snap.floor_number}` : null,
+                  ].filter(Boolean);
+                  const accessCodes = snap.access_codes as Record<string, string> | null | undefined;
+                  const codeParts = [
+                    accessCodes?.gate ? `Gate: ${accessCodes.gate}` : null,
+                    accessCodes?.buzzer ? `Buzzer: ${accessCodes.buzzer}` : null,
+                    accessCodes?.door ? `Door: ${accessCodes.door}` : null,
+                  ].filter(Boolean);
+                  return (
+                    <>
+                      {addressParts.length > 0 && (
+                        <p className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>{addressParts.join(", ")}</p>
+                      )}
+                      {extras.length > 0 && <p style={{ color: BOOKING_TEXT_SECONDARY }}>{extras.join(" · ")}</p>}
+                      {codeParts.length > 0 && (
+                        <p style={{ color: BOOKING_TEXT_SECONDARY }}>🔑 {codeParts.join(" · ")}</p>
+                      )}
+                      {snap.parking_instructions && (
+                        <p className="text-xs mt-1" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                          <span className="font-medium">Parking:</span> {String(snap.parking_instructions)}
+                        </p>
+                      )}
+                      {snap.location_landmarks && (
+                        <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                          <span className="font-medium">Landmarks:</span> {String(snap.location_landmarks)}
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
           </div>
 
           <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
@@ -671,18 +946,14 @@ function BookContinueContent() {
                   />
                 </div>
                 <div className="col-span-2 space-y-1">
-                  <Label htmlFor="continue-phone">Phone (optional)</Label>
-                  <Input
-                    id="continue-phone"
-                    type="tel"
-                    placeholder="+27 82 123 4567"
+                  <PhoneInput
+                    inputId="book-continue-client-phone"
+                    label="Phone (optional)"
                     value={clientForm.phone}
-                    onChange={(e) => setClientForm((p) => ({ ...p, phone: e.target.value }))}
-                    className="rounded-xl border"
-                    style={{ borderColor: BOOKING_BORDER }}
-                    autoComplete="tel-national"
+                    onChange={(e164) => setClientForm((p) => ({ ...p, phone: e164 }))}
+                    placeholder="Phone number"
+                    className="rounded-xl"
                   />
-                  <p className="text-xs text-muted-foreground">Use country code (e.g. +27 for South Africa).</p>
                 </div>
               </div>
             )}
@@ -838,8 +1109,12 @@ function BookContinueContent() {
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => setPaymentMethod("card")}
-                className="flex-1 rounded-2xl py-3.5 px-4 font-medium flex items-center justify-center gap-2 min-h-[44px] transition-transform active:scale-[0.98] border-2"
+                onClick={() => {
+                  if (!paystackEnabled) return;
+                  setPaymentMethod("card");
+                }}
+                disabled={!paystackEnabled}
+                className="flex-1 rounded-2xl py-3.5 px-4 font-medium flex items-center justify-center gap-2 min-h-[44px] transition-transform active:scale-[0.98] border-2 disabled:opacity-50 disabled:pointer-events-none"
                 style={{
                   backgroundColor: paymentMethod === "card" ? BOOKING_ACCENT : "transparent",
                   color: paymentMethod === "card" ? "#fff" : BOOKING_TEXT_PRIMARY,
@@ -865,30 +1140,44 @@ function BookContinueContent() {
                 </button>
               )}
             </div>
-            {paymentMethod === "card" && (
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setPaymentOption("deposit")}
-                  className="rounded-xl px-4 py-2 text-sm font-medium min-h-[44px]"
-                  style={{
-                    backgroundColor: paymentOption === "deposit" ? BOOKING_ACCENT : "rgba(0,0,0,0.06)",
-                    color: paymentOption === "deposit" ? "#fff" : BOOKING_TEXT_PRIMARY,
-                  }}
-                >
-                  Deposit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaymentOption("full")}
-                  className="rounded-xl px-4 py-2 text-sm font-medium min-h-[44px]"
-                  style={{
-                    backgroundColor: paymentOption === "full" ? BOOKING_ACCENT : "rgba(0,0,0,0.06)",
-                    color: paymentOption === "full" ? "#fff" : BOOKING_TEXT_PRIMARY,
-                  }}
-                >
-                  Full amount
-                </button>
+            {cardOnlineBlocked && (
+              <p className="text-sm pt-1" style={{ color: BOOKING_WAITLIST_TEXT }}>
+                Online card payment is unavailable for this market and this provider does not accept pay at venue. You cannot complete checkout here—please contact the salon or try another time.
+              </p>
+            )}
+            {paymentMethod === "card" && showDepositChoice && (
+              <div className="space-y-2 pt-1">
+                <p className="text-xs font-medium" style={{ color: BOOKING_TEXT_SECONDARY }}>How much would you like to pay now?</p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentOption("deposit")}
+                    className="flex-1 rounded-2xl py-3.5 px-3 text-sm font-medium min-h-[44px] flex flex-col items-center gap-0.5 border-2 transition-all"
+                    style={{
+                      backgroundColor: paymentOption === "deposit" ? BOOKING_ACCENT : "transparent",
+                      color: paymentOption === "deposit" ? "#fff" : BOOKING_TEXT_PRIMARY,
+                      borderColor: paymentOption === "deposit" ? BOOKING_ACCENT : BOOKING_BORDER,
+                    }}
+                  >
+                    <span>Deposit ({depositPct}%)</span>
+                    <span className="text-lg font-bold">{formatCurrency(depositAmount, currency)}</span>
+                    <span className="text-[10px] opacity-75">{formatCurrency(remainingAfterDeposit, currency)} due at appointment</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentOption("full")}
+                    className="flex-1 rounded-2xl py-3.5 px-3 text-sm font-medium min-h-[44px] flex flex-col items-center gap-0.5 border-2 transition-all"
+                    style={{
+                      backgroundColor: paymentOption === "full" ? BOOKING_ACCENT : "transparent",
+                      color: paymentOption === "full" ? "#fff" : BOOKING_TEXT_PRIMARY,
+                      borderColor: paymentOption === "full" ? BOOKING_ACCENT : BOOKING_BORDER,
+                    }}
+                  >
+                    <span>Pay in full</span>
+                    <span className="text-lg font-bold">{formatCurrency(totalAmount, currency)}</span>
+                    <span className="text-[10px] opacity-75">Nothing due at appointment</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -921,13 +1210,16 @@ function BookContinueContent() {
             className="w-full rounded-2xl h-14 font-semibold text-white flex items-center justify-center gap-2 min-h-[44px] transition-transform active:scale-[0.98] disabled:opacity-70"
             style={{ backgroundColor: BOOKING_ACCENT, boxShadow: BOOKING_SHADOW_CARD }}
             onClick={handleComplete}
-            disabled={(status as string) === "consuming"}
+            disabled={(status as string) === "consuming" || cardOnlineBlocked}
           >
             {(status as string) === "consuming" ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : null}
             Complete booking
           </button>
+
+          {/* Mobile app nudge — shown to iOS/Android users only, after hydration */}
+          <MobileAppNudge />
         </div>
       </div>
     );

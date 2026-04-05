@@ -127,9 +127,9 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect }: VirtualWai
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Header with Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+    <div className="space-y-4 sm:space-y-6 min-w-0 max-w-full overflow-x-hidden">
+      {/* Header with Stats — stack on very narrow viewports */}
+      <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <SectionCard className="p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0">

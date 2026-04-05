@@ -4,6 +4,8 @@ import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, errorResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { z } from "zod";
 
 const updateDisputeSchema = z.object({
@@ -30,6 +32,7 @@ export async function GET(
 
     const supabase = getSupabaseAdmin();
     const { id } = await params;
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { data: dispute, error } = await supabase
       .from("booking_disputes")
@@ -47,18 +50,20 @@ export async function GET(
         notes,
         created_at,
         updated_at,
-        booking:bookings(
+        booking:bookings!inner(
           id,
           booking_number,
           status,
           total_amount,
           customer_id,
           provider_id,
+          tenant_id,
           customer:users!bookings_customer_id_fkey(id, full_name, email),
           provider:providers!bookings_provider_id_fkey(id, business_name)
         )
       `)
       .eq("id", id)
+      .eq("booking.tenant_id", tenantId)
       .single();
 
     if (error || !dispute) {
@@ -88,6 +93,7 @@ export async function PATCH(
 
     const supabase = getSupabaseAdmin();
     const { id } = await params;
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     // Validate request body
@@ -108,6 +114,17 @@ export async function PATCH(
       .single();
 
     if (!existingDispute) {
+      return notFoundResponse("Dispute not found");
+    }
+
+    type DisputeRef = { booking_id: string };
+    const bookingCheck = await fetchBookingInAdminTenant(
+      supabase,
+      (existingDispute as DisputeRef).booking_id,
+      tenantId,
+      "id"
+    );
+    if ("error" in bookingCheck) {
       return notFoundResponse("Dispute not found");
     }
 

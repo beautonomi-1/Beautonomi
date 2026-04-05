@@ -18,6 +18,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Avatar } from "@/components/ui/Avatar";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -79,7 +80,11 @@ function pad(n: number): string {
 function parseTime(t: string | null | undefined): { h: number; m: number } {
   if (t == null || typeof t !== "string") return { h: 0, m: 0 };
   const [hStr, mStr] = t.split(":");
-  return { h: parseInt(hStr ?? "0", 10), m: parseInt(mStr ?? "0", 10) };
+  const parsedH = parseInt(hStr ?? "0", 10);
+  const parsedM = parseInt(mStr ?? "0", 10);
+  const h = Number.isFinite(parsedH) ? Math.max(0, Math.min(23, parsedH)) : 0;
+  const m = Number.isFinite(parsedM) ? Math.max(0, Math.min(59, parsedM)) : 0;
+  return { h, m };
 }
 
 function formatTimeLabel(t: string | null | undefined): string {
@@ -267,6 +272,7 @@ export default function StaffScheduleScreen() {
   const {
     data: staff,
     loading: loadingStaff,
+    error: staffError,
     refresh: refreshStaff,
   } = useApi<StaffMember[]>("/api/provider/staff");
 
@@ -471,6 +477,8 @@ export default function StaffScheduleScreen() {
       {/* ── Staff Selector ── */}
       {loadingStaff && !staff ? (
         <SkeletonList rows={1} />
+      ) : staffError && !staff ? (
+        <ErrorState message={staffError} onRetry={refreshStaff} />
       ) : (
         <View style={twStyle("mb-4")}>
           <ScrollView

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { BeautonomiLoadingIcon } from "@/components/BeautonomiLoadingIcon";
@@ -21,8 +22,21 @@ function isPublicRoute(pathname: string | null): boolean {
 export default function AuthLoadingSpinner() {
   const pathname = usePathname();
   const { isLoading } = useAuth();
+  const [timedOut, setTimedOut] = useState(false);
 
-  if (!isLoading || isPublicRoute(pathname)) return null;
+  useEffect(() => {
+    if (!isLoading) {
+      setTimedOut(false);
+      return;
+    }
+    const timeout = setTimeout(() => {
+      // Failsafe so older browsers can't get trapped behind overlay forever.
+      setTimedOut(true);
+    }, 12000);
+    return () => clearTimeout(timeout);
+  }, [isLoading]);
+
+  if (!isLoading || isPublicRoute(pathname) || timedOut) return null;
 
   return (
     <div

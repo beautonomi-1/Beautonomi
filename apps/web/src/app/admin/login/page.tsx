@@ -90,7 +90,7 @@ export default function AdminLoginPage() {
         <h1 className="text-center text-[28px] font-extrabold text-gray-900 mb-1" id="admin-login-heading">
           Admin sign in
         </h1>
-        <p className="text-center text-[15px] text-gray-500 mb-7">
+        <p className="text-center text-[14px] text-gray-500 mb-7">
           Sign in with your administrator account
         </p>
 
@@ -103,10 +103,10 @@ export default function AdminLoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="admin-login-email" className="text-[13px] font-semibold text-gray-700 mb-1.5 block">
+            <Label htmlFor="admin-login-email" className="text-xs font-medium text-gray-700 mb-1.5 block">
               Email
             </Label>
-            <div className="flex items-center rounded-xl border border-gray-200 bg-gray-50/80 px-3.5 gap-2.5">
+            <div className="flex items-center rounded-xl border border-gray-200 bg-gray-100 px-3.5 gap-2.5">
               <Mail className="h-[18px] w-[18px] text-gray-400 flex-shrink-0" aria-hidden />
               <Input
                 id="admin-login-email"
@@ -114,7 +114,7 @@ export default function AdminLoginPage() {
                 placeholder="Enter your email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="flex-1 border-0 bg-transparent h-12 px-2.5 focus-visible:ring-0"
+                className="flex-1 border-0 bg-transparent h-12 px-2.5 text-[13px] text-gray-700 placeholder:text-gray-400 focus-visible:ring-0"
                 autoComplete="email"
                 inputMode="email"
                 onKeyDown={(e) => e.key === "Enter" && passwordRef.current?.focus()}
@@ -123,10 +123,10 @@ export default function AdminLoginPage() {
             </div>
           </div>
           <div>
-            <Label htmlFor="admin-login-password" className="text-[13px] font-semibold text-gray-700 mb-1.5 block">
+            <Label htmlFor="admin-login-password" className="text-xs font-medium text-gray-700 mb-1.5 block">
               Password
             </Label>
-            <div className="flex items-center rounded-xl border border-gray-200 bg-gray-50/80 px-3.5 gap-2.5">
+            <div className="flex items-center rounded-xl border border-gray-200 bg-gray-100 px-3.5 gap-2.5">
               <Lock className="h-[18px] w-[18px] text-gray-400 flex-shrink-0" aria-hidden />
               <Input
                 ref={passwordRef}
@@ -135,7 +135,7 @@ export default function AdminLoginPage() {
                 placeholder="Your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="flex-1 border-0 bg-transparent h-12 px-2.5 focus-visible:ring-0 pr-8"
+                className="flex-1 border-0 bg-transparent h-12 px-2.5 pr-8 text-[13px] text-gray-700 placeholder:text-gray-400 focus-visible:ring-0"
                 autoComplete="current-password"
                 aria-required
               />

@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import React, { useState, useEffect, useCallback } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +25,7 @@ import EmptyState from "@/components/ui/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import type { Booking } from "@/types/beautonomi";
 import Link from "next/link";
+import { VirtualList } from "@/components/ui/virtual-list";
 
 export default function AdminBookings() {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -158,83 +158,49 @@ export default function AdminBookings() {
     <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="min-h-screen bg-zinc-50/50">
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
+          <div
             className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-8"
           >
             {/* Header */}
             <div className="mb-6">
-              <motion.h1
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
+              <h1
                 className="text-2xl md:text-3xl font-semibold tracking-tighter mb-2 text-gray-900"
               >
                 Bookings Oversight
-              </motion.h1>
+              </h1>
               <p className="text-sm md:text-base font-light text-gray-600">Monitor all platform bookings</p>
             </div>
 
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg"
-              >
+              <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg hover:scale-[1.02] transition-transform">
                 <p className="text-sm font-light text-gray-600 mb-1">Total</p>
                 <p className="text-2xl font-semibold tracking-tight text-gray-900">{stats.total}</p>
-              </motion.div>
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg"
-              >
+              </div>
+              <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg hover:scale-[1.02] transition-transform">
                 <p className="text-sm font-light text-gray-600 mb-1">Pending</p>
                 <p className="text-2xl font-semibold tracking-tight text-yellow-600">{stats.pending}</p>
-              </motion.div>
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg"
-              >
+              </div>
+              <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg hover:scale-[1.02] transition-transform">
                 <p className="text-sm font-light text-gray-600 mb-1">Confirmed</p>
                 <p className="text-2xl font-semibold tracking-tight text-blue-600">{stats.confirmed}</p>
-              </motion.div>
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg"
-              >
+              </div>
+              <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg hover:scale-[1.02] transition-transform">
                 <p className="text-sm font-light text-gray-600 mb-1">In Progress</p>
                 <p className="text-2xl font-semibold tracking-tight text-purple-600">{stats.in_progress}</p>
-              </motion.div>
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg"
-              >
+              </div>
+              <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg hover:scale-[1.02] transition-transform">
                 <p className="text-sm font-light text-gray-600 mb-1">Completed</p>
                 <p className="text-2xl font-semibold tracking-tight text-green-600">{stats.completed}</p>
-              </motion.div>
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg"
-              >
+              </div>
+              <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg hover:scale-[1.02] transition-transform">
                 <p className="text-sm font-light text-gray-600 mb-1">Cancelled</p>
                 <p className="text-2xl font-semibold tracking-tight text-red-600">{stats.cancelled}</p>
-              </motion.div>
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg"
-              >
+              </div>
+              <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg hover:scale-[1.02] transition-transform">
                 <p className="text-sm font-light text-gray-600 mb-1">Revenue</p>
                 <p className="text-2xl font-semibold tracking-tight text-gray-900">R {stats.total_revenue.toLocaleString()}</p>
-              </motion.div>
+              </div>
             </div>
 
             {/* Search and Filters */}
@@ -249,20 +215,17 @@ export default function AdminBookings() {
                     className="pl-10 backdrop-blur-xl bg-white/80 border border-white/40 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
                   />
                 </div>
-                <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowFilters(!showFilters)}
-                    className="border-white/40 backdrop-blur-xl bg-white/80 hover:bg-white/90 rounded-xl"
-                  >
-                    <Filter className="w-4 h-4 mr-2" />
-                    Filters
-                  </Button>
-                </motion.div>
-                <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                  <Button
-                    variant="outline"
-                    onClick={async () => {
+                <Button
+                  variant="outline"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="border-white/40 backdrop-blur-xl bg-white/80 hover:bg-white/90 rounded-xl"
+                >
+                  <Filter className="w-4 h-4 mr-2" />
+                  Filters
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
                 try {
                   const params = new URLSearchParams();
                   if (statusFilter !== "all") params.set("status", statusFilter);
@@ -285,18 +248,14 @@ export default function AdminBookings() {
                   toast.error("Failed to export bookings");
                 }
               }}
-            >
-                      <Download className="w-4 h-4 mr-2" />
-                      Export CSV
-                    </Button>
-                  </motion.div>
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Export CSV
+                </Button>
                 </div>
 
                 {showFilters && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
+                  <div
                     className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 space-y-4"
                   >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -325,7 +284,7 @@ export default function AdminBookings() {
                   />
                 </div>
               </div>
-            </motion.div>
+            </div>
           )}
         </div>
 
@@ -443,14 +402,15 @@ export default function AdminBookings() {
             </TabsContent>
             </Tabs>
           )}
-          </motion.div>
+          </div>
         </div>
       </div>
     </RoleGuard>
   );
 }
 
- 
+const BOOKING_CARD_HEIGHT = 190;
+
 function BookingsList({
   bookings,
   selectedIds,
@@ -464,7 +424,18 @@ function BookingsList({
   isSelectAll: boolean;
   onSelectAll: (checked: boolean) => void;
 }) {
-   
+  const renderBooking = useCallback(
+    (booking: Booking) => (
+      <BookingCard
+        key={booking.id}
+        booking={booking}
+        selected={selectedIds.has(booking.id)}
+        onSelect={(checked) => onSelect(booking.id, checked)}
+      />
+    ),
+    [selectedIds, onSelect],
+  );
+
   if (bookings.length === 0) {
     return (
       <EmptyState
@@ -475,16 +446,14 @@ function BookingsList({
   }
 
   return (
-    <div className="space-y-4">
-      {bookings.map((booking) => (
-        <BookingCard
-          key={booking.id}
-          booking={booking}
-          selected={selectedIds.has(booking.id)}
-          onSelect={(checked) => onSelect(booking.id, checked)}
-        />
-      ))}
-    </div>
+    <VirtualList
+      items={bookings}
+      itemHeight={BOOKING_CARD_HEIGHT}
+      renderItem={renderBooking}
+      containerHeight={Math.min(bookings.length * BOOKING_CARD_HEIGHT, 800)}
+      overscan={5}
+      itemClassName="pb-4"
+    />
   );
 }
 
@@ -517,11 +486,7 @@ function BookingCard({
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      whileHover={{ scale: 1.01 }}
-      whileTap={{ scale: 0.99 }}
+    <div
       className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 shadow-lg hover:shadow-xl transition-all"
     >
       <div className="flex items-start gap-3">
@@ -531,77 +496,75 @@ function BookingCard({
         <div className="flex-1">
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
             <div className="flex-1">
-          <div className="flex items-center gap-3 mb-3 flex-wrap">
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor()}`}>
-              {booking.status}
-            </span>
-            <h3 className="text-lg font-semibold tracking-tight text-gray-900">
-              Booking #{booking.booking_number}
-            </h3>
-          </div>
+              <div className="flex items-center gap-3 mb-3 flex-wrap">
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor()}`}>
+                  {booking.status}
+                </span>
+                <h3 className="text-lg font-semibold tracking-tight text-gray-900">
+                  Booking #{booking.booking_number}
+                </h3>
+              </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600 mb-4">
-            <div className="flex items-center gap-2">
-              <User className="w-4 h-4" />
-              <span>
-                <span className="font-medium">Customer ID:</span> {booking.customer_id}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Building2 className="w-4 h-4" />
-              <span>
-                <span className="font-medium">Provider ID:</span> {booking.provider_id}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4" />
-              <span>
-                {new Date(booking.scheduled_at).toLocaleDateString("en-US", {
-                  weekday: "long",
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              <span>
-                {booking.currency} {booking.total_amount?.toFixed(2)}
-              </span>
-            </div>
-          </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600 mb-4">
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  <span>
+                    <span className="font-medium">Customer ID:</span> {booking.customer_id}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4" />
+                  <span>
+                    <span className="font-medium">Provider ID:</span> {booking.provider_id}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  <span>
+                    {new Date(booking.scheduled_at).toLocaleDateString("en-US", {
+                      weekday: "long",
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-4 h-4" />
+                  <span>
+                    {booking.currency} {booking.total_amount?.toFixed(2)}
+                  </span>
+                </div>
+              </div>
 
-          <div className="flex flex-wrap gap-2">
-            {booking.services?.slice(0, 3).map((service, index) => (
-              <span
-                key={index}
-                className="px-2 py-1 backdrop-blur-sm bg-pink-50/80 border border-pink-100 rounded-lg text-xs font-medium text-[#FF0077]"
-              >
-                {service.offering_name || "Service"}
-              </span>
-            ))}
-            {booking.services && booking.services.length > 3 && (
-              <span className="px-2 py-1 backdrop-blur-sm bg-pink-50/80 border border-pink-100 rounded-lg text-xs font-medium text-[#FF0077]">
-                +{booking.services.length - 3} more
-              </span>
-            )}
-          </div>
+              <div className="flex flex-wrap gap-2">
+                {booking.services?.slice(0, 3).map((service, index) => (
+                  <span
+                    key={index}
+                    className="px-2 py-1 backdrop-blur-sm bg-pink-50/80 border border-pink-100 rounded-lg text-xs font-medium text-[#FF0077]"
+                  >
+                    {service.offering_name || "Service"}
+                  </span>
+                ))}
+                {booking.services && booking.services.length > 3 && (
+                  <span className="px-2 py-1 backdrop-blur-sm bg-pink-50/80 border border-pink-100 rounded-lg text-xs font-medium text-[#FF0077]">
+                    +{booking.services.length - 3} more
+                  </span>
+                )}
+              </div>
             </div>
 
             <div>
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Link href={`/admin/bookings/${booking.id}`}>
-                  <Button variant="outline" className="border-white/40 backdrop-blur-sm bg-white/60 hover:bg-white/80">
-                    <Eye className="w-4 h-4 mr-2" />
-                    View Details
-                  </Button>
-                </Link>
-              </motion.div>
+              <Link href={`/admin/bookings/${booking.id}`}>
+                <Button variant="outline" className="border-white/40 backdrop-blur-sm bg-white/60 hover:bg-white/80">
+                  <Eye className="w-4 h-4 mr-2" />
+                  View Details
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

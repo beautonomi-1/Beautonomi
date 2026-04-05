@@ -18,6 +18,8 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatCard } from "@/components/ui/StatCard";
 import { twStyle } from "@/lib/twStyle";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
 
 interface PayoutAccount {
   id: string;
@@ -39,7 +41,7 @@ interface BankOption {
 }
 
 const SUPPORTED_COUNTRIES = [
-  { code: "ZA", label: "South Africa", currency: "ZAR" },
+  { code: "ZA", label: "South Africa", currency: LAST_RESORT_CURRENCY },
   { code: "NG", label: "Nigeria", currency: "NGN" },
   { code: "GH", label: "Ghana", currency: "GHS" },
   { code: "KE", label: "Kenya", currency: "KES" },
@@ -51,7 +53,7 @@ export default function PayoutAccountsScreen() {
   const [showBankPicker, setShowBankPicker] = useState(false);
   const [form, setForm] = useState({
     country: "ZA",
-    currency: "ZAR",
+    currency: getTenantDefaultCurrency(),
     account_number: "",
     bank_code: "",
     bank_name: "",
@@ -154,7 +156,7 @@ export default function PayoutAccountsScreen() {
     setShowAdd(false);
     setForm({
       country: "ZA",
-      currency: "ZAR",
+      currency: getTenantDefaultCurrency(),
       account_number: "",
       bank_code: "",
       bank_name: "",
@@ -219,7 +221,7 @@ export default function PayoutAccountsScreen() {
     setForm((p) => ({
       ...p,
       country: countryCode,
-      currency: c?.currency ?? "ZAR",
+      currency: c?.currency ?? getTenantDefaultCurrency(),
       bank_code: "",
       bank_name: "",
     }));

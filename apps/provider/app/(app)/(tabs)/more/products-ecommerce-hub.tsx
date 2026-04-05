@@ -8,6 +8,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 type Product = {
   id: string;
@@ -23,20 +24,48 @@ type ProductsResponse = {
   total?: number;
 };
 
+type OrdersMetricsResponse = {
+  orders?: { status: string; total_amount?: number | string }[];
+  pagination?: { total?: number };
+};
+
+type MetricsResponse = {
+  metrics?: {
+    total_revenue?: number;
+    order_count?: number;
+    pending_count?: number;
+    product_count?: number;
+    low_stock_count?: number;
+  };
+};
+
 export default function ProductsEcommerceHubScreen() {
   const router = useRouter();
+  const tenantCurrency = getTenantDefaultCurrency();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<ProductsResponse>(
     "/api/provider/products?limit=100"
   );
+  const { data: metricsData, refresh: refreshMetrics } = useApi<MetricsResponse>(
+    "/api/provider/products/metrics"
+  );
+  const { data: pendingOrdersData, refresh: refreshPendingOrders } = useApi<OrdersMetricsResponse>(
+    "/api/provider/product-orders?status=pending&limit=5"
+  );
 
   const products: Product[] = (data as ProductsResponse)?.products ?? [];
+  const metrics = (metricsData as MetricsResponse)?.metrics;
+  const pendingOrdersCount = (pendingOrdersData as OrdersMetricsResponse)?.pagination?.total
+    ?? (pendingOrdersData as OrdersMetricsResponse)?.orders?.length
+    ?? 0;
+  const lowStockCount = metrics?.low_stock_count
+    ?? products.filter((p) => (p.quantity ?? p.stock_quantity ?? 0) > 0 && (p.quantity ?? p.stock_quantity ?? 0) <= 3).length;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
+    await Promise.all([refresh(), refreshMetrics(), refreshPendingOrders()]);
     setRefreshing(false);
-  }, [refresh]);
+  }, [refresh, refreshMetrics, refreshPendingOrders]);
 
   if (loading && !data) {
     return (
@@ -73,6 +102,37 @@ export default function ProductsEcommerceHubScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
+        {/* ── Quick metrics row ── */}
+        <View style={{ flexDirection: "row", marginBottom: 16, gap: 10 }}>
+          <View style={{ flex: 1, backgroundColor: "#F0FDF4", borderRadius: 14, padding: 14, alignItems: "center" }}>
+            <Text style={{ fontSize: 22, fontWeight: "800", color: "#166534" }}>{products.length}</Text>
+            <Text style={{ fontSize: 11, color: "#15803D", fontWeight: "600", marginTop: 2 }}>Products</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/orders-hub" as never)}
+            style={{ flex: 1, backgroundColor: pendingOrdersCount > 0 ? "#FFF7ED" : "#F9FAFB", borderRadius: 14, padding: 14, alignItems: "center", borderWidth: pendingOrdersCount > 0 ? 1.5 : 1, borderColor: pendingOrdersCount > 0 ? "#FED7AA" : Colors.gray[200] }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 22, fontWeight: "800", color: pendingOrdersCount > 0 ? "#C2410C" : Colors.gray[700] }}>
+              {pendingOrdersCount}
+            </Text>
+            <Text style={{ fontSize: 11, color: pendingOrdersCount > 0 ? "#C2410C" : Colors.gray[500], fontWeight: "600", marginTop: 2 }}>
+              Pending{pendingOrdersCount > 0 ? " ⚡" : ""}
+            </Text>
+          </TouchableOpacity>
+          {lowStockCount > 0 ? (
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/more/products-hub" as never)}
+              style={{ flex: 1, backgroundColor: "#FEF2F2", borderRadius: 14, padding: 14, alignItems: "center", borderWidth: 1.5, borderColor: "#FECACA" }}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 22, fontWeight: "800", color: "#DC2626" }}>{lowStockCount}</Text>
+              <Text style={{ fontSize: 11, color: "#DC2626", fontWeight: "600", marginTop: 2 }}>Low stock ⚠️</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        {/* ── Nav tiles ── */}
         <View style={{ marginBottom: 16 }}>
           <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -6 }}>
             <TouchableOpacity
@@ -85,7 +145,9 @@ export default function ProductsEcommerceHubScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Products & inventory</Text>
-                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Catalog & stock</Text>
+                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
+                  {products.length > 0 ? `${products.length} products` : "Catalog & stock"}
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
             </TouchableOpacity>
@@ -105,7 +167,7 @@ export default function ProductsEcommerceHubScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/more/orders-hub" as never)}
-              style={{ flex: 1, minWidth: "45%", marginHorizontal: 6, marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
+              style={{ flex: 1, minWidth: "45%", marginHorizontal: 6, marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: pendingOrdersCount > 0 ? "#FED7AA" : Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
               activeOpacity={0.7}
             >
               <View style={{ marginRight: 12, width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#ccfbf1" }}>
@@ -113,8 +175,15 @@ export default function ProductsEcommerceHubScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Orders & returns</Text>
-                <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Fulfill orders & refunds</Text>
+                <Text style={{ fontSize: 12, color: pendingOrdersCount > 0 ? "#C2410C" : Colors.gray[500] }}>
+                  {pendingOrdersCount > 0 ? `${pendingOrdersCount} need attention` : "Fulfill orders & refunds"}
+                </Text>
               </View>
+              {pendingOrdersCount > 0 && (
+                <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#EF4444", alignItems: "center", justifyContent: "center", marginRight: 4 }}>
+                  <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>{pendingOrdersCount > 9 ? "9+" : pendingOrdersCount}</Text>
+                </View>
+              )}
               <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
             </TouchableOpacity>
             <TouchableOpacity
@@ -150,7 +219,12 @@ export default function ProductsEcommerceHubScreen() {
           </View>
         ) : (
           <View style={{ paddingBottom: 16 }}>
-            <Text style={{ marginBottom: 8, paddingHorizontal: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[500] }}>Recent products</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8, paddingHorizontal: 4 }}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[700] }}>Recent products</Text>
+              <TouchableOpacity onPress={() => router.push("/(app)/(tabs)/more/product-form" as never)}>
+                <Text style={{ fontSize: 13, color: "#8b5cf6", fontWeight: "600" }}>+ Add product</Text>
+              </TouchableOpacity>
+            </View>
             {products.slice(0, 10).map((p) => (
               <TouchableOpacity
                 key={p.id}
@@ -167,7 +241,7 @@ export default function ProductsEcommerceHubScreen() {
                 <View style={{ alignItems: "flex-end" }}>
                   {typeof p.retail_price === "number" && (
                     <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>
-                      ZAR {p.retail_price.toLocaleString()}
+                      {tenantCurrency} {p.retail_price.toLocaleString()}
                     </Text>
                   )}
                   {(p.quantity != null || p.stock_quantity != null) && (

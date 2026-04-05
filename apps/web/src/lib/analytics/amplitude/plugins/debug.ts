@@ -15,7 +15,7 @@ export class DebugPlugin implements AmplitudePlugin {
   }
 
   execute(event: AmplitudeEvent): AmplitudeEvent {
-    if (this.context.config?.debug_mode) {
+    if (process.env.NODE_ENV !== "production" && this.context.config?.debug_mode) {
       console.log(`[Amplitude Debug] ${event.event_type}`, {
         user_id: event.user_id,
         device_id: event.device_id,

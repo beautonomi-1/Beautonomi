@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, Switch, ActivityIndicator } from "react-native";
+import { View, Text, Switch, ActivityIndicator, TouchableOpacity, Linking } from "react-native";
+import { router } from "expo-router";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
+import { APP_URL } from "@/config/public-env";
 
 interface PrivacySettings {
   show_profile_publicly: boolean;
@@ -136,6 +138,46 @@ export default function PrivacyAndSharingScreen() {
             Act (POPIA) and our Privacy Policy. You can change these settings at any time.
             Disabling data sharing may limit personalised recommendations.
           </Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12 }}>
+            <Text
+              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline", marginRight: 16 }}
+              onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/privacy-policy`).catch(() => {})}
+            >
+              Full Privacy Policy
+            </Text>
+            <Text
+              style={{ fontSize: 14, fontWeight: "600", color: Colors.primary, textDecorationLine: "underline" }}
+              onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/cookie-policy`).catch(() => {})}
+            >
+              Cookie Policy
+            </Text>
+          </View>
+        </View>
+
+        <View style={{ marginTop: 28 }}>
+          <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>
+            Delete account
+          </Text>
+          <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12, lineHeight: 20 }}>
+            Permanently delete your account and personal data. You will confirm with your password and by typing
+            DELETE.
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/account-settings/delete-account")}
+            style={{
+              borderWidth: 1,
+              borderColor: "#fecaca",
+              backgroundColor: "#FEF2F2",
+              paddingVertical: 14,
+              paddingHorizontal: 16,
+              borderRadius: 12,
+              alignItems: "center",
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Delete account permanently"
+          >
+            <Text style={{ color: "#b91c1c", fontWeight: "700", fontSize: 16 }}>Delete account</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </ScreenFrame>

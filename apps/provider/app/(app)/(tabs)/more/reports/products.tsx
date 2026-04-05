@@ -14,6 +14,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency } from "@/lib/format";
@@ -65,7 +66,7 @@ export default function ProductsReport() {
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const { from, to } = getDateParams(dateRange);
   const productsReportUrl = `/api/provider/reports/products?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
-  const { data, loading } = useApi<ProductsData>(productsReportUrl);
+  const { data, loading, error: dataError, refresh } = useApi<ProductsData>(productsReportUrl);
 
   const handleExport = useCallback(async () => {
     if (!data) return;
@@ -100,7 +101,8 @@ export default function ProductsReport() {
       </ScrollView>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#8b5cf6" />}
-      {!loading && !data && <EmptyState icon="bag-outline" title="No product data" description="Product analytics will appear here" />}
+      {!loading && dataError && !data && <ErrorState message={dataError} onRetry={refresh} />}
+      {!loading && !data && !dataError && <EmptyState icon="bag-outline" title="No product data" description="Product analytics will appear here" />}
 
       {data && (
         <View>

@@ -270,6 +270,7 @@ const LandingNavbar = () => {
             ) : (
               <button
                 onClick={() => {
+                  setLoginModalMode("login");
                   setIsLoginModalOpen(true);
                   setIsMenuOpen(false);
                 }}

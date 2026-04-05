@@ -25,7 +25,7 @@ function getAnonHash(request: Request): string {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { allowed } = checkExploreEventsRateLimit(request);
+    const { allowed } = await checkExploreEventsRateLimit(request);
     if (!allowed) {
       return errorResponse("Too many requests", "RATE_LIMITED", 429);
     }

@@ -6,6 +6,7 @@ import { requireAdminSection,
   errorResponse,
  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 
@@ -27,6 +28,7 @@ export async function PATCH(
     const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     if (!user) throw new Error("Authentication required");
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
     const body = await request.json();
 
@@ -47,6 +49,7 @@ export async function PATCH(
     const { data: provider } = await supabase
       .from("providers")
       .select("id, status")
+      .eq("tenant_id", tenantId)
       .eq("id", id)
       .single();
 
@@ -67,6 +70,7 @@ export async function PATCH(
       .from("providers")
       .update(updateData)
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .select()
       .single();
 
@@ -91,6 +95,7 @@ export async function PATCH(
       const { data: providerWithOwner } = await supabase
         .from("providers")
         .select("user_id, business_name")
+        .eq("tenant_id", tenantId)
         .eq("id", id)
         .single();
 

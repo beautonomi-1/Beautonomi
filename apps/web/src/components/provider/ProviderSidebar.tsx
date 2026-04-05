@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Calendar,
@@ -25,7 +25,6 @@ import {
   BarChart3,
   Sparkles,
   Trophy,
-  LayoutList,
   ShoppingBag,
   Undo2,
   Truck,
@@ -59,7 +58,6 @@ const navigationSections = [
   {
     title: "Operations",
     items: [
-      { icon: LayoutList, label: "Front Desk", href: "/provider/front-desk", permission: "view_calendar" as keyof StaffPermissions },
       { icon: Clock, label: "Waitlist", href: "/provider/waitlist", permission: "view_calendar" as keyof StaffPermissions },
       { icon: UserCheck, label: "Waiting Room", href: "/provider/waiting-room", permission: "view_calendar" as keyof StaffPermissions },
       { icon: UsersRound, label: "Clients", href: "/provider/clients", permission: "view_clients" as keyof StaffPermissions },
@@ -196,7 +194,6 @@ const isActiveRoute = (pathname: string, href: string) => {
 
 export function ProviderSidebar() {
   const pathname = usePathname();
-  const _router = useRouter();
   const { isExpanded, setIsExpanded } = useProviderSidebar();
   const { signOut, user: _user, role } = useAuth();
   const { branding } = usePlatformSettings();
@@ -214,6 +211,10 @@ export function ProviderSidebar() {
   const primaryColor = branding?.primary_color || "#FF0077";
   const secondaryColor = branding?.secondary_color || "#4fd1c5";
   const platformName = branding?.site_name || "Beautonomi";
+  /** Brand-tinted shell (replaces neutral charcoal) so the portal reads as platform-colored */
+  const portalNavSurfaceStyle = {
+    background: `linear-gradient(to bottom, color-mix(in srgb, ${primaryColor} 30%, #171216) 0%, color-mix(in srgb, ${secondaryColor} 22%, #100d10) 100%)`,
+  } as const;
   
   // Determine if user is/was a provider (handles temporary role loss)
   const isProvider = role === 'provider_owner' || role === 'provider_staff' || wasProviderRef.current;
@@ -257,14 +258,9 @@ export function ProviderSidebar() {
       }
       return section;
     }).filter(section => section.items.length > 0);
-  }, [navigationSections, isProvider, role, permissionsLoading, permissions, hasPermission]);
+  }, [isProvider, role, permissionsLoading, permissions, hasPermission]);
 
-  // Filter bottom items
-  const filteredBottomItems = bottomItems.filter(_item => {
-    // Settings might need view_settings permission, but let's keep it accessible
-    // You can add permission check here if needed
-    return true;
-  });
+  const filteredBottomItems = bottomItems;
 
   const toggleSidebar = () => {
     setIsExpanded(!isExpanded);
@@ -283,10 +279,10 @@ export function ProviderSidebar() {
       <div
         className={cn(
           "fixed left-0 top-0 z-40 h-screen flex flex-col py-3 hidden md:flex transition-all duration-300 ease-in-out",
-          "bg-gradient-to-b from-[#2F2A2E] to-[#1F1A1E]",
           "overflow-x-hidden overflow-y-auto box-border",
           isExpanded ? "w-64" : "w-[72px]"
         )}
+        style={portalNavSurfaceStyle}
       >
         {/* Header with Logo and Toggle */}
         <div className={cn(
@@ -294,26 +290,26 @@ export function ProviderSidebar() {
           isExpanded ? "justify-between" : "justify-center"
         )}>
           {isExpanded ? (
-            <Link href="/provider/dashboard" className="flex items-center gap-2">
-              <div 
-                className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden"
-                style={{
-                  background: `linear-gradient(to bottom right, ${primaryColor}, ${secondaryColor})`,
-                }}
-              >
-                <PlatformLogo alt={platformName} className="w-6 h-6" width={24} height={24} />
+            <Link href="/provider/dashboard" className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden bg-white shadow-md ring-1 ring-white/40 shrink-0">
+                <PlatformLogo
+                  alt={platformName}
+                  className="w-6 h-6 object-contain"
+                  width={24}
+                  height={24}
+                />
               </div>
               <span className="text-lg font-bold text-white">{platformName}</span>
             </Link>
           ) : (
             <Link href="/provider/dashboard">
-              <div 
-                className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden"
-                style={{
-                  background: `linear-gradient(to bottom right, ${primaryColor}, ${secondaryColor})`,
-                }}
-              >
-                <PlatformLogo alt={platformName} className="w-8 h-8" width={32} height={32} />
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden bg-white shadow-md ring-1 ring-white/40">
+                <PlatformLogo
+                  alt={platformName}
+                  className="w-8 h-8 object-contain"
+                  width={32}
+                  height={32}
+                />
               </div>
             </Link>
           )}
@@ -355,11 +351,10 @@ export function ProviderSidebar() {
                 {section.items.map((item) => {
                   const Icon = item.icon;
                   const isActive = isActiveRoute(pathname, item.href);
-                  const _hasAccess = !item.permission || hasPermission(item.permission);
-
                   const linkContent = (
                     <Link
                       href={item.href}
+                      prefetch={true}
                       className={cn(
                         "flex items-center gap-3 h-10 rounded-xl transition-all relative group",
                         isExpanded ? "px-3" : "justify-center px-2",
@@ -429,6 +424,7 @@ export function ProviderSidebar() {
             const linkContent = (
               <Link
                 href={item.href}
+                prefetch={true}
                 className={cn(
                   "flex items-center gap-3 h-10 rounded-xl transition-all",
                   isExpanded ? "px-3" : "justify-center px-2",

@@ -14,6 +14,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -65,7 +66,7 @@ export default function StaffReport() {
   const [selectedStaff, setSelectedStaff] = useState<string | null>(null);
   const { from, to } = getDateParams(dateRange);
   const staffReportUrl = `/api/provider/reports/staff?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
-  const { data, loading } = useApi<StaffData>(staffReportUrl);
+  const { data, loading, error: dataError, refresh } = useApi<StaffData>(staffReportUrl);
 
   const selected = data?.staff.find((s) => s.name === selectedStaff) || null;
 
@@ -103,7 +104,8 @@ export default function StaffReport() {
       </ScrollView>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#6366f1" />}
-      {!loading && (!data || data.staff.length === 0) && (
+      {!loading && dataError && !data && <ErrorState message={dataError} onRetry={refresh} />}
+      {!loading && !dataError && (!data || data.staff.length === 0) && (
         <EmptyState icon="people-outline" title="No staff data" description="Staff performance data will appear here" />
       )}
 

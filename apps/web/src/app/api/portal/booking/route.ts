@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { validatePortalToken, usePortalToken } from "@/lib/portal/token";
 import { checkPortalRateLimit } from "@/lib/rate-limit/portal";
+import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
 
 /**
  * GET /api/portal/booking
@@ -10,14 +11,20 @@ import { checkPortalRateLimit } from "@/lib/rate-limit/portal";
  * Get booking details via portal token (passwordless access)
  */
 export async function GET(request: NextRequest) {
-  const { allowed } = checkPortalRateLimit(request);
+  const rate = await checkPortalRateLimit(request);
+  const { allowed } = rate;
   if (!allowed) {
-    return handleApiError(
+    const response = handleApiError(
       new Error("Rate limit exceeded"),
       "Too many requests. Please try again later.",
       "RATE_LIMITED",
       429
     );
+    return applyRateLimitHeaders(response, {
+      limit: 30,
+      remaining: rate.remaining,
+      retryAfterSeconds: rate.retryAfterSeconds,
+    });
   }
 
   try {

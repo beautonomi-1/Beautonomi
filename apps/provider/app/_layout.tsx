@@ -9,6 +9,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/providers/AuthProvider";
 import { AnalyticsProvider } from "@/providers/AnalyticsProvider";
 import { ConfigBundleProvider } from "@/providers/ConfigBundleProvider";
+import { NativePermissionsOnboardingProvider } from "@/providers/NativePermissionsOnboardingProvider";
 import { PushNotificationsProvider } from "@/providers/PushNotificationsProvider";
 import { ThemeProvider, useTheme } from "@/providers/ThemeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -16,6 +17,12 @@ import { OfflineBar } from "@/components/OfflineBar";
 import { useForceUpdate } from "@/hooks/useForceUpdate";
 import { initSentry, Sentry } from "@/lib/sentry";
 import { initSingular } from "@/lib/singular";
+import MarketAvailabilityGate from "@/components/MarketAvailabilityGate";
+import {
+  initializeRuntimeMarketHost,
+  startRuntimeMarketHostLinkListener,
+} from "@/config/public-env";
+import { ScreenshotDeepLinkBootstrap } from "@/components/ScreenshotDeepLinkBootstrap";
 
 // Initialize Sentry and Singular before anything renders; catch so a failure doesn't crash the app
 try {
@@ -65,6 +72,7 @@ function ThemedApp() {
       <OfflineBar />
       <ForceUpdateGate>
         <PushNotificationsProvider>
+          <ScreenshotDeepLinkBootstrap />
           <Stack
             screenOptions={{
               headerShown: false,
@@ -78,21 +86,30 @@ function ThemedApp() {
         </PushNotificationsProvider>
       </ForceUpdateGate>
       <StatusBar style={isDark ? "light" : "dark"} />
+      <MarketAvailabilityGate />
     </>
   );
 }
 
 function RootLayout() {
+  useEffect(() => {
+    void initializeRuntimeMarketHost();
+    const unsubscribe = startRuntimeMarketHostLinkListener();
+    return unsubscribe;
+  }, []);
+
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
         <ThemeProvider>
           <AuthProvider>
+            <NativePermissionsOnboardingProvider>
             <AnalyticsProvider>
               <ConfigBundleProvider>
                 <ThemedApp />
               </ConfigBundleProvider>
             </AnalyticsProvider>
+            </NativePermissionsOnboardingProvider>
           </AuthProvider>
         </ThemeProvider>
       </ErrorBoundary>

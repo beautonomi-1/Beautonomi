@@ -8,8 +8,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import type { Booking } from "@/types/api";
-
-const CACHE_KEY_PREFIX = "beautonomi_bookings_";
+import { useAuth } from "@/providers/AuthProvider";
+import { getRuntimeMarketHost } from "@/config/public-env";
+import {
+  BOOKINGS_CACHE_KEY_PREFIX,
+  LEGACY_BOOKINGS_CACHE_KEY_PREFIX,
+} from "@/lib/cache-keys";
 
 type BookingsStatus = "upcoming" | "past" | "cancelled";
 
@@ -18,22 +22,44 @@ interface BookingsResponse {
   items?: Booking[];
 }
 
+function extractBookingsList(body: BookingsResponse | Booking[] | null | undefined): Booking[] {
+  if (body == null) return [];
+  if (Array.isArray(body)) return body;
+  const items = body.items ?? body.data;
+  return Array.isArray(items) ? items : [];
+}
+
 export function useBookings(status?: BookingsStatus) {
+  const { user } = useAuth();
   const [data, setData] = useState<Booking[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fromCache, setFromCache] = useState(false);
 
-  const cacheKey = `${CACHE_KEY_PREFIX}${status ?? "all"}`;
+  const host = getRuntimeMarketHost().trim().toLowerCase() || "default";
+  const cacheKey = user?.id
+    ? `${BOOKINGS_CACHE_KEY_PREFIX}:${host}:${user.id}:${status ?? "all"}`
+    : `${LEGACY_BOOKINGS_CACHE_KEY_PREFIX}${status ?? "all"}`;
 
   const load = useCallback(async (isRefresh = false) => {
+    if (!user?.id) {
+      setData([]);
+      setLoading(false);
+      setRefreshing(false);
+      setError(null);
+      setFromCache(false);
+      return;
+    }
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
     setError(null);
     setFromCache(false);
     const params = new URLSearchParams();
     if (status) params.set("status", status);
+    // Default API limit is 20; tabs need enough rows for active customers.
+    params.set("limit", "100");
+    params.set("page", "1");
     const res = await api.get<BookingsResponse | Booking[]>(
       `/api/me/bookings?${params.toString()}`
     );
@@ -53,11 +79,7 @@ export function useBookings(status?: BookingsStatus) {
         setData(null);
       }
     } else {
-      const body = res.data as BookingsResponse | Booking[] | undefined;
-      const items = Array.isArray(body)
-        ? body
-        : (body as BookingsResponse)?.data ?? (body as BookingsResponse)?.items ?? [];
-      const list = Array.isArray(items) ? items : [];
+      const list = extractBookingsList(res.data as BookingsResponse | Booking[] | undefined);
       setData(list);
       try {
         await AsyncStorage.setItem(cacheKey, JSON.stringify(list));
@@ -65,9 +87,17 @@ export function useBookings(status?: BookingsStatus) {
     }
     setLoading(false);
     setRefreshing(false);
-  }, [status, cacheKey]);
+  }, [status, cacheKey, user?.id]);
 
   useEffect(() => {
+    if (!user?.id) {
+      setData([]);
+      setLoading(false);
+      setRefreshing(false);
+      setError(null);
+      setFromCache(false);
+      return;
+    }
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(cacheKey);
@@ -78,7 +108,7 @@ export function useBookings(status?: BookingsStatus) {
       } catch {}
     })();
     load();
-  }, [load, cacheKey]);
+  }, [load, cacheKey, user?.id]);
 
   return { data: data ?? [], loading, refreshing, error, fromCache, refetch: () => load(true) };
 }

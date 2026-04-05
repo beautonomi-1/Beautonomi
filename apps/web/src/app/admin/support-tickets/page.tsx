@@ -1,13 +1,21 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, MessageSquare } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Search, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -15,6 +23,13 @@ import EmptyState from "@/components/ui/empty-state";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminFilterBar } from "@/components/admin/AdminFilterBar";
 import Link from "next/link";
+import { labelForSupportTicketCategory, SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/support/ticket-categories";
+import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
+import type { UserRole } from "@/types/beautonomi";
+import { useAuth } from "@/providers/AuthProvider";
+
+const PAGE_SIZE = 25;
+const STAFF_ROLES = [...SUPPORT_TICKET_STAFF_ROLES] as UserRole[];
 
 interface SupportTicket {
   id: string;
@@ -31,35 +46,77 @@ interface SupportTicket {
   updated_at: string;
 }
 
+function ticketAgeDays(createdAt: string): number {
+  const ms = Date.now() - new Date(createdAt).getTime();
+  return Math.max(0, Math.floor(ms / 86400000));
+}
+
 export default function SupportTicketsPage() {
+  const { user } = useAuth();
+  const staffUserId = user?.id;
+
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [assignFilter, setAssignFilter] = useState<string>("all");
+  const [pageIndex, setPageIndex] = useState(0);
 
   useEffect(() => {
-    loadTickets();
-  }, [statusFilter, priorityFilter]); // eslint-disable-line react-hooks/exhaustive-deps -- load when filters change
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 350);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
-  const loadTickets = async () => {
+  useEffect(() => {
+    setPageIndex(0);
+  }, [statusFilter, priorityFilter, categoryFilter, assignFilter, debouncedSearch]);
+
+  const loadTickets = useCallback(async () => {
     try {
       setIsLoading(true);
       const params = new URLSearchParams();
-      if (statusFilter !== "all") params.append("status", statusFilter);
-      if (priorityFilter !== "all") params.append("priority", priorityFilter);
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", String(pageIndex * PAGE_SIZE));
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (priorityFilter !== "all") params.set("priority", priorityFilter);
+      if (categoryFilter !== "all") params.set("category", categoryFilter);
+      if (assignFilter === "unassigned") params.set("assigned_to", "unassigned");
+      else if (assignFilter === "mine" && staffUserId) params.set("assigned_to", staffUserId);
+      const q = debouncedSearch.trim();
+      if (q) params.set("q", q);
 
-      const response = await fetcher.get<{ tickets?: SupportTicket[]; data?: { tickets?: SupportTicket[] } }>(
-        `/api/admin/support-tickets?${params.toString()}`
-      );
-      setTickets(response.tickets ?? response.data?.tickets ?? []);
+      const response = await fetcher.get<{
+        tickets?: SupportTicket[];
+        total?: number;
+        limit?: number;
+        offset?: number;
+      }>(`/api/admin/support-tickets?${params.toString()}`);
+
+      setTickets(response.tickets ?? []);
+      setTotal(response.total ?? 0);
     } catch (error) {
       console.error("Failed to load tickets:", error);
       toast.error("Failed to load support tickets");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [
+    pageIndex,
+    statusFilter,
+    priorityFilter,
+    categoryFilter,
+    assignFilter,
+    debouncedSearch,
+    staffUserId,
+  ]);
+
+  useEffect(() => {
+    loadTickets();
+  }, [loadTickets]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -89,30 +146,14 @@ export default function SupportTicketsPage() {
     }
   };
 
-  const filteredTickets = tickets.filter((ticket) => {
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      return (
-        (ticket.ticket_number ?? "").toLowerCase().includes(searchLower) ||
-        (ticket.subject ?? "").toLowerCase().includes(searchLower) ||
-        (ticket.user?.email ?? "").toLowerCase().includes(searchLower) ||
-        (ticket.user?.full_name ?? "").toLowerCase().includes(searchLower) ||
-        (ticket.provider?.business_name ?? "").toLowerCase().includes(searchLower)
-      );
-    }
-    return true;
-  });
-
-  if (isLoading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <LoadingTimeout loadingMessage="Loading support tickets..." />
-      </div>
-    );
-  }
+  const offset = pageIndex * PAGE_SIZE;
+  const rangeStart = total === 0 ? 0 : offset + 1;
+  const rangeEnd = offset + tickets.length;
+  const canPrev = pageIndex > 0;
+  const canNext = offset + tickets.length < total;
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
+    <RoleGuard allowedRoles={STAFF_ROLES} redirectTo="/">
       <div className="container mx-auto px-4 py-8">
         <AdminPageHeader
           title="Support Tickets"
@@ -120,136 +161,206 @@ export default function SupportTicketsPage() {
         />
 
         <AdminFilterBar className="mb-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Search tickets..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col lg:flex-row gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Input
+                    placeholder="Search subject or ticket #…"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
               </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full lg:w-[180px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="open">Open</SelectItem>
+                  <SelectItem value="in_progress">In progress</SelectItem>
+                  <SelectItem value="resolved">Resolved</SelectItem>
+                  <SelectItem value="closed">Closed</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                <SelectTrigger className="w-full lg:w-[180px]">
+                  <SelectValue placeholder="Priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All priorities</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="open">Open</SelectItem>
-                <SelectItem value="in_progress">In Progress</SelectItem>
-                <SelectItem value="resolved">Resolved</SelectItem>
-                <SelectItem value="closed">Closed</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-              <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="Filter by priority" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Priorities</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="w-full sm:min-w-[240px] sm:max-w-md">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[min(70vh,28rem)]">
+                  <SelectItem value="all">All categories</SelectItem>
+                  {SUPPORT_TICKET_CATEGORY_GROUPS.map((group) => (
+                    <SelectGroup key={group.label}>
+                      <SelectLabel className="text-xs text-muted-foreground">{group.label}</SelectLabel>
+                      {group.items.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={assignFilter} onValueChange={setAssignFilter}>
+                <SelectTrigger className="w-full sm:w-[200px]">
+                  <SelectValue placeholder="Assignment" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All tickets</SelectItem>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  <SelectItem value="mine" disabled={!staffUserId}>
+                    Assigned to me
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </AdminFilterBar>
 
-        {filteredTickets.length === 0 ? (
+        {isLoading ? (
+          <LoadingTimeout loadingMessage="Loading support tickets..." />
+        ) : tickets.length === 0 ? (
           <EmptyState
             icon={MessageSquare}
             title="No support tickets"
             description={
-              searchTerm || statusFilter !== "all" || priorityFilter !== "all"
+              searchTerm ||
+              statusFilter !== "all" ||
+              priorityFilter !== "all" ||
+              categoryFilter !== "all" ||
+              assignFilter !== "all"
                 ? "No tickets match your filters"
                 : "No support tickets have been created yet"
             }
           />
         ) : (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Ticket #</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Assigned To</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredTickets.map((ticket) => (
-                  <TableRow key={ticket.id}>
-                    <TableCell className="font-mono text-sm">
-                      {ticket.ticket_number}
-                    </TableCell>
-                    <TableCell>
-                      <div className="max-w-md">
-                        <p className="font-medium truncate">{ticket.subject}</p>
-                        {ticket.category && (
-                          <p className="text-xs text-gray-500">{ticket.category}</p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        {ticket.user ? (
-                          <>
-                            <p className="text-sm font-medium">
-                              {ticket.user.full_name || "Unknown"}
-                            </p>
-                            <p className="text-xs text-gray-500">{ticket.user.email}</p>
-                          </>
-                        ) : ticket.provider ? (
-                          <p className="text-sm">{ticket.provider.business_name}</p>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getPriorityColor(ticket.priority)}>
-                        {ticket.priority}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(ticket.status)}>
-                        {ticket.status.replace("_", " ")}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {ticket.assigned_user ? (
-                        <p className="text-sm">{ticket.assigned_user.full_name || ticket.assigned_user.email}</p>
-                      ) : (
-                        <span className="text-gray-400">Unassigned</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {new Date(ticket.created_at).toLocaleDateString()}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {new Date(ticket.created_at).toLocaleTimeString()}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Link href={`/admin/support-tickets/${ticket.id}`}>
-                        <Button variant="ghost" size="sm">
-                          View
-                        </Button>
-                      </Link>
-                    </TableCell>
+          <>
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ticket #</TableHead>
+                    <TableHead>Subject</TableHead>
+                    <TableHead>User</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Assigned</TableHead>
+                    <TableHead>Age</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {tickets.map((ticket) => (
+                    <TableRow key={ticket.id}>
+                      <TableCell className="font-mono text-sm">{ticket.ticket_number}</TableCell>
+                      <TableCell>
+                        <div className="max-w-md">
+                          <p className="font-medium truncate">{ticket.subject}</p>
+                          {ticket.category && (
+                            <p className="text-xs text-gray-500">
+                              {labelForSupportTicketCategory(ticket.category)}
+                            </p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          {ticket.user ? (
+                            <>
+                              <p className="text-sm font-medium">{ticket.user.full_name || "Unknown"}</p>
+                              <p className="text-xs text-gray-500">{ticket.user.email}</p>
+                            </>
+                          ) : ticket.provider ? (
+                            <p className="text-sm">{ticket.provider.business_name}</p>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getPriorityColor(ticket.priority)}>{ticket.priority}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getStatusColor(ticket.status)}>
+                          {ticket.status.replace("_", " ")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {ticket.assigned_user ? (
+                          <p className="text-sm">
+                            {ticket.assigned_user.full_name || ticket.assigned_user.email}
+                          </p>
+                        ) : (
+                          <span className="text-gray-400">Unassigned</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        {ticketAgeDays(ticket.created_at)}d
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">{new Date(ticket.created_at).toLocaleDateString()}</div>
+                        <div className="text-xs text-gray-500">
+                          {new Date(ticket.created_at).toLocaleTimeString()}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Link href={`/admin/support-tickets/${ticket.id}`}>
+                          <Button variant="ghost" size="sm">
+                            View
+                          </Button>
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-muted-foreground">
+              <p>
+                Showing {rangeStart}–{rangeEnd} of {total}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!canPrev}
+                  onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!canNext}
+                  onClick={() => setPageIndex((p) => p + 1)}
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </RoleGuard>

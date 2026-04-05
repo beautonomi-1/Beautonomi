@@ -4,6 +4,16 @@ Use this checklist before deploying to staging or production. Each app can be bu
 
 ## Pre-release
 
+### Scale gates (required for high-scale rollout)
+
+- [ ] All Tier-1 gates pass per `docs/SCALE_SLO_GATES.md`.
+- [ ] Burst + soak load evidence attached to release notes.
+- [ ] Canary window completed with no SLO burn-rate alerts.
+- [ ] Provider portal baseline captured and archived (`pnpm run prod:provider:baseline` + `docs/PROVIDER_PORTAL_PERFORMANCE_BASELINE.md`).
+- [ ] Provider route metrics coverage audit passed (`pnpm run prod:provider:route-metrics:audit`).
+- [ ] Provider browser compatibility scan reviewed (`pnpm run prod:provider:compat:scan`, matrix in `docs/PROVIDER_PORTAL_BROWSER_MATRIX.md`).
+- [ ] Provider canary gate check passed (`pnpm run prod:provider:canary:check -- --input <slo-summary.json>`, runbook in `docs/PROVIDER_PORTAL_CANARY_ROLLOUT.md`).
+
 ### Supabase
 
 - [ ] All migrations applied to target project: `supabase db push` or apply migration files in order.
@@ -15,6 +25,9 @@ Use this checklist before deploying to staging or production. Each app can be bu
 - [ ] **Web:** `.env` or host env (e.g. Vercel) has all required vars from `docs/ENVIRONMENT_MATRIX.md` (NEXT_PUBLIC_SUPABASE_*, SUPABASE_SERVICE_ROLE_KEY, NEXT_PUBLIC_APP_URL, PAYSTACK_SECRET_KEY, CRON_SECRET if using cron).
 - [ ] **Customer / Provider:** EAS or build env has EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY, EXPO_PUBLIC_APP_URL. No server secrets in app builds.
 - [ ] No secret keys in PUBLIC vars; no NEXT_PUBLIC_* or EXPO_PUBLIC_* containing secrets.
+- [ ] Observability gate env configured (`NEXT_PUBLIC_SENTRY_DSN` required; see `docs/SECRETS_BOOTSTRAP.md`).
+- [ ] Domain-to-tenant mappings reviewed for this rollout (`docs/DOMAIN_TENANT_ROUTING_RUNBOOK.md`).
+- [ ] Global routing go-live gates reviewed (`docs/GLOBAL_ROUTING_GO_LIVE_CHECKLIST.md`).
 
 ### Security
 

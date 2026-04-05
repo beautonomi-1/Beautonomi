@@ -4,7 +4,7 @@
  */
 
 import { Platform } from "react-native";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
 import type { OnDemandModuleConfig } from "@/lib/config-bundle";
 
 export interface RingtoneController {
@@ -39,7 +39,8 @@ export async function playRingtone(
     const base = getBackendBaseUrl().replace(/\/$/, "");
     try {
       const res = await fetch(
-        `${base}/api/public/on-demand/ringtone-url?environment=${encodeURIComponent(env)}`
+        `${base}/api/public/on-demand/ringtone-url?environment=${encodeURIComponent(env)}`,
+        withWebApiTenantHeaders(),
       );
       if (!res.ok) return { stop: () => {} };
       const data = (await res.json()) as { signed_url?: string };

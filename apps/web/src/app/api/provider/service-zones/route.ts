@@ -1,3 +1,5 @@
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
@@ -8,6 +10,8 @@ import {
   badRequestResponse,
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 const serviceZoneSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -19,7 +23,7 @@ const serviceZoneSchema = z.object({
   center_longitude: z.number().optional(),
   radius_km: z.number().positive().optional(),
   travel_fee: z.number().min(0),
-  currency: z.string().length(3).default("ZAR"),
+  currency: z.string().length(3).optional(),
   travel_time_minutes: z.number().int().positive().default(30),
   description: z.string().optional(),
   is_active: z.boolean().default(true),
@@ -69,6 +73,17 @@ export async function POST(request: NextRequest) {
       return badRequestResponse("Provider not found");
     }
 
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const lastResortCurrency =
+      (await getTenantRegionConfig(effectiveTenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     const body = await request.json();
     const validationResult = serviceZoneSchema.safeParse(body);
 
@@ -78,7 +93,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const data = validationResult.data;
+    const data = {
+      ...validationResult.data,
+      currency: validationResult.data.currency ?? lastResortCurrency,
+    };
 
     // Validate zone type specific fields
     if (data.zone_type === "postal_code" && (!data.postal_codes || data.postal_codes.length === 0)) {

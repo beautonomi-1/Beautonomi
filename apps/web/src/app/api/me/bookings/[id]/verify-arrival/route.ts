@@ -6,12 +6,13 @@ import {
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { isValidOTPFormat, isOTPExpired } from "@/lib/otp/generator";
+import { ARRIVAL_OTP_FORMAT_MESSAGE } from "@beautonomi/utils";
+import { isOTPExpired } from "@/lib/otp/generator";
 import type { Booking } from "@/types/beautonomi";
 import { z } from "zod";
 
 const verifyArrivalSchema = z.object({
-  otp: z.string().regex(/^\d{4}$|^\d{6}$/, "OTP must be 4 or 6 digits"),
+  otp: z.string().regex(/^\d{4}$|^\d{6}$/, ARRIVAL_OTP_FORMAT_MESSAGE),
 });
 
 /**
@@ -34,20 +35,12 @@ export async function POST(
 
     const validationResult = verifyArrivalSchema.safeParse(body);
     if (!validationResult.success) {
-      return errorResponse(
-        "Invalid OTP format",
-        "VALIDATION_ERROR",
-        400,
-        validationResult.error.issues
-      );
+      const message =
+        validationResult.error.issues[0]?.message ?? ARRIVAL_OTP_FORMAT_MESSAGE;
+      return errorResponse(message, "VALIDATION_ERROR", 400, validationResult.error.issues);
     }
 
     const { otp } = validationResult.data;
-
-    // Validate OTP format
-    if (!isValidOTPFormat(otp)) {
-      return errorResponse("OTP must be 6 digits", "INVALID_OTP_FORMAT", 400);
-    }
 
     // Get booking
     const { data: booking, error: bookingError } = await supabase

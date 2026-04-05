@@ -1,4 +1,5 @@
 "use client";
+import { useReportExportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -31,6 +32,7 @@ interface StaffHoursData {
 }
 
 export default function StaffHoursReport() {
+  const exportCurrency = useReportExportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -77,7 +79,7 @@ export default function StaffHoursReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "staff-hours");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "staff-hours", exportCurrency);
     exportToCSV(exportData, "staff-hours-report");
   };
 

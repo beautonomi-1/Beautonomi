@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
 /**
  * GET /api/public/providers/[slug]/packages
@@ -12,6 +13,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+
     const { slug } = await params;
     const supabase = await getSupabaseServer();
 
@@ -29,6 +34,7 @@ export async function GET(
       .select("id")
       .eq("slug", decodedSlug)
       .eq("status", "active")
+      .eq("tenant_id", tenantId)
       .single();
 
     let providerId: string | null = null;
@@ -40,6 +46,7 @@ export async function GET(
         .select("id")
         .eq("slug", slug)
         .eq("status", "active")
+        .eq("tenant_id", tenantId)
         .single();
       
       if (retry.error || !retry.data) {
@@ -145,7 +152,9 @@ export async function GET(
       }
     }
 
-    return successResponse(filteredPackages);
+    const res = successResponse(filteredPackages);
+    res.headers.set("Cache-Control", "public, s-maxage=120, stale-while-revalidate=300");
+    return res;
   } catch (error) {
     return handleApiError(error, "Failed to fetch packages");
   }

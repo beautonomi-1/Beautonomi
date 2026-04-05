@@ -1,20 +1,16 @@
-"use client";
+import type { Metadata } from "next";
+import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import ExploreShell from "./ExploreShell";
 
-import BeautonomiHeader from "@/components/layout/beautonomi-header";
-import Footer from "@/components/layout/footer";
-import BottomNav from "@/components/layout/bottom-nav";
+export const metadata: Metadata = {
+  title: "Explore",
+  description: "Discover posts and inspiration from the Beautonomi community.",
+  alternates: {
+    canonical: "/explore",
+    languages: getHreflangAlternateUrls("/explore"),
+  },
+};
 
-export default function ExploreLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
-      <BeautonomiHeader />
-      <main className="w-full max-w-full overflow-x-hidden">{children}</main>
-      <Footer />
-      <BottomNav />
-    </div>
-  );
+export default function ExploreLayout({ children }: { children: React.ReactNode }) {
+  return <ExploreShell>{children}</ExploreShell>;
 }

@@ -10,6 +10,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { validateBooking } from "@/app/api/public/bookings/_helpers/validate-booking";
 import { createBookingRecord } from "@/app/api/public/bookings/_helpers/create-booking-record";
+import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
 import type { BookingDraft } from "@/types/beautonomi";
 
 /**
@@ -126,14 +127,16 @@ export async function POST(
       use_wallet: Boolean(requestPayload.use_wallet),
     };
 
-    const validatedDraft = { ...requestPayload } as Record<string, any>;
+    const validatedDraft = { ...requestPayload } as unknown as PublicBookingValidatedBody;
 
     const validationResult = await validateBooking(
       supabase,
       admin,
       draft,
       validatedDraft,
-      customerId
+      customerId,
+      undefined,
+      { skipMinNoticeCheck: true }
     );
 
     if (validationResult instanceof Response) {
@@ -192,6 +195,27 @@ export async function POST(
         booking_id: booking.id,
       },
     });
+
+    try {
+      const { sendToUsers } = await import("@/lib/notifications/onesignal");
+      await sendToUsers(
+        [customerId],
+        {
+          title: "Request accepted",
+          message: "Your booking has been confirmed. Tap to view details.",
+          data: {
+            type: "booking_confirmation",
+            booking_id: booking.id,
+            on_demand_request_id: id,
+            subtype: "on_demand_accepted",
+          },
+        },
+        ["push"],
+        { appType: "customer", supabaseClient: admin }
+      );
+    } catch (pushErr) {
+      console.error("Failed to send on-demand accept push to customer:", pushErr);
+    }
 
     return successResponse({
       request: updatedRow,

@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { recordPayoutLedger } from "@/lib/provider/record-payout-ledger";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
+import { formatCurrency } from "@/lib/utils";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * POST /api/admin/payouts/[id]/mark-paid
@@ -17,7 +21,8 @@ export async function POST(
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const { id } = await params;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     if (!supabase) {
       return NextResponse.json(
@@ -52,8 +57,33 @@ export async function POST(
       );
     }
 
-    type PayoutRow = { status: string; provider_id: string; amount: number; id: string; net_amount?: number; payout_number?: string };
+    type PayoutRow = {
+      status: string;
+      provider_id: string;
+      amount: number;
+      id: string;
+      net_amount?: number;
+      payout_number?: string;
+      currency?: string | null;
+    };
     const payoutData = payout as PayoutRow;
+    const payoutCurrency = payoutData.currency?.trim() || LAST_RESORT_CURRENCY;
+    const amountFormatted = formatCurrency(Number(payoutData.amount), payoutCurrency);
+
+    const prov = await fetchProviderInAdminTenant(supabase, payoutData.provider_id, tenantId, "id");
+    if ("error" in prov) {
+      const st = prov.error.status;
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: st === 403 ? "Payout belongs to another market" : "Provider not found",
+            code: st === 403 ? "TENANT_MISMATCH" : "NOT_FOUND",
+          },
+        },
+        { status: st }
+      );
+    }
 
     if (payoutData.status === "completed") {
       return NextResponse.json(
@@ -131,13 +161,12 @@ export async function POST(
       if (provider) {
         const providerRow = provider as { user_id?: string };
         const providerUserId = providerRow.user_id;
-        const amountStr = payoutData.amount.toLocaleString();
         if (providerUserId) {
           await sendToUser(
             providerUserId,
             {
               title: "Payout Processed",
-              message: `Your payout of ZAR ${amountStr} has been processed and paid.`,
+              message: `Your payout of ${amountFormatted} has been processed and paid.`,
               data: {
                 type: "payout_paid",
                 payout_id: id,
@@ -151,7 +180,7 @@ export async function POST(
             user_id: providerUserId,
             type: "system",
             title: "Payout Processed",
-            message: `Your payout of ZAR ${amountStr} has been processed and paid.`,
+            message: `Your payout of ${amountFormatted} has been processed and paid.`,
             data: { payout_id: id, amount: payoutData.amount },
             action_url: "/provider/payouts",
           });

@@ -2,9 +2,9 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
+import type mapboxgl from "mapbox-gl";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
 
 function createPriceMarker(price: number): HTMLDivElement {
   const el = document.createElement("div");
@@ -51,38 +51,54 @@ const SearchMap: React.FC = () => {
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
-    if (!token) return;
+    let cancelled = false;
 
-    mapboxgl.accessToken = token;
+    (async () => {
+      const [{ accessToken, styleUrl }, mapboxModule] = await Promise.all([
+        fetchMapboxPublicMapConfig(),
+        import("mapbox-gl"),
+      ]);
+      await import("mapbox-gl/dist/mapbox-gl.css");
+      const mb = mapboxModule.default;
+      if (cancelled || !mapContainerRef.current || !accessToken) return;
 
-    const map = new mapboxgl.Map({
-      container: mapContainerRef.current,
-      style: "mapbox://styles/mapbox/light-v11",
-      center: [-0.1278, 51.5074],
-      zoom: 13,
-    });
+      mb.accessToken = accessToken;
 
-    map.addControl(new mapboxgl.NavigationControl(), "top-right");
-
-    markersRef.current = listings.map((listing) => {
-      const el = createPriceMarker(listing.price);
-      const marker = new mapboxgl.Marker({ element: el })
-        .setLngLat([listing.lng, listing.lat])
-        .addTo(map);
-      el.addEventListener("click", () => {
-        setSelectedListing(listing);
-        map.flyTo({ center: [listing.lng, listing.lat], zoom: 15, duration: 500 });
+      const map = new mb.Map({
+        container: mapContainerRef.current,
+        style: styleUrl?.trim() || "mapbox://styles/mapbox/light-v11",
+        center: [-0.1278, 51.5074],
+        zoom: 13,
       });
-      return marker;
-    });
 
-    mapRef.current = map;
+      map.addControl(new mb.NavigationControl(), "top-right");
+
+      markersRef.current = listings.map((listing) => {
+        const el = createPriceMarker(listing.price);
+        const marker = new mb.Marker({ element: el })
+          .setLngLat([listing.lng, listing.lat])
+          .addTo(map);
+        el.addEventListener("click", () => {
+          setSelectedListing(listing);
+          map.flyTo({ center: [listing.lng, listing.lat], zoom: 15, duration: 500 });
+        });
+        return marker;
+      });
+
+      if (cancelled) {
+        markersRef.current.forEach((m) => m.remove());
+        markersRef.current = [];
+        map.remove();
+        return;
+      }
+      mapRef.current = map;
+    })();
 
     return () => {
+      cancelled = true;
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
-      map.remove();
+      mapRef.current?.remove();
       mapRef.current = null;
     };
   }, []);

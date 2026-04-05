@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import {
   Dialog,
   DialogContent,
@@ -59,6 +60,7 @@ type PerformanceSummary = {
 type ImpressionPack = { id: string; impressions: number; price_zar: number; display_order: number };
 
 export default function ProviderAdsPage() {
+  const { currencyCode, format: fmt } = useReportCurrency();
   const searchParams = useSearchParams();
   const adsConfig = useModuleConfig("ads") as { enabled?: boolean } | undefined;
   const adsEnabled = useFeatureFlag("ads.enabled");
@@ -291,7 +293,7 @@ export default function ProviderAdsPage() {
             <div className="rounded-lg border p-4 flex items-center gap-3">
               <Banknote className="h-8 w-8 text-muted-foreground" />
               <div>
-                <p className="text-2xl font-semibold">ZAR {Number(performance.spend).toFixed(2)}</p>
+                <p className="text-2xl font-semibold">{fmt(Number(performance.spend))}</p>
                 <p className="text-xs text-muted-foreground">Spend</p>
               </div>
             </div>
@@ -325,7 +327,7 @@ export default function ProviderAdsPage() {
                     >
                       <p className="font-semibold text-lg">{pack.impressions}</p>
                       <p className="text-sm text-muted-foreground">impressions</p>
-                      <p className="font-medium mt-1">ZAR {Number(pack.price_zar).toFixed(2)}</p>
+                      <p className="font-medium mt-1">{fmt(Number(pack.price_zar))}</p>
                       {creatingPackId === pack.id ? (
                         <Loader2 className="h-4 w-4 animate-spin mt-2" />
                       ) : (
@@ -363,7 +365,7 @@ export default function ProviderAdsPage() {
               )}
               <div className="flex flex-wrap items-end gap-3 p-4 border rounded-lg bg-muted/30">
                 <div>
-                  <Label>Total budget (ZAR)</Label>
+                  <Label>Total budget ({currencyCode})</Label>
                   <Input
                     type="number"
                     min={0}
@@ -375,7 +377,7 @@ export default function ProviderAdsPage() {
                   />
                 </div>
                 <div>
-                  <Label>Daily budget (ZAR, optional)</Label>
+                  <Label>Daily budget ({currencyCode}, optional)</Label>
                   <Input
                     type="number"
                     min={0}
@@ -387,7 +389,7 @@ export default function ProviderAdsPage() {
                   />
                 </div>
                 <div>
-                  <Label>Bid per click (ZAR)</Label>
+                  <Label>Bid per click ({currencyCode})</Label>
                   <Input
                     type="number"
                     min={0}
@@ -451,8 +453,8 @@ export default function ProviderAdsPage() {
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {c.pack_impressions != null
-                        ? `${c.pack_impressions} impressions · ZAR ${Number(c.budget).toFixed(2)} paid · ${Number(c.spent).toFixed(2)} spent`
-                        : `Total budget ZAR ${Number(c.budget).toFixed(2)} · Spent ZAR ${Number(c.spent).toFixed(2)}${c.daily_budget != null ? ` · Daily cap ZAR ${Number(c.daily_budget).toFixed(2)}` : ""}${c.bid_cpc != null && c.bid_cpc > 0 ? ` · Bid ZAR ${Number(c.bid_cpc).toFixed(2)}/click` : ""}`}
+                        ? `${c.pack_impressions} impressions · ${fmt(Number(c.budget))} paid · ${fmt(Number(c.spent))} spent`
+                        : `Total budget ${fmt(Number(c.budget))} · Spent ${fmt(Number(c.spent))}${c.daily_budget != null ? ` · Daily cap ${fmt(Number(c.daily_budget))}` : ""}${c.bid_cpc != null && c.bid_cpc > 0 ? ` · Bid ${fmt(Number(c.bid_cpc))}/click` : ""}`}
                     </p>
                     {c.targeting?.global_category_ids?.length ? (
                       <p className="text-xs text-muted-foreground">
@@ -519,7 +521,7 @@ export default function ProviderAdsPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div>
-              <Label>Total budget (ZAR)</Label>
+              <Label>Total budget ({currencyCode})</Label>
               <Input
                 type="number"
                 min={0}
@@ -528,7 +530,7 @@ export default function ProviderAdsPage() {
               />
             </div>
             <div>
-              <Label>Daily budget (ZAR, optional)</Label>
+              <Label>Daily budget ({currencyCode}, optional)</Label>
               <Input
                 type="number"
                 min={0}
@@ -538,7 +540,7 @@ export default function ProviderAdsPage() {
               />
             </div>
             <div>
-              <Label>Bid per click (ZAR)</Label>
+              <Label>Bid per click ({currencyCode})</Label>
               <Input
                 type="number"
                 min={0}

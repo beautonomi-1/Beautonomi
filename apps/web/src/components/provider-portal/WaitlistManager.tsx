@@ -44,8 +44,12 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
 import { Separator } from "@/components/ui/separator";
 import { format, formatDistanceToNow, parseISO, isToday, isTomorrow } from "date-fns";
+import { RADIX_SELECT_ANY } from "@/lib/ui/select-radix-sentinels";
+import { toast } from "sonner";
 
 // Types
 interface WaitlistEntry {
@@ -291,6 +295,10 @@ export function AddToWaitlistDialog({
 
   const handleSubmit = async () => {
     if (!formData.client_name || !formData.service_id) return;
+    if (formData.client_phone?.trim() && !isCompleteE164(formData.client_phone)) {
+      toast.error("Enter a valid phone number or leave the field blank.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -375,15 +383,12 @@ export function AddToWaitlistDialog({
               />
             </div>
             <div className="space-y-3">
-              <Label className="text-sm font-semibold text-gray-900">Phone</Label>
-              <Input
-                type="tel"
+              <PhoneInput
+                label="Phone"
+                inputId="waitlist-add-client-phone"
                 value={formData.client_phone}
-                onChange={(e) =>
-                  setFormData({ ...formData, client_phone: e.target.value })
-                }
-                placeholder="+27 123 456 789"
-                className="h-12 text-base"
+                onChange={(e164) => setFormData({ ...formData, client_phone: e164 })}
+                className="space-y-1"
               />
             </div>
           </div>
@@ -415,16 +420,19 @@ export function AddToWaitlistDialog({
           <div className="space-y-3">
             <Label className="text-sm font-semibold text-gray-900">Preferred Staff (Optional)</Label>
             <Select
-              value={formData.preferred_team_member_id}
+              value={formData.preferred_team_member_id || RADIX_SELECT_ANY}
               onValueChange={(value) =>
-                setFormData({ ...formData, preferred_team_member_id: value })
+                setFormData({
+                  ...formData,
+                  preferred_team_member_id: value === RADIX_SELECT_ANY ? "" : value,
+                })
               }
             >
               <SelectTrigger className="h-12 text-base">
                 <SelectValue placeholder="Any available" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="" className="h-12">Any available</SelectItem>
+                <SelectItem value={RADIX_SELECT_ANY} className="h-12">Any available</SelectItem>
                 {teamMembers.map((member) => (
                   <SelectItem key={member.id} value={member.id} className="h-12">
                     {member.name}

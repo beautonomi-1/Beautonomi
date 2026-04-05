@@ -9,6 +9,8 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { updateTransferRecipient } from "@/lib/payments/paystack-complete";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { z } from "zod";
 
 const updateAccountSchema = z.object({
@@ -69,10 +71,29 @@ export async function PATCH(
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+
+    const { data: provRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    if (
+      !resourceTenantMatchesHostTenant(
+        tenantId,
+        (provRow as { tenant_id?: string | null } | null)?.tenant_id,
+      )
+    ) {
+      return errorResponse(
+        "Your provider account is not on this market. Use the site or app for the correct region.",
+        "TENANT_MISMATCH",
+        403,
+      );
     }
 
     const { id } = await params;
@@ -108,7 +129,7 @@ export async function PATCH(
           name: validationResult.data.account_name || account.account_name,
           email: validationResult.data.email || undefined,
           description: validationResult.data.description || undefined,
-        });
+        }, { tenantId });
       } catch (paystackError) {
         console.error("Failed to update Paystack recipient:", paystackError);
         // Continue with database update even if Paystack update fails
@@ -166,10 +187,29 @@ export async function DELETE(
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+
+    const { data: provRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    if (
+      !resourceTenantMatchesHostTenant(
+        tenantId,
+        (provRow as { tenant_id?: string | null } | null)?.tenant_id,
+      )
+    ) {
+      return errorResponse(
+        "Your provider account is not on this market. Use the site or app for the correct region.",
+        "TENANT_MISMATCH",
+        403,
+      );
     }
 
     const { id } = await params;

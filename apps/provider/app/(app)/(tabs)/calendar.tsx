@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import {
+  InteractionManager,
   View,
   Text,
   TouchableOpacity,
@@ -18,8 +19,8 @@ import {
   NativeSyntheticEvent,
 } from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
+import { useFocusEffect, useRouter } from "expo-router";
 import { api } from "@/lib/api-client";
-import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import {
@@ -27,11 +28,13 @@ import {
   addDays,
   subDays,
   startOfWeek,
+  startOfDay,
   isSameDay,
   parseISO,
   getHours,
   getMinutes,
   differenceInHours,
+  differenceInMinutes,
 } from "date-fns";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -71,6 +74,8 @@ interface Booking {
   id: string;
   booking_number: string;
   status: string;
+  /** Raw DB status from API — pending vs confirmed for calendar colors when `status` is `booked`. */
+  db_status?: string;
   scheduled_at: string;
   total_amount: number;
   currency: string;
@@ -97,6 +102,89 @@ interface TimeBlock {
   start_time: string;
   end_time: string;
   date: string;
+  /** From calendar APIs: staff PTO vs `availability_blocks` table. */
+  overlay_source?: "staff_unavailability" | "availability_block";
+  /** DB id for `availability_blocks` (stable across split day segments). */
+  availability_block_id?: string;
+  /** Distinguishes overlay rows for tap actions / CRUD. */
+  calendar_overlay_kind?: "availability" | "staff_off" | "time_block";
+}
+
+/** Raw rows from GET /api/provider/availability-blocks (same table public booking uses). */
+interface AvailabilityBlockApi {
+  id: string;
+  block_type: "unavailable" | "break" | "maintenance";
+  start_at: string;
+  end_at: string;
+  staff_id: string | null;
+  location_id: string | null;
+  reason?: string | null;
+}
+
+/** Per-day segment for calendar overlay (mirrors web normalizeAvailabilityBlocksToDisplay). */
+interface AvailabilitySegment {
+  id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  team_member_id: string | null;
+  location_id: string | null;
+  block_type: "unavailable" | "break" | "maintenance";
+  reason?: string | null;
+  _source?: "staff_unavailability" | "availability_block";
+  /** Original `availability_blocks.id` when `_source` is availability_block. */
+  parent_block_id?: string;
+}
+
+function normalizeAvailabilityBlocksToSegments(raw: AvailabilityBlockApi[]): AvailabilitySegment[] {
+  const result: AvailabilitySegment[] = [];
+  for (const block of raw) {
+    const start = new Date(block.start_at);
+    const end = new Date(block.end_at);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue;
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    let cursor = new Date(start);
+    while (cursor < end) {
+      const dateStr = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}-${pad(cursor.getDate())}`;
+      const dayStart = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      const segmentStart = cursor < dayStart ? dayStart : cursor;
+      const segmentEnd = end < dayEnd ? end : dayEnd;
+      const startTime = `${pad(segmentStart.getHours())}:${pad(segmentStart.getMinutes())}`;
+      const endTime = `${pad(segmentEnd.getHours())}:${pad(segmentEnd.getMinutes())}`;
+      result.push({
+        id: `${block.id}-${dateStr}-${startTime}`,
+        parent_block_id: block.id,
+        date: dateStr,
+        start_time: startTime,
+        end_time: endTime,
+        team_member_id: block.staff_id,
+        location_id: block.location_id ?? null,
+        block_type: block.block_type,
+        reason: block.reason,
+        _source: "availability_block",
+      });
+      cursor = dayEnd;
+    }
+  }
+  return result;
+}
+
+function availabilitySegmentToTimeBlock(seg: AvailabilitySegment): TimeBlock {
+  const isStaff = seg._source === "staff_unavailability";
+  return {
+    id: seg.id,
+    staff_id: seg.team_member_id,
+    block_type: seg.block_type,
+    title: (seg.reason && seg.reason.trim()) || seg.block_type,
+    start_time: seg.start_time,
+    end_time: seg.end_time,
+    date: seg.date,
+    overlay_source: seg._source,
+    availability_block_id: isStaff ? undefined : seg.parent_block_id,
+    calendar_overlay_kind: isStaff ? "staff_off" : "availability",
+  };
 }
 
 interface DaySchedule {
@@ -177,7 +265,16 @@ const BLOCK_TYPE_COLORS: Record<string, { bg: string; border: string; text: stri
   break: { bg: "#fefce8", border: "#facc15", text: "#854d0e", icon: "cafe-outline" },
   lunch: { bg: "#fefce8", border: "#facc15", text: "#854d0e", icon: "cafe-outline" },
   meeting: { bg: "#eff6ff", border: "#60a5fa", text: "#1e40af", icon: "people-outline" },
+  maintenance: { bg: "#dbeafe", border: "#3b82f6", text: "#1e40af", icon: "build-outline" },
+  unavailable: { bg: Colors.gray[100], border: Colors.gray[500], text: Colors.gray[700], icon: "ban-outline" },
   other: { bg: Colors.gray[50], border: Colors.gray[400], text: Colors.gray[600], icon: "ban-outline" },
+};
+
+const STAFF_TIMEOFF_OVERLAY_COLORS = {
+  bg: "#EDE9FE",
+  border: "#8B5CF6",
+  text: "#5B21B6",
+  icon: "calendar-outline",
 };
 
 const STATUS_ACTIONS = [
@@ -199,12 +296,31 @@ const BLOCK_TYPES = [
   { label: "Other", value: "other", icon: "ban-outline" as const },
 ];
 
+/** Editable `availability_blocks.block_type` values (API). */
+const AVAILABILITY_EDIT_TYPES = [
+  { label: "Unavailable", value: "unavailable" as const, icon: "ban-outline" as const },
+  { label: "Break", value: "break" as const, icon: "cafe-outline" as const },
+  { label: "Maintenance", value: "maintenance" as const, icon: "construct-outline" as const },
+];
+
 /* ================================================================== */
 /*  Color resolvers                                                    */
 /* ================================================================== */
 
 function getStatusColors(status: string) {
-  return STATUS_COLORS[status] ?? STATUS_COLORS.completed;
+  return STATUS_COLORS[status] ?? STATUS_COLORS.booked;
+}
+
+/** Map DB + provider-facing status to calendar color keys (pending ≠ confirmed “booked”). */
+function resolveCalendarColorKey(booking: Booking): string {
+  const db = booking.db_status;
+  if (db === "pending") return "pending";
+  if (db === "confirmed") return "confirmed";
+  if (db === "in_progress") return "started";
+  if (db === "completed") return "completed";
+  if (db === "cancelled") return "cancelled";
+  if (db === "no_show") return "no_show";
+  return booking.status;
 }
 
 function getServiceColors(booking: Booking) {
@@ -233,16 +349,23 @@ function getBlockColors(
     case "team_member":
       return getTeamColors(booking, staffList);
     default:
-      return getStatusColors(booking.status);
+      return getStatusColors(resolveCalendarColorKey(booking));
   }
 }
 
 function getTimeBlockColors(type: string) {
   const lower = type.toLowerCase();
+  if (lower === "unavailable" || lower.includes("unavailable")) return BLOCK_TYPE_COLORS.unavailable;
+  if (lower === "maintenance" || lower.includes("maintenance")) return BLOCK_TYPE_COLORS.maintenance;
   if (lower.includes("break") || lower.includes("lunch"))
     return BLOCK_TYPE_COLORS.break;
   if (lower.includes("meeting")) return BLOCK_TYPE_COLORS.meeting;
   return BLOCK_TYPE_COLORS.other;
+}
+
+function getCalendarOverlayColors(block: TimeBlock) {
+  if (block.overlay_source === "staff_unavailability") return STAFF_TIMEOFF_OVERLAY_COLORS;
+  return getTimeBlockColors(block.block_type);
 }
 
 /* ================================================================== */
@@ -251,12 +374,43 @@ function getTimeBlockColors(type: string) {
 
 function timeStringToMinutes(t: string | undefined | null): number {
   if (t == null || typeof t !== "string") return 0;
-  const [h, m] = t.split(":").map(Number);
-  return (h ?? 0) * 60 + (m ?? 0);
+  const [hRaw, mRaw] = t.split(":").map(Number);
+  const h = Number.isFinite(hRaw) ? Math.max(0, Math.min(23, hRaw)) : 0;
+  const m = Number.isFinite(mRaw) ? Math.max(0, Math.min(59, mRaw)) : 0;
+  return h * 60 + m;
+}
+
+function normalizeOperatingSchedule(
+  schedule: unknown,
+): { isOpen: boolean; openTime?: string; closeTime?: string } | null {
+  if (!schedule || typeof schedule !== "object") return null;
+  const raw = schedule as Record<string, unknown>;
+  const isOpen =
+    raw.is_open === true || (raw.closed !== true && raw.is_open !== false);
+  const openTime =
+    typeof raw.open_time === "string"
+      ? raw.open_time
+      : typeof raw.open === "string"
+        ? raw.open
+        : undefined;
+  const closeTime =
+    typeof raw.close_time === "string"
+      ? raw.close_time
+      : typeof raw.close === "string"
+        ? raw.close
+        : undefined;
+  return { isOpen, openTime, closeTime };
+}
+
+function parseApiDateTime(value: unknown): Date | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = parseISO(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
 function getTopOffset(dateStr: string, startHour: number, slotHeight: number): number {
-  const d = parseISO(dateStr);
+  const d = parseApiDateTime(dateStr);
+  if (!d) return 0;
   const h = getHours(d);
   const m = getMinutes(d);
   return Math.max(0, (h - startHour) * slotHeight + (m / 60) * slotHeight);
@@ -272,7 +426,9 @@ function getBlockHeight(booking: Booking, slotHeight: number, compact: boolean):
 function isNewBooking(booking: Booking): boolean {
   if (!booking.created_at) return false;
   if (booking.status === "completed" || booking.status === "cancelled") return false;
-  return differenceInHours(new Date(), parseISO(booking.created_at)) < 24;
+  const createdAt = parseApiDateTime(booking.created_at);
+  if (!createdAt) return false;
+  return differenceInHours(new Date(), createdAt) < 24;
 }
 
 /* ================================================================== */
@@ -447,6 +603,8 @@ function DatePickerModal({
 
 export default function CalendarScreen() {
   const router = useRouter();
+  const [isFocused, setIsFocused] = useState(true);
+  const [secondaryEnabled, setSecondaryEnabled] = useState(false);
   const { user } = useAuth();
   const { selectedLocationId: globalLocationId } = useProvider();
   const { isTablet, screenPadding } = useResponsive();
@@ -461,11 +619,34 @@ export default function CalendarScreen() {
 
   useEffect(() => {
     if (globalLocationId) setLocationFilter(globalLocationId);
+    else setLocationFilter("all");
   }, [globalLocationId]);
 
   useEffect(() => {
     trackCalendarView();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      setIsFocused(true);
+      return () => setIsFocused(false);
+    }, []),
+  );
+
+  useEffect(() => {
+    if (!isFocused) {
+      setSecondaryEnabled(false);
+      return;
+    }
+    let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (!cancelled) setSecondaryEnabled(true);
+    });
+    return () => {
+      cancelled = true;
+      task.cancel?.();
+    };
+  }, [isFocused]);
 
   const [refreshing, setRefreshing] = useState(false);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
@@ -480,6 +661,14 @@ export default function CalendarScreen() {
     endTime: "13:00",
     staffId: "",
   });
+  const [availabilityEdit, setAvailabilityEdit] = useState<{
+    id: string;
+    block_type: "unavailable" | "break" | "maintenance";
+    date: string;
+    start_time: string;
+    end_time: string;
+    staff_id: string | null;
+  } | null>(null);
   const fabAnim = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
   const hasScrolledToNow = useRef(false);
@@ -511,32 +700,90 @@ export default function CalendarScreen() {
     mutate: setBookings,
   } = useApi<Booking[]>(
     `/api/provider/bookings?start_date=${startDate}&end_date=${endDate}&limit=500${locationParam}`,
+    { enabled: isFocused, staleTimeMs: 10_000 },
   );
 
   const teamUrl = locationFilter !== "all" ? `/api/provider/team?location_id=${encodeURIComponent(locationFilter)}` : "/api/provider/team";
-  const { data: staff } = useApi<StaffMember[]>(teamUrl);
+  const { data: staff } = useApi<StaffMember[]>(teamUrl, { enabled: isFocused, staleTimeMs: 30_000 });
   const timeBlocksLocationParam = locationFilter !== "all" ? `&location_id=${encodeURIComponent(locationFilter)}` : "";
   const { data: timeBlocks, refresh: refreshTimeBlocks } = useApi<TimeBlock[]>(
     `/api/provider/time-blocks?date_from=${startDate}&date_to=${endDate}${timeBlocksLocationParam}`,
+    { enabled: isFocused && secondaryEnabled, staleTimeMs: 10_000 },
   );
-  const { data: locations } = useApi<ProviderLocation[]>("/api/provider/locations");
+  const availabilityFromIso = `${startDate}T00:00:00.000Z`;
+  const availabilityToIso = `${endDate}T23:59:59.999Z`;
+  const { data: availabilityRaw, refresh: refreshAvailabilityBlocks } = useApi<AvailabilityBlockApi[]>(
+    `/api/provider/availability-blocks?from=${encodeURIComponent(availabilityFromIso)}&to=${encodeURIComponent(availabilityToIso)}`,
+    { enabled: isFocused && secondaryEnabled, staleTimeMs: 10_000 },
+  );
+  const { data: staffUnavailSegments, refresh: refreshStaffUnavail } = useApi<AvailabilitySegment[]>(
+    `/api/provider/calendar/staff-unavailability?date_from=${encodeURIComponent(startDate)}&date_to=${encodeURIComponent(endDate)}`,
+    { enabled: isFocused && secondaryEnabled, staleTimeMs: 10_000 },
+  );
+  const { data: locations } = useApi<ProviderLocation[]>("/api/provider/locations", {
+    enabled: isFocused && secondaryEnabled,
+    staleTimeMs: 60_000,
+  });
   const waitingRoomUrl = locationFilter !== "all" ? `/api/provider/waiting-room/count?location_id=${encodeURIComponent(locationFilter)}` : "/api/provider/waiting-room/count";
-  const { data: waitingRoom } = useApi<{ count: number }>(waitingRoomUrl);
+  const { data: waitingRoom } = useApi<{ count: number }>(waitingRoomUrl, {
+    enabled: isFocused && secondaryEnabled,
+    staleTimeMs: 10_000,
+  });
   const { execute: patchBooking } = useApiMutation("patch");
   const { execute: createTimeBlock, loading: creatingBlock } = useApiMutation("post");
+  const { execute: deleteAvailabilityBlock } = useApiMutation("delete");
+  const { execute: updateAvailabilityBlock, loading: savingAvailabilityEdit } = useApiMutation("put");
+  const { execute: deleteCalendarTimeBlock } = useApiMutation("delete");
+
+  const normalizedApiTimeBlocks = useMemo((): TimeBlock[] => {
+    if (!timeBlocks?.length) return [];
+    return timeBlocks.map((tb) => {
+      const raw = tb as TimeBlock & {
+        team_member_id?: string | null;
+        name?: string;
+        blocked_time_type_name?: string;
+      };
+      const st = String(raw.start_time ?? "00:00").slice(0, 5);
+      const et = String(raw.end_time ?? "00:00").slice(0, 5);
+      return {
+        id: raw.id,
+        staff_id: raw.staff_id ?? raw.team_member_id ?? null,
+        block_type: raw.block_type || raw.blocked_time_type_name || "blocked",
+        title: raw.title || raw.name || "Time block",
+        start_time: st,
+        end_time: et,
+        date: raw.date,
+        calendar_overlay_kind: "time_block" as const,
+      };
+    });
+  }, [timeBlocks]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!isFocused || !user?.id) return;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        refresh();
+      }, 400);
+    };
+
     const channel = supabase
       .channel("calendar-bookings")
       .on(
         "postgres_changes" as never,
         { event: "*", schema: "public", table: "bookings", filter: `provider_id=eq.${user.id}` },
-        () => { refresh(); },
+        () => {
+          scheduleRefresh();
+        },
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [refresh, user?.id]);
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [isFocused, refresh, user?.id]);
 
   /* ─── Swipe navigation via PanResponder ─── */
   const panResponder = useMemo(
@@ -571,9 +818,13 @@ export default function CalendarScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refresh(), refreshTimeBlocks()]);
+    const tasks = [refresh()];
+    if (secondaryEnabled) {
+      tasks.push(refreshTimeBlocks(), refreshAvailabilityBlocks(), refreshStaffUnavail());
+    }
+    await Promise.all(tasks);
     setRefreshing(false);
-  }, [refresh, refreshTimeBlocks]);
+  }, [refresh, refreshTimeBlocks, refreshAvailabilityBlocks, refreshStaffUnavail, secondaryEnabled]);
 
   const weekDays = useMemo(() => {
     const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -596,14 +847,14 @@ export default function CalendarScreen() {
       return { startHour: start, endHour: end, isOpen: true };
     }
     const dayName = DAY_NAMES[day.getDay()] ?? "monday";
-    const schedule = operatingHours[dayName];
-    if (!schedule || !schedule.is_open || schedule.open_time == null || schedule.close_time == null) {
+    const schedule = normalizeOperatingSchedule(operatingHours[dayName]);
+    if (!schedule || !schedule.isOpen || schedule.openTime == null || schedule.closeTime == null) {
       const start = Math.max(0, preferences.workdayStartHour - 1);
       const end = Math.min(23, preferences.workdayEndHour + 1);
-      return { startHour: start, endHour: end, isOpen: !!schedule?.is_open };
+      return { startHour: start, endHour: end, isOpen: !!schedule?.isOpen };
     }
-    const openMin = timeStringToMinutes(schedule.open_time);
-    const closeMin = timeStringToMinutes(schedule.close_time);
+    const openMin = timeStringToMinutes(schedule.openTime);
+    const closeMin = timeStringToMinutes(schedule.closeTime);
     const sh = Math.max(0, Math.floor(openMin / 60) - 1);
     const eh = Math.min(23, Math.ceil(closeMin / 60) + 1);
     return { startHour: sh, endHour: eh, isOpen: true };
@@ -644,9 +895,9 @@ export default function CalendarScreen() {
     return opts;
   }, [staffList]);
 
-  const staffIdToName = useMemo(() => {
+  const staffNameToId = useMemo(() => {
     const map = new Map<string, string>();
-    staffList.forEach((s) => map.set(s.id, s.name));
+    staffList.forEach((s) => map.set(s.name, s.id));
     return map;
   }, [staffList]);
 
@@ -663,70 +914,193 @@ export default function CalendarScreen() {
       result = result.filter((b) => b.status !== "cancelled");
     }
     if (viewMode === "day") {
-      result = result.filter((b) => isSameDay(parseISO(b.scheduled_at), selectedDate));
+      result = result.filter((b) => {
+        const bDate = parseApiDateTime(b.scheduled_at);
+        return bDate ? isSameDay(bDate, selectedDate) : false;
+      });
     } else if (viewMode === "3day") {
       result = result.filter((b) => {
-        const bDate = parseISO(b.scheduled_at);
+        const bDate = parseApiDateTime(b.scheduled_at);
+        if (!bDate) return false;
         return bDate >= selectedDate && bDate < addDays(selectedDate, 3);
       });
     }
     if (staffFilter !== "all") {
-      const staffName = staffIdToName.get(staffFilter);
       result = result.filter((b) =>
-        b.services?.some((s) => s.staff_id === staffFilter || s.staff_name === staffName),
+        b.services?.some((s) => {
+          if (s.staff_id === staffFilter) return true;
+          if (!s.staff_name) return false;
+          return staffNameToId.get(s.staff_name) === staffFilter;
+        }),
       );
     }
     return result;
-  }, [bookings, selectedDate, viewMode, staffFilter, staffIdToName, preferences.showCanceled]);
+  }, [bookings, selectedDate, viewMode, staffFilter, staffNameToId, preferences.showCanceled]);
 
-  function getTimeBlocksForDay(day: Date): TimeBlock[] {
-    if (!timeBlocks) return [];
-    if (!preferences.showProcessingAndBuffer) return [];
+  const availabilitySegments = useMemo(() => {
+    if (!availabilityRaw?.length) return [];
+    const normalized = normalizeAvailabilityBlocksToSegments(availabilityRaw);
+    if (locationFilter !== "all") {
+      return normalized.filter((s) => s.location_id == null || s.location_id === locationFilter);
+    }
+    return normalized;
+  }, [availabilityRaw, locationFilter]);
+
+  function getCalendarBlocksForDay(
+    day: Date,
+    blockContext?: { staffColumnId?: string | null } | null,
+  ): TimeBlock[] {
     const dayStr = format(day, "yyyy-MM-dd");
-    return timeBlocks.filter((tb) => tb.date === dayStr);
+    const out: TimeBlock[] = [];
+    const columnId = blockContext?.staffColumnId;
+
+    const blockMatchesStaff = (blockStaffId: string | null) => {
+      if (columnId === "unassigned") {
+        return blockStaffId == null;
+      }
+      if (columnId != null && columnId !== "") {
+        return blockStaffId == null || blockStaffId === columnId;
+      }
+      if (staffFilter !== "all") {
+        return blockStaffId == null || blockStaffId === staffFilter;
+      }
+      return true;
+    };
+
+    for (const seg of staffUnavailSegments ?? []) {
+      if (seg.date !== dayStr) continue;
+      if (!blockMatchesStaff(seg.team_member_id)) continue;
+      out.push(availabilitySegmentToTimeBlock(seg));
+    }
+
+    for (const seg of availabilitySegments) {
+      if (seg.date !== dayStr) continue;
+      if (!blockMatchesStaff(seg.team_member_id)) continue;
+      out.push(availabilitySegmentToTimeBlock(seg));
+    }
+
+    if (preferences.showProcessingAndBuffer && normalizedApiTimeBlocks.length > 0) {
+      for (const tb of normalizedApiTimeBlocks) {
+        if (tb.date !== dayStr) continue;
+        if (!blockMatchesStaff(tb.staff_id)) continue;
+        out.push(tb);
+      }
+    }
+
+    return out;
   }
 
-  const bookingsByDay = useMemo(() => {
+  const filteredBookingsByDate = useMemo(() => {
     const map = new Map<string, Booking[]>();
-    weekDays.forEach((d) => map.set(format(d, "yyyy-MM-dd"), []));
     filteredBookings.forEach((b) => {
-      const key = format(parseISO(b.scheduled_at), "yyyy-MM-dd");
-      map.get(key)?.push(b);
+      const bDate = parseApiDateTime(b.scheduled_at);
+      if (!bDate) return;
+      const key = format(bDate, "yyyy-MM-dd");
+      const existing = map.get(key);
+      if (existing) {
+        existing.push(b);
+      } else {
+        map.set(key, [b]);
+      }
     });
     return map;
-  }, [filteredBookings, weekDays]);
+  }, [filteredBookings]);
+
+  const bookingsByStaffId = useMemo(() => {
+    const byStaffId = new Map<string, Booking[]>();
+    staffList.forEach((s) => byStaffId.set(s.id, []));
+    const unassigned: Booking[] = [];
+
+    filteredBookings.forEach((b) => {
+      const matchedIds = new Set<string>();
+      b.services?.forEach((svc) => {
+        if (svc.staff_id && byStaffId.has(svc.staff_id)) {
+          matchedIds.add(svc.staff_id);
+          return;
+        }
+        if (svc.staff_name) {
+          const mappedStaffId = staffNameToId.get(svc.staff_name);
+          if (mappedStaffId) matchedIds.add(mappedStaffId);
+        }
+      });
+
+      if (matchedIds.size === 0) {
+        unassigned.push(b);
+      } else {
+        matchedIds.forEach((staffId) => {
+          const list = byStaffId.get(staffId);
+          if (list) list.push(b);
+        });
+      }
+    });
+
+    return { byStaffId, unassigned };
+  }, [filteredBookings, staffList, staffNameToId]);
+
+  const bookingCountsByDate = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (!bookings) return counts;
+    bookings.forEach((b) => {
+      const bDate = parseApiDateTime(b.scheduled_at);
+      if (!bDate) return;
+      const key = format(bDate, "yyyy-MM-dd");
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+    return counts;
+  }, [bookings]);
 
   const staffColumns = useMemo(() => {
     if (viewMode !== "day") return null;
     if (staffFilter !== "all") return null;
     if (staffList.length <= 1) return null;
 
-    const cols: { staffId: string; staffName: string; bookings: Booking[] }[] = [];
-    const unassigned: Booking[] = [];
+    const cols: { staffId: string; staffName: string; bookings: Booking[] }[] = staffList.map((s) => ({
+      staffId: s.id,
+      staffName: s.name,
+      bookings: bookingsByStaffId.byStaffId.get(s.id) ?? [],
+    }));
 
-    staffList.forEach((s) => {
-      const staffBookings = filteredBookings.filter((b) =>
-        b.services?.some((svc) => svc.staff_id === s.id || svc.staff_name === s.name),
-      );
-      cols.push({ staffId: s.id, staffName: s.name, bookings: staffBookings });
-    });
-
-    filteredBookings.forEach((b) => {
-      const hasStaff = b.services?.some((s) => s.staff_id || s.staff_name);
-      if (!hasStaff) unassigned.push(b);
-    });
-
-    if (unassigned.length > 0) {
-      cols.push({ staffId: "unassigned", staffName: "Unassigned", bookings: unassigned });
+    if (bookingsByStaffId.unassigned.length > 0) {
+      cols.push({ staffId: "unassigned", staffName: "Unassigned", bookings: bookingsByStaffId.unassigned });
     }
 
     return cols.filter((c) => c.bookings.length > 0 || cols.length <= 4);
-  }, [viewMode, staffList, staffFilter, filteredBookings]);
+  }, [viewMode, staffList, staffFilter, bookingsByStaffId]);
 
-  const todayBookingCount = useMemo(() => {
-    if (!bookings) return 0;
-    return bookings.filter((b) => isSameDay(parseISO(b.scheduled_at), selectedDate)).length;
-  }, [bookings, selectedDate]);
+  const todayBookingCount = useMemo(
+    () => bookingCountsByDate.get(format(selectedDate, "yyyy-MM-dd")) ?? 0,
+    [bookingCountsByDate, selectedDate],
+  );
+
+  const pendingOnSelectedDay = useMemo(
+    () => filteredBookings.filter((b) => b.db_status === "pending").length,
+    [filteredBookings],
+  );
+
+  /** Pending confirmations in the next week — surface on calendar so nothing slips. */
+  const pendingAttentionCount = useMemo(() => {
+    if (!bookings || !Array.isArray(bookings)) return 0;
+    const start = startOfDay(new Date());
+    const end = addDays(start, 8);
+    return bookings.filter((b) => {
+      if (b.status === "cancelled") return false;
+      if (b.db_status !== "pending") return false;
+      const d = parseApiDateTime(b.scheduled_at);
+      return d != null && d >= start && d < end;
+    }).length;
+  }, [bookings]);
+
+  const urgentPendingCount = useMemo(() => {
+    if (!bookings || !Array.isArray(bookings)) return 0;
+    const now = new Date();
+    return bookings.filter((b) => {
+      if (b.db_status !== "pending") return false;
+      const d = parseApiDateTime(b.scheduled_at);
+      if (!d) return false;
+      const mins = differenceInMinutes(d, now);
+      return mins >= 0 && mins <= 120;
+    }).length;
+  }, [bookings]);
 
   function navigateDate(direction: number) {
     const amount = viewMode === "week" ? 7 : viewMode === "3day" ? 3 : 1;
@@ -903,12 +1277,11 @@ export default function CalendarScreen() {
       return;
     }
     const { error } = await createTimeBlock("/api/provider/time-blocks", {
-      block_type: timeBlockForm.type,
-      title: timeBlockForm.title.trim() || capitalizeFirst(timeBlockForm.type),
+      name: timeBlockForm.title.trim() || capitalizeFirst(timeBlockForm.type),
       start_time: timeBlockForm.startTime,
       end_time: timeBlockForm.endTime,
       date: dateStr,
-      staff_id: timeBlockForm.staffId || undefined,
+      staff_id: timeBlockForm.staffId ? timeBlockForm.staffId : null,
     });
     if (error) {
       Alert.alert("Error", error);
@@ -918,6 +1291,116 @@ export default function CalendarScreen() {
     setShowTimeBlockForm(false);
     setTimeBlockForm({ type: "break", title: "", startTime: "12:00", endTime: "13:00", staffId: "" });
     refreshTimeBlocks();
+  }
+
+  function openOverlayBlockMenu(block: TimeBlock) {
+    if (block.calendar_overlay_kind === "staff_off") {
+      Alert.alert(
+        "Team time off",
+        "This comes from staff time off or day off. Update it in team scheduling, not from the calendar grid.",
+      );
+      return;
+    }
+    if (block.calendar_overlay_kind === "availability" && block.availability_block_id) {
+      Alert.alert(
+        `${capitalizeFirst(block.block_type)} · ${block.start_time}–${block.end_time}`,
+        block.title,
+        [
+          {
+            text: "Edit",
+            onPress: () =>
+              setAvailabilityEdit({
+                id: block.availability_block_id!,
+                block_type: block.block_type as "unavailable" | "break" | "maintenance",
+                date: block.date,
+                start_time: block.start_time.slice(0, 5),
+                end_time: block.end_time.slice(0, 5),
+                staff_id: block.staff_id,
+              }),
+          },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => {
+              Alert.alert("Remove this block?", "Clients may be able to book this time again.", [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: async () => {
+                    const { error } = await deleteAvailabilityBlock(
+                      `/api/provider/availability-blocks/${block.availability_block_id}`,
+                    );
+                    if (error) {
+                      Alert.alert("Error", error);
+                      return;
+                    }
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    refreshAvailabilityBlocks();
+                  },
+                },
+              ]);
+            },
+          },
+          { text: "Cancel", style: "cancel" },
+        ],
+      );
+      return;
+    }
+    if (block.calendar_overlay_kind === "time_block") {
+      Alert.alert("Time block", block.title, [
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert("Remove time block?", "", [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Delete",
+                style: "destructive",
+                onPress: async () => {
+                  const { error } = await deleteCalendarTimeBlock(`/api/provider/time-blocks/${block.id}`);
+                  if (error) {
+                    Alert.alert("Error", error);
+                    return;
+                  }
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  refreshTimeBlocks();
+                },
+              },
+            ]);
+          },
+        },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    }
+  }
+
+  async function handleSaveAvailabilityEdit() {
+    if (!availabilityEdit) return;
+    const start = new Date(`${availabilityEdit.date}T${availabilityEdit.start_time}:00`);
+    const end = new Date(`${availabilityEdit.date}T${availabilityEdit.end_time}:00`);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+      Alert.alert("Invalid time", "Use HH:MM format for start and end.");
+      return;
+    }
+    if (end.getTime() <= start.getTime()) {
+      Alert.alert("Invalid range", "End time must be after start time.");
+      return;
+    }
+    const { error } = await updateAvailabilityBlock(`/api/provider/availability-blocks/${availabilityEdit.id}`, {
+      block_type: availabilityEdit.block_type,
+      start_at: start.toISOString(),
+      end_at: end.toISOString(),
+      staff_id: availabilityEdit.staff_id,
+    });
+    if (error) {
+      Alert.alert("Error", error);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setAvailabilityEdit(null);
+    refreshAvailabilityBlocks();
   }
 
   const waitingCount = waitingRoom?.count ?? 0;
@@ -1108,37 +1591,51 @@ export default function CalendarScreen() {
   /* ═══════════════ Render a time block ═══════════════ */
 
   function renderTimeBlock(block: TimeBlock) {
-    const bColors = getTimeBlockColors(block.block_type);
+    const bColors = getCalendarOverlayColors(block);
     const startMin = timeStringToMinutes(block.start_time);
     const endMin = timeStringToMinutes(block.end_time);
     const top = GRID_TOP_PADDING + Math.max(0, (startMin / 60 - startHour) * SLOT_HEIGHT);
     const height = Math.max(((endMin - startMin) / 60) * SLOT_HEIGHT, QUARTER_HEIGHT);
+    const interactive = !!block.calendar_overlay_kind;
+    const boxStyle = {
+      position: "absolute" as const,
+      left: 4,
+      right: 4,
+      top,
+      height,
+      zIndex: 5,
+      overflow: "hidden" as const,
+      borderRadius: 6,
+      borderLeftWidth: 3,
+      borderLeftColor: bColors.border,
+      backgroundColor: bColors.bg,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    };
+    const label = (
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <Ionicons name={bColors.icon as keyof typeof Ionicons.glyphMap} size={10} color={bColors.text} />
+        <Text style={{ marginLeft: 4, fontSize: 9, fontWeight: "500", color: bColors.text }} numberOfLines={1}>
+          {block.title || capitalizeFirst(block.block_type)}
+        </Text>
+      </View>
+    );
+    if (interactive) {
+      return (
+        <Pressable
+          key={block.id}
+          onPress={() => openOverlayBlockMenu(block)}
+          style={({ pressed }) => [boxStyle, { opacity: pressed ? 0.88 : 1 }]}
+          accessibilityRole="button"
+          accessibilityLabel={`${block.block_type} ${block.start_time} to ${block.end_time}. Tap for edit or delete.`}
+        >
+          {label}
+        </Pressable>
+      );
+    }
     return (
-      <View
-        key={block.id}
-        style={{
-          position: "absolute",
-          left: 4,
-          right: 4,
-          top,
-          height,
-          zIndex: 5,
-          pointerEvents: "none",
-          overflow: "hidden",
-          borderRadius: 6,
-          borderLeftWidth: 3,
-          borderLeftColor: bColors.border,
-          backgroundColor: bColors.bg,
-          paddingHorizontal: 6,
-          paddingVertical: 2,
-        }}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Ionicons name={bColors.icon as keyof typeof Ionicons.glyphMap} size={10} color="#92400e" />
-          <Text style={{ marginLeft: 4, fontSize: 9, fontWeight: "500", color: bColors.text }} numberOfLines={1}>
-            {block.title || capitalizeFirst(block.block_type)}
-          </Text>
-        </View>
+      <View key={block.id} style={[boxStyle, { pointerEvents: "none" }]}>
+        {label}
       </View>
     );
   }
@@ -1148,17 +1645,17 @@ export default function CalendarScreen() {
   function renderHoursShading(day: Date) {
     if (!operatingHours) return null;
     const dayName = DAY_NAMES[day.getDay()] ?? "monday";
-    const schedule = operatingHours[dayName];
+    const schedule = normalizeOperatingSchedule(operatingHours[dayName]);
     const shadeBg = preferences.highContrast ? Colors.gray[700] : Colors.gray[200];
 
-    if (!schedule || !schedule.is_open || schedule.open_time == null || schedule.close_time == null) {
+    if (!schedule || !schedule.isOpen || schedule.openTime == null || schedule.closeTime == null) {
       return (
         <View style={{ position: "absolute", left: 0, right: 0, top: GRID_TOP_PADDING, height: totalGridHeight, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }} />
       );
     }
 
-    const openMin = timeStringToMinutes(schedule.open_time);
-    const closeMin = timeStringToMinutes(schedule.close_time);
+    const openMin = timeStringToMinutes(schedule.openTime);
+    const closeMin = timeStringToMinutes(schedule.closeTime);
     const elements: React.ReactNode[] = [];
     const beforeHeight = Math.max(0, (openMin / 60 - startHour) * SLOT_HEIGHT);
     if (beforeHeight > 0) {
@@ -1186,8 +1683,9 @@ export default function CalendarScreen() {
     colWidth: number,
     showTimeIndicator = true,
     dropContext?: DropContext | null,
+    blockContext?: { staffColumnId?: string | null } | null,
   ) {
-    const dayBlocks = getTimeBlocksForDay(day);
+    const dayBlocks = getCalendarBlocksForDay(day, blockContext);
     return (
       <View style={{ width: colWidth, height: totalGridHeight + GRID_TOP_PADDING, paddingTop: GRID_TOP_PADDING, position: "relative" }}>
         {renderHoursShading(day)}
@@ -1245,10 +1743,8 @@ export default function CalendarScreen() {
   const selectedStaff = staffList[selectedStaffIndex] ?? null;
   const singleStaffBookings = useMemo(() => {
     if (!selectedStaff) return filteredBookings;
-    return filteredBookings.filter((b) =>
-      b.services?.some((svc) => svc.staff_id === selectedStaff.id || svc.staff_name === selectedStaff.name),
-    );
-  }, [selectedStaff, filteredBookings]);
+    return bookingsByStaffId.byStaffId.get(selectedStaff.id) ?? [];
+  }, [selectedStaff, filteredBookings, bookingsByStaffId]);
 
   /* ================================================================ */
   /*  JSX                                                             */
@@ -1291,6 +1787,11 @@ export default function CalendarScreen() {
                 <Text style={{ fontSize: 12, fontWeight: "700", color: DARK_HEADER }}>
                   {todayBookingCount}
                 </Text>
+              </View>
+            )}
+            {pendingOnSelectedDay > 0 && viewMode === "day" && (
+              <View style={{ marginLeft: 6, borderRadius: 9999, paddingHorizontal: 8, paddingVertical: 2, backgroundColor: "#F59E0B" }}>
+                <Text style={{ fontSize: 11, fontWeight: "800", color: "#fff" }}>{pendingOnSelectedDay} pending</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -1375,7 +1876,7 @@ export default function CalendarScreen() {
           {weekDays.map((day) => {
             const isSelected = isSameDay(day, selectedDate);
             const isToday = isSameDay(day, new Date());
-            const count = bookings?.filter((b) => isSameDay(parseISO(b.scheduled_at), day)).length ?? 0;
+            const count = bookingCountsByDate.get(format(day, "yyyy-MM-dd")) ?? 0;
             return (
               <TouchableOpacity
                 key={day.toISOString()}
@@ -1402,6 +1903,41 @@ export default function CalendarScreen() {
         </ScrollView>
         </View>
       </View>
+
+      {(pendingAttentionCount > 0 || urgentPendingCount > 0) && (
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(tabs)/more/waiting-room" as never)}
+          activeOpacity={0.85}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginHorizontal: isTablet ? screenPadding : 12,
+            marginTop: 8,
+            marginBottom: 4,
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            borderRadius: 14,
+            backgroundColor: urgentPendingCount > 0 ? "#FEF2F2" : "#FFFBEB",
+            borderWidth: 1,
+            borderColor: urgentPendingCount > 0 ? "#FECACA" : "#FDE68A",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`Front desk: ${pendingAttentionCount} bookings need confirmation`}
+        >
+          <Ionicons name={urgentPendingCount > 0 ? "flash" : "alert-circle"} size={22} color={urgentPendingCount > 0 ? "#DC2626" : "#D97706"} />
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={{ fontSize: 14, fontWeight: "700", color: urgentPendingCount > 0 ? "#991B1B" : "#78350F" }}>
+              {urgentPendingCount > 0
+                ? `${urgentPendingCount} pending within 2h — confirm or decline`
+                : `${pendingAttentionCount} booking${pendingAttentionCount !== 1 ? "s" : ""} need confirmation`}
+            </Text>
+            <Text style={{ fontSize: 12, color: urgentPendingCount > 0 ? "#B91C1C" : "#92400E", marginTop: 2 }}>
+              Front Desk shows today’s schedule and check-ins
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={urgentPendingCount > 0 ? "#DC2626" : "#D97706"} />
+        </TouchableOpacity>
+      )}
 
       {/* ─── Layout Toggle + Staff Filter (matches web "Staff View" bar) ─── */}
       {viewMode === "day" && staffList.length > 1 && staffFilter === "all" && (
@@ -1433,9 +1969,7 @@ export default function CalendarScreen() {
           {layoutMode === "single" && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }} contentContainerStyle={{ flexDirection: "row" }}>
               {staffList.map((member, idx) => {
-                const count = filteredBookings.filter((b) =>
-                  b.services?.some((svc) => svc.staff_id === member.id || svc.staff_name === member.name),
-                ).length;
+                const count = bookingsByStaffId.byStaffId.get(member.id)?.length ?? 0;
                 const isActive = selectedStaffIndex === idx;
                 return (
                   <TouchableOpacity
@@ -1534,9 +2068,7 @@ export default function CalendarScreen() {
                     <View style={{ flexDirection: "row" }}>
                       {threeDays.map((day) => {
                         const key = format(day, "yyyy-MM-dd");
-                        const dayBookings = (bookingsByDay.get(key) ?? []).length > 0
-                          ? bookingsByDay.get(key)!
-                          : filteredBookings.filter((b) => isSameDay(parseISO(b.scheduled_at), day));
+                        const dayBookings = filteredBookingsByDate.get(key) ?? [];
                         const isToday = isSameDay(day, new Date());
                         const threeDayColWidth = Math.max(MIN_STAFF_COL_WIDTH, availableWidth / 3);
                         return (
@@ -1615,7 +2147,7 @@ export default function CalendarScreen() {
                                 staffColumns,
                                 dayColumnWidth,
                                 day: selectedDate,
-                              })}
+                              }, { staffColumnId: col.staffId })}
                             </View>
                           </View>
                         );
@@ -1649,7 +2181,7 @@ export default function CalendarScreen() {
                   staffColumns: [],
                   dayColumnWidth,
                   day: selectedDate,
-                })
+                }, { staffColumnId: selectedStaff?.id })
               ) : (
                 renderDayGrid(selectedDate, filteredBookings, dayColumnWidth, true, {
                   staffColumns: [],
@@ -1663,7 +2195,7 @@ export default function CalendarScreen() {
                   <View style={{ flexDirection: "row" }}>
                     {weekDays.map((day) => {
                       const key = format(day, "yyyy-MM-dd");
-                      const dayBookings = bookingsByDay.get(key) ?? [];
+                      const dayBookings = filteredBookingsByDate.get(key) ?? [];
                       const isToday = isSameDay(day, new Date());
                       return (
                         <View key={key}>
@@ -1914,6 +2446,23 @@ export default function CalendarScreen() {
             )}
 
             <View style={{ marginTop: 12 }}>
+              <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>
+                Closed &amp; time off
+              </Text>
+              <Text style={{ marginBottom: 8, fontSize: 11, lineHeight: 15, color: Colors.gray[500] }}>
+                Staff time off and day off match what customers see when booking. Closed periods come from calendar settings. Tap an availability or time block on the grid to edit or remove it.
+              </Text>
+              <View style={{ marginBottom: 6, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: STAFF_TIMEOFF_OVERLAY_COLORS.bg, borderLeftWidth: 3, borderLeftColor: STAFF_TIMEOFF_OVERLAY_COLORS.border, paddingHorizontal: 12, paddingVertical: 8 }}>
+                <Ionicons name="calendar-outline" size={12} color={STAFF_TIMEOFF_OVERLAY_COLORS.text} style={{ marginRight: 8 }} />
+                <Text style={{ fontSize: 12, fontWeight: "500", color: STAFF_TIMEOFF_OVERLAY_COLORS.text }}>Staff time off / day off</Text>
+              </View>
+              <View style={{ marginBottom: 10, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: BLOCK_TYPE_COLORS.unavailable.bg, borderLeftWidth: 3, borderLeftColor: BLOCK_TYPE_COLORS.unavailable.border, paddingHorizontal: 12, paddingVertical: 8 }}>
+                <Ionicons name="ban-outline" size={12} color={BLOCK_TYPE_COLORS.unavailable.text} style={{ marginRight: 8 }} />
+                <Text style={{ fontSize: 12, fontWeight: "500", color: BLOCK_TYPE_COLORS.unavailable.text }}>Unavailable (closed period)</Text>
+              </View>
+            </View>
+
+            <View style={{ marginTop: 4 }}>
               <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Time Blocks</Text>
               {Object.entries(BLOCK_TYPE_COLORS).map(([key, colors]) => (
                 <View key={key} style={{ marginBottom: 6, flexDirection: "row", alignItems: "center", borderRadius: 8, backgroundColor: colors.bg, borderLeftWidth: 3, borderLeftColor: colors.border, paddingHorizontal: 12, paddingVertical: 8 }}>
@@ -1922,6 +2471,166 @@ export default function CalendarScreen() {
                 </View>
               ))}
             </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* ─── Edit availability block (from grid) ─── */}
+      <Modal
+        visible={availabilityEdit != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAvailabilityEdit(null)}
+      >
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", padding: 24 }} onPress={() => setAvailabilityEdit(null)}>
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={{ borderRadius: 16, backgroundColor: Colors.white, padding: 20, maxHeight: "90%" }}
+          >
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 4 }}>Edit closed period</Text>
+            {availabilityEdit ? (
+              <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12 }}>{availabilityEdit.date}</Text>
+            ) : null}
+            {availabilityEdit ? (
+              <>
+                <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Type</Text>
+                <View style={{ marginBottom: 12, flexDirection: "row", flexWrap: "wrap" }}>
+                  {AVAILABILITY_EDIT_TYPES.map((bt) => (
+                    <TouchableOpacity
+                      key={bt.value}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        borderRadius: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        marginRight: 8,
+                        marginBottom: 8,
+                        backgroundColor: availabilityEdit.block_type === bt.value ? "#4f46e6" : Colors.gray[100],
+                      }}
+                      onPress={() => setAvailabilityEdit((p) => (p ? { ...p, block_type: bt.value } : p))}
+                    >
+                      <Ionicons
+                        name={bt.icon}
+                        size={14}
+                        color={availabilityEdit.block_type === bt.value ? "#fff" : "#6b7280"}
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          fontWeight: "500",
+                          color: availabilityEdit.block_type === bt.value ? Colors.white : Colors.gray[700],
+                        }}
+                      >
+                        {bt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={{ marginBottom: 12, flexDirection: "row" }}>
+                  <View style={{ flex: 1, marginRight: 12 }}>
+                    <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Start</Text>
+                    <TextInput
+                      style={{
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: Colors.gray[200],
+                        backgroundColor: Colors.gray[50],
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        fontSize: 16,
+                        color: Colors.gray[900],
+                      }}
+                      value={availabilityEdit.start_time}
+                      onChangeText={(t) => setAvailabilityEdit((p) => (p ? { ...p, start_time: t } : p))}
+                      placeholder="HH:MM"
+                      placeholderTextColor="#9ca3af"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>End</Text>
+                    <TextInput
+                      style={{
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: Colors.gray[200],
+                        backgroundColor: Colors.gray[50],
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        fontSize: 16,
+                        color: Colors.gray[900],
+                      }}
+                      value={availabilityEdit.end_time}
+                      onChangeText={(t) => setAvailabilityEdit((p) => (p ? { ...p, end_time: t } : p))}
+                      placeholder="HH:MM"
+                      placeholderTextColor="#9ca3af"
+                    />
+                  </View>
+                </View>
+                {staffList.length > 0 ? (
+                  <>
+                    <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Staff (optional)</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ flexDirection: "row" }}>
+                      <TouchableOpacity
+                        style={{
+                          borderRadius: 8,
+                          paddingHorizontal: 12,
+                          paddingVertical: 8,
+                          marginRight: 8,
+                          backgroundColor: availabilityEdit.staff_id == null ? "#4f46e6" : Colors.gray[100],
+                        }}
+                        onPress={() => setAvailabilityEdit((p) => (p ? { ...p, staff_id: null } : p))}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12,
+                            fontWeight: "500",
+                            color: availabilityEdit.staff_id == null ? Colors.white : Colors.gray[700],
+                          }}
+                        >
+                          Everyone
+                        </Text>
+                      </TouchableOpacity>
+                      {staffList.map((member) => (
+                        <TouchableOpacity
+                          key={member.id}
+                          style={{
+                            borderRadius: 8,
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            marginRight: 8,
+                            backgroundColor: availabilityEdit.staff_id === member.id ? "#4f46e6" : Colors.gray[100],
+                          }}
+                          onPress={() => setAvailabilityEdit((p) => (p ? { ...p, staff_id: member.id } : p))}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: "500",
+                              color: availabilityEdit.staff_id === member.id ? Colors.white : Colors.gray[700],
+                            }}
+                          >
+                            {member.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </>
+                ) : null}
+                <View style={{ flexDirection: "row" }}>
+                  <TouchableOpacity
+                    style={{ flex: 1, marginRight: 10, paddingVertical: 14, borderRadius: 12, backgroundColor: Colors.gray[100], alignItems: "center" }}
+                    onPress={() => setAvailabilityEdit(null)}
+                  >
+                    <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>Cancel</Text>
+                  </TouchableOpacity>
+                  <View style={{ flex: 1 }}>
+                    <ActionButton label="Save" onPress={handleSaveAvailabilityEdit} loading={savingAvailabilityEdit} fullWidth />
+                  </View>
+                </View>
+              </>
+            ) : null}
           </Pressable>
         </Pressable>
       </Modal>

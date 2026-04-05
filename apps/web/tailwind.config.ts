@@ -1,8 +1,8 @@
 import type { Config } from "tailwindcss";
+import beautonomiPreset from "@beautonomi/ui-tokens/nativewind-preset";
+import tailwindcssAnimate from "tailwindcss-animate";
 
-const beautonomiPreset = require("@beautonomi/ui-tokens/nativewind-preset");
-
-const config: Config = {
+const config = {
   darkMode: ["class"],
   presets: [beautonomiPreset],
   content: [
@@ -52,7 +52,7 @@ const config: Config = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [tailwindcssAnimate],
 };
 
-export default config;
+export default config as unknown as Config;

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, notFoundResponse, handleApiError, getProviderIdForUser, requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/provider/services/[id]/addons
@@ -107,6 +110,17 @@ export async function POST(
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     const { data: service, error: serviceError } = await supabase
       .from("offerings")
       .select("id, provider_id")
@@ -133,7 +147,7 @@ export async function POST(
         service_type: "addon",
         is_active: true,
         applicable_service_ids: [serviceId],
-        currency: "ZAR",
+        currency: lastResortCurrency,
       })
       .select()
       .single();

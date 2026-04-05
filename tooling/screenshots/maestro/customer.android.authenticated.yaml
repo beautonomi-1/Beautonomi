@@ -1,0 +1,80 @@
+# Customer — main store set (run while signed IN with demo account).
+# EXPO_PUBLIC_SCREENSHOT_MODE=1; optional: SCREENSHOT_PROVIDER_SLUG, BOOKING_ID, HOLD_ID
+#
+appId: com.beautonomi
+---
+- launchApp:
+    clearState: false
+    stopApp: false
+
+- openLink: customer://screenshot/tabs/explore
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot:
+    path: cu_03_explore_feed
+
+- openLink: customer://screenshot/tabs/home
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot:
+    path: cu_04_home
+
+- openLink: customer://screenshot/partner-profile
+- waitForAnimationToEnd:
+    timeout: 18000
+- takeScreenshot:
+    path: cu_05_partner_profile
+
+- openLink: customer://screenshot/book
+- waitForAnimationToEnd:
+    timeout: 18000
+- takeScreenshot:
+    path: cu_06_booking_flow
+
+- openLink: customer://screenshot/book-checkout
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot:
+    path: cu_07_book_checkout
+
+- openLink: customer://screenshot/cart
+- waitForAnimationToEnd:
+    timeout: 12000
+- takeScreenshot:
+    path: cu_08_cart
+
+- openLink: customer://screenshot/product-checkout
+- waitForAnimationToEnd:
+    timeout: 12000
+- takeScreenshot:
+    path: cu_09_product_checkout
+
+- openLink: customer://screenshot/tabs/bookings
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot:
+    path: cu_10_bookings_history
+
+- openLink: customer://screenshot/booking-detail
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot:
+    path: cu_11_booking_detail
+
+- openLink: customer://screenshot/tabs/profile
+- waitForAnimationToEnd:
+    timeout: 12000
+- takeScreenshot:
+    path: cu_12_profile_settings
+
+- openLink: customer://screenshot/account-settings
+- waitForAnimationToEnd:
+    timeout: 12000
+- takeScreenshot:
+    path: cu_13_account_settings_hub
+
+- openLink: customer://screenshot/shop
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot:
+    path: cu_14_shop

@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -38,6 +39,7 @@ interface PayoutsData {
 }
 
 export default function PayoutsReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 90),
     to: new Date(),
@@ -84,7 +86,7 @@ export default function PayoutsReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "payouts");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "payouts", exportCurrency);
     exportToCSV(exportData, "payouts-report");
   };
 
@@ -170,7 +172,7 @@ export default function PayoutsReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalPayoutAmount.toLocaleString()}
+                  {fmt(data.totalPayoutAmount)}
                 </p>
                 <DollarSign className="w-5 h-5 text-green-600" />
               </div>
@@ -184,7 +186,7 @@ export default function PayoutsReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalPlatformFees.toLocaleString()}
+                  {fmt(data.totalPlatformFees)}
                 </p>
                 <Percent className="w-5 h-5 text-orange-600" />
               </div>
@@ -199,7 +201,7 @@ export default function PayoutsReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.averagePayout.toLocaleString()}
+                  {fmt(data.averagePayout)}
                 </p>
                 <TrendingUp className="w-5 h-5 text-purple-600" />
               </div>
@@ -230,7 +232,7 @@ export default function PayoutsReport() {
                         <p className="text-sm text-gray-600">{item.count} payouts</p>
                       </div>
                       <p className="font-semibold text-gray-900">
-                        ZAR {item.amount.toLocaleString()}
+                        {fmt(item.amount)}
                       </p>
                     </div>
                   );
@@ -260,13 +262,13 @@ export default function PayoutsReport() {
                         {format(new Date(payout.createdAt), "MMM dd, yyyy 'at' h:mm a")}
                       </p>
                       <p className="text-sm text-gray-600">
-                        Gross: ZAR {payout.grossAmount.toLocaleString()} • 
-                        Fee: ZAR {payout.platformFee.toLocaleString()}
+                        Gross: {fmt(payout.grossAmount)} • 
+                        Fee: {fmt(payout.platformFee)}
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-green-600">
-                        ZAR {payout.payoutAmount.toLocaleString()}
+                        {fmt(payout.payoutAmount)}
                       </p>
                       <p className="text-xs text-gray-500">net payout</p>
                     </div>

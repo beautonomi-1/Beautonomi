@@ -33,6 +33,9 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import Link from "next/link";
 import RoleGuard from "@/components/auth/RoleGuard";
+import { formatCurrency } from "@/lib/locale/currency";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface SubscriptionMetrics {
   mrr: number;
@@ -72,6 +75,10 @@ interface SubscriptionMetrics {
 }
 
 export default function SubscriptionRevenuePage() {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency =
+    bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+  const formatMoney = (amount: number) => formatCurrency(amount, tenantCurrency);
   const [metrics, setMetrics] = useState<SubscriptionMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -107,10 +114,6 @@ export default function SubscriptionRevenuePage() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return `ZAR ${amount.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const formatPercentage = (value: number) => {
@@ -204,9 +207,9 @@ export default function SubscriptionRevenuePage() {
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(metrics.mrr)}</div>
+              <div className="text-2xl font-bold">{formatMoney(metrics.mrr)}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                Annual: {formatCurrency(metrics.arr)}
+                Annual: {formatMoney(metrics.arr)}
               </p>
             </CardContent>
           </Card>
@@ -230,7 +233,7 @@ export default function SubscriptionRevenuePage() {
               <CreditCard className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(metrics.arpu)}</div>
+              <div className="text-2xl font-bold">{formatMoney(metrics.arpu)}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 Per month
               </p>
@@ -349,7 +352,7 @@ export default function SubscriptionRevenuePage() {
                       <TableCell className="font-medium">{plan.plan_name}</TableCell>
                       <TableCell>{plan.count}</TableCell>
                       <TableCell className="text-right font-semibold">
-                        {formatCurrency(plan.mrr)}
+                        {formatMoney(plan.mrr)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -393,7 +396,7 @@ export default function SubscriptionRevenuePage() {
                         </Link>
                       </TableCell>
                       <TableCell className="text-right font-semibold">
-                        {formatCurrency(provider.revenue)}
+                        {formatMoney(provider.revenue)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -444,7 +447,7 @@ export default function SubscriptionRevenuePage() {
                 {metrics.revenue_trends.map((trend) => (
                   <div key={trend.month} className="flex items-center justify-between p-2 hover:bg-gray-50 rounded">
                     <span className="text-sm font-medium">{trend.label}</span>
-                    <span className="font-semibold">{formatCurrency(trend.revenue)}</span>
+                    <span className="font-semibold">{formatMoney(trend.revenue)}</span>
                   </div>
                 ))}
               </div>

@@ -19,6 +19,8 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatCurrency } from "@/lib/format";
 
 interface Promotion {
   id: string;
@@ -189,7 +191,7 @@ export function PromotionsContent() {
               <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{p.code}</Text>
                 <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }}>
-                  {p.type === "percentage" ? `${p.value}% off` : `R ${Number(p.value).toFixed(2)} off`}
+                  {p.type === "percentage" ? `${p.value}% off` : `${formatCurrency(Number(p.value))} off`}
                   {p.description ? ` · ${p.description}` : ""}
                 </Text>
                 <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
@@ -252,7 +254,7 @@ export function PromotionsContent() {
           </TouchableOpacity>
         </View>
         <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
-          Value {promoType === "percentage" ? "(0–100)" : "(R)"} *
+          Value {promoType === "percentage" ? "(0–100)" : `(${getTenantDefaultCurrency()})`} *
         </Text>
         <TextInput
           style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}

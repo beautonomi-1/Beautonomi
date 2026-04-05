@@ -21,7 +21,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 
-type Tab = "providers" | "posts";
+type Tab = "providers" | "products" | "posts";
 
 const COLUMN_GAP = 8;
 const COL_COUNT = 2;
@@ -56,6 +56,7 @@ export function SavedTabContent({
   const [saved, setSaved] = useState<any[]>([]);
   const [recentlyViewed, setRecentlyViewed] = useState<any[]>([]);
   const [savedPosts, setSavedPosts] = useState<any[]>([]);
+  const [savedProducts, setSavedProducts] = useState<any[]>([]);
   const [collections, setCollections] = useState<{ id: string; name: string; slug: string; post_count: number }[]>([]);
   const [boardPickerPost, setBoardPickerPost] = useState<{ id: string; collection_ids?: string[] } | null>(null);
   const [boardActionLoading, setBoardActionLoading] = useState(false);
@@ -102,6 +103,31 @@ export function SavedTabContent({
       }
     },
     [showRecentlyViewed]
+  );
+
+  const loadProducts = useCallback(
+    async (isRefresh = false) => {
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+      try {
+        const res = await api.get<any>("/api/me/wishlists/products");
+        if (res.error) {
+          setError(res.error.message || "Failed to load");
+          setSavedProducts([]);
+        } else {
+          const d = res.data;
+          setSavedProducts(Array.isArray(d) ? d : d?.data ?? []);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load");
+        setSavedProducts([]);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    []
   );
 
   const loadCollections = useCallback(async () => {
@@ -153,15 +179,18 @@ export function SavedTabContent({
   useEffect(() => {
     if (activeTab === "providers") {
       loadProviders();
+    } else if (activeTab === "products") {
+      loadProducts();
     } else {
       loadSavedPosts();
     }
-  }, [activeTab, loadProviders, loadSavedPosts]);
+  }, [activeTab, loadProviders, loadProducts, loadSavedPosts]);
 
   const handleRefresh = useCallback(() => {
     if (activeTab === "providers") loadProviders(true);
+    else if (activeTab === "products") loadProducts(true);
     else loadSavedPosts(undefined, true);
-  }, [activeTab, loadProviders, loadSavedPosts]);
+  }, [activeTab, loadProviders, loadProducts, loadSavedPosts]);
 
   const handleUnsave = useCallback(async (postId: string) => {
     setSavedPosts((prev) => prev.filter((p) => p.id !== postId));
@@ -258,6 +287,8 @@ export function SavedTabContent({
   const isEmpty =
     activeTab === "providers"
       ? saved.length === 0 && (showRecentlyViewed ? recentlyViewed.length === 0 : true)
+      : activeTab === "products"
+        ? savedProducts.length === 0
       : savedPosts.length === 0;
 
   const emptyTitle =
@@ -265,10 +296,14 @@ export function SavedTabContent({
       ? showRecentlyViewed
         ? "No saved or recently viewed providers"
         : "No saved providers yet"
+      : activeTab === "products"
+        ? "No saved products yet"
       : "No saved posts yet";
   const emptySubtitle =
     activeTab === "posts"
       ? "Bookmark posts from Explore to see them here"
+      : activeTab === "products"
+        ? "Save products to wishlist to see them here"
       : undefined;
 
   return (
@@ -298,6 +333,12 @@ export function SavedTabContent({
           icon="bookmark-outline"
           active={activeTab === "posts"}
           onPress={() => setActiveTab("posts")}
+        />
+        <TabButton
+          label="Products"
+          icon="bag-outline"
+          active={activeTab === "products"}
+          onPress={() => setActiveTab("products")}
         />
       </View>
 
@@ -448,6 +489,26 @@ export function SavedTabContent({
             </View>
           )}
         </ScrollView>
+      ) : activeTab === "products" ? (
+        <FlatList
+          data={savedProducts}
+          keyExtractor={(item) => item.id}
+          numColumns={COL_COUNT}
+          contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
+          columnWrapperStyle={{ marginBottom: COLUMN_GAP }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={Colors.primary}
+            />
+          }
+          renderItem={({ item, index }) => (
+            <View style={{ marginRight: index % 2 === 0 ? COLUMN_GAP : 0 }}>
+              <SavedProductTile product={item} tileWidth={TILE_WIDTH} />
+            </View>
+          )}
+        />
       ) : (
         <FlatList
           data={savedPosts}
@@ -700,6 +761,78 @@ export function SavedTabContent({
         </TouchableOpacity>
       </Modal>
     </ScreenFrame>
+  );
+}
+
+function SavedProductTile({
+  product,
+  tileWidth,
+}: {
+  product: any;
+  tileWidth: number;
+}) {
+  const imageUrl = product?.image_urls?.[0];
+  const providerSlug = product?.provider?.slug;
+
+  return (
+    <TouchableOpacity
+      onPress={() =>
+        router.push({
+          pathname: "/(app)/product-detail",
+          params: { id: product.id, ...(providerSlug ? { provider: providerSlug } : {}) },
+        } as any)
+      }
+      activeOpacity={0.85}
+      style={{
+        width: tileWidth,
+        borderRadius: 12,
+        overflow: "hidden",
+        backgroundColor: "#fff",
+        borderWidth: 1,
+        borderColor: "#E5E7EB",
+      }}
+    >
+      <View style={{ width: tileWidth, height: tileWidth, backgroundColor: "#F3F4F6" }}>
+        {imageUrl ? (
+          <Image source={{ uri: imageUrl }} style={{ width: tileWidth, height: tileWidth }} contentFit="cover" />
+        ) : (
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+            <Ionicons name="cube-outline" size={28} color="#D1D5DB" />
+          </View>
+        )}
+        {product?.in_stock === false && (
+          <View
+            style={{
+              position: "absolute",
+              top: 8,
+              left: 8,
+              backgroundColor: "#FEE2E2",
+              borderRadius: 999,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+            }}
+          >
+            <Text style={{ fontSize: 10, color: "#B91C1C", fontWeight: "700" }}>Out of stock</Text>
+          </View>
+        )}
+      </View>
+      <View style={{ padding: 10 }}>
+        <Text style={{ fontSize: 11, color: "#6B7280" }} numberOfLines={1}>
+          {product?.provider?.business_name || ""}
+        </Text>
+        <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.gray[900], marginTop: 2 }} numberOfLines={2}>
+          {product?.name || "Product"}
+        </Text>
+        {product?.brand ? (
+          <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }} numberOfLines={1}>
+            {product.brand}
+          </Text>
+        ) : null}
+        <Text style={{ fontSize: 13, fontWeight: "700", color: Colors.primary, marginTop: 6 }}>
+          {product?.currency || ""} {Number(product?.retail_price ?? 0).toFixed(2)}
+        </Text>
+      </View>
+    </TouchableOpacity>
   );
 }
 

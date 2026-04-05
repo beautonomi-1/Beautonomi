@@ -21,6 +21,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { formatCurrency } from "@/lib/format";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
 
 interface PlatformZone {
@@ -400,7 +401,7 @@ export default function ServiceZonesScreen() {
       >
         <View>
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-            Travel Fee (R)
+            {`Travel Fee (${getTenantDefaultCurrency()})`}
           </Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}

@@ -1,39 +1,26 @@
-"use client";
-
-import React, { useEffect, useState } from "react";
+import type { Metadata } from "next";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
-import { fetcher } from "@/lib/http/fetcher";
 import Link from "next/link";
+import { getPublicPageContent } from "@/lib/content/getPublicPageContent";
+import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
 
-interface PageContent {
-  [sectionKey: string]: {
-    content: string;
-    content_type: string;
-    metadata: Record<string, any>;
-  };
-}
+export const metadata: Metadata = {
+  title: "Resources",
+  description:
+    "Explore Beautonomi resources, tools, and guides for customers and beauty partners.",
+  alternates: {
+    canonical: "/resources",
+    languages: getHreflangAlternateUrls("/resources"),
+  },
+};
 
-export default function ResourcesPage() {
-  const [content, setContent] = useState<PageContent | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+export const revalidate = 300;
 
-  useEffect(() => {
-    const loadContent = async () => {
-      try {
-        const response = await fetcher.get<{ data: PageContent }>(
-          "/api/public/page-content?page_slug=resources"
-        );
-        setContent(response.data);
-      } catch {
-        // Use default content if CMS has no resources page
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadContent();
-  }, []);
+export default async function ResourcesPage() {
+  const content = await getPublicPageContent("resources");
+  const hasContent = !!content && Object.keys(content).length > 0;
 
   return (
     <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
@@ -46,13 +33,7 @@ export default function ResourcesPage() {
           Beautonomi Connect &amp; more
         </h1>
 
-        {isLoading ? (
-          <div className="animate-pulse space-y-4">
-            <div className="h-4 bg-gray-200 rounded w-full" />
-            <div className="h-4 bg-gray-200 rounded w-5/6" />
-            <div className="h-4 bg-gray-200 rounded w-4/6" />
-          </div>
-        ) : content && Object.keys(content).length > 0 ? (
+        {hasContent ? (
           <div className="prose prose-gray max-w-none">
             {Object.entries(content).map(([key, section]) => (
               <div key={key}>

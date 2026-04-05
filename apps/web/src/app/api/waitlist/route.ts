@@ -90,16 +90,17 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (provider?.user_id) {
-        await supabase.from("notifications").insert({
+        const { insertNotification: insertWaitlistEntryNotif } = await import("@/lib/notifications/insert-notification");
+        await insertWaitlistEntryNotif({
           user_id: provider.user_id,
-          type: "waitlist_entry",
+          type: "system",
           title: "New Waitlist Entry",
           message: `${validated.customer_name} joined the waitlist for your service.`,
-          metadata: {
+          data: {
             waitlist_id: entry.id,
             customer_name: validated.customer_name,
           },
-          link: `/provider/waitlist`,
+          action_url: `/provider/waitlist`,
         });
       }
     } catch (notifError) {

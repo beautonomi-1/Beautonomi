@@ -47,9 +47,10 @@ export default function HomeLoginHandler() {
   }, [user, redirectPath, router]);
 
   return (
-    <LoginModal 
-      open={isLoginModalOpen} 
+    <LoginModal
+      open={isLoginModalOpen}
       setOpen={setIsLoginModalOpen}
+      initialMode="login"
       redirectContext={redirectContext}
     />
   );

@@ -14,6 +14,7 @@ const STEPS = [
 const STEP_LABELS = ["Arrived", "In Service", "Checkout"] as const;
 
 function getStepIndex(badge: string): number {
+  if (badge === "needs_confirmation") return -1;
   for (let i = 0; i < STEPS.length; i++) {
     if ((STEPS[i].labels as readonly string[]).includes(badge)) return i;
   }
@@ -40,6 +41,17 @@ interface WorkflowStepperProps {
 }
 
 export function WorkflowStepper({ currentBadge, className }: WorkflowStepperProps) {
+  if (currentBadge === "needs_confirmation") {
+    return (
+      <div className={cn("space-y-3", className)}>
+        <p className="text-[9px] font-black uppercase tracking-widest text-[#0F172A]/50">Workflow</p>
+        <p className="text-sm font-semibold text-amber-950 bg-amber-50 border border-amber-200/80 rounded-xl px-3 py-2.5">
+          Confirm this booking first to unlock check-in, at-home arrival, and service steps.
+        </p>
+      </div>
+    );
+  }
+
   const currentStep = getStepIndex(currentBadge);
 
   return (

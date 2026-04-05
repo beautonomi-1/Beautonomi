@@ -8,7 +8,7 @@ import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import MapboxMapPreview, { MapboxMapPreviewUnavailable } from "@/components/mapbox/MapboxMapPreview";
 import { useServiceAvailability } from "@/hooks/useServiceAvailability";
 import { useRecentLocations } from "@/hooks/useRecentLocations";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
 
 interface EnhancedAddressDialogProps {
   isOpen: boolean;
@@ -47,20 +47,18 @@ export default function EnhancedAddressDialog({
   const { availability, checkAvailability } = useServiceAvailability();
   const { addLocation } = useRecentLocations();
 
-  // Fetch Mapbox config when dialog opens (for map preview)
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
-    fetcher
-      .get<{ data: { mapboxPublicToken?: string; mapboxStyleUrl?: string | null } }>("/api/public/directions-config")
-      .then((res) => {
-        if (cancelled || !res?.data?.mapboxPublicToken) return;
-        setMapboxConfig({
-          token: res.data.mapboxPublicToken,
-          styleUrl: res.data.mapboxStyleUrl ?? null,
-        });
-      })
-      .catch(() => setMapboxConfig(null));
+    (async () => {
+      try {
+        const cfg = await fetchMapboxPublicMapConfig();
+        if (cancelled || !cfg.accessToken) return;
+        setMapboxConfig({ token: cfg.accessToken, styleUrl: cfg.styleUrl });
+      } catch {
+        if (!cancelled) setMapboxConfig(null);
+      }
+    })();
     return () => {
       cancelled = true;
     };

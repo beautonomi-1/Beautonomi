@@ -31,7 +31,7 @@ const TEAM_MEMBERS_CACHE_KEY = 'provider_team_members';
 const TEAM_MEMBERS_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 export default function ProviderTeamMembers() {
-  const { provider, isLoading: isLoadingProvider } = useProviderPortal();
+  const { provider, isLoading: isLoadingProvider, selectedLocationId } = useProviderPortal();
   const isFreelancer = provider?.business_type === "freelancer";
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -59,19 +59,17 @@ export default function ProviderTeamMembers() {
   }, []);
 
   useEffect(() => {
-    // Wait for provider data before loading members
     if (!isLoadingProvider && provider) {
       loadMembers();
     }
-  }, [isLoadingProvider, provider]);
+  }, [isLoadingProvider, provider, selectedLocationId]);
 
   const loadMembers = async () => {
     try {
-      // Only show loading if we don't have cached data
       if (members.length === 0) {
         setIsLoading(true);
       }
-      const data = await providerApi.listTeamMembers();
+      const data = await providerApi.listTeamMembers(selectedLocationId || undefined);
       console.log("Loaded team members:", data);
       setMembers(data);
       // Cache the response

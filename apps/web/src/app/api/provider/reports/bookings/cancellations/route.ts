@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,15 +23,15 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
 
     let fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 30);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 30));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
 
     const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysDiff > MAX_REPORT_DAYS) {
-      fromDate = subDays(toDate, MAX_REPORT_DAYS);
+      fromDate = startOfDay(subDays(toDate, MAX_REPORT_DAYS));
     }
 
     // Get cancelled bookings (simplified query to avoid nested join issues)
@@ -111,7 +111,9 @@ export async function GET(request: NextRequest) {
         supabaseAdmin,
         providerId,
         fromDate,
-        toDate
+        toDate,
+        null,
+        { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES }
       );
       // Sum revenue for cancelled bookings (if they had finance_transactions)
       cancelledBookingIds.forEach((bookingId) => {

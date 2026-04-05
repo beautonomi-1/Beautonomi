@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, handleApiError, successResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     
     if (!supabase) {
       console.error("Supabase client not available in preference-options API");
@@ -16,22 +19,16 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type'); // 'language', 'currency', or 'timezone'
 
-    let query = supabase
-      .from('preference_options')
-      .select('*')
-      .order('display_order', { ascending: true })
-      .order('name', { ascending: true });
-
-    if (type) {
-      query = query.eq('type', type);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error("Error fetching preference options:", error);
-      return successResponse([]);
-    }
+    const scoped = await fetchScopedListMerged<Record<string, unknown>>({
+      supabase,
+      table: "preference_options",
+      tenantId,
+      select: "*",
+      apply: (q) => (type ? q.eq("type", type) : q),
+      dedupeKey: (row) => `${String(row.type ?? "")}::${String(row.code ?? row.name ?? "")}`,
+      orderBy: { column: "display_order", ascending: true },
+    });
+    const data = scoped.data;
 
     return successResponse(data || []);
   } catch (error) {
@@ -44,6 +41,7 @@ export async function POST(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     
     if (!supabase) {
       return NextResponse.json(
@@ -93,6 +91,7 @@ export async function POST(request: NextRequest) {
       const { data: existingByCode, error: codeCheckError } = await supabase
         .from('preference_options')
         .select('id')
+        .eq("tenant_id", tenantId)
         .eq('type', type)
         .eq('code', code.trim())
         .maybeSingle();
@@ -117,6 +116,7 @@ export async function POST(request: NextRequest) {
     const { data: existingByName, error: nameCheckError } = await supabase
       .from('preference_options')
       .select('id')
+      .eq("tenant_id", tenantId)
       .eq('type', type)
       .eq('name', name.trim())
       .maybeSingle();
@@ -137,6 +137,7 @@ export async function POST(request: NextRequest) {
     }
 
     const insertData = {
+      tenant_id: tenantId,
       type,
       code: code && code.trim() ? code.trim() : null,
       name: name.trim(),

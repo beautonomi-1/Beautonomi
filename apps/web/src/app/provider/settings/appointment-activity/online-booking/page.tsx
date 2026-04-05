@@ -41,6 +41,7 @@ interface OnlineBookingSettings {
 interface BookingLinkData {
   url: string;
   embed_url: string;
+  script_url?: string;
   slug: string;
   business_name: string;
   online_booking_enabled: boolean;
@@ -461,7 +462,7 @@ export default function OnlineBookingSettings() {
                     </p>
                     <div className="relative">
                       <pre className="p-3 pr-10 bg-muted rounded-md text-xs overflow-x-auto">
-                        <code>{`<script src="${bookingLink.url.replace(/\/book\/.*$/, "")}/embed/booking-button.js"
+                        <code>{`<script src="${bookingLink.script_url || `${new URL(bookingLink.url).origin}/embed/booking-button.js`}"
   data-provider="${bookingLink.slug}"
   data-utm-source="website">
 </script>
@@ -472,8 +473,8 @@ export default function OnlineBookingSettings() {
                         size="icon"
                         className="absolute top-2 right-2 h-7 w-7"
                         onClick={() => {
-                          const baseUrl = bookingLink.url.replace(/\/book\/.*$/, "");
-                          const snippet = `<script src="${baseUrl}/embed/booking-button.js"\n  data-provider="${bookingLink.slug}"\n  data-utm-source="website">\n</script>\n<button id="beautonomi-book-now">Book Now</button>`;
+                          const scriptUrl = bookingLink.script_url || `${new URL(bookingLink.url).origin}/embed/booking-button.js`;
+                          const snippet = `<script src="${scriptUrl}"\n  data-provider="${bookingLink.slug}"\n  data-utm-source="website">\n</script>\n<button id="beautonomi-book-now">Book Now</button>`;
                           navigator.clipboard.writeText(snippet);
                           setCopiedField("script");
                           toast.success("Script embed code copied");

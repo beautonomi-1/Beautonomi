@@ -3,6 +3,9 @@ import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, errorResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const planSchema = z.object({
   name: z.string().min(1),
@@ -63,6 +66,17 @@ export async function POST(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     const body = await request.json();
     const parsed = planSchema.safeParse(body);
     if (!parsed.success) {
@@ -76,7 +90,7 @@ export async function POST(request: NextRequest) {
         name: payload.name.trim(),
         description: payload.description?.trim() || null,
         price_monthly: payload.price_monthly,
-        currency: payload.currency || "ZAR",
+        currency: payload.currency || lastResortCurrency,
         discount_percent: payload.discount_percent ?? 0,
         is_active: payload.is_active ?? true,
       })

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection, handleApiError } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const updateServiceZoneSchema = z.object({
@@ -57,10 +58,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin", "provider_owner"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
@@ -85,28 +83,6 @@ export async function GET(
     }
 
     const zoneRow = zone as ServiceZoneRow;
-    if (auth.user.role === "provider_owner" && zoneRow.provider_id) {
-      const { data: provider } = await supabase
-        .from("providers")
-        .select("id")
-        .eq("id", zoneRow.provider_id)
-        .eq("user_id", auth.user.id)
-        .single();
-
-      if (!provider) {
-        return NextResponse.json(
-          {
-            data: null,
-            error: {
-              message: "Access denied",
-              code: "FORBIDDEN",
-            },
-          },
-          { status: 403 }
-        );
-      }
-    }
-
     const transformedZone: TransformedZone = {
       id: zoneRow.id,
       name: zoneRow.name,
@@ -139,17 +115,7 @@ export async function GET(
       error: null,
     });
   } catch (error) {
-    console.error("Unexpected error:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: "Failed to fetch service zone",
-          code: "INTERNAL_ERROR",
-        },
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to fetch service zone");
   }
 }
 
@@ -161,10 +127,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin", "provider_owner"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
@@ -209,28 +172,6 @@ export async function PUT(
     }
 
     const existingRow = existing as ServiceZoneRow;
-    if (auth.user.role === "provider_owner" && existingRow.provider_id) {
-      const { data: provider } = await supabase
-        .from("providers")
-        .select("id")
-        .eq("id", existingRow.provider_id)
-        .eq("user_id", auth.user.id)
-        .single();
-
-      if (!provider) {
-        return NextResponse.json(
-          {
-            data: null,
-            error: {
-              message: "Access denied",
-              code: "FORBIDDEN",
-            },
-          },
-          { status: 403 }
-        );
-      }
-    }
-
     const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
@@ -322,17 +263,7 @@ export async function PUT(
       error: null,
     });
   } catch (error) {
-    console.error("Unexpected error:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: "Failed to update service zone",
-          code: "INTERNAL_ERROR",
-        },
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to update service zone");
   }
 }
 
@@ -344,10 +275,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await requireRole(["superadmin", "provider_owner"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
@@ -373,28 +301,6 @@ export async function DELETE(
     }
 
     const existingRow = existing as ServiceZoneRow;
-    if (auth.user.role === "provider_owner" && existingRow.provider_id) {
-      const { data: provider } = await supabase
-        .from("providers")
-        .select("id")
-        .eq("id", existingRow.provider_id)
-        .eq("user_id", auth.user.id)
-        .single();
-
-      if (!provider) {
-        return NextResponse.json(
-          {
-            data: null,
-            error: {
-              message: "Access denied",
-              code: "FORBIDDEN",
-            },
-          },
-          { status: 403 }
-        );
-      }
-    }
-
     const { error } = await supabase
       .from("service_zones")
       .update({ is_active: false, updated_at: new Date().toISOString() })
@@ -419,16 +325,6 @@ export async function DELETE(
       error: null,
     });
   } catch (error) {
-    console.error("Unexpected error:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: "Failed to delete service zone",
-          code: "INTERNAL_ERROR",
-        },
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to delete service zone");
   }
 }

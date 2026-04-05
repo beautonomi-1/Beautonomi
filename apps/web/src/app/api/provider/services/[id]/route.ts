@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import type { OfferingCard } from "@/types/beautonomi";
+import { syncVariantOfferings } from "../_helpers/sync-variants";
 
 /**
  * GET /api/provider/services/[id]
@@ -113,6 +114,13 @@ export async function PATCH(
       .single();
 
     if (updateError || !updatedService) throw updateError ?? new Error("Failed to update service");
+
+    // Sync child variant offerings when pricing_options are explicitly updated
+    if (body.pricing_options !== undefined) {
+      const opts = Array.isArray(body.pricing_options) ? body.pricing_options : [];
+      await syncVariantOfferings(supabase, updatedService as Record<string, unknown>, opts);
+    }
+
     return successResponse(updatedService as OfferingCard);
   } catch (error) {
     return handleApiError(error, "Failed to update service");

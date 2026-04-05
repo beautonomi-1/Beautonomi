@@ -2,12 +2,15 @@ import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { requireAdminSection, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
 import { ADMIN_SECTION_OVERVIEW } from '@/lib/admin-sections';
+import { resolveAdminApiTenantId } from '@/lib/tenant/admin-request-tenant';
+import { fetchFinanceLedgerRowsForTenant } from '@/lib/admin/finance-ledger-tenant';
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     
     if (!supabase) {
       console.error("Failed to get Supabase client");
@@ -26,14 +29,14 @@ export async function GET(request: NextRequest) {
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'customer'),
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'customer').gte('created_at', startOfMonth.toISOString()),
       supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'customer').gte('created_at', startOfLastMonth.toISOString()).lte('created_at', endOfLastMonth.toISOString()),
-      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'active').gte('created_at', startOfMonth.toISOString()),
-      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'active').gte('created_at', startOfLastMonth.toISOString()).lte('created_at', endOfLastMonth.toISOString()),
-      supabase.from("bookings").select("*", { count: "exact", head: true }),
-      supabase.from("bookings").select("*", { count: "exact", head: true }).gte("created_at", startOfToday.toISOString()),
-      supabase.from("bookings").select("*", { count: "exact", head: true }).gte("created_at", startOfMonth.toISOString()),
-      supabase.from("bookings").select("*", { count: "exact", head: true }).gte("created_at", startOfLastMonth.toISOString()).lte("created_at", endOfLastMonth.toISOString()),
-      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'pending_approval')
+      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'active').eq('tenant_id', tenantId),
+      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'active').eq('tenant_id', tenantId).gte('created_at', startOfMonth.toISOString()),
+      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'active').eq('tenant_id', tenantId).gte('created_at', startOfLastMonth.toISOString()).lte('created_at', endOfLastMonth.toISOString()),
+      supabase.from("bookings").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
+      supabase.from("bookings").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", startOfToday.toISOString()),
+      supabase.from("bookings").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", startOfMonth.toISOString()),
+      supabase.from("bookings").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", startOfLastMonth.toISOString()).lte("created_at", endOfLastMonth.toISOString()),
+      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'pending_approval').eq('tenant_id', tenantId)
     ]);
 
     // Extract counts with error handling
@@ -67,39 +70,11 @@ export async function GET(request: NextRequest) {
     
     const sumLedger = async (startISO: string, endISO?: string) => {
       try {
-        // Build query with date filters - only select needed fields
-        let baseQuery = supabase
-          .from("finance_transactions")
-          .select("transaction_type, amount, net, fees")
-          .gte("created_at", startISO);
-        
-        if (endISO) {
-          baseQuery = baseQuery.lte("created_at", endISO);
-        }
-
-        const { data, error } = await baseQuery;
-        
-        if (error) {
-          console.error("Error fetching finance transactions:", error);
-          // Return zeros if query fails
-          return {
-            service_collected_net: 0,
-            platform_commission_gross: 0,
-            platform_refund_impact: 0,
-            platform_commission_net: 0,
-            gateway_fees: 0,
-            platform_take_net: 0,
-            tips_gross: 0,
-            taxes_gross: 0,
-            subscription_net: 0,
-            subscription_gateway_fees: 0,
-            gift_cards: 0,
-            memberships: 0,
-            refunds_gross: 0,
-          };
-        }
-        
-        const rows = data || [];
+        const ledgerRows = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
+          start: startISO,
+          end: endISO ?? null,
+        });
+        const rows = ledgerRows;
         
         // Calculate sums using in-memory aggregation
         type LedgerRow = { transaction_type?: string; amount?: number; net?: number; fees?: number };

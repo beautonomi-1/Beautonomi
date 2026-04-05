@@ -86,9 +86,10 @@ export default function CTASection() {
           </div>
         </div>
       </div>
-      <LoginModal 
-        open={isLoginModalOpen} 
+      <LoginModal
+        open={isLoginModalOpen}
         setOpen={setIsLoginModalOpen}
+        initialMode="login"
         redirectContext="provider"
       />
       <DemoBookingModal

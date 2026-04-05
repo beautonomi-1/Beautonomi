@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { UserCheck } from "lucide-react";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
+import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 
 /**
  * Page linked from deactivation confirmation (e.g. email) or when user lands with ?deactivated=true.
@@ -31,7 +32,14 @@ export default function ReactivatePage() {
               <Link href="/login?redirect=/">Log in to reactivate</Link>
             </Button>
             <p className="text-xs text-center text-gray-500">
-              If your account was deactivated by support, please contact us to reactivate.
+              If your account was deactivated by support, please{" "}
+              <Link
+                href={PLATFORM_CONTACT_HREF}
+                className="text-[#FF0077] underline underline-offset-2 hover:text-[#D60565]"
+              >
+                contact us
+              </Link>{" "}
+              to reactivate.
             </p>
           </CardContent>
         </Card>

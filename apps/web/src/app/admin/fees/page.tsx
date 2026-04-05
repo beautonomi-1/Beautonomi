@@ -1,5 +1,7 @@
 "use client";
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import React, { useState, useEffect } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,8 @@ import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { formatCurrency } from "@/lib/locale/currency";
 
 interface FeeConfig {
   id: string;
@@ -345,7 +349,7 @@ function FeeConfigsTab() {
                     <td className="px-4 py-4 text-sm">
                       {config.fee_type === "percentage"
                         ? `${(config.fee_percentage * 100).toFixed(2)}%`
-                        : `ZAR ${config.fee_fixed_amount.toFixed(2)}`}
+                        : formatCurrency(config.fee_fixed_amount, config.currency)}
                     </td>
                     <td className="px-4 py-4 text-sm">{config.currency}</td>
                     <td className="px-4 py-4 text-sm">
@@ -402,12 +406,14 @@ function FeeConfigModal({
   onClose: () => void;
   onSave: (data: Partial<FeeConfig>) => void;
 }) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [formData, setFormData] = useState({
     gateway_name: config?.gateway_name || "",
     fee_type: config?.fee_type || "percentage",
     fee_percentage: config?.fee_percentage || 0,
     fee_fixed_amount: config?.fee_fixed_amount || 0,
-    currency: config?.currency || "ZAR",
+    currency: config?.currency || tenantCurrency,
     is_active: config?.is_active !== false,
     effective_from: config?.effective_from
       ? new Date(config.effective_from).toISOString().split("T")[0]
@@ -677,6 +683,8 @@ function FeeConfigModal({
 }
 
 function FeeAdjustmentsTab() {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [adjustments, setAdjustments] = useState<FeeAdjustment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [, setError] = useState<string | null>(null);
@@ -821,10 +829,10 @@ function FeeAdjustmentsTab() {
                         "N/A"}
                     </td>
                     <td className="px-4 py-4 text-sm">
-                      ZAR {adj.original_fee_amount.toFixed(2)}
+                      {formatCurrency(adj.original_fee_amount, tenantCurrency)}
                     </td>
                     <td className="px-4 py-4 text-sm font-medium">
-                      ZAR {adj.adjusted_fee_amount.toFixed(2)}
+                      {formatCurrency(adj.adjusted_fee_amount, tenantCurrency)}
                     </td>
                     <td className="px-4 py-4 text-sm capitalize">
                       {adj.adjustment_type}
@@ -875,6 +883,8 @@ function FeeAdjustmentsTab() {
 }
 
 function ReconciliationsTab() {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [reconciliations, setReconciliations] = useState<Reconciliation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [, setError] = useState<string | null>(null);
@@ -1067,10 +1077,10 @@ function ReconciliationsTab() {
                       {rec.gateway_name}
                     </td>
                     <td className="px-4 py-4 text-sm">
-                      ZAR {rec.expected_fees.toFixed(2)}
+                      {formatCurrency(rec.expected_fees, tenantCurrency)}
                     </td>
                     <td className="px-4 py-4 text-sm">
-                      ZAR {rec.actual_fees.toFixed(2)}
+                      {formatCurrency(rec.actual_fees, tenantCurrency)}
                     </td>
                     <td
                       className={`px-4 py-4 text-sm font-medium ${

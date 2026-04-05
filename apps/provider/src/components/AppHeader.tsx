@@ -23,7 +23,7 @@ export function AppHeader() {
   const insets = useSafeAreaInsets();
   const { screenPadding } = useResponsive();
   const { provider } = useProvider();
-  const hasMultipleLocations = (provider?.locations?.length ?? 0) > 1;
+  const showLocationSwitcher = (provider?.locations?.length ?? 0) > 0;
   const [quickActionsVisible, setQuickActionsVisible] = useState(false);
   const { totalUnread: unreadCount } = useNotificationsCount();
 
@@ -143,11 +143,11 @@ export function AppHeader() {
             hitSlop={hitSlop}
             accessibilityLabel="Quick actions menu"
             accessibilityRole="button"
-            style={hasMultipleLocations ? undefined : { marginRight: Platform.OS === "web" ? 16 : 12 }}
+            style={showLocationSwitcher ? undefined : { marginRight: Platform.OS === "web" ? 16 : 12 }}
           >
             <Ionicons name="add-circle-outline" size={iconSize} color={iconColor} />
           </TouchableOpacity>
-          {hasMultipleLocations && (
+          {showLocationSwitcher && (
             <View style={{ marginLeft: 4 }}>
               <LocationSwitcher />
             </View>

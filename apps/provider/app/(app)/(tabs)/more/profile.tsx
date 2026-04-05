@@ -1,6 +1,6 @@
 /**
  * My Profile – personal information, address, plan, contact support.
- * Mirrors the web provider portal profile at /provider/account/profile.
+ * Native provider profile management.
  * Email/phone changes require Supabase verification (email link, phone OTP).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -14,20 +14,39 @@ import {
   Pressable,
   ActivityIndicator,
   Modal,
+  FlatList,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
+import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
-import { normalizeFullPhoneToE164 } from "@/lib/phone";
+import {
+  COUNTRY_CODES,
+  type CountryCodeOption,
+  splitPhoneForNationalInput,
+  composeE164FromNational,
+  validateNationalPhoneDigits,
+} from "@/lib/phone-country-codes";
+import { getDeviceDefaultCountryDial } from "@/lib/phone";
+import {
+  normalizeSupabaseAuthPhone,
+  normalizeSupabaseSmsOtpToken,
+  isCompleteSupabaseSmsOtp,
+  SUPABASE_AUTH_OTP_LENGTH,
+  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+} from "@/lib/supabase-sms-otp";
+import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
+import { OtpDigitRow } from "@/components/OtpDigitRow";
 
 const IMAGE_CONSTRAINTS = { maxSizeBytes: 2 * 1024 * 1024 }; // 2MB
+const PRIMARY = Colors.primary;
 
 interface ProfileData {
   email: string;
@@ -46,6 +65,7 @@ interface ProfileData {
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { screenPadding } = useResponsive();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [plan, setPlan] = useState<string>("Free");
   const [loading, setLoading] = useState(true);
@@ -56,6 +76,12 @@ export default function ProfileScreen() {
   const [pendingPhoneE164, setPendingPhoneE164] = useState("");
   const [phoneOtpCode, setPhoneOtpCode] = useState("");
   const [sendingOtp, setSendingOtp] = useState(false);
+  const deviceDefaultDialRef = useRef(getDeviceDefaultCountryDial());
+  const [phoneCountryCode, setPhoneCountryCode] = useState(() => deviceDefaultDialRef.current);
+  const [phoneNational, setPhoneNational] = useState("");
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [countrySearch, setCountrySearch] = useState("");
+  const [phoneFieldError, setPhoneFieldError] = useState<string | null>(null);
   const initialProfileRef = useRef<{ email: string; phone: string }>({ email: "", phone: "" });
 
   const load = useCallback(async () => {
@@ -82,6 +108,14 @@ export default function ProfileScreen() {
       const loadedEmail = data.email ?? "";
       const loadedPhone = data.phone ?? "";
       initialProfileRef.current = { email: loadedEmail, phone: loadedPhone };
+      const { countryCode, nationalDisplay } = splitPhoneForNationalInput(
+        loadedPhone,
+        deviceDefaultDialRef.current,
+      );
+      setPhoneCountryCode(countryCode);
+      setPhoneNational(nationalDisplay);
+      setPhoneFieldError(null);
+
       setProfile({
         email: loadedEmail,
         phone: loadedPhone,
@@ -109,6 +143,30 @@ export default function ProfileScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const selectedCountry = COUNTRY_CODES.find((c) => c.code === phoneCountryCode);
+  const filteredCountries = countrySearch
+    ? COUNTRY_CODES.filter((c) => c.label.toLowerCase().includes(countrySearch.toLowerCase()))
+    : COUNTRY_CODES;
+
+  const handlePhoneNationalChange = useCallback(
+    (text: string) => {
+      const digits = text.replace(/[^\d\s]/g, "");
+      setPhoneNational(digits);
+      if (digits.replace(/\s/g, "").length > 0) {
+        setPhoneFieldError(validateNationalPhoneDigits(digits, phoneCountryCode));
+      } else {
+        setPhoneFieldError(null);
+      }
+    },
+    [phoneCountryCode],
+  );
+
+  const phoneE164FromUi = useCallback((): string => {
+    if (!phoneNational.trim()) return "";
+    const composed = composeE164FromNational(phoneCountryCode, phoneNational);
+    return composed ? normalizeSupabaseAuthPhone(composed) : "";
+  }, [phoneCountryCode, phoneNational]);
 
   const uploadAvatar = useCallback(async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -155,26 +213,28 @@ export default function ProfileScreen() {
 
   const save = useCallback(async () => {
     if (!profile) return;
-    const phoneChanged =
-      profile.phone !== undefined &&
-      profile.phone.trim() !== "" &&
-      profile.phone.trim() !== initialProfileRef.current.phone?.trim();
-
-    if (phoneChanged) {
-      const e164 =
-        normalizeFullPhoneToE164(profile.phone) ??
-        (profile.phone.trim()
-          ? normalizeFullPhoneToE164("+27" + profile.phone.replace(/\D/g, ""))
-          : undefined);
-      if (!e164 || !e164.startsWith("+")) {
-        Alert.alert("Invalid phone", "Enter a valid number with country code (e.g. +27 82 345 6789).");
+    if (phoneNational.trim()) {
+      const pErr = validateNationalPhoneDigits(phoneNational, phoneCountryCode);
+      if (pErr) {
+        setPhoneFieldError(pErr);
+        Alert.alert("Invalid phone", pErr);
         return;
       }
+    }
+    setPhoneFieldError(null);
+
+    const newPhoneE164 = phoneE164FromUi();
+    const oldPhoneE164 = normalizeSupabaseAuthPhone(initialProfileRef.current.phone?.trim() || "");
+    const phoneChanged = newPhoneE164 !== "" && newPhoneE164 !== oldPhoneE164;
+
+    if (phoneChanged) {
       setSendingOtp(true);
       try {
-        const { error: updateError } = await supabase.auth.updateUser({ phone: e164 });
+        const { error: updateError } = await supabase.auth.updateUser({
+          phone: newPhoneE164,
+        });
         if (updateError) throw updateError;
-        setPendingPhoneE164(e164);
+        setPendingPhoneE164(newPhoneE164);
         setPhoneOtpCode("");
         setPhoneStep("otp");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -191,7 +251,7 @@ export default function ProfileScreen() {
     try {
       const payload: Record<string, unknown> = {
         email: profile.email,
-        phone: profile.phone,
+        phone: newPhoneE164,
         address: profile.address
           ? {
               line1: profile.address.line1,
@@ -226,21 +286,24 @@ export default function ProfileScreen() {
     } finally {
       setSaving(false);
     }
-  }, [profile, load]);
+  }, [profile, load, phoneNational, phoneCountryCode, phoneE164FromUi]);
 
-  const verifyPhoneOtp = useCallback(async () => {
-    if (!phoneOtpCode.trim() || !pendingPhoneE164) return;
+  const verifyPhoneOtp = useCallback(async (otpOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(otpOverride ?? phoneOtpCode);
+    if (!pendingPhoneE164 || !isCompleteSupabaseSmsOtp(token)) return;
     setSaving(true);
     try {
       const { error: verifyError } = await supabase.auth.verifyOtp({
-        phone: pendingPhoneE164,
-        token: phoneOtpCode.trim(),
+        phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
+        token,
         type: "phone_change",
       });
       if (verifyError) throw verifyError;
-      const res = await api.patch<{ data: any }>("/api/me/profile", { phone: pendingPhoneE164 });
+      const res = await api.patch<{ data: any }>("/api/me/profile", {
+        phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
+      });
       if (res.error) throw new Error((res as any).error?.message || "Failed to save phone");
-      initialProfileRef.current.phone = pendingPhoneE164;
+      initialProfileRef.current.phone = normalizeSupabaseAuthPhone(pendingPhoneE164);
       setPhoneStep(null);
       setPendingPhoneE164("");
       setPhoneOtpCode("");
@@ -353,17 +416,62 @@ export default function ProfileScreen() {
               </View>
               <View style={{ marginTop: 12 }}>
                 <Text style={twStyle("mb-1 text-xs font-medium text-gray-500")}>Phone</Text>
-                <TextInput
-                  value={profile.phone}
-                  onChangeText={(phone) => setProfile((p) => (p ? { ...p, phone } : p))}
-                  placeholder="e.g. +27 82 345 6789"
-                  placeholderTextColor="#9ca3af"
-                  style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
-                  keyboardType="phone-pad"
-                />
-                <Text style={twStyle("mt-1 text-xs text-gray-500")}>
-                  Include country code. Changing your number will require a verification code.
+                <View
+                  style={{
+                    flexDirection: "row",
+                    borderWidth: 1.5,
+                    borderColor: phoneFieldError ? "#EF4444" : "#E5E7EB",
+                    borderRadius: 12,
+                    overflow: "hidden",
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowCountryPicker(true);
+                      setCountrySearch("");
+                    }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      backgroundColor: "#F3F4F6",
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                      borderRightWidth: 1,
+                      borderRightColor: "#E5E7EB",
+                    }}
+                    accessibilityLabel="Select country code"
+                    accessibilityRole="button"
+                  >
+                    <Text style={{ fontSize: 18, marginRight: 4 }}>{selectedCountry?.flag ?? "🌍"}</Text>
+                    <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", marginRight: 4 }}>
+                      {phoneCountryCode}
+                    </Text>
+                    <Ionicons name="chevron-down" size={14} color="#6B7280" />
+                  </TouchableOpacity>
+                  <TextInput
+                    value={phoneNational}
+                    onChangeText={handlePhoneNationalChange}
+                    placeholder="82 123 4567"
+                    placeholderTextColor="#9ca3af"
+                    style={{
+                      flex: 1,
+                      backgroundColor: "#FAFAFA",
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      fontSize: 16,
+                      color: "#111827",
+                    }}
+                    keyboardType="phone-pad"
+                    accessibilityLabel="Phone number without country code"
+                  />
+                </View>
+                <Text style={twStyle("mt-1 text-xs text-gray-500 leading-5")}>
+                  Pick your country code, then enter the rest (leading 0 is optional). Changing your number sends a
+                  verification code (E.164 for Supabase).
                 </Text>
+                {phoneFieldError ? (
+                  <Text style={twStyle("mt-1 text-xs text-red-500")}>{phoneFieldError}</Text>
+                ) : null}
               </View>
             </View>
           </View>
@@ -491,20 +599,28 @@ export default function ProfileScreen() {
         <View style={twStyle("flex-1 bg-white p-6 pt-12")}>
           <Text style={twStyle("text-lg font-semibold text-gray-900")}>Verify phone number</Text>
           <Text style={twStyle("mt-2 text-sm text-gray-600")}>
-            We sent a 6-digit code to {pendingPhoneE164}. Enter it below.
+            We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit code to {pendingPhoneE164} (valid about{" "}
+            {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
+            {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}). Enter it below.
           </Text>
-          <TextInput
-            value={phoneOtpCode}
-            onChangeText={(t) => setPhoneOtpCode(t.replace(/\D/g, "").slice(0, 6))}
-            placeholder="000000"
-            placeholderTextColor="#9ca3af"
-            keyboardType="number-pad"
-            maxLength={6}
-            style={twStyle("mt-4 rounded-xl border border-gray-200 bg-white px-4 py-3 text-center text-lg tracking-widest text-gray-900")}
-          />
+          <Text style={twStyle("mt-2 text-xs text-gray-500")}>
+            Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS
+          </Text>
+          <View style={twStyle("mt-4")}>
+            <OtpDigitRow
+              value={phoneOtpCode}
+              onChange={setPhoneOtpCode}
+              onComplete={(code) => {
+                if (!saving && isCompleteSupabaseSmsOtp(code)) void verifyPhoneOtp(code);
+              }}
+              disabled={saving}
+              autoFocus
+              accessibilityLabelPrefix="Phone change verification code"
+            />
+          </View>
           <TouchableOpacity
-            onPress={verifyPhoneOtp}
-            disabled={phoneOtpCode.length < 4 || saving}
+            onPress={() => void verifyPhoneOtp()}
+            disabled={!isCompleteSupabaseSmsOtp(phoneOtpCode) || saving}
             style={twStyle("mt-6 rounded-xl bg-gray-900 py-3.5 items-center")}
           >
             {saving ? (
@@ -518,12 +634,113 @@ export default function ProfileScreen() {
               setPhoneStep(null);
               setPendingPhoneE164("");
               setPhoneOtpCode("");
+              const { countryCode, nationalDisplay } = splitPhoneForNationalInput(
+                initialProfileRef.current.phone,
+                deviceDefaultDialRef.current,
+              );
+              setPhoneCountryCode(countryCode);
+              setPhoneNational(nationalDisplay);
+              setPhoneFieldError(null);
             }}
             style={twStyle("mt-4")}
           >
             <Text style={twStyle("text-sm font-medium text-primary")}>Wrong number? Go back</Text>
           </TouchableOpacity>
         </View>
+      </Modal>
+
+      <Modal
+        visible={showCountryPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCountryPicker(false)}
+      >
+        <Pressable
+          style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" }}
+          onPress={() => setShowCountryPicker(false)}
+          accessibilityLabel="Close country picker"
+          accessibilityRole="button"
+        >
+          <Pressable
+            style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "70%" }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 4 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB" }} />
+            </View>
+            <View
+              style={{
+                paddingHorizontal: screenPadding,
+                paddingVertical: 12,
+                borderBottomWidth: 1,
+                borderColor: "#F3F4F6",
+              }}
+            >
+              <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12 }}>
+                Select country
+              </Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: "#F3F4F6",
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                }}
+              >
+                <Ionicons name="search" size={16} color="#9CA3AF" />
+                <TextInput
+                  style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, fontSize: 15, color: "#111827" }}
+                  placeholder="Search country..."
+                  placeholderTextColor="#9CA3AF"
+                  value={countrySearch}
+                  onChangeText={setCountrySearch}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+            <FlatList<CountryCodeOption>
+              data={filteredCountries}
+              keyExtractor={(c: CountryCodeOption) => c.code}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item: c }: { item: CountryCodeOption }) => (
+                <TouchableOpacity
+                  onPress={() => {
+                    setPhoneCountryCode(c.code);
+                    setShowCountryPicker(false);
+                    setPhoneFieldError(
+                      phoneNational.trim() ? validateNationalPhoneDigits(phoneNational, c.code) : null,
+                    );
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingVertical: 14,
+                    paddingHorizontal: screenPadding,
+                    borderBottomWidth: 1,
+                    borderColor: "#F9FAFB",
+                  }}
+                  accessibilityLabel={c.label}
+                  accessibilityRole="button"
+                >
+                  <Text style={{ fontSize: 20, marginRight: 12 }}>{c.flag}</Text>
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontSize: 15,
+                      color: phoneCountryCode === c.code ? PRIMARY : "#111827",
+                      fontWeight: phoneCountryCode === c.code ? "700" : "400",
+                    }}
+                  >
+                    {c.label}
+                  </Text>
+                  {phoneCountryCode === c.code && <Ionicons name="checkmark-circle" size={20} color={PRIMARY} />}
+                </TouchableOpacity>
+              )}
+            />
+          </Pressable>
+        </Pressable>
       </Modal>
     </ScreenContainer>
   );

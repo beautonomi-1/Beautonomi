@@ -3,6 +3,9 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 
 const redeemSchema = z.object({
   points: z.number().min(1, "Points must be at least 1"),
@@ -22,6 +25,15 @@ export async function POST(request: NextRequest) {
 
     const supabase = await getSupabaseServer(request);
     const adminSupabase = getSupabaseAdmin();
+
+    const { data: redeemUserRow } = await adminSupabase
+      .from("users")
+      .select("preferred_home_tenant_id")
+      .eq("id", user.id)
+      .maybeSingle();
+    const redeemTenantId =
+      (redeemUserRow as { preferred_home_tenant_id?: string | null } | null)?.preferred_home_tenant_id ??
+      null;
 
     // Get current points balance
     const { data: balanceData } = await supabase.rpc("get_user_loyalty_balance", { p_user_id: user.id });
@@ -47,7 +59,9 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     const redemptionRate = Number(activeRule?.redemption_rate) || 100;
-    const currency = activeRule?.currency || "ZAR";
+    const tenantFallback =
+      redeemTenantId ? (await getTenantRegionConfig(redeemTenantId))?.defaultCurrency : null;
+    const currency = activeRule?.currency || tenantFallback || LAST_RESORT_CURRENCY;
     const redemptionValue = validated.points / redemptionRate;
 
     // Create redemption transaction
@@ -66,6 +80,11 @@ export async function POST(request: NextRequest) {
       throw transactionError;
     }
 
+    const redeemWalletTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
+      tenant_id: redeemTenantId,
+      provider_id: null,
+    });
+
     // Credit user wallet with redemption value (platform wallet_credit_admin RPC)
     try {
       await (adminSupabase.rpc as any)("wallet_credit_admin", {
@@ -75,6 +94,7 @@ export async function POST(request: NextRequest) {
         p_description: `Loyalty points redemption: ${validated.points} points`,
         p_reference_id: (transaction as { id?: string })?.id ?? null,
         p_reference_type: "loyalty_redeem",
+        p_tenant_id: redeemWalletTenantId,
       });
     } catch (walletError) {
       console.error("Failed to credit wallet on loyalty redeem:", walletError);

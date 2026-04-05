@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
+import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 
 interface PlatformBranding {
   site_name: string;
@@ -17,13 +19,16 @@ interface PlatformBranding {
  */
 export async function GET(_request: NextRequest) {
   try {
+    const request = _request as Request;
     const supabase = await getSupabaseServer();
+    const tenant = await resolveTenantFromRequest(request);
+    const tenantId = tenant?.id ?? "";
 
     // Default branding values
     const defaultBranding: PlatformBranding = {
       site_name: "Beautonomi",
       logo_url: "/images/logo.svg",
-      favicon_url: "/favicon.ico",
+      favicon_url: "/icon.svg",
       primary_color: "#FF0077",
       secondary_color: "#D60565",
     };
@@ -35,13 +40,16 @@ export async function GET(_request: NextRequest) {
 
     // Try to get from database (table might not exist yet)
     try {
-      const { data: settings, error: settingsError } = await (supabase
-        .from("platform_settings") as any)
-        .select("settings")
-        .single();
-
-      // If table doesn't exist or no settings found, return defaults
-      if (settingsError || !settings) {
+      const scopedSettings = await fetchScopedSingle<{ settings?: Record<string, unknown> }>({
+        supabase: supabase as any,
+        table: "platform_settings",
+        tenantId,
+        select: "settings",
+        apply: (q) => q.eq("is_active", true),
+        orderBy: { column: "updated_at", ascending: false },
+      });
+      const settings = scopedSettings.data;
+      if (!settings) {
         return successResponse(defaultBranding);
       }
 

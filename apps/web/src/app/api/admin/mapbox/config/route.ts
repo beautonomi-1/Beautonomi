@@ -7,6 +7,7 @@ import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
+import { fetchScopedSingle, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
 
 const mapboxConfigSchema = z.object({
   // access_token is a secret and is stored in platform_secrets; only update when provided
@@ -36,26 +37,23 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(
+      request,
+      undefined,
+      user.role ?? null
+    );
+    const readTenantId =
+      requestedScope.scope === "global" ? "" : requestedScope.tenantId ?? currentTenantId;
 
-    const { data: config, error } = await supabase
-      .from("mapbox_config")
-      .select("*")
-      .single();
-
-    if (error && error.code !== "PGRST116") {
-      // PGRST116 = not found, which is okay
-      console.error("Error fetching Mapbox config:", error);
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Failed to fetch Mapbox configuration",
-            code: "FETCH_ERROR",
-          },
-        },
-        { status: 500 }
-      );
-    }
+    const scoped = await fetchScopedSingle<Record<string, unknown>>({
+      supabase,
+      table: "mapbox_config",
+      tenantId: readTenantId,
+      select: "*",
+      apply: (q) => q,
+      orderBy: { column: "updated_at", ascending: false },
+    });
+    const config = scoped.data;
 
     // Response contains only non-secret config; secret token lives in platform_secrets
     type MapboxConfigRow = { public_access_token?: string; [key: string]: unknown };
@@ -104,6 +102,12 @@ export async function PUT(request: Request) {
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
+    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(
+      request,
+      body as Record<string, unknown>,
+      user.role ?? null
+    );
+    const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
 
     const validationResult = mapboxConfigSchema.safeParse(body);
     if (!validationResult.success) {
@@ -128,19 +132,30 @@ export async function PUT(request: Request) {
     // If secret access_token provided (and not placeholder), store in platform_secrets
     const newAccessToken = validationResult.data.access_token?.trim();
     if (newAccessToken && newAccessToken !== "***") {
-      const { data: existingSecrets } = await admin.from("platform_secrets").select("id").limit(1).maybeSingle();
+      let secretsQuery = admin.from("platform_secrets").select("id").limit(1);
+      secretsQuery = scopeTenantId == null ? secretsQuery.is("tenant_id", null) : secretsQuery.eq("tenant_id", scopeTenantId);
+      const { data: existingSecrets } = await secretsQuery.maybeSingle();
       if (existingSecrets?.id) {
         await admin
           .from("platform_secrets")
-          .update({ mapbox_access_token: newAccessToken, updated_at: new Date().toISOString() })
+          .update({ mapbox_access_token: newAccessToken, tenant_id: scopeTenantId, updated_at: new Date().toISOString() })
           .eq("id", existingSecrets.id);
       } else {
-        await admin.from("platform_secrets").insert({ mapbox_access_token: newAccessToken });
+        await admin.from("platform_secrets").insert({ mapbox_access_token: newAccessToken, tenant_id: scopeTenantId });
       }
     }
 
     // Resolve effective public token: new value if provided and not masked, else existing from DB
-    const { data: existingConfig } = await supabase.from("mapbox_config").select("id, public_access_token").single();
+    let existingConfigQuery = supabase
+      .from("mapbox_config")
+      .select("id, public_access_token")
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    existingConfigQuery =
+      scopeTenantId == null
+        ? existingConfigQuery.is("tenant_id", null)
+        : existingConfigQuery.eq("tenant_id", scopeTenantId);
+    const { data: existingConfig } = await existingConfigQuery.maybeSingle();
     type ConfigRow = { id?: string; public_access_token?: string };
     const existingPublicToken = (existingConfig as ConfigRow | null)?.public_access_token ?? null;
     const sentPublicToken = validationResult.data.public_access_token?.trim();
@@ -167,6 +182,7 @@ export async function PUT(request: Request) {
       const { data, error } = await supabase
         .from("mapbox_config")
         .update({
+          tenant_id: scopeTenantId,
           ...(effectivePublicToken != null && { public_access_token: effectivePublicToken }),
           style_url: validationResult.data.style_url ?? null,
           is_enabled: validationResult.data.is_enabled,
@@ -194,6 +210,7 @@ export async function PUT(request: Request) {
       const { data, error } = await supabase
         .from("mapbox_config")
         .insert({
+          tenant_id: scopeTenantId,
           public_access_token: effectivePublicToken!,
           style_url: validationResult.data.style_url || null,
           is_enabled: validationResult.data.is_enabled,
@@ -222,10 +239,32 @@ export async function PUT(request: Request) {
     // Sync to platform_settings so web, customer, and provider apps get same config via third-party-config
     const publicTokenForClients = effectivePublicToken ?? (config?.public_access_token as string) ?? "";
     try {
-      const { data: psRow } = await admin.from("platform_settings").select("id, settings").single();
-      if (psRow?.settings) {
+      let psQuery = admin
+        .from("platform_settings")
+        .select("id, settings")
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false })
+        .limit(1);
+      psQuery =
+        scopeTenantId == null ? psQuery.is("tenant_id", null) : psQuery.eq("tenant_id", scopeTenantId);
+      const { data: psRow } = await psQuery.maybeSingle();
+
+      let rowToUse = psRow as { id?: string; settings?: Record<string, unknown> } | null;
+      if (!rowToUse && scopeTenantId != null) {
+        const { data: globalSettings } = await admin
+          .from("platform_settings")
+          .select("id, settings")
+          .eq("is_active", true)
+          .is("tenant_id", null)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        rowToUse = (globalSettings as { id?: string; settings?: Record<string, unknown> } | null) ?? null;
+      }
+
+      if (rowToUse?.settings) {
         type SettingsRow = { id?: string; settings?: Record<string, unknown> };
-        const row = psRow as SettingsRow;
+        const row = rowToUse as SettingsRow;
         const settings = { ...(row.settings ?? {}) };
         const mapbox = (settings.mapbox as Record<string, unknown>) ?? {};
         settings.mapbox = {
@@ -233,15 +272,28 @@ export async function PUT(request: Request) {
           public_token: (publicTokenForClients || (mapbox.public_token as string)) ?? "",
           enabled: validationResult.data.is_enabled,
         };
-        await admin
-          .from("platform_settings")
-          .update({ settings, updated_at: new Date().toISOString() })
-          .eq("id", row.id);
+        if (row.id && psRow?.id) {
+          await admin
+            .from("platform_settings")
+            .update({ settings, tenant_id: scopeTenantId, updated_at: new Date().toISOString() })
+            .eq("id", row.id);
+        } else {
+          await admin
+            .from("platform_settings")
+            .insert({ settings, tenant_id: scopeTenantId, is_active: true });
+        }
       }
     } catch (syncErr) {
       console.warn("Mapbox config sync to platform_settings failed (non-blocking):", syncErr);
     }
     revalidateTag("platform-settings", "default");
+
+    try {
+      const { clearMapboxServiceSingleton } = await import("@/lib/mapbox/mapbox");
+      clearMapboxServiceSingleton();
+    } catch {
+      // non-blocking
+    }
 
     // Mask token in response
     const maskedConfig = {
@@ -263,6 +315,8 @@ export async function PUT(request: Request) {
         style_url: validationResult.data.style_url || null,
         public_access_token_set: !!validationResult.data.public_access_token,
         access_token_set: !!validationResult.data.access_token,
+        scope: requestedScope.scope,
+        tenant_id: scopeTenantId,
       },
     });
 

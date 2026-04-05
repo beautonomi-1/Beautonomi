@@ -25,9 +25,12 @@ export default function ReviewPage() {
   const [hoveredRating, setHoveredRating] = useState(0);
   const [comment, setComment] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
+  const [services, setServices] = useState<Array<{ offering_id: string; offering_name: string; staff_id?: string | null; staff_name?: string | null }>>([]);
+  const [serviceRatings, setServiceRatings] = useState<Record<string, number>>({});
+  const [staffRatings, setStaffRatings] = useState<Record<string, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [booking, setBooking] = useState<{ id: string; booking_number?: string; provider?: { business_name?: string } } | null>(null);
+  const [booking, setBooking] = useState<{ id: string; booking_number?: string; provider?: { business_name?: string }; services?: Array<Record<string, unknown>> } | null>(null);
 
   useEffect(() => {
     loadBooking();
@@ -36,8 +39,18 @@ export default function ReviewPage() {
   const loadBooking = async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<{ data: { id: string; booking_number?: string; provider?: { business_name?: string } } }>(`/api/me/bookings/${bookingId}`, { cache: "no-store" });
-      setBooking(response.data);
+      const response = await fetcher.get<{ data: { id: string; booking_number?: string; provider?: { business_name?: string }; services?: Array<Record<string, unknown>> } }>(`/api/me/bookings/${bookingId}`, { cache: "no-store" });
+      const row = (response.data as unknown as { booking?: { id: string; booking_number?: string; provider?: { business_name?: string }; services?: Array<Record<string, unknown>> } })?.booking ?? response.data;
+      setBooking(row);
+      const mappedServices = (row.services ?? [])
+        .map((svc) => ({
+          offering_id: String(svc.offering_id ?? ""),
+          offering_name: String(svc.offering_name ?? svc.service_name ?? "Service"),
+          staff_id: svc.staff_id ? String(svc.staff_id) : null,
+          staff_name: svc.staff_name ? String(svc.staff_name) : null,
+        }))
+        .filter((s) => s.offering_id.length > 0);
+      setServices(mappedServices);
     } catch (error) {
       console.error("Failed to load booking:", error);
       toast.error("Failed to load booking");
@@ -61,12 +74,33 @@ export default function ReviewPage() {
       return;
     }
 
+    const uniqueStaff = Array.from(
+      new Map(
+        services
+          .filter((s) => !!s.staff_id)
+          .map((s) => [s.staff_id as string, s.staff_name || "Staff"])
+      ).entries()
+    ).map(([id, name]) => ({ id, name }));
+    const normalizedServiceRatings = services.map((svc) => ({
+      offering_id: svc.offering_id,
+      rating: serviceRatings[svc.offering_id] ?? rating,
+    }));
+    const selectedStaff = uniqueStaff.find((s) => typeof staffRatings[s.id] === "number");
+    const normalizedStaffRating =
+      uniqueStaff.length === 0
+        ? undefined
+        : selectedStaff
+          ? { staff_id: selectedStaff.id, rating: staffRatings[selectedStaff.id] ?? rating }
+          : { staff_id: uniqueStaff[0].id, rating };
+
     try {
       setIsSubmitting(true);
       await fetcher.post(`/api/bookings/${bookingId}/review`, {
         rating,
         comment: comment.trim() || null,
         photos,
+        service_ratings: normalizedServiceRatings,
+        staff_rating: normalizedStaffRating,
       });
 
       toast.success("Review submitted successfully!");
@@ -166,6 +200,78 @@ export default function ReviewPage() {
                 {comment.length}/1000 characters
               </p>
             </div>
+
+            {services.length > 0 && (
+              <div>
+                <Label className="text-base font-medium mb-3 block">
+                  Rate each service
+                </Label>
+                <div className="space-y-3">
+                  {services.map((svc) => {
+                    const selected = serviceRatings[svc.offering_id] ?? rating;
+                    return (
+                      <div key={svc.offering_id} className="rounded-lg border border-gray-200 p-3">
+                        <p className="text-sm font-medium text-gray-800 mb-2">{svc.offering_name}</p>
+                        <div className="flex gap-2">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              key={`${svc.offering_id}-${star}`}
+                              type="button"
+                              onClick={() => setServiceRatings((prev) => ({ ...prev, [svc.offering_id]: star }))}
+                              className="focus:outline-none"
+                            >
+                              <Star className={`w-6 h-6 ${star <= selected ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`} />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {Array.from(
+              new Map(
+                services
+                  .filter((s) => !!s.staff_id)
+                  .map((s) => [s.staff_id as string, s.staff_name || "Staff"])
+              ).entries()
+            ).length > 0 && (
+              <div>
+                <Label className="text-base font-medium mb-3 block">
+                  Rate staff
+                </Label>
+                <div className="space-y-3">
+                  {Array.from(
+                    new Map(
+                      services
+                        .filter((s) => !!s.staff_id)
+                        .map((s) => [s.staff_id as string, s.staff_name || "Staff"])
+                    ).entries()
+                  ).map(([staffId, staffName]) => {
+                    const selected = staffRatings[staffId] ?? rating;
+                    return (
+                      <div key={staffId} className="rounded-lg border border-gray-200 p-3">
+                        <p className="text-sm font-medium text-gray-800 mb-2">{staffName}</p>
+                        <div className="flex gap-2">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <button
+                              key={`${staffId}-${star}`}
+                              type="button"
+                              onClick={() => setStaffRatings({ [staffId]: star })}
+                              className="focus:outline-none"
+                            >
+                              <Star className={`w-6 h-6 ${star <= selected ? "fill-yellow-400 text-yellow-400" : "text-gray-300"}`} />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div>
               <Label className="text-base font-medium mb-3 block">

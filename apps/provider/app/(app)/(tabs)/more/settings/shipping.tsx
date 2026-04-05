@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 const PRIMARY = Colors.primary;
 
@@ -31,6 +32,7 @@ interface ShippingConfig {
 
 export default function ShippingConfigScreen() {
   const router = useRouter();
+  const tenantCurrency = getTenantDefaultCurrency();
   const { contentMaxWidth, isTablet, screenPadding } = useResponsive();
   const [config, setConfig] = useState<ShippingConfig>({
     offers_delivery: false,
@@ -164,7 +166,7 @@ export default function ShippingConfigScreen() {
           {config.offers_delivery && (
             <>
               <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
-                Delivery Fee (ZAR)
+                Delivery Fee ({tenantCurrency})
               </Text>
               <TextInput
                 style={{
@@ -185,7 +187,7 @@ export default function ShippingConfigScreen() {
               />
 
               <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
-                Free Delivery Above (ZAR)
+                Free Delivery Above ({tenantCurrency})
               </Text>
               <TextInput
                 style={{

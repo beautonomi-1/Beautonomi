@@ -15,6 +15,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { formatCurrency } from "@/lib/utils";
 
 interface VATReport {
   period_start: string;
@@ -54,6 +58,9 @@ interface VATReportsData {
 }
 
 export default function VATReportsPage() {
+  const locale = useTenantLocaleTag();
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [data, setData] = useState<VATReportsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -136,8 +143,8 @@ export default function VATReportsPage() {
       ['Booking Number', 'Date', 'VAT Amount', 'Description'],
       ...report.transactions.map(t => [
         t.booking_number,
-        new Date(t.booking_date).toLocaleDateString('en-ZA'),
-        `R${t.amount.toFixed(2)}`,
+        new Date(t.booking_date).toLocaleDateString(locale),
+        `${tenantCurrency} ${t.amount.toFixed(2)}`,
         t.description || ''
       ])
     ];
@@ -287,10 +294,10 @@ export default function VATReportsPage() {
                     </div>
                     <div className="text-sm text-gray-600 space-y-1">
                       <p>
-                        <strong>Period:</strong> {new Date(report.period_start).toLocaleDateString('en-ZA')} - {new Date(report.period_end).toLocaleDateString('en-ZA')}
+                        <strong>Period:</strong> {new Date(report.period_start).toLocaleDateString(locale)} - {new Date(report.period_end).toLocaleDateString(locale)}
                       </p>
                       <p>
-                        <strong>Deadline:</strong> {new Date(report.deadline_date).toLocaleDateString('en-ZA', { 
+                        <strong>Deadline:</strong> {new Date(report.deadline_date).toLocaleDateString(locale, { 
                           day: 'numeric', 
                           month: 'long', 
                           year: 'numeric' 
@@ -303,7 +310,7 @@ export default function VATReportsPage() {
                       </p>
                       {report.reminder_sent && (
                         <p className="text-xs text-gray-500">
-                          Reminder sent {new Date(report.reminder_sent.sent_at).toLocaleDateString('en-ZA')} 
+                          Reminder sent {new Date(report.reminder_sent.sent_at).toLocaleDateString(locale)} 
                           ({report.reminder_sent.days_before_deadline} days before deadline)
                         </p>
                       )}
@@ -348,10 +355,10 @@ export default function VATReportsPage() {
                             <tr key={transaction.id} className="border-b">
                               <td className="py-2 px-3">{transaction.booking_number}</td>
                               <td className="py-2 px-3">
-                                {new Date(transaction.booking_date).toLocaleDateString('en-ZA')}
+                                {new Date(transaction.booking_date).toLocaleDateString(locale)}
                               </td>
                               <td className="text-right py-2 px-3 font-medium">
-                                R{transaction.amount.toFixed(2)}
+                                {formatCurrency(transaction.amount, tenantCurrency)}
                               </td>
                               <td className="py-2 px-3 text-gray-600">
                                 {transaction.description || 'N/A'}
@@ -373,7 +380,7 @@ export default function VATReportsPage() {
                             ✓ Remitted to SARS
                           </p>
                           <p className="text-xs text-green-700">
-                            Confirmed on {report.remitted_at ? new Date(report.remitted_at).toLocaleDateString('en-ZA', { 
+                            Confirmed on {report.remitted_at ? new Date(report.remitted_at).toLocaleDateString(locale, { 
                               day: 'numeric', 
                               month: 'long', 
                               year: 'numeric',
@@ -390,7 +397,7 @@ export default function VATReportsPage() {
                       <div className="mb-3">
                         <p className="text-sm text-blue-800">
                           <strong>Next Steps:</strong> Remit {report.vat_collected_formatted} to SARS by{" "}
-                          {new Date(report.deadline_date).toLocaleDateString('en-ZA', { 
+                          {new Date(report.deadline_date).toLocaleDateString(locale, { 
                             day: 'numeric', 
                             month: 'long', 
                             year: 'numeric' 

@@ -21,6 +21,13 @@ type Review = {
 
 type ReviewsResponse = { reviews?: Review[] };
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
+
 export default function EngagementHubScreen() {
   const router = useRouter();
   const { selectedLocationId } = useProvider();
@@ -103,7 +110,7 @@ export default function EngagementHubScreen() {
                   </Text>
                 ) : null}
                 <Text style={{ marginTop: 8, fontSize: 12, color: Colors.gray[400] }}>
-                  {new Date(r.created_at).toLocaleDateString()}
+                  {formatDateSafe(r.created_at)}
                 </Text>
               </View>
             ))}

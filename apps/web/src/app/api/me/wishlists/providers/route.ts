@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/me/wishlists/providers
@@ -20,6 +23,9 @@ export async function GET(request: NextRequest) {
     }
     
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Get all wishlists for user
     const { data: wishlists, error: wishlistError } = await (supabase.from("wishlists") as any)
@@ -164,7 +170,7 @@ export async function GET(request: NextRequest) {
           if (!existing || Number(offering.price) < existing.price) {
             priceMap.set(offering.provider_id, {
               price: Number(offering.price),
-              currency: offering.currency || "ZAR",
+              currency: offering.currency || lastResortCurrency,
             });
           }
         }
@@ -186,7 +192,7 @@ export async function GET(request: NextRequest) {
           if (!existing || servicePrice < existing.price) {
             priceMap.set(service.provider_id, {
               price: servicePrice,
-              currency: service.currency || "ZAR",
+              currency: service.currency || lastResortCurrency,
             });
           }
         }
@@ -235,7 +241,7 @@ export async function GET(request: NextRequest) {
           is_featured: p.is_featured || false,
           is_verified: p.is_verified || false,
           starting_price: priceInfo?.price,
-          currency: priceInfo?.currency || p.currency || "ZAR",
+          currency: priceInfo?.currency || p.currency || lastResortCurrency,
           description: p.description || null,
           supports_house_calls: Boolean(serviceType.supports_house_calls),
           supports_salon: Boolean(serviceType.supports_salon),

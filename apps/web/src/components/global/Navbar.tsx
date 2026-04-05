@@ -49,7 +49,11 @@ const Navbar = () => {
         </Link>
       </div>
 
-      <LoginModal open={isModalOpen} setOpen={setIsModalOpen} />  
+      <LoginModal
+        open={isModalOpen}
+        setOpen={setIsModalOpen}
+        initialMode="login"
+      />  
     </div>
   );
 };

@@ -23,6 +23,20 @@ export const supportedLanguages = [
 
 export type SupportedLanguage = (typeof supportedLanguages)[number]["code"];
 
+/** Values stored in users.signup_source. Must match backend allowed list in apps/web profile PATCH. */
+export const SIGNUP_SOURCE_OPTIONS = [
+  { value: "google", labelKey: "auth.signupSourceGoogle" },
+  { value: "social_instagram", labelKey: "auth.signupSourceInstagram" },
+  { value: "social_facebook", labelKey: "auth.signupSourceFacebook" },
+  { value: "social_twitter", labelKey: "auth.signupSourceTwitter" },
+  { value: "friend_or_family", labelKey: "auth.signupSourceFriend" },
+  { value: "blog_or_article", labelKey: "auth.signupSourceBlog" },
+  { value: "app_store", labelKey: "auth.signupSourceAppStore" },
+  { value: "provider_referral", labelKey: "auth.signupSourceProviderReferral" },
+  { value: "other", labelKey: "auth.signupSourceOther" },
+] as const;
+export type SignupSourceValue = (typeof SIGNUP_SOURCE_OPTIONS)[number]["value"];
+
 let initialized = false;
 
 export function initI18n(lng: string = "en") {

@@ -6,6 +6,7 @@ import {
   CreateSplitRequest,
 } from "@/lib/payments/paystack-complete";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
  * GET /api/paystack/splits
@@ -21,6 +22,7 @@ export async function GET(request: Request) {
       );
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const { searchParams } = new URL(request.url);
     const perPage = searchParams.get("perPage");
     const page = searchParams.get("page");
@@ -30,6 +32,7 @@ export async function GET(request: Request) {
       perPage: perPage ? parseInt(perPage) : undefined,
       page: page ? parseInt(page) : undefined,
       active: active ? active === "true" : undefined,
+      tenantId,
     });
 
     return NextResponse.json({
@@ -65,6 +68,7 @@ export async function POST(request: Request) {
       );
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const body = await request.json();
     const {
       name,
@@ -135,10 +139,10 @@ export async function POST(request: Request) {
       bearer_subaccount,
     };
 
-    const response = await createSplit(splitRequest);
+    const response = await createSplit(splitRequest, { tenantId });
 
     // Store split in database
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     await (supabase.from("paystack_splits") as any).insert({
       split_id: response.data.id,
       split_code: response.data.split_code,

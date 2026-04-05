@@ -13,6 +13,8 @@ import { toast } from "sonner";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
 
 interface StaffLocation {
   location_id: string;
@@ -410,6 +412,10 @@ function StaffModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.phone?.trim() && !isCompleteE164(formData.phone)) {
+      toast.error("Enter a valid phone number or leave the field blank.");
+      return;
+    }
     try {
       setIsSaving(true);
 
@@ -478,17 +484,13 @@ function StaffModal({
             />
           </div>
 
-          <div>
-            <Label htmlFor="phone">Phone</Label>
-            <Input
-              id="phone"
-              type="tel"
-              value={formData.phone}
-              onChange={(e) =>
-                setFormData({ ...formData, phone: e.target.value })
-              }
-            />
-          </div>
+          <PhoneInput
+            label="Phone"
+            inputId="provider-staff-form-phone"
+            value={formData.phone}
+            onChange={(e164) => setFormData({ ...formData, phone: e164 })}
+            className="space-y-1"
+          />
 
           <div className="flex items-center space-x-2">
             <Checkbox

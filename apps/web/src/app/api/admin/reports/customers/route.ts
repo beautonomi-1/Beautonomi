@@ -2,11 +2,15 @@ import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { collectTenantScopedUserIds } from "@/lib/tenant/admin-tenant-scope";
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
+    const scopedUserIds = await collectTenantScopedUserIds(supabase, tenantId);
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d';
@@ -42,11 +46,18 @@ export async function GET(request: NextRequest) {
     const startISO = startDate.toISOString();
     const endISO = endDate.toISOString();
 
-    // Customers (role = customer)
-    const { data: customers } = await supabase
-      .from('users')
-      .select('id, full_name, email, created_at')
-      .eq('role', 'customer');
+    let customersQuery = supabase
+      .from("users")
+      .select("id, full_name, email, created_at")
+      .eq("role", "customer");
+    if (scopedUserIds.length > 0) {
+      customersQuery = customersQuery.or(
+        `preferred_home_tenant_id.eq.${tenantId},id.in.(${scopedUserIds.join(",")})`
+      );
+    } else {
+      customersQuery = customersQuery.eq("preferred_home_tenant_id", tenantId);
+    }
+    const { data: customers } = await customersQuery;
 
     const customerIds = (customers || []).map((c: { id: string }) => c.id);
 
@@ -55,6 +66,7 @@ export async function GET(request: NextRequest) {
       ? await supabase
           .from('bookings')
           .select('id, customer_id, scheduled_at, total_amount, status')
+          .eq('tenant_id', tenantId)
           .in('customer_id', customerIds)
           .gte('scheduled_at', startISO)
           .lte('scheduled_at', endISO)

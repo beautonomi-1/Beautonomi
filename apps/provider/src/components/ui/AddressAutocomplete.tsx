@@ -1,6 +1,6 @@
 /**
- * AddressAutocomplete — Mapbox-powered address search.
- * Calls the backend geocoding endpoint to get suggestions.
+ * AddressAutocomplete — Mapbox-powered address search (aligned with web).
+ * POST /api/mapbox/geocode; parsing matches web via @beautonomi/utils.
  */
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
@@ -14,16 +14,18 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
+import {
+  countryFilterIso2FromStorage,
+  mapGeocodeFeatureToAddressParts,
+  type MapboxGeocodeFeatureLike,
+} from "@beautonomi/utils";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
-interface GeocodingResult {
-  place_name: string;
-  center: [number, number]; // [lng, lat]
-  address?: string;
-  text?: string;
-  context?: { id: string; text: string }[];
+interface GeocodingResult extends MapboxGeocodeFeatureLike {
+  id: string;
 }
 
-interface ParsedAddress {
+export interface ParsedAddress {
   full_address: string;
   address_line1: string;
   city: string;
@@ -41,7 +43,13 @@ interface AddressAutocompleteProps {
   onBlur?: (query: string) => void;
   placeholder?: string;
   label?: string;
+  /** ISO 3166-1 alpha-2 bias for Mapbox (e.g. ZA). Long-form country names are normalized when possible. */
   countryCode?: string;
+  /** Display country for the form when Mapbox omits country (must match web / provider_locations). */
+  defaultCountryName?: string;
+  proximity?: { latitude: number; longitude: number };
+  /** Forward geocode Mapbox `types`; omit for default Mapbox mix (recommended for onboarding). */
+  geocodeTypes?: string[];
 }
 
 export function AddressAutocomplete({
@@ -51,17 +59,30 @@ export function AddressAutocomplete({
   placeholder = "Search address…",
   label,
   countryCode = "ZA",
+  defaultCountryName,
+  proximity,
+  geocodeTypes,
 }: AddressAutocompleteProps) {
+  const { bundle } = useConfigBundle();
+  const resolvedDefaultCountry =
+    defaultCountryName?.trim() ||
+    bundle?.meta?.tenant_region?.name?.trim() ||
+    "—";
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<GeocodingResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync displayed value when parent updates (e.g. after selecting a suggestion or loading edit form)
   useEffect(() => {
     setQuery(value);
   }, [value]);
+
+  const mapboxCountryIso = useCallback(() => {
+    const c = countryCode?.trim() ?? "";
+    if (/^[A-Za-z]{2}$/.test(c)) return c.toUpperCase();
+    return countryFilterIso2FromStorage(c) ?? undefined;
+  }, [countryCode]);
 
   const search = useCallback(
     async (text: string) => {
@@ -73,50 +94,51 @@ export function AddressAutocomplete({
 
       setLoading(true);
       try {
-        const res = await api.post<GeocodingResult[]>(
-          "/api/mapbox/geocode",
-          {
-            query: text,
-            country: countryCode.length === 2 ? countryCode : undefined,
-            limit: 5,
-          },
-        );
+        const iso = mapboxCountryIso();
+        const body: Record<string, unknown> = {
+          query: text,
+          limit: 8,
+        };
+        if (geocodeTypes?.length) body.types = geocodeTypes;
+        if (iso) body.country = iso;
+        if (proximity) {
+          body.proximity = { longitude: proximity.longitude, latitude: proximity.latitude };
+        }
+
+        const res = await api.post<GeocodingResult[]>("/api/mapbox/geocode", body);
 
         const items = Array.isArray(res.data) ? res.data : [];
         setResults(items);
         setShowResults(items.length > 0);
       } catch {
         setResults([]);
+        setShowResults(false);
       } finally {
         setLoading(false);
       }
     },
-    [countryCode],
+    [geocodeTypes, mapboxCountryIso, proximity],
   );
 
   function handleChangeText(text: string) {
     setQuery(text);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => search(text), 350);
+    debounceRef.current = setTimeout(() => search(text), 300);
   }
 
   function handleSelect(result: GeocodingResult) {
-    const context = result.context ?? [];
-    function findContext(prefix: string): string {
-      return context.find((c) => c.id.startsWith(prefix))?.text ?? "";
-    }
-
+    const mapped = mapGeocodeFeatureToAddressParts(result, {
+      defaultCountryName: resolvedDefaultCountry,
+    });
     const parsed: ParsedAddress = {
       full_address: result.place_name,
-      address_line1: result.address
-        ? `${result.address} ${result.text ?? ""}`
-        : result.text ?? result.place_name.split(",")[0],
-      city: findContext("place") || findContext("locality"),
-      state: findContext("region"),
-      postal_code: findContext("postcode"),
-      country: findContext("country") || countryCode,
-      latitude: result.center[1],
-      longitude: result.center[0],
+      address_line1: mapped.address_line1,
+      city: mapped.city,
+      state: mapped.state,
+      postal_code: mapped.postal_code,
+      country: mapped.country?.trim() || resolvedDefaultCountry,
+      latitude: mapped.latitude,
+      longitude: mapped.longitude,
     };
 
     setQuery(result.place_name);
@@ -127,9 +149,9 @@ export function AddressAutocomplete({
 
   return (
     <View>
-      {label && (
+      {label ? (
         <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{label}</Text>
-      )}
+      ) : null}
       <View style={twStyle("flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3")}>
         <Ionicons name="search-outline" size={18} color="#9ca3af" />
         <TextInput
@@ -144,16 +166,18 @@ export function AddressAutocomplete({
           autoCapitalize="words"
           accessibilityLabel={label ?? "Address search"}
         />
-        {loading && <ActivityIndicator size="small" color="#6366f1" />}
+        {loading ? <ActivityIndicator size="small" color="#6366f1" /> : null}
       </View>
 
-      {showResults && results.length > 0 && (
-        <View style={twStyle("mt-1 rounded-xl border border-gray-100 bg-white shadow-sm max-h-48")}>
+      {showResults && results.length > 0 ? (
+        <View style={twStyle("mt-1 max-h-48 rounded-xl border border-gray-100 bg-white shadow-sm")}>
           <FlatList
             data={results}
-            keyExtractor={(item: GeocodingResult, i: number) => `${item.place_name}-${i}`}
+            keyExtractor={(item: GeocodingResult, i: number) =>
+              item.id ? String(item.id) : `${item.place_name}-${i}`
+            }
             keyboardShouldPersistTaps="handled"
-            scrollEnabled={true}
+            scrollEnabled
             nestedScrollEnabled
             renderItem={({ item }: { item: GeocodingResult }) => (
               <TouchableOpacity
@@ -170,7 +194,7 @@ export function AddressAutocomplete({
             )}
           />
         </View>
-      )}
+      ) : null}
     </View>
   );
 }

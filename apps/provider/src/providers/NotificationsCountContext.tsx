@@ -3,7 +3,7 @@
  * Shared so the notifications screen can trigger a refresh after mark read/delete.
  * Subscribes to notifications table changes so the badge updates in real time.
  */
-import { createContext, useContext, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/lib/supabase/client";
@@ -53,8 +53,13 @@ export function NotificationsCountProvider({ children }: { children: ReactNode }
     };
   }, [user?.id]);
 
+  const contextValue = useMemo<NotificationsCountContextValue>(
+    () => ({ totalUnread, refresh: refreshCount }),
+    [totalUnread, refreshCount],
+  );
+
   return (
-    <NotificationsCountContext.Provider value={{ totalUnread, refresh: refreshCount }}>
+    <NotificationsCountContext.Provider value={contextValue}>
       {children}
     </NotificationsCountContext.Provider>
   );

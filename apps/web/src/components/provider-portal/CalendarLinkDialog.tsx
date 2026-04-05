@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type { CalendarLink, CalendarProvider } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
+import { copyTextToClipboard } from "@/lib/browser/clipboard";
 
 interface CalendarLinkDialogProps {
   open: boolean;
@@ -107,9 +108,10 @@ export function CalendarLinkDialog({
       } else {
         const newLink = await providerApi.createCalendarLink(linkData);
         toast.success("Calendar link created");
-        // Copy link to clipboard
-        navigator.clipboard.writeText(newLink.full_url);
-        toast.info("Link copied to clipboard");
+        const copied = await copyTextToClipboard(newLink.full_url);
+        if (copied) {
+          toast.info("Link copied to clipboard");
+        }
       }
       onSuccess?.();
       onOpenChange(false);

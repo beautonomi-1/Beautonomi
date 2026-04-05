@@ -1,0 +1,30 @@
+name: Progressive Rollout Gates
+
+on:
+  workflow_dispatch:
+    inputs:
+      slo_summary_json:
+        description: "JSON payload with SLO metrics for gate evaluation"
+        required: true
+        type: string
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Write SLO summary file
+        run: |
+          cat <<'EOF' > slo-summary.json
+          ${{ inputs.slo_summary_json }}
+          EOF
+
+      - name: Evaluate rollout gates
+        run: node scripts/prod/evaluate-rollout-gates.mjs --input ./slo-summary.json

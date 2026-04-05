@@ -109,7 +109,6 @@ export default function RoleGuard({
 
   // Avoid mutating the incoming array (allowedRoles.sort() mutates)
   const sortedAllowedRoles = useMemo(() => [...allowedRoles].sort(), [allowedRoles]);
-  
   // Create cache key based on pathname and allowed roles
   const cacheKey = useMemo(() => {
     return `${pathname}-${sortedAllowedRoles.join(",")}`;

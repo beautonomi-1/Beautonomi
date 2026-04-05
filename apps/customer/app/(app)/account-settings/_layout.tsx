@@ -42,6 +42,8 @@ export default function AccountSettingsLayout() {
       <Stack.Screen name="notifications" options={{ title: "Notifications" }} />
       <Stack.Screen name="preferences" options={{ title: "Language & Region" }} />
       <Stack.Screen name="privacy-and-sharing" options={{ title: "Privacy & Sharing" }} />
+      <Stack.Screen name="deactivate-account" options={{ title: "Deactivate account" }} />
+      <Stack.Screen name="delete-account" options={{ title: "Delete account" }} />
       <Stack.Screen name="referrals" options={{ title: "Referrals" }} />
       <Stack.Screen name="loyalty" options={{ title: "Loyalty Points" }} />
       <Stack.Screen name="reviews" options={{ title: "My Reviews" }} />

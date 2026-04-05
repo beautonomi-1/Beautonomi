@@ -2,7 +2,11 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, notFoundResponse, handleApiError, requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import type { OfferingCard } from "@/types/beautonomi";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { syncVariantOfferings } from "./_helpers/sync-variants";
 
 /**
  * GET /api/provider/services
@@ -34,6 +38,8 @@ export async function GET(request: NextRequest) {
       `)
       .eq("provider_id", providerId)
       .eq("is_active", true)
+      .is("parent_service_id", null) // Exclude child variant rows — variants are managed via the service detail screen
+      .neq("service_type", "variant")
       .order("display_order", { ascending: true, nullsFirst: false })
       .order("title", { ascending: true });
 
@@ -125,6 +131,17 @@ export async function POST(request: Request) {
       return notFoundResponse("Provider not found");
     }
 
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     // Use provider_category_id if provided, otherwise fall back to category_id
     const finalCategoryId = provider_category_id || category_id || null;
 
@@ -147,7 +164,7 @@ export async function POST(request: Request) {
         supports_at_salon: supports_at_salon ?? true,
         at_home_radius_km: at_home_radius_km || null,
         at_home_price_adjustment: at_home_price_adjustment || 0,
-        currency: currency || 'ZAR',
+        currency: currency || lastResortCurrency,
         is_active: is_active ?? true,
         online_booking_enabled: online_booking_enabled ?? true,
         service_available_for: service_available_for || 'everyone',
@@ -178,6 +195,11 @@ export async function POST(request: Request) {
 
     if (error || !service) {
       throw error || new Error("Failed to create service");
+    }
+
+    // Sync child variant offerings from pricing_options so the booking flow can find them
+    if (pricing_options && Array.isArray(pricing_options) && pricing_options.length > 0) {
+      await syncVariantOfferings(supabase, service as Record<string, unknown>, pricing_options);
     }
 
     return successResponse(service as OfferingCard);

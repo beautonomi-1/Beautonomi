@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchMergedFinanceLedgerSliceForTenant } from "@/lib/admin/finance-ledger-tenant";
 
 /**
  * GET /api/admin/activity
@@ -15,6 +17,8 @@ export async function GET(request: NextRequest) {
     if (!supabase) {
       return successResponse([]);
     }
+
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const now = new Date();
     const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -38,7 +42,8 @@ export async function GET(request: NextRequest) {
       // Pending payouts
       supabase
         .from('payouts')
-        .select('id, provider_id, amount, currency, status, scheduled_at, created_at')
+        .select('id, provider_id, amount, currency, status, scheduled_at, created_at, providers!inner(tenant_id)')
+        .eq('providers.tenant_id', tenantId)
         .eq('status', 'pending')
         .order('created_at', { ascending: false })
         .limit(10),
@@ -46,7 +51,8 @@ export async function GET(request: NextRequest) {
       // Pending verifications
       supabase
         .from('user_verifications')
-        .select('id, user_id, verification_type, status, submitted_at, created_at')
+        .select('id, user_id, document_type, status, submitted_at, created_at')
+        .eq('tenant_id', tenantId)
         .eq('status', 'pending')
         .order('submitted_at', { ascending: false })
         .limit(10),
@@ -55,6 +61,7 @@ export async function GET(request: NextRequest) {
       supabase
         .from('providers')
         .select('id, user_id, business_name, status, created_at')
+        .eq('tenant_id', tenantId)
         .gte('created_at', last7Days.toISOString())
         .order('created_at', { ascending: false })
         .limit(10),
@@ -63,6 +70,7 @@ export async function GET(request: NextRequest) {
       supabase
         .from('bookings')
         .select('id, customer_id, provider_id, booking_number, status, created_at')
+        .eq('tenant_id', tenantId)
         .gte('created_at', last24Hours.toISOString())
         .order('created_at', { ascending: false })
         .limit(10),
@@ -71,6 +79,7 @@ export async function GET(request: NextRequest) {
       supabase
         .from('providers')
         .select('id, user_id, business_name, status, created_at')
+        .eq('tenant_id', tenantId)
         .eq('status', 'pending_approval')
         .order('created_at', { ascending: false })
         .limit(10),
@@ -84,38 +93,61 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(10),
       
-      // Failed payment transactions (last 24 hours)
-      supabase
-        .from('finance_transactions')
-        .select('id, transaction_type, amount, currency, status, booking_id, created_at')
-        .in('status', ['failed', 'declined', 'error'])
-        .gte('created_at', last24Hours.toISOString())
-        .order('created_at', { ascending: false })
-        .limit(10),
-      
-      // Refund requests (last 7 days)
-      supabase
-        .from('finance_transactions')
-        .select('id, transaction_type, amount, currency, booking_id, created_at')
-        .eq('transaction_type', 'refund')
-        .gte('created_at', last7Days.toISOString())
-        .order('created_at', { ascending: false })
-        .limit(10),
-      
-      // High-value transactions (last 24 hours, > $500 or equivalent)
-      supabase
-        .from('finance_transactions')
-        .select('id, transaction_type, amount, currency, booking_id, created_at')
-        .eq('transaction_type', 'payment')
-        .gte('amount', 500)
-        .gte('created_at', last24Hours.toISOString())
-        .order('amount', { ascending: false })
-        .limit(5),
+      (async () => {
+        try {
+          const rows = await fetchMergedFinanceLedgerSliceForTenant(
+            supabase,
+            tenantId,
+            { start: last24Hours.toISOString(), end: null },
+            { statusIn: ['failed', 'declined', 'error'] },
+            10,
+          );
+          return { data: rows, error: null };
+        } catch (e) {
+          console.error('activity failed-payments ledger merge:', e);
+          return { data: [], error: e };
+        }
+      })(),
+
+      (async () => {
+        try {
+          const rows = await fetchMergedFinanceLedgerSliceForTenant(
+            supabase,
+            tenantId,
+            { start: last7Days.toISOString(), end: null },
+            { transactionType: 'refund' },
+            10,
+          );
+          return { data: rows, error: null };
+        } catch (e) {
+          console.error('activity refunds ledger merge:', e);
+          return { data: [], error: e };
+        }
+      })(),
+
+      (async () => {
+        try {
+          const rows = await fetchMergedFinanceLedgerSliceForTenant(
+            supabase,
+            tenantId,
+            { start: last24Hours.toISOString(), end: null },
+            { transactionType: 'payment', amountGte: 500 },
+            5,
+            'amount',
+            true,
+          );
+          return { data: rows, error: null };
+        } catch (e) {
+          console.error('activity high-value ledger merge:', e);
+          return { data: [], error: e };
+        }
+      })(),
       
       // Provider violations/suspensions
       supabase
         .from('providers')
         .select('id, user_id, business_name, status, created_at, updated_at')
+        .eq('tenant_id', tenantId)
         .in('status', ['suspended', 'banned', 'inactive'])
         .gte('updated_at', last7Days.toISOString())
         .order('updated_at', { ascending: false })
@@ -133,7 +165,8 @@ export async function GET(request: NextRequest) {
       // Booking disputes (open disputes)
       supabase
         .from('booking_disputes')
-        .select('id, booking_id, reason, status, opened_by, created_at')
+        .select('id, booking_id, reason, status, opened_by, created_at, bookings!inner(tenant_id)')
+        .eq('bookings.tenant_id', tenantId)
         .eq('status', 'open')
         .gte('created_at', last7Days.toISOString())
         .order('created_at', { ascending: false })
@@ -143,7 +176,7 @@ export async function GET(request: NextRequest) {
     type ActivityItem = { id: string; type: string; title: string; message: string; timestamp: string; link: string; priority: string };
     type PayoutRow = { id: string; provider_id?: string; amount: number; currency?: string; created_at?: string };
     type ProviderRow = { id: string; business_name?: string; status?: string; created_at?: string; updated_at?: string };
-    type VerificationRow = { id: string; user_id?: string; verification_type?: string; submitted_at?: string; created_at?: string };
+    type VerificationRow = { id: string; user_id?: string; document_type?: string; submitted_at?: string; created_at?: string };
     type UserRow = { id: string; full_name?: string; email?: string; role?: string; deactivated_at?: string; created_at?: string };
     type BookingRow = { id: string; booking_number?: string; created_at?: string };
     type FailureRow = { id: string; source?: string; event_type?: string; created_at?: string };
@@ -206,8 +239,8 @@ export async function GET(request: NextRequest) {
             type: 'verification',
             title: 'Identity Verification',
             message: user
-              ? `${user.full_name || user.email} submitted ${verification.verification_type} verification`
-              : `New ${verification.verification_type} verification submitted`,
+              ? `${user.full_name || user.email} submitted ${verification.document_type ?? "identity"} verification`
+              : `New ${verification.document_type ?? "identity"} verification submitted`,
             timestamp: verification.submitted_at || verification.created_at,
             link: `/admin/verifications?status=pending`,
             priority: 'high',
@@ -304,7 +337,7 @@ export async function GET(request: NextRequest) {
             id: `payment-failure-${tx.id}`,
             type: 'payment_failure',
             title: 'Payment Failed',
-            message: `Payment of ${tx.currency} ${tx.amount.toFixed(2)} failed (${tx.status})`,
+            message: `Payment of ${tx.currency ?? ""} ${Number(tx.amount ?? 0).toFixed(2)} failed (${tx.status ?? "unknown"})`,
             timestamp: tx.created_at,
             link: `/admin/finance`,
             priority: 'high',
@@ -322,7 +355,7 @@ export async function GET(request: NextRequest) {
             id: `refund-${refund.id}`,
             type: 'refund_request',
             title: 'Refund Request',
-            message: `Refund request for ${refund.currency} ${refund.amount.toFixed(2)}`,
+            message: `Refund request for ${refund.currency ?? ""} ${Number(refund.amount ?? 0).toFixed(2)}`,
             timestamp: refund.created_at,
             link: `/admin/finance`,
             priority: 'high',
@@ -340,7 +373,7 @@ export async function GET(request: NextRequest) {
             id: `high-value-${tx.id}`,
             type: 'high_value_transaction',
             title: 'High-Value Transaction',
-            message: `Large payment: ${tx.currency} ${tx.amount.toFixed(2)}`,
+            message: `Large payment: ${tx.currency ?? ""} ${Number(tx.amount ?? 0).toFixed(2)}`,
             timestamp: tx.created_at,
             link: `/admin/finance`,
             priority: 'medium',
@@ -395,6 +428,7 @@ export async function GET(request: NextRequest) {
           ? await supabase
               .from('bookings')
               .select('id, booking_number')
+              .eq('tenant_id', tenantId)
               .in('id', bookingIds)
           : { data: [] };
         

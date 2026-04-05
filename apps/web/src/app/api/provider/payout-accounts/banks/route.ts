@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { listBanks } from "@/lib/payments/paystack-complete";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /** Paystack expects: south africa | nigeria | ghana | kenya (same as /api/public/banks). */
 const ISO_TO_PAYSTACK_COUNTRY: Record<string, string> = {
@@ -11,7 +14,7 @@ const ISO_TO_PAYSTACK_COUNTRY: Record<string, string> = {
 };
 
 const COUNTRY_CURRENCY: Record<string, string> = {
-  ZA: "ZAR",
+  ZA: LAST_RESORT_CURRENCY,
   NG: "NGN",
   GH: "GHS",
   KE: "KES",
@@ -27,16 +30,26 @@ const COUNTRY_CURRENCY: Record<string, string> = {
 export async function GET(request: NextRequest) {
   try {
     await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const fallbackIso = tenantRegion?.regionCode || "ZA";
     const { searchParams } = new URL(request.url);
-    const countryParam = (searchParams.get("country") || "ZA").trim();
-    const isoCountry = countryParam.length === 2 ? countryParam.toUpperCase() : "ZA";
+    const countryParam = (searchParams.get("country") || fallbackIso).trim();
+    const isoCountry =
+      countryParam.length === 2
+        ? countryParam.toUpperCase()
+        : Object.keys(ISO_TO_PAYSTACK_COUNTRY).find(
+            (k) => ISO_TO_PAYSTACK_COUNTRY[k] === countryParam.toLowerCase()
+          ) ?? fallbackIso;
     const paystackCountry = ISO_TO_PAYSTACK_COUNTRY[isoCountry] ?? countryParam.toLowerCase();
-    const currency = COUNTRY_CURRENCY[isoCountry] ?? "ZAR";
+    const currency =
+      COUNTRY_CURRENCY[isoCountry] ?? tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const result = await listBanks({
       country: paystackCountry,
       currency,
       perPage: 100,
+      tenantId,
     });
 
     const rawData = result.data;

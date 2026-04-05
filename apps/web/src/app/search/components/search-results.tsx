@@ -10,14 +10,19 @@ import ProviderCard from "@/app/home/components/provider-card-dynamic";
 import type { SearchResult, Category } from "@/types/beautonomi";
 import { Map, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
+import type mapboxgl from "mapbox-gl";
+import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
 
 interface SearchResultsProps {
   initialResults?: SearchResult;
+  /** When set, skips client fetch for categories (same as /api/public/categories). */
+  initialCategories?: Category[];
 }
 
-export default function SearchResults({ initialResults }: SearchResultsProps) {
+export default function SearchResults({
+  initialResults,
+  initialCategories,
+}: SearchResultsProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [results, setResults] = useState<SearchResult | null>(initialResults || null);
@@ -25,27 +30,32 @@ export default function SearchResults({ initialResults }: SearchResultsProps) {
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [selectedFilters, setSelectedFilters] = useState<Record<string, string | string[]>>({});
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [_categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categories, setCategories] = useState<Category[]>(initialCategories ?? []);
+  const [_categoriesLoading, setCategoriesLoading] = useState(
+    initialCategories === undefined
+  );
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
 
-  // Load categories on mount
+  // Load categories on mount only when not provided by the server
   useEffect(() => {
+    if (initialCategories !== undefined) {
+      setCategoriesLoading(false);
+      return;
+    }
     const loadCategories = async () => {
       try {
         const response = await fetcher.get<{ data: Category[]; error: null }>("/api/public/categories");
         setCategories(response.data || []);
       } catch (err) {
         console.error("Error loading categories:", err);
-        // Fall back to empty categories on error
         setCategories([]);
       } finally {
         setCategoriesLoading(false);
       }
     };
     loadCategories();
-  }, []);
+  }, [initialCategories]);
 
   // Build category filter options dynamically
   const categoryFilterOptions = useMemo(() => {
@@ -105,59 +115,73 @@ export default function SearchResults({ initialResults }: SearchResultsProps) {
     }
   }, [searchParams, initialResults]);
 
-  // Initialize Mapbox map when switching to map view
+  // Initialize Mapbox map when switching to map view (token from /api/public/directions-config)
   useEffect(() => {
     if (viewMode !== "map" || !mapContainerRef.current) return;
 
-    // Clean up any existing map before creating a new one
     if (mapRef.current) {
       mapRef.current.remove();
       mapRef.current = null;
     }
 
-    mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
+    let cancelled = false;
 
-    const map = new mapboxgl.Map({
-      container: mapContainerRef.current,
-      style: "mapbox://styles/mapbox/light-v11",
-      center: [28.0473, -26.2041], // Johannesburg default
-      zoom: 11,
-    });
+    (async () => {
+      const [{ accessToken, styleUrl }, mapboxModule] = await Promise.all([
+        fetchMapboxPublicMapConfig(),
+        import("mapbox-gl"),
+      ]);
+      await import("mapbox-gl/dist/mapbox-gl.css");
+      const mb = mapboxModule.default;
+      if (cancelled || !mapContainerRef.current || !accessToken) return;
 
-    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+      mb.accessToken = accessToken;
 
-    // Add markers for each provider result
-    const bounds = new mapboxgl.LngLatBounds();
-    let hasMarkers = false;
-
-    results?.providers?.forEach((provider: any) => {
-      if (provider.latitude && provider.longitude) {
-        hasMarkers = true;
-        const lngLat: [number, number] = [provider.longitude, provider.latitude];
-        bounds.extend(lngLat);
-
-        new mapboxgl.Marker({ color: "#FF0077" })
-          .setLngLat(lngLat)
-          .setPopup(
-            new mapboxgl.Popup({ offset: 25 }).setHTML(
-              `<div style="padding:4px"><h3 style="font-weight:600;margin:0 0 4px">${provider.business_name || provider.name || "Provider"}</h3>${provider.address ? `<p style="margin:0;font-size:12px;color:#666">${provider.address}</p>` : ""}</div>`
-            )
-          )
-          .addTo(map);
-      }
-    });
-
-    // Fit map to markers if we have any
-    if (hasMarkers) {
-      map.once("load", () => {
-        map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+      const map = new mb.Map({
+        container: mapContainerRef.current,
+        style: styleUrl?.trim() || "mapbox://styles/mapbox/light-v11",
+        center: [28.0473, -26.2041],
+        zoom: 11,
       });
-    }
 
-    mapRef.current = map;
+      map.addControl(new mb.NavigationControl(), "top-right");
+
+      const bounds = new mb.LngLatBounds();
+      let hasMarkers = false;
+
+      results?.providers?.forEach((provider: any) => {
+        if (provider.latitude && provider.longitude) {
+          hasMarkers = true;
+          const lngLat: [number, number] = [provider.longitude, provider.latitude];
+          bounds.extend(lngLat);
+
+          new mb.Marker({ color: "#FF0077" })
+            .setLngLat(lngLat)
+            .setPopup(
+              new mb.Popup({ offset: 25 }).setHTML(
+                `<div style="padding:4px"><h3 style="font-weight:600;margin:0 0 4px">${provider.business_name || provider.name || "Provider"}</h3>${provider.address ? `<p style="margin:0;font-size:12px;color:#666">${provider.address}</p>` : ""}</div>`
+              )
+            )
+            .addTo(map);
+        }
+      });
+
+      if (hasMarkers) {
+        map.once("load", () => {
+          map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+        });
+      }
+
+      if (cancelled) {
+        map.remove();
+        return;
+      }
+      mapRef.current = map;
+    })();
 
     return () => {
-      map.remove();
+      cancelled = true;
+      mapRef.current?.remove();
       mapRef.current = null;
     };
   }, [viewMode, results]);

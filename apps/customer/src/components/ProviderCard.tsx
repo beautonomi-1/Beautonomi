@@ -1,3 +1,4 @@
+import React from "react";
 import { View, Text } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,7 +19,7 @@ interface ProviderCardProps {
 
 const PLACEHOLDER = "https://placehold.co/400x300/f5f5f5/999?text=Beauty";
 
-export function ProviderCard({
+export const ProviderCard = React.memo(function ProviderCard({
   provider,
   showTopRatedBadge = false,
   showHottestBadge = false,
@@ -133,4 +134,4 @@ export function ProviderCard({
       </View>
     </AnimatedPressable>
   );
-}
+});

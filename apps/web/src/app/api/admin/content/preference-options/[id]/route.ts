@@ -2,17 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, handleApiError, successResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
 
     const { data, error } = await supabase
       .from('preference_options')
       .select('*')
       .eq('id', id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .single();
 
     if (error) {
@@ -42,6 +45,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     
     if (!supabase) {
       return NextResponse.json(
@@ -79,6 +83,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       .from('preference_options')
       .select('type, code, name')
       .eq('id', id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .single();
 
     if (fetchError || !currentOption) {
@@ -101,6 +106,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         const { data: existingByCode, error: codeCheckError } = await supabase
           .from('preference_options')
           .select('id')
+          .eq("tenant_id", tenantId)
           .eq('type', currentOption.type)
           .eq('code', finalCode)
           .neq('id', id)
@@ -128,6 +134,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       const { data: existingByName, error: nameCheckError } = await supabase
         .from('preference_options')
         .select('id')
+        .eq("tenant_id", tenantId)
         .eq('type', currentOption.type)
         .eq('name', name.trim())
         .neq('id', id)
@@ -164,6 +171,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       .from('preference_options')
       .update(updates)
       .eq('id', id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
       .single();
 
@@ -239,12 +247,14 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
 
     const { error } = await supabase
       .from('preference_options')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
 
     if (error) {
       throw error;

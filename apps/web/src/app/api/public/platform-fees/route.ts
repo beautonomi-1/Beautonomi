@@ -1,39 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { resolveTenantIdWithZaFallback } from '@/lib/tenant/resolve-tenant-from-db';
+import { fetchScopedSingle } from '@/lib/tenant/scoped-overrides';
+import { getPlatformPaymentTypesForTenant } from '@/lib/payments/platform-payment-types';
 
 const DEFAULT_FEES = {
   platform_service_fee_type: 'percentage',
   platform_service_fee_percentage: 5,
   platform_service_fee_fixed: 0,
   show_service_fee_to_customer: true,
+  cash_enabled_on_platform: false,
 };
 
 export async function GET(_request: NextRequest) {
   try {
-    const supabase = await getSupabaseServer();
+    const request = _request;
+    const supabase = getSupabaseAdmin();
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const scoped = await fetchScopedSingle<Record<string, unknown>>({
+      supabase,
+      table: 'platform_settings',
+      tenantId,
+      select: 'settings',
+      apply: (q) => q.eq('is_active', true),
+      orderBy: { column: 'updated_at', ascending: false },
+    });
 
-    // Platform fee settings live in platform_settings.settings.payouts (JSONB)
-    const { data: row, error } = await supabase
-      .from('platform_settings')
-      .select('id, settings')
-      .eq('is_active', true)
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Error fetching platform fees:', error);
-      return NextResponse.json({ data: DEFAULT_FEES });
-    }
-
-    const payouts = (row?.settings as Record<string, any>)?.payouts as Record<string, any> | undefined;
+    const settings = (scoped.data as { settings?: Record<string, unknown> } | null)?.settings;
+    const payouts = (settings as Record<string, any> | undefined)?.payouts as Record<string, any> | undefined;
+    const paymentTypes = await getPlatformPaymentTypesForTenant(supabase, tenantId);
     const data = payouts
       ? {
           platform_service_fee_type: (payouts.platform_service_fee_type as string) || 'percentage',
           platform_service_fee_percentage: (payouts.platform_service_fee_percentage as number) ?? 5,
           platform_service_fee_fixed: (payouts.platform_service_fee_fixed as number) ?? 0,
           show_service_fee_to_customer: (payouts.show_service_fee_to_customer as boolean) !== false,
+          cash_enabled_on_platform: paymentTypes.cash === true,
         }
-      : DEFAULT_FEES;
+      : { ...DEFAULT_FEES, cash_enabled_on_platform: paymentTypes.cash === true };
 
     return NextResponse.json({ data });
   } catch (error) {

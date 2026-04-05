@@ -9,6 +9,7 @@ import { useState, useCallback } from "react";
 import * as WebBrowser from "expo-web-browser";
 import { api } from "@/lib/api-client";
 import { getAnalyticsClient } from "@/lib/analytics-rn";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 interface PaystackInitResponse {
   authorization_url: string;
@@ -54,7 +55,7 @@ export function usePaystackPayment() {
           booking_id: params.booking_id,
           amount: params.amount,
           email: params.email,
-          currency: params.currency || "ZAR",
+          currency: params.currency || getTenantDefaultCurrency(),
           callback_url: undefined,
           metadata: {
             save_card: params.save_card ?? false,
@@ -77,7 +78,7 @@ export function usePaystackPayment() {
         getAnalyticsClient()?.track("payment_initiated", {
           booking_id: params.booking_id,
           amount: params.amount,
-          currency: params.currency || "ZAR",
+          currency: params.currency || getTenantDefaultCurrency(),
           source: "customer_mobile",
           save_card: params.save_card ?? false,
         });
@@ -111,7 +112,7 @@ export function usePaystackPayment() {
           payment_method_id: params.payment_method_id,
           amount: params.amount,
           email: params.email,
-          currency: params.currency || "ZAR",
+          currency: params.currency || getTenantDefaultCurrency(),
           metadata: params.metadata,
         });
 
@@ -126,7 +127,7 @@ export function usePaystackPayment() {
 
         getAnalyticsClient()?.track("payment_saved_card", {
           amount: params.amount,
-          currency: params.currency || "ZAR",
+          currency: params.currency || getTenantDefaultCurrency(),
           source: "customer_mobile",
           status: txStatus,
         });

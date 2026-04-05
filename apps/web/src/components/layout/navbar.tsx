@@ -539,7 +539,17 @@ const Navbar: React.FC = () => {
                         </Link>
                       </li>
                       <li className="pr-20 pl-5 mb-5">
-                        <Link href="/">Log In</Link>
+                        <button
+                          type="button"
+                          className="pr-20 pl-5 text-left w-full"
+                          onClick={() => {
+                            setLoginModalMode("login");
+                            setIsLoginModalOpen(true);
+                            setIsPopupVisible(false);
+                          }}
+                        >
+                          Log In
+                        </button>
                       </li>
                       <li className="pr-20 pl-5">
                         <button
@@ -638,7 +648,7 @@ const Navbar: React.FC = () => {
         pathname !== "/gift-card" &&
         pathname !== "/help/articles" &&
         pathname !== "/help" &&
-        pathname !== "/hostpage" &&
+        pathname !== "/partner-owner-page" &&
         pathname !== "/reservation" &&
         pathname !== "/resources" &&
         pathname !== "/resources/pricing-place" &&

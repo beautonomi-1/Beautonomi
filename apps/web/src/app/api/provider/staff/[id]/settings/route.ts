@@ -116,15 +116,30 @@ const updateSettingsSchema = z.object({
 
 /**
  * PATCH /api/provider/staff/[id]/settings
- * 
- * Update staff member settings
+ *
+ * Update staff member settings. Owners/superadmins: full schema. Staff: own row only,
+ * limited keys (see STAFF_SELF_SETTINGS_KEYS).
  */
+
+/** Fields a logged-in staff member may change on their own profile (not pay/commission). */
+const STAFF_SELF_SETTINGS_KEYS = new Set([
+  "work_hours_enabled",
+  "email_notifications_enabled",
+  "sms_notifications_enabled",
+  "desktop_notifications_enabled",
+  "mobileReady",
+  "phone_call_availability_enabled",
+  "tips_enabled",
+  "time_clock_enabled",
+  "time_clock_pin",
+]);
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
@@ -149,7 +164,7 @@ export async function PATCH(
     // Verify staff belongs to provider
     const { data: existingStaff } = await supabase
       .from("provider_staff")
-      .select("id")
+      .select("id, user_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -158,17 +173,39 @@ export async function PATCH(
       return notFoundResponse("Staff member not found");
     }
 
+    const isOwnerOrSuper =
+      user.role === "provider_owner" || user.role === "superadmin";
+    const isSelfStaff =
+      user.role === "provider_staff" &&
+      existingStaff.user_id != null &&
+      existingStaff.user_id === user.id;
+
+    if (!isOwnerOrSuper && !isSelfStaff) {
+      return errorResponse("Forbidden", "FORBIDDEN", 403);
+    }
+
     // Map camelCase to snake_case for database
-    const updateData: any = { ...validationResult.data };
-    if (updateData.mobileReady !== undefined) {
-      updateData.mobile_ready = updateData.mobileReady;
-      delete updateData.mobileReady;
+    let updateData: Record<string, unknown> = { ...validationResult.data };
+
+    if (isSelfStaff && !isOwnerOrSuper) {
+      updateData = Object.fromEntries(
+        Object.entries(updateData).filter(([key]) => STAFF_SELF_SETTINGS_KEYS.has(key))
+      );
+      if (Object.keys(updateData).length === 0) {
+        return errorResponse("No allowed fields to update", "VALIDATION_ERROR", 400);
+      }
+    }
+
+    const mapped: any = { ...updateData };
+    if (mapped.mobileReady !== undefined) {
+      mapped.mobile_ready = mapped.mobileReady;
+      delete mapped.mobileReady;
     }
 
     // Update settings
     const { data: updatedStaff, error: updateError } = await supabase
       .from("provider_staff")
-      .update(updateData)
+      .update(mapped)
       .eq("id", id)
       .select()
       .single();

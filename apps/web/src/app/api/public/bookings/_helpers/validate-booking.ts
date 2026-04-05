@@ -1,7 +1,15 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getTravelBuffer } from "@/lib/config/house-call-config";
 import { handleApiError } from "@/lib/supabase/api-helpers";
-import { checkBookingLimit, formatLimitError } from "@/lib/subscriptions/limit-checker";
+import { ensureProviderFreeSubscriptionRow } from "@/lib/subscriptions/ensure-provider-free-subscription";
+import { checkBookingLimit } from "@/lib/subscriptions/limit-checker";
+import { formatPublicCustomerBookingLimitMessage } from "@/lib/subscriptions/subscription-limit-messages";
+import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import type { BookingDraft } from "@/types/beautonomi";
+import { percentOf, sumMoney, roundCurrency } from "@beautonomi/utils";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -66,6 +74,7 @@ export interface ValidatedBookingData {
 
 export interface ProviderRow {
   id: string;
+  tenant_id?: string | null;
   currency: string | null;
   requires_deposit: boolean;
   deposit_percentage: number | null;
@@ -94,8 +103,12 @@ export async function validateBooking(
   supabase: SupabaseClient,
   supabaseAdmin: SupabaseClient,
   draft: BookingDraft,
-  validatedDraft: Record<string, any>,
-  userId: string
+  validatedDraft: PublicBookingValidatedBody,
+  userId: string,
+  /** When set (public web bookings), provider must belong to this tenant */
+  marketTenantId?: string,
+  /** e.g. on-demand accept creates an immediate booking — skip provider min-notice lead time */
+  options?: { skipMinNoticeCheck?: boolean }
 ): Promise<ValidatedBookingData | Response> {
   // ── Auth / user row ──────────────────────────────────────────────────────
   const { data: userRow, error: userRowError } = await supabase
@@ -159,13 +172,16 @@ export async function validateBooking(
   }
 
   // ── Provider ─────────────────────────────────────────────────────────────
-  const { data: provider, error: providerError } = await supabase
+  let providerQuery = supabase
     .from("providers")
     .select(
-      "id, currency, requires_deposit, deposit_percentage, status, tax_rate_percent, tips_enabled, customer_fee_config_id, minimum_mobile_booking_amount"
+      "id, tenant_id, currency, requires_deposit, deposit_percentage, status, tax_rate_percent, tips_enabled, customer_fee_config_id, minimum_mobile_booking_amount"
     )
-    .eq("id", draft.provider_id)
-    .single();
+    .eq("id", draft.provider_id);
+  if (marketTenantId) {
+    providerQuery = providerQuery.eq("tenant_id", marketTenantId);
+  }
+  const { data: provider, error: providerError } = await providerQuery.single();
 
   if (providerError || !provider) {
     return handleApiError(new Error("Provider not found"), "Provider not found", "NOT_FOUND", 404);
@@ -180,15 +196,68 @@ export async function validateBooking(
     );
   }
 
+  const tenantIdForCurrency = provider.tenant_id || marketTenantId || null;
+  const tenantRegionConfig = tenantIdForCurrency
+    ? await getTenantRegionConfig(tenantIdForCurrency)
+    : null;
+
+  // Ensure an explicit free subscription row when missing so limit RPCs resolve a plan (local/stale DBs).
+  await ensureProviderFreeSubscriptionRow(
+    supabaseAdmin,
+    provider.id,
+    provider.tenant_id ?? marketTenantId ?? null
+  );
+
   // ── Subscription limit ───────────────────────────────────────────────────
   const bookingLimitCheck = await checkBookingLimit(provider.id);
   if (!bookingLimitCheck.canProceed) {
+    const publicMessage = formatPublicCustomerBookingLimitMessage(bookingLimitCheck);
+    console.error("[validateBooking] booking limit denied for provider", provider.id, {
+      internalReason: bookingLimitCheck.reason,
+      planName: bookingLimitCheck.planName,
+      currentCount: bookingLimitCheck.currentCount,
+      limitValue: bookingLimitCheck.limitValue,
+    });
     return handleApiError(
-      new Error(formatLimitError(bookingLimitCheck)),
-      formatLimitError(bookingLimitCheck),
+      new Error(`Booking limit: ${bookingLimitCheck.reason}`),
+      publicMessage,
       "SUBSCRIPTION_LIMIT_EXCEEDED",
       403
     );
+  }
+
+  // ── Minimum notice (lead time) from provider_online_booking_settings ─────
+  // Applies to scheduled online bookings (at_salon and at_home). Not separate per location type in DB today.
+  if (!options?.skipMinNoticeCheck) {
+    const { data: obSettings } = await supabaseAdmin
+      .from("provider_online_booking_settings")
+      .select("min_notice_minutes")
+      .eq("provider_id", draft.provider_id)
+      .maybeSingle();
+    const raw = obSettings?.min_notice_minutes;
+    const minNotice =
+      typeof raw === "number" ? raw : typeof raw === "string" ? parseInt(raw, 10) : 60;
+    const effectiveMinNotice = Number.isFinite(minNotice) && minNotice >= 0 ? minNotice : 60;
+    if (effectiveMinNotice > 0) {
+      const selected = new Date(draft.selected_datetime);
+      if (!Number.isFinite(selected.getTime())) {
+        return handleApiError(
+          new Error("Invalid selected_datetime"),
+          "Invalid appointment time.",
+          "VALIDATION_ERROR",
+          400
+        );
+      }
+      const cutoffMs = Date.now() + effectiveMinNotice * 60 * 1000;
+      if (selected.getTime() < cutoffMs) {
+        return handleApiError(
+          new Error("Minimum notice not met for booking time"),
+          `This provider requires at least ${effectiveMinNotice} minutes' notice. Please choose a later time.`,
+          "MIN_NOTICE_NOT_MET",
+          400
+        );
+      }
+    }
   }
 
   // ── Offerings ────────────────────────────────────────────────────────────
@@ -298,25 +367,56 @@ export async function validateBooking(
     }
   }
 
-  // ── Products ─────────────────────────────────────────────────────────────
-  const currency = provider.currency || "ZAR";
-  const products = (draft as any).products || [];
+  // ── Products (server-authoritative price + stock — do not trust client unit/total) ──
+  const currency = provider.currency || tenantRegionConfig?.defaultCurrency || LAST_RESORT_CURRENCY;
+  const products = draft.products ?? [];
   const productById = new Map<string, any>();
+  const variantById = new Map<string, any>();
   let productsSubtotal = 0;
 
   if (products.length > 0) {
-    const productIds = products.map((p: any) => p.productId ?? p.product_id);
+    const productIds = products
+      .map((p) => p.productId ?? p.product_id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    if (productIds.length !== products.length) {
+      return handleApiError(
+        new Error("Each product line must include a valid product id"),
+        "Each product line must include a valid product id",
+        "VALIDATION_ERROR",
+        400
+      );
+    }
+
+    const variantIds = products
+      .map((p) => {
+        const row = p as { productVariantId?: string | null; product_variant_id?: string | null };
+        return row.productVariantId ?? row.product_variant_id ?? null;
+      })
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+
     const { data: productRows, error: productsError } = await supabase
       .from("products")
-      .select("id, provider_id, name, retail_price, currency, is_active, track_stock_quantity, quantity")
+      .select(
+        "id, provider_id, name, retail_price, currency, is_active, retail_sales_enabled, track_stock_quantity, quantity, has_variants"
+      )
       .in("id", productIds);
 
     if (productsError) throw productsError;
 
     for (const p of productRows || []) productById.set(p.id, p);
 
+    if (variantIds.length > 0) {
+      const { data: variantRows, error: variantError } = await supabase
+        .from("product_variants")
+        .select("id, product_id, retail_price, quantity")
+        .in("id", variantIds);
+      if (variantError) throw variantError;
+      for (const v of variantRows || []) variantById.set(v.id, v);
+    }
+
     for (const product of products) {
-      const productData = productById.get((product as any).productId ?? product.product_id);
+      const pid = product.productId ?? product.product_id;
+      const productData = productById.get(pid);
       if (!productData || productData.provider_id !== draft.provider_id || !productData.is_active) {
         return handleApiError(
           new Error("Invalid product selection"),
@@ -325,15 +425,84 @@ export async function validateBooking(
           400
         );
       }
-      if (productData.track_stock_quantity && product.quantity > (productData.quantity || 0)) {
+      if (productData.retail_sales_enabled === false) {
         return handleApiError(
-          new Error(`Insufficient stock for ${productData.name}`),
-          `Only ${productData.quantity || 0} units available for ${productData.name}`,
-          "INSUFFICIENT_STOCK",
+          new Error(`Product is not available for purchase: ${productData.name}`),
+          "Product is not available for purchase",
+          "VALIDATION_ERROR",
           400
         );
       }
-      productsSubtotal += (product as any).totalPrice ?? productData.retail_price * product.quantity;
+
+      const row = product as { productVariantId?: string | null; product_variant_id?: string | null };
+      const variantId = row.productVariantId ?? row.product_variant_id ?? null;
+
+      const qtyRaw = Number(product.quantity);
+      const qty = Math.max(1, Math.floor(qtyRaw));
+      if (!Number.isFinite(qtyRaw) || qty < 1 || qty > 10_000) {
+        return handleApiError(new Error("Invalid quantity"), "Invalid quantity", "VALIDATION_ERROR", 400);
+      }
+
+      let unitPrice: number;
+
+      if (productData.has_variants === true) {
+        if (!variantId) {
+          return handleApiError(
+            new Error(`Select a variant for ${productData.name}`),
+            "Variant is required for this product",
+            "VALIDATION_ERROR",
+            400
+          );
+        }
+        const vrow = variantById.get(variantId);
+        if (!vrow || vrow.product_id !== pid) {
+          return handleApiError(
+            new Error("Invalid product variant"),
+            "Invalid product variant",
+            "VALIDATION_ERROR",
+            400
+          );
+        }
+        unitPrice = Number(vrow.retail_price);
+        const vQty = Number(vrow.quantity ?? 0);
+        if (qty > vQty) {
+          return handleApiError(
+            new Error(`Insufficient stock for ${productData.name}`),
+            `Only ${vQty} units available`,
+            "INSUFFICIENT_STOCK",
+            400
+          );
+        }
+        row.productVariantId = variantId;
+      } else {
+        if (variantId) {
+          return handleApiError(
+            new Error("This product does not use variants"),
+            "Invalid product variant for this product",
+            "VALIDATION_ERROR",
+            400
+          );
+        }
+        unitPrice = Number(productData.retail_price ?? 0);
+        if (productData.track_stock_quantity && qty > (productData.quantity || 0)) {
+          return handleApiError(
+            new Error(`Insufficient stock for ${productData.name}`),
+            `Only ${productData.quantity || 0} units available for ${productData.name}`,
+            "INSUFFICIENT_STOCK",
+            400
+          );
+        }
+        row.productVariantId = null;
+      }
+
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+        return handleApiError(new Error("Invalid product price"), "Invalid product price", "VALIDATION_ERROR", 400);
+      }
+
+      const lineTotal = unitPrice * qty;
+      (product as { unitPrice?: number; totalPrice?: number }).unitPrice = unitPrice;
+      (product as { unitPrice?: number; totalPrice?: number }).totalPrice = lineTotal;
+      productsSubtotal += lineTotal;
     }
   }
 
@@ -354,11 +523,11 @@ export async function validateBooking(
 
   // ── Package discount ─────────────────────────────────────────────────────
   let packageDiscountAmount = 0;
-  if ((draft as any).package_id) {
+  if (draft.package_id) {
     const { data: pkg, error: pkgError } = await supabase
       .from("service_packages")
       .select("id, provider_id, price, currency, discount_percentage")
-      .eq("id", (draft as any).package_id)
+      .eq("id", draft.package_id)
       .single();
     if (pkgError || !pkg || pkg.provider_id !== draft.provider_id) {
       return handleApiError(
@@ -373,7 +542,7 @@ export async function validateBooking(
       const { data: allPkgLocs } = await supabase
         .from("package_locations")
         .select("location_id")
-        .eq("package_id", (draft as any).package_id);
+        .eq("package_id", draft.package_id);
       if (allPkgLocs && allPkgLocs.length > 0) {
         const allowedLocationIds = new Set(allPkgLocs.map((r: any) => r.location_id));
         if (!allowedLocationIds.has(draft.location_id)) {
@@ -389,7 +558,7 @@ export async function validateBooking(
     if (pkg.price !== null && pkg.price !== undefined) {
       packageDiscountAmount = Math.max(0, servicesSubtotal - Number(pkg.price));
     } else if (pkg.discount_percentage) {
-      packageDiscountAmount = Math.max(0, (servicesSubtotal * Number(pkg.discount_percentage)) / 100);
+      packageDiscountAmount = Math.max(0, percentOf(servicesSubtotal, Number(pkg.discount_percentage)));
     }
   }
 
@@ -445,7 +614,7 @@ export async function validateBooking(
 
       if (promo.is_active && providerOk && withinWindow && underLimit && meetsMin && locationOk) {
         if (promo.type === "percentage")
-          promoDiscountAmount = (prePromoSubtotal * Number(promo.value || 0)) / 100;
+          promoDiscountAmount = percentOf(prePromoSubtotal, Number(promo.value || 0));
         else promoDiscountAmount = Number(promo.value || 0);
 
         if (promo.max_discount_amount)
@@ -492,7 +661,7 @@ export async function validateBooking(
       membershipPlanId = membership.plan?.id || null;
       const pct = Number(membership.plan?.discount_percent || 0);
       if (pct > 0) {
-        membershipDiscountAmount = Math.max(0, (subtotal * pct) / 100);
+        membershipDiscountAmount = Math.max(0, percentOf(subtotal, pct));
         membershipDiscountAmount = Math.min(membershipDiscountAmount, subtotal);
       }
     }
@@ -512,7 +681,7 @@ export async function validateBooking(
     const { getPlatformDefaultTaxRate } = await import("@/lib/platform-tax-settings");
     taxRate = await getPlatformDefaultTaxRate();
   }
-  const taxAmount = taxRate > 0 ? Number(((subtotalAfterMembership * taxRate) / 100).toFixed(2)) : 0;
+  const taxAmount = taxRate > 0 ? percentOf(subtotalAfterMembership, taxRate) : 0;
 
   // ── Service fee ──────────────────────────────────────────────────────────
   let serviceFeeAmount = 0;
@@ -534,7 +703,7 @@ export async function validateBooking(
       if (subtotalAfterMembership >= minBookingAmount) {
         if (feeConfig.fee_type === "percentage") {
           serviceFeePercentage = Number(feeConfig.fee_percentage || 0);
-          serviceFeeAmount = Number(((subtotalAfterMembership * serviceFeePercentage) / 100).toFixed(2));
+          serviceFeeAmount = percentOf(subtotalAfterMembership, serviceFeePercentage);
           if (feeConfig.max_fee_amount) {
             serviceFeeAmount = Math.min(serviceFeeAmount, Number(feeConfig.max_fee_amount));
           }
@@ -547,27 +716,29 @@ export async function validateBooking(
 
   // Fallback to platform settings if no provider fee config
   if (serviceFeeAmount === 0 && !serviceFeeConfigId) {
-    const { data: platformSettingsRow } = await (supabase.from("platform_settings") as any)
-      .select("settings")
-      .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const payoutSettings = (platformSettingsRow as any)?.settings?.payouts || {};
+    const scopedSettings = await fetchScopedSingle<Record<string, unknown>>({
+      supabase: supabaseAdmin,
+      table: "platform_settings",
+      tenantId: provider.tenant_id || marketTenantId || "",
+      select: "settings",
+      apply: (q) => q.eq("is_active", true),
+      orderBy: { column: "updated_at", ascending: false },
+    });
+    const settings = (scopedSettings.data as { settings?: Record<string, unknown> } | null)?.settings;
+    const payoutSettings = (settings as Record<string, any> | undefined)?.payouts || {};
     const serviceFeeType = payoutSettings.platform_service_fee_type || "percentage";
     const fallbackFeePercentage = payoutSettings.platform_service_fee_percentage || 0;
     const fallbackFeeFixed = payoutSettings.platform_service_fee_fixed || 0;
 
     if (serviceFeeType === "percentage") {
       serviceFeePercentage = fallbackFeePercentage;
-      serviceFeeAmount = Number(((subtotalAfterMembership * serviceFeePercentage) / 100).toFixed(2));
+      serviceFeeAmount = percentOf(subtotalAfterMembership, serviceFeePercentage);
     } else {
       serviceFeeAmount = fallbackFeeFixed;
     }
   }
 
-  const totalAmount = subtotalAfterMembership + tipAmount + taxAmount + serviceFeeAmount;
+  const totalAmount = sumMoney(subtotalAfterMembership, tipAmount, taxAmount, serviceFeeAmount);
 
   // ── Loyalty points ───────────────────────────────────────────────────────
   let loyaltyPointsEarned = 0;
@@ -617,51 +788,108 @@ export async function validateBooking(
   const firstService = draft.services[0];
   let allowOverride = false;
   let conflictResult: ConflictResult | null = null;
+  /** When completing a Mangomint-style hold, RPC conflict window must match hold.end_at (not recomputed duration). */
+  let holdReservedEndAt: Date | null = null;
+
+  if (validatedDraft.hold_id) {
+    const { data: holdRow } = await supabaseAdmin
+      .from("booking_holds")
+      .select("end_at, hold_status, provider_id")
+      .eq("id", validatedDraft.hold_id)
+      .maybeSingle();
+    if (!holdRow || holdRow.hold_status !== "active") {
+      return handleApiError(
+        new Error("Booking hold is no longer valid"),
+        "Your hold has expired or was already used. Please select a new time.",
+        "HOLD_INVALID",
+        410
+      );
+    }
+    if (holdRow.provider_id !== draft.provider_id) {
+      return handleApiError(
+        new Error("Hold does not match provider"),
+        "This booking session is no longer valid. Please start again.",
+        "VALIDATION_ERROR",
+        400
+      );
+    }
+    holdReservedEndAt = new Date(holdRow.end_at as string);
+  }
 
   if (firstService.staff_id) {
     const selectedDatetime = new Date(draft.selected_datetime);
 
-    let checkDuration = 0;
-    if (groupTotalDurationMinutes != null) {
-      checkDuration = groupTotalDurationMinutes;
-      const lastPrimaryOffering = offeringById.get(draft.services[draft.services.length - 1].offering_id);
-      checkDuration += Number(lastPrimaryOffering?.buffer_minutes || 0);
-      checkDuration += Number(lastPrimaryOffering?.processing_minutes || 0);
-      checkDuration += Number(lastPrimaryOffering?.finishing_minutes || 0);
+    let bookingEndForConflict: Date;
+
+    // Active hold: same window as above (single fetch for all hold flows, including post–random-staff assignment).
+    if (validatedDraft.hold_id && holdReservedEndAt) {
+      bookingEndForConflict = holdReservedEndAt;
     } else {
-      for (const s of draft.services) {
-        const off = offeringById.get(s.offering_id);
-        checkDuration += Number(off.duration_minutes || 0);
-        checkDuration += Number(off.buffer_minutes || 0);
-        checkDuration += Number(off.processing_minutes || 0);
-        checkDuration += Number(off.finishing_minutes || 0);
+      let checkDuration = 0;
+      if (groupTotalDurationMinutes != null) {
+        checkDuration = groupTotalDurationMinutes;
+        const lastPrimaryOffering = offeringById.get(draft.services[draft.services.length - 1].offering_id);
+        checkDuration += Number(lastPrimaryOffering?.buffer_minutes || 0);
+        checkDuration += Number(lastPrimaryOffering?.processing_minutes || 0);
+        checkDuration += Number(lastPrimaryOffering?.finishing_minutes || 0);
+      } else {
+        for (const s of draft.services) {
+          const off = offeringById.get(s.offering_id);
+          checkDuration += Number(off.duration_minutes || 0);
+          checkDuration += Number(off.buffer_minutes || 0);
+          checkDuration += Number(off.processing_minutes || 0);
+          checkDuration += Number(off.finishing_minutes || 0);
+        }
+      }
+
+      // Mobile slot grid uses `duration + travelBuffer` (see /api/availability + calculate-slots).
+      // Do not use chain-from-previous-address drive time here — it never matched the UI and caused false 409s.
+      if (draft.location_type === "at_home" && draft.address?.latitude && draft.address?.longitude) {
+        const raw = validatedDraft.availability_travel_buffer_minutes;
+        const slotTravelBuffer =
+          typeof raw === "number" && Number.isFinite(raw)
+            ? Math.min(360, Math.max(0, Math.round(raw)))
+            : getTravelBuffer("mobile", undefined);
+        checkDuration += slotTravelBuffer;
+      }
+
+      bookingEndForConflict = new Date(selectedDatetime.getTime() + checkDuration * 60000);
+    }
+
+    const { lockBookingServices, canOverrideDoubleBooking, checkActiveHoldOverlap } = await import(
+      "@/lib/bookings/conflict-check"
+    );
+
+    // Holds reserve the window in DB but are not on booking_services — block 409 if another guest holds this slot.
+    if (!validatedDraft.hold_id) {
+      const { normalizePublicStaffIdForDatabase } = await import("@beautonomi/utils");
+      const { dbStaffId } = normalizePublicStaffIdForDatabase(firstService.staff_id as string);
+      const holdOverlap = await checkActiveHoldOverlap(
+        supabaseAdmin,
+        draft.provider_id,
+        selectedDatetime,
+        bookingEndForConflict,
+        { dbStaffId: dbStaffId ?? null }
+      );
+      if (holdOverlap) {
+        return handleApiError(
+          new Error("This time slot is no longer available. Please select another time."),
+          "This time slot is no longer available. Please select another time.",
+          "CONFLICT",
+          409
+        );
       }
     }
 
-    if (draft.location_type === "at_home" && draft.address?.latitude && draft.address?.longitude) {
-      const { getTravelBufferForAtHomeBooking } = await import("@/lib/availability/travel-buffers");
-      const travelBuffer = await getTravelBufferForAtHomeBooking(
-        supabase,
-        firstService.staff_id,
-        selectedDatetime,
-        { lat: draft.address.latitude, lng: draft.address.longitude }
-      );
-      checkDuration += travelBuffer;
-    }
-
-    const bookingEndForConflict = new Date(selectedDatetime.getTime() + checkDuration * 60000);
-
-    const { lockBookingServices, canOverrideDoubleBooking } = await import(
-      "@/lib/bookings/conflict-check"
-    );
+    // checkDuration already includes trailing buffer after the last service; lockBookingServices()
+    // would add buffer again — that double-count blocked the next slot (false 409).
+    // For hold-based requests, end_at is already the full reserved window.
     conflictResult = await lockBookingServices(
       supabase,
       firstService.staff_id,
       selectedDatetime,
       bookingEndForConflict,
-      Number(
-        offeringById.get(draft.services[draft.services.length - 1].offering_id).buffer_minutes || 15
-      )
+      0
     );
 
     if (conflictResult.hasConflict) {
@@ -685,16 +913,20 @@ export async function validateBooking(
   );
   let allResourceIds: string[] = [];
 
-  const draftResourceIds = (draft as any).resource_ids;
+  const draftResourceIds = draft.resource_ids;
   if (Array.isArray(draftResourceIds) && draftResourceIds.length > 0) {
     allResourceIds = draftResourceIds;
   } else {
-    for (const s of draft.services) {
-      const requiredResources = await getRequiredResourcesForOffering(supabase, s.offering_id);
-      if (requiredResources.length >= 1) {
-        allResourceIds.push(requiredResources[0]);
+    const resourceResults = await Promise.all(
+      draft.services.map((s: any) => getRequiredResourcesForOffering(supabase, s.offering_id))
+    );
+    const resourceIdSet = new Set<string>();
+    for (const requiredResources of resourceResults) {
+      for (const rid of requiredResources) {
+        resourceIdSet.add(rid);
       }
     }
+    allResourceIds = [...resourceIdSet];
   }
 
   if (allResourceIds.length > 0) {
@@ -838,14 +1070,17 @@ export async function validateBooking(
   }
 
   const selectedDatetime = new Date(draft.selected_datetime);
-  // Include last service's buffer so RPC / conflict check use full blocked span
+  // Include last service's buffer so RPC / conflict check use full blocked span (non-hold path only).
   const lastOffering = draft.services.length
     ? offeringById.get(draft.services[draft.services.length - 1].offering_id)
     : null;
   const lastBufferMinutes = Number(lastOffering?.buffer_minutes || 0);
-  const bookingEnd = new Date(
+  const bookingEndFromServices = new Date(
     selectedDatetime.getTime() + (totalDuration + lastBufferMinutes) * 60000
   );
+  // Hold flow: validate + lock used hold.end_at; create_booking_with_locking must use the same end or we get false 409s
+  // after the guest signs in and pays (recomputed duration can extend past the slot grid window).
+  const bookingEnd = holdReservedEndAt ?? bookingEndFromServices;
 
   // ── Return enriched data ─────────────────────────────────────────────────
   return {

@@ -120,7 +120,40 @@ export default function ProviderPayments() {
           </SectionCard>
       ) : (
         <>
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          {/* Mobile card layout */}
+          <div className="md:hidden space-y-3">
+            {payments.map((payment) => (
+              <div
+                key={payment.id}
+                className="rounded-lg border bg-white p-4 space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm">{payment.ref_number}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {new Date(payment.payment_date).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <p className="font-semibold text-sm shrink-0">
+                    <Money amount={payment.amount} />
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
+                  {payment.team_member_name && (
+                    <span>{payment.team_member_name}</span>
+                  )}
+                  <span className="capitalize">{payment.method.replace("_", " ")}</span>
+                  {payment.appointment_duration && (
+                    <span>{payment.appointment_duration} min</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table layout */}
+          <div className="hidden md:block bg-white border border-gray-200 rounded-lg overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>

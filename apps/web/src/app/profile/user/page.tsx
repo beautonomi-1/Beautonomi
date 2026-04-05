@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Breadcrumb from "@/components/ui/breadcrumb";
+import { RADIX_SELECT_UNSET } from "@/lib/ui/select-radix-sentinels";
 
 // Define types
 type Option = {
@@ -287,12 +288,15 @@ const ChooseIdType = ({ onBack }: { onBack: () => void }) => {
         <Label htmlFor="country" className="text-xs pl-3 text-destructive">
           Country/region
         </Label>
-        <Select value={country} onValueChange={setCountry} >
+        <Select
+          value={country || RADIX_SELECT_UNSET}
+          onValueChange={(v) => setCountry(v === RADIX_SELECT_UNSET ? "" : v)}
+        >
           <SelectTrigger id="country" className="border-none">
             <SelectValue placeholder="Select a country" />
           </SelectTrigger>
           <SelectContent position="popper" className='bg-white'>
-            <SelectItem value="">Select a country</SelectItem>
+            <SelectItem value={RADIX_SELECT_UNSET}>Select a country</SelectItem>
             <SelectItem value="Pakistan">Pakistan</SelectItem>
             <SelectItem value="United States">United States</SelectItem>
             <SelectItem value="Canada">Canada</SelectItem>

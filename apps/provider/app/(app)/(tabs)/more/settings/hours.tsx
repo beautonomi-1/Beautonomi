@@ -59,7 +59,11 @@ function pad(n: number): string {
 
 function parseTime(t: string): { h: number; m: number } {
   const [hStr, mStr] = t.split(":");
-  return { h: parseInt(hStr ?? "0", 10), m: parseInt(mStr ?? "0", 10) };
+  const parsedH = parseInt(hStr ?? "0", 10);
+  const parsedM = parseInt(mStr ?? "0", 10);
+  const h = Number.isFinite(parsedH) ? Math.max(0, Math.min(23, parsedH)) : 0;
+  const m = Number.isFinite(parsedM) ? Math.max(0, Math.min(59, parsedM)) : 0;
+  return { h, m };
 }
 
 function formatTimeLabel(t: string): string {

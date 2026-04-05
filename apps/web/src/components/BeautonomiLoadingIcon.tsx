@@ -23,6 +23,8 @@ export function BeautonomiLoadingIcon({
         width={size}
         height={size}
         className="object-contain"
+        priority
+        loading="eager"
       />
     </div>
   );

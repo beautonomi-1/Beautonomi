@@ -1,14 +1,22 @@
 /**
  * Fetch global service categories from /api/public/categories/global.
  * Falls back to hardcoded defaults if API fails.
+ *
+ * `icon` matches web/DB (`/images/...`, `https://...`, or legacy Lucide-style keys).
+ * Use `getGlobalCategoryImageUri` + Expo Image in native UI; `getCategoryIcon` is the Ionicons fallback.
  */
 import { useState, useEffect, useCallback } from "react";
+import { resolveGlobalCategoryIconUri } from "@beautonomi/utils";
 import { api } from "@/lib/api-client";
+import { APP_URL } from "@/config/public-env";
 
 export interface GlobalCategory {
   id: string;
   slug: string;
   name: string;
+  /** DB field: path or URL (same as web `global_service_categories.icon`) */
+  icon?: string | null;
+  /** Legacy alias if any proxy strips `icon` */
   icon_name?: string | null;
   description?: string | null;
   provider_count?: number;
@@ -37,6 +45,11 @@ const ICON_MAP: Record<string, string> = {
 
 export function getCategoryIcon(slug: string): string {
   return ICON_MAP[slug.toLowerCase()] ?? "sparkles-outline";
+}
+
+/** Absolute URI for `<Image source={{ uri }} />`, or `null` to use `getCategoryIcon(slug)` instead. */
+export function getGlobalCategoryImageUri(icon: string | null | undefined): string | null {
+  return resolveGlobalCategoryIconUri(icon, APP_URL);
 }
 
 export function useGlobalCategories() {

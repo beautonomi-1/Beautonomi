@@ -3,6 +3,10 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
+import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 
 /**
  * POST /api/provider/bookings/[id]/mark-paid
@@ -24,6 +28,7 @@ export async function POST(
 
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = await getSupabaseAdmin();
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const { id: bookingId } = await params;
     const body = await request.json();
 
@@ -52,13 +57,34 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, total_amount, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, location_id, location_type")
+      .select("id, tenant_id, total_amount, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, location_id, location_type")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
 
     if (bookingError || !booking) {
       return notFoundResponse("Booking not found");
+    }
+
+    const bookingMarketMismatch = bookingTenantMismatchResponse(
+      tenantId,
+      (booking as { tenant_id?: string | null }).tenant_id,
+    );
+    if (bookingMarketMismatch) return bookingMarketMismatch;
+
+    const { format: formatMoney } = await getTenantMoneyFormatter(
+      (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+    );
+
+    const branchAccess = await assertProviderUserCanAccessBookingBranch(
+      supabaseAdmin,
+      user.id,
+      user.role,
+      providerId,
+      (booking as { location_id?: string | null }).location_id ?? null
+    );
+    if (branchAccess.allowed === false) {
+      return errorResponse(branchAccess.message, "FORBIDDEN", 403);
     }
 
     // If booking is missing location_id and it's an at_salon booking, set it to provider's first location
@@ -135,7 +161,8 @@ export async function POST(
     let payment: any = null;
     let paymentError: any = null;
     
-    // Try using a database function first (if it exists)
+    // Try using a database function first (if it exists). `booking_payments.tenant_id` is enforced
+    // by DB triggers after migration 381 (or must be set on direct insert below).
     try {
       const { data: rpcPayment, error: rpcError } = await supabaseAdmin.rpc(
         'create_booking_payment',
@@ -163,6 +190,7 @@ export async function POST(
     
     // Fallback: Direct insert (may fail due to enum, but we'll handle it)
     if (!payment && !paymentError) {
+      const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id;
       const paymentData: any = {
         booking_id: bookingId,
         amount: paymentAmount,
@@ -171,6 +199,7 @@ export async function POST(
         status: 'completed', // Explicitly set status to 'completed' so trigger counts it
         notes: notes || `Payment received via ${payment_method}`,
         created_by: user.id,
+        ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
       };
 
       if (reference) {
@@ -304,12 +333,16 @@ export async function POST(
       .single();
     
     if (updatedBooking) {
-      console.log(`Payment created: R${paymentAmount.toFixed(2)}. Booking total_paid: R${(updatedBooking.total_paid || 0).toFixed(2)}, status: ${updatedBooking.payment_status}`);
-      
+      console.log(
+        `Payment created: ${formatMoney(paymentAmount)}. Booking total_paid: ${formatMoney(updatedBooking.total_paid || 0)}, status: ${updatedBooking.payment_status}`,
+      );
+
       // If total_paid doesn't match expected, log warning
       const expectedTotalPaid = (currentTotalPaid || 0) + paymentAmount;
       if (Math.abs((updatedBooking.total_paid || 0) - expectedTotalPaid) > 0.01) {
-        console.warn(`Payment trigger may not have fired correctly. Expected total_paid: R${expectedTotalPaid.toFixed(2)}, Actual: R${(updatedBooking.total_paid || 0).toFixed(2)}`);
+        console.warn(
+          `Payment trigger may not have fired correctly. Expected total_paid: ${formatMoney(expectedTotalPaid)}, Actual: ${formatMoney(updatedBooking.total_paid || 0)}`,
+        );
       }
     }
 
@@ -318,18 +351,19 @@ export async function POST(
 
     // Create notification for customer (will be sent via OneSignal)
     try {
-      await supabaseAdmin.from("notifications").insert({
+      const { insertNotification } = await import("@/lib/notifications/insert-notification");
+      await insertNotification({
         user_id: booking.customer_id,
         type: "payment_received",
         title: "Payment Confirmed",
-        message: `Your payment of R${paymentAmount.toFixed(2)} has been received and confirmed.`,
-        metadata: {
+        message: `Your payment of ${formatMoney(paymentAmount)} has been received and confirmed.`,
+        data: {
           booking_id: bookingId,
           payment_id: payment.id,
           amount: paymentAmount,
           payment_method,
         },
-        link: `/account-settings/bookings/${bookingId}`,
+        action_url: `/account-settings/bookings/${bookingId}`,
       });
 
       // Send push notification via OneSignal using template
@@ -340,7 +374,7 @@ export async function POST(
           "payment_successful",
           [booking.customer_id],
           {
-            amount: `R${paymentAmount.toFixed(2)}`,
+            amount: formatMoney(paymentAmount),
             booking_number: bookingRef,
             payment_method: payment_method,
             transaction_id: payment.id,

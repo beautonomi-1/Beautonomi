@@ -1,14 +1,22 @@
--- Seed postal_areas for South Africa (ZA) so Service Zones Control Plane search and include work.
--- Geometry is simplified placeholder polygons (rough bounds). Replace with real boundary data for production.
--- See docs/SERVICE_ZONES_CONTROL_PLANE.md for loading full datasets.
+-- Seed postal_areas for South Africa (ZA) so Service Zones Control Plane
+-- can work on fresh environments.
+--
+-- IMPORTANT:
+-- This is intentionally a tiny placeholder sample, not production coverage.
+-- For production-scale imports use:
+--   1) migration 352_postal_areas_import_helpers.sql
+--   2) script    scripts/import-za-postal-areas.mjs
+--
+-- Safety rule: if ZA rows already exist (e.g. imported dataset), do nothing.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM postal_areas WHERE country_code = 'ZA') THEN
+    RAISE NOTICE 'postal_areas already contains ZA rows; skipping placeholder seed';
+    RETURN;
+  END IF;
 
--- Idempotent: remove only these seeded postal codes so re-run replaces them.
-DELETE FROM postal_areas
-WHERE country_code = 'ZA'
-  AND postal_code IN ('8001','8005','7441','7800','7600','7646','2000','2196','0002','4001','4320');
-
-INSERT INTO postal_areas (country_code, province_name, city_name, town_name, postal_code, geom)
-VALUES
+  INSERT INTO postal_areas (country_code, province_name, city_name, town_name, postal_code, geom)
+  VALUES
   -- Cape Town CBD
   (
     'ZA',
@@ -117,3 +125,5 @@ VALUES
     '4320',
     ST_SetSRID(ST_GeomFromGeoJSON('{"type":"Polygon","coordinates":[[[31.078,-29.728],[31.108,-29.728],[31.108,-29.758],[31.078,-29.758],[31.078,-29.728]]]}'), 4326)
   );
+END
+$$;

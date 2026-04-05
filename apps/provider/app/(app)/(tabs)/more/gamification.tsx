@@ -46,6 +46,13 @@ interface GamificationResponse {
   provider_stats?: { total_bookings: number; review_count: number };
 }
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
+
 /** Content-only for use in Rewards hub (Badges tab). */
 export function GamificationBadgesContent() {
   const { screenPadding } = useResponsive();
@@ -146,7 +153,7 @@ export function GamificationBadgesContent() {
                     <Text style={{ fontWeight: "500", color: Colors.gray[900], textTransform: "capitalize" }}>
                       {String(m.milestone_type).replace(/_/g, " ")}
                     </Text>
-                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{new Date(m.achieved_at).toLocaleDateString()}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{formatDateSafe(m.achieved_at)}</Text>
                   </View>
                 </View>
               ))}

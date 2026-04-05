@@ -8,6 +8,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { StatCard } from "@/components/ui/StatCard";
+import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 
 interface TipDistribution {
@@ -85,7 +86,7 @@ export default function TipDistributionScreen() {
           <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <StatCard
               title="This Month"
-              value={`R ${stats.total_tips_this_month.toFixed(0)}`}
+              value={formatCurrency(stats.total_tips_this_month)}
               icon="cash-outline"
               iconColor="#22c55e"
               iconBg="bg-green-50"
@@ -95,7 +96,7 @@ export default function TipDistributionScreen() {
           <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
             <StatCard
               title="Distributed"
-              value={`R ${stats.total_distributed.toFixed(0)}`}
+              value={formatCurrency(stats.total_distributed)}
               icon="people-outline"
               iconColor="#6366f1"
               iconBg="bg-indigo-50"
@@ -105,7 +106,7 @@ export default function TipDistributionScreen() {
           <View style={twStyle("flex-1")}>
             <StatCard
               title="Avg Tip"
-              value={`R ${stats.avg_tip_amount.toFixed(0)}`}
+              value={formatCurrency(stats.avg_tip_amount)}
               icon="trending-up-outline"
               iconColor="#f59e0b"
               iconBg="bg-amber-50"

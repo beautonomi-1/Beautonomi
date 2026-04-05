@@ -330,7 +330,7 @@ export default function DaysOffPage() {
             {/* Date Selection */}
             <div>
               <Label className="text-sm sm:text-base font-medium mb-2 block">Date *</Label>
-              <Popover>
+              <Popover modal={false}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
@@ -343,7 +343,7 @@ export default function DaysOffPage() {
                     {selectedDate ? format(selectedDate, "PPP") : "Pick a date"}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
+                <PopoverContent className="w-auto p-0 z-[100]" align="start">
                   <Calendar
                     mode="single"
                     selected={selectedDate}

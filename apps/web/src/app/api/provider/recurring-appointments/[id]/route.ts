@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkRecurringAppointmentFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { isAdvancedRecurrenceRule } from "@/lib/recurring/advanced-rrule";
 import { z } from "zod";
 
 const updateRecurringSchema = z.object({
@@ -11,6 +12,7 @@ const updateRecurringSchema = z.object({
   start_time: z.string().regex(/^\d{2}:\d{2}:\d{2}$/).optional(),
   notes: z.string().optional(),
   is_active: z.boolean().optional(),
+  location_id: z.string().uuid().nullable().optional(),
 });
 
 /**
@@ -59,11 +61,8 @@ export async function PATCH(
 
     // Check if advanced patterns are required (if recurrence_rule is being updated)
     if (validated.recurrence_rule) {
-      const isAdvancedPattern = validated.recurrence_rule.includes("BY") || 
-                                 validated.recurrence_rule.includes("INTERVAL") ||
-                                 validated.recurrence_rule.includes("COUNT") ||
-                                 validated.recurrence_rule.includes("UNTIL");
-      
+      const isAdvancedPattern = isAdvancedRecurrenceRule(validated.recurrence_rule);
+
       if (isAdvancedPattern && !recurringAccess.advancedPatterns) {
         return errorResponse(
           "Custom recurring patterns require a Professional plan or higher. Please upgrade to use advanced patterns.",

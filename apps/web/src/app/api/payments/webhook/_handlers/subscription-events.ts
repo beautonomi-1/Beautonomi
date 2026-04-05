@@ -14,6 +14,9 @@
 import { NextResponse } from "next/server";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import type { PaystackEvent, SupabaseClient } from "./shared";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 
 /** Map Paystack subscription status to provider_subscriptions status (active | cancelled | expired | past_due). */
 function mapPaystackStatusToDb(status: string): "active" | "past_due" {
@@ -83,7 +86,7 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
 
   const { data: provider } = await supabase
     .from("providers")
-    .select("id")
+    .select("id, tenant_id")
     .eq("user_id", customer.id)
     .single();
 
@@ -91,6 +94,11 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
     console.error("Provider not found for user:", customer.id);
     return;
   }
+
+  const subscriptionTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: (provider as { tenant_id?: string | null }).tenant_id,
+    provider_id: (provider as { id: string }).id,
+  });
 
   // Find plan by Paystack plan code
   const { data: plan } = await supabase
@@ -120,6 +128,7 @@ async function handleSubscriptionCreate(payload: any, supabase: SupabaseClient) 
   await supabase.from("provider_subscriptions").upsert(
     {
       provider_id: provider.id,
+      tenant_id: subscriptionTenantId,
       plan_id: plan.id,
       status: dbStatus,
       paystack_subscription_code: subscriptionCode,
@@ -327,9 +336,14 @@ async function handleSubscriptionInvoice(
 
     const { data: subscriptionDetails } = await supabase
       .from("provider_subscriptions")
-      .select("billing_period, plan_id, provider_id")
+      .select("billing_period, plan_id, provider_id, tenant_id")
       .eq("paystack_subscription_code", subscriptionCode)
       .single();
+
+    const renewalFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+      tenant_id: (subscriptionDetails as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+      provider_id: providerId,
+    });
 
     const now = new Date();
     const expiresAt = new Date(now);
@@ -369,6 +383,7 @@ async function handleSubscriptionInvoice(
     await supabase.from("finance_transactions").insert({
       booking_id: null,
       provider_id: providerId,
+      tenant_id: renewalFinanceTenantId,
       transaction_type: "provider_subscription_payment",
       amount: netAmount,
       fees: feesInCurrency,
@@ -382,7 +397,12 @@ async function handleSubscriptionInvoice(
     if (subscriptionDetails) {
       try {
         const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
-        type SubDetailsRow = { billing_period?: string | null; plan_id?: string; provider_id?: string };
+        type SubDetailsRow = {
+          billing_period?: string | null;
+          plan_id?: string;
+          provider_id?: string;
+          tenant_id?: string | null;
+        };
         const subDetails = subscriptionDetails as SubDetailsRow;
         const billingPeriod = subDetails.billing_period ?? "monthly";
 
@@ -394,7 +414,7 @@ async function handleSubscriptionInvoice(
 
         const { data: provider } = await supabase
           .from("providers")
-          .select("user_id, business_name")
+          .select("user_id, business_name, tenant_id")
           .eq("id", subDetails.provider_id)
           .single();
 
@@ -403,7 +423,13 @@ async function handleSubscriptionInvoice(
             billingPeriod === "yearly"
               ? plan.price_yearly || netAmount
               : plan.price_monthly || netAmount;
-          const currency = plan.currency || "ZAR";
+          const provTenant = (provider as { tenant_id?: string | null }).tenant_id;
+          const subTenant = subDetails.tenant_id ?? null;
+          const tenantForCurrency = provTenant ?? subTenant;
+          const lastResortCurrency = tenantForCurrency
+            ? (await getTenantRegionConfig(tenantForCurrency))?.defaultCurrency ?? LAST_RESORT_CURRENCY
+            : LAST_RESORT_CURRENCY;
+          const currency = plan.currency || lastResortCurrency;
 
           await sendTemplateNotification(
             "subscription_renewed",

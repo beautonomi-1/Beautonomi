@@ -1,6 +1,8 @@
 "use client";
 
-import { Sparkles, Clock, ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { Sparkles, Clock, ChevronRight, ChevronDown } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/utils";
 import type {
@@ -45,6 +47,8 @@ interface StepServicesProps {
   isAtHome: boolean;
   /** When set, shown as section title (e.g. "Hair Menu") */
   categoryName?: string | null;
+  /** Hide the Packages grid when bundle was pre-filled from `?package=` (avoids redundant re-selection). */
+  hidePackagesSection?: boolean;
 }
 
 export function StepServices({
@@ -57,7 +61,10 @@ export function StepServices({
   onNext,
   isAtHome,
   categoryName,
+  hidePackagesSection = false,
 }: StepServicesProps) {
+  const [openVariantParents, setOpenVariantParents] = useState<Record<string, boolean>>({});
+
   const hasSelection =
     (data.selectedPackage != null && data.selectedServices.length > 0) ||
     (data.selectedPackage == null && data.selectedServices.length > 0);
@@ -73,11 +80,15 @@ export function StepServices({
           {categoryName ? `${categoryName} Menu` : "What would you like?"}
         </h2>
         <p className="mt-1.5 text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
-          {categoryName ? "Choose a service from this category" : "Choose a package or a single service"}
+          {categoryName
+            ? "Choose a service from this category"
+            : hidePackagesSection
+              ? "Your bundle is included — add or adjust services below if needed"
+              : "Choose a package or a single service"}
         </p>
       </div>
 
-      {packages.length > 0 && (
+      {packages.length > 0 && !hidePackagesSection && (
         <div className="p-5 space-y-4 rounded-3xl" style={cardStyle}>
           <h3 className="text-sm font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_SECONDARY }}>
             <Sparkles className="h-4 w-4" style={{ color: BOOKING_ACCENT }} />
@@ -162,7 +173,10 @@ export function StepServices({
         </h3>
         <div className="space-y-2">
           {baseServices.map((svc) => {
-            const variants = variantsByServiceId[svc.id];
+            // Primary: from the dedicated variants API. Fallback: variants embedded in the service object.
+            const variants = (variantsByServiceId[svc.id]?.length ?? 0) > 0
+              ? variantsByServiceId[svc.id]
+              : ((svc as any).variants?.length > 0 ? (svc as any).variants : undefined);
             const hasVariants = variants && variants.length > 0;
             const price =
               isAtHome && svc.at_home_price_adjustment
@@ -170,55 +184,70 @@ export function StepServices({
                 : svc.price;
 
             if (hasVariants) {
+              const expanded = openVariantParents[svc.id] ?? true;
               return (
-                <div
+                <Collapsible
                   key={svc.id}
+                  open={expanded}
+                  onOpenChange={(open) => setOpenVariantParents((prev) => ({ ...prev, [svc.id]: open }))}
                   className="rounded-2xl border overflow-hidden"
                   style={{ borderColor: BOOKING_BORDER, backgroundColor: "rgba(0,0,0,0.02)" }}
                 >
-                  <div className="px-4 py-3 border-b" style={{ borderColor: BOOKING_EDGE }}>
-                    <span className="font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                      {svc.title}
-                    </span>
-                  </div>
-                  <div className="p-3 flex flex-wrap gap-2">
-                    {variants.map((v) => {
-                      const isSelected = data.selectedServices.some((e) => e.offering_id === v.id);
-                      return (
-                        <button
-                          key={v.id}
-                          type="button"
-                          onClick={() => {
-                            onSelectPackage(null);
-                            const entry = {
-                              offering_id: v.id,
-                              title: v.title,
-                              duration_minutes: v.duration,
-                              price: v.price,
-                              currency: v.currency,
-                            };
-                            onSelectService(
-                              isSelected
-                                ? data.selectedServices.filter((e) => e.offering_id !== v.id)
-                                : [...data.selectedServices.filter((e) => e.offering_id !== svc.id), entry]
-                            );
-                          }}
-                          className={cn(
-                            "rounded-xl px-4 py-2.5 text-sm font-medium transition-all touch-manipulation min-h-[44px]",
-                            BOOKING_ACTIVE_SCALE
-                          )}
-                          style={{
-                            borderRadius: BOOKING_RADIUS_PILL,
-                            backgroundColor: isSelected ? BOOKING_ACCENT : "rgba(0,0,0,0.06)",
-                            color: isSelected ? "#fff" : BOOKING_TEXT_PRIMARY,
-                          }}
-                        >
-                          {v.variant_name ?? v.title} · {formatCurrency(v.price, v.currency)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                  <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 px-4 py-3 border-b text-left touch-manipulation min-h-[48px]" style={{ borderColor: BOOKING_EDGE }}>
+                    <div className="min-w-0 flex-1">
+                      <span className="font-medium block" style={{ color: BOOKING_TEXT_PRIMARY }}>
+                        {svc.title}
+                      </span>
+                      <span className="text-xs mt-0.5 block" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                        {variants.length} options · tap to {expanded ? "hide" : "show"}
+                      </span>
+                    </div>
+                    <ChevronDown
+                      className={cn("h-5 w-5 shrink-0 transition-transform duration-200", expanded && "rotate-180")}
+                      style={{ color: BOOKING_TEXT_SECONDARY }}
+                    />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="p-3 flex flex-wrap gap-2">
+                      {variants.map((v) => {
+                        const isSelected = data.selectedServices.some((e) => e.offering_id === v.id);
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => {
+                              onSelectPackage(null);
+                              const entry = {
+                                offering_id: v.id,
+                                title: v.variant_name ?? v.title,
+                                // API returns 'duration'; embedded offerings list uses 'duration_minutes'
+                                duration_minutes: (v as any).duration ?? (v as any).duration_minutes ?? 60,
+                                price: v.price,
+                                currency: v.currency,
+                              };
+                              onSelectService(
+                                isSelected
+                                  ? data.selectedServices.filter((e) => e.offering_id !== v.id)
+                                  : [...data.selectedServices.filter((e) => e.offering_id !== svc.id), entry]
+                              );
+                            }}
+                            className={cn(
+                              "rounded-xl px-4 py-2.5 text-sm font-medium transition-all touch-manipulation min-h-[44px]",
+                              BOOKING_ACTIVE_SCALE
+                            )}
+                            style={{
+                              borderRadius: BOOKING_RADIUS_PILL,
+                              backgroundColor: isSelected ? BOOKING_ACCENT : "rgba(0,0,0,0.06)",
+                              color: isSelected ? "#fff" : BOOKING_TEXT_PRIMARY,
+                            }}
+                          >
+                            {v.variant_name ?? v.title} · {formatCurrency(v.price, v.currency)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               );
             }
 

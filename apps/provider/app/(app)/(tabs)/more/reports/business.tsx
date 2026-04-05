@@ -128,7 +128,7 @@ export default function BusinessReportScreen() {
   const [period, setPeriod] = useState("month");
 
   const businessUrl = `/api/provider/reports/business/overview?period=${period}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
-  const { data: overview, loading, error, timedOut, refresh } = useApi<OverviewResponse>(
+  const { data: overview, loading, error: dataError, timedOut, refresh } = useApi<OverviewResponse>(
     businessUrl,
     { timeoutMs: 15000 }
   );
@@ -168,11 +168,11 @@ export default function BusinessReportScreen() {
     );
   }
 
-  if (error && !report) {
+  if (dataError && !report) {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Business Overview" showBack />
-        <ErrorState message={error} onRetry={refresh} />
+        <ErrorState message={dataError} onRetry={refresh} />
       </ScreenContainer>
     );
   }

@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -26,6 +27,7 @@ interface GiftCardSalesData {
 }
 
 export default function GiftCardSalesReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -72,7 +74,7 @@ export default function GiftCardSalesReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "gift-card-sales");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "gift-card-sales", exportCurrency);
     exportToCSV(exportData, "gift-card-sales-report");
   };
 
@@ -159,7 +161,7 @@ export default function GiftCardSalesReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalRevenue.toLocaleString()}
+                  {fmt(data.totalRevenue)}
                 </p>
                 <DollarSign className="w-5 h-5 text-green-600" />
               </div>
@@ -174,7 +176,7 @@ export default function GiftCardSalesReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.averageGiftCardValue.toLocaleString()}
+                  {fmt(data.averageGiftCardValue)}
                 </p>
                 <TrendingUp className="w-5 h-5 text-purple-600" />
               </div>
@@ -198,7 +200,7 @@ export default function GiftCardSalesReport() {
                     className="flex items-center justify-between p-3 rounded-lg border border-gray-200"
                   >
                     <div>
-                      <p className="font-medium text-gray-900">ZAR {sale.amount.toLocaleString()}</p>
+                      <p className="font-medium text-gray-900">{fmt(sale.amount)}</p>
                       <p className="text-sm text-gray-600">
                         {sale.percentage.toFixed(1)}% of redemptions
                       </p>
@@ -208,7 +210,7 @@ export default function GiftCardSalesReport() {
                         {sale.count} cards
                       </p>
                       <p className="text-sm text-gray-600">
-                        ZAR {sale.revenue.toLocaleString()}
+                        {fmt(sale.revenue)}
                       </p>
                     </div>
                   </div>

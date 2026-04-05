@@ -20,6 +20,8 @@ import { useCart } from "@/features/shop/useCart";
 import { useProductOrders } from "@/features/shop/useProductOrders";
 import { useAuth } from "@/providers/AuthProvider";
 import { trackProductCheckoutStarted, trackProductOrderPlaced } from "@/lib/analytics";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatMoney } from "@beautonomi/utils";
 
 const PRIMARY = Colors.primary;
 
@@ -49,10 +51,45 @@ interface ShippingConfig {
   delivery_fee: number;
   free_delivery_threshold: number | null;
   estimated_delivery_days: number;
+  collection_notes?: string | null;
+  delivery_notes?: string | null;
+  delivery_radius_km?: number | null;
 }
 
 const contentConstraintStyle = (contentMaxWidth: number, isTablet: boolean) =>
   (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
+
+function normalizeSavedAddressList(raw: unknown): Address[] {
+  if (Array.isArray(raw)) return raw as Address[];
+  if (raw && typeof raw === "object") {
+    const o = raw as { data?: unknown; addresses?: unknown };
+    if (Array.isArray(o.data)) return o.data as Address[];
+    if (Array.isArray(o.addresses)) return o.addresses as Address[];
+  }
+  return [];
+}
+
+/** Matches web/customer booking: check res.error, retry once on transient failure. */
+async function fetchSavedAddressesWithRetry(): Promise<{ list: Address[]; error: string | null }> {
+  let lastError: string | null = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await api.get<Address[] | { data?: Address[] } | { addresses?: Address[] }>("/api/me/addresses");
+    if (!res.error) {
+      const list = normalizeSavedAddressList(res.data);
+      return { list, error: null };
+    }
+    const status = (res.error as { status?: number }).status;
+    if (status === 401 || status === 403) {
+      return { list: [], error: null };
+    }
+    if (attempt === 0) {
+      await new Promise((r) => setTimeout(r, 450));
+    } else {
+      lastError = getApiErrorMessage(res.error, "Failed to load addresses");
+    }
+  }
+  return { list: [], error: lastError };
+}
 
 export default function ProductCheckoutScreen() {
   const router = useRouter();
@@ -60,6 +97,7 @@ export default function ProductCheckoutScreen() {
   const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
   const constraintStyle = contentConstraintStyle(contentMaxWidth, isTablet);
   const cart = useCart();
+  const { fetchCart } = cart;
   const orders = useProductOrders();
   const { user } = useAuth();
 
@@ -72,6 +110,7 @@ export default function ProductCheckoutScreen() {
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"paystack" | "card_on_delivery">("paystack");
+  const [cashEnabledOnPlatform, setCashEnabledOnPlatform] = useState(false);
   const [useWallet, setUseWallet] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
   const [platformFeeConfig, setPlatformFeeConfig] = useState<{
@@ -80,20 +119,59 @@ export default function ProductCheckoutScreen() {
     fixed: number;
     show: boolean;
   }>({ type: "percentage", percentage: 5, fixed: 0, show: true });
+  const [addressesLoadError, setAddressesLoadError] = useState<string | null>(null);
+  const [refetchingAddresses, setRefetchingAddresses] = useState(false);
+  const providerCartForTracking = provider_id ? cart.groupedByProvider[provider_id] : null;
+
+  useEffect(() => {
+    if (!cashEnabledOnPlatform && paymentMethod === "card_on_delivery") {
+      setPaymentMethod("paystack");
+    }
+  }, [cashEnabledOnPlatform, paymentMethod]);
+
+  const reloadAddressesOnly = useCallback(async () => {
+    if (!user) return;
+    setRefetchingAddresses(true);
+    setAddressesLoadError(null);
+    try {
+      const { list, error } = await fetchSavedAddressesWithRetry();
+      setAddresses(list);
+      setAddressesLoadError(error);
+      setSelectedAddress((prev) => {
+        if (prev && list.some((a) => a.id === prev)) return prev;
+        const defaultAddr = list.find((a) => a.is_default);
+        return defaultAddr?.id ?? list[0]?.id ?? null;
+      });
+    } finally {
+      setRefetchingAddresses(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (!provider_id) return;
+    let cancelled = false;
     (async () => {
       setLoading(true);
-      await cart.fetchCart();
+      setAddressesLoadError(null);
+      await fetchCart();
+      if (cancelled) return;
 
-      // Fetch addresses
-      const addrRes = await api.get<{ addresses: Address[] } | Address[]>("/api/me/addresses");
-      const addrData = addrRes.data;
-      const addrList = Array.isArray(addrData) ? addrData : addrData?.addresses ?? [];
-      setAddresses(addrList);
-      const defaultAddr = addrList.find((a) => a.is_default);
-      if (defaultAddr) setSelectedAddress(defaultAddr.id);
+      if (user) {
+        const { list, error } = await fetchSavedAddressesWithRetry();
+        if (cancelled) return;
+        setAddresses(list);
+        setAddressesLoadError(error);
+        setSelectedAddress((prev) => {
+          if (prev && list.some((a) => a.id === prev)) return prev;
+          const defaultAddr = list.find((a) => a.is_default);
+          return defaultAddr?.id ?? list[0]?.id ?? null;
+        });
+      } else {
+        setAddresses([]);
+        setAddressesLoadError(null);
+        setSelectedAddress(null);
+      }
+      if (cancelled) return;
 
       // Fetch provider locations (public API by provider_id)
       const locRes = await api.get<{ data?: { locations?: Location[] }; locations?: Location[] }>(
@@ -120,8 +198,11 @@ export default function ProductCheckoutScreen() {
 
       // Track checkout started
       if (provider_id) {
-        const cartGroup = cart.groupedByProvider[provider_id];
-        trackProductCheckoutStarted(provider_id, cartGroup?.items.length ?? 0, cartGroup?.subtotal ?? 0);
+        trackProductCheckoutStarted(
+          provider_id,
+          providerCartForTracking?.items.length ?? 0,
+          providerCartForTracking?.subtotal ?? 0,
+        );
       }
 
       // Fetch platform fee config
@@ -138,6 +219,7 @@ export default function ProductCheckoutScreen() {
           fixed: (feeRes.data as any).platform_service_fee_fixed ?? 0,
           show: (feeRes.data as any).show_service_fee_to_customer !== false,
         });
+        setCashEnabledOnPlatform((feeRes.data as any).cash_enabled_on_platform === true);
       }
 
       // Fetch wallet balance (for "Use wallet" option)
@@ -151,10 +233,12 @@ export default function ProductCheckoutScreen() {
         }
       }
 
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- load by provider_id only
-  }, [provider_id]);
+    return () => {
+      cancelled = true;
+    };
+  }, [provider_id, user, fetchCart, providerCartForTracking]);
 
   const providerCart = provider_id ? cart.groupedByProvider[provider_id] : null;
   const subtotal = providerCart?.subtotal ?? 0;
@@ -171,9 +255,31 @@ export default function ProductCheckoutScreen() {
         : Math.round(subtotal * platformFeeConfig.percentage) / 100
       : 0;
   const total = subtotal + deliveryFee + platformFee;
+  const fb = getTenantDefaultCurrency();
+  const fmt = (amount: number) => formatMoney(amount, fb);
 
   const handlePlaceOrder = useCallback(async () => {
     if (!provider_id) return;
+    if (!user) {
+      Alert.alert(
+        "Sign in to checkout",
+        "Create an account or sign in so we can process payment and delivery.",
+        [
+          { text: "Not now", style: "cancel" },
+          {
+            text: "Sign in",
+            onPress: () =>
+              router.push({
+                pathname: "/(auth)/login",
+                params: {
+                  return_to: `/(app)/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
+                },
+              } as any),
+          },
+        ],
+      );
+      return;
+    }
     if (fulfillment === "delivery" && !selectedAddress) {
       Alert.alert("Address Required", "Please select a delivery address");
       return;
@@ -216,7 +322,7 @@ export default function ProductCheckoutScreen() {
       Alert.alert(
         "Order Placed!",
         `Your order ${order?.order_number} has been paid from your wallet.`,
-        [{ text: "View Orders", onPress: () => router.replace("/product-orders" as any) }],
+        [{ text: "View Orders", onPress: () => router.replace("/(app)/product-orders" as any) }],
       );
       return;
     }
@@ -227,7 +333,7 @@ export default function ProductCheckoutScreen() {
       Alert.alert(
         "Order Placed!",
         `Your order ${order?.order_number} has been placed. Please have your card ready at delivery/collection.`,
-        [{ text: "View Orders", onPress: () => router.replace("/product-orders" as any) }],
+        [{ text: "View Orders", onPress: () => router.replace("/(app)/product-orders" as any) }],
       );
       return;
     }
@@ -235,7 +341,7 @@ export default function ProductCheckoutScreen() {
     if (!customerEmail || !order) {
       setPlacing(false);
       Alert.alert("Order Placed!", `Your order ${order?.order_number} has been placed. Payment pending.`, [
-        { text: "View Orders", onPress: () => router.replace("/product-orders" as any) },
+        { text: "View Orders", onPress: () => router.replace("/(app)/product-orders" as any) },
       ]);
       return;
     }
@@ -260,7 +366,7 @@ export default function ProductCheckoutScreen() {
       Alert.alert(
         "Order Created",
         `Your order ${order.order_number} was placed but payment could not be initialized. You can pay later from your orders.`,
-        [{ text: "View Orders", onPress: () => router.replace("/product-orders" as any) }],
+        [{ text: "View Orders", onPress: () => router.replace("/(app)/product-orders" as any) }],
       );
       return;
     }
@@ -282,6 +388,74 @@ export default function ProductCheckoutScreen() {
     return (
       <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" }}>
         <ActivityIndicator size="large" color={PRIMARY} />
+      </SafeAreaView>
+    );
+  }
+
+  if (!provider_id) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: contentPadding,
+            paddingVertical: 14,
+            backgroundColor: "#fff",
+            borderBottomWidth: 1,
+            borderBottomColor: "#F3F4F6",
+          }}
+        >
+          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+            <Ionicons name="arrow-back" size={24} color="#111827" />
+          </TouchableOpacity>
+          <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>Checkout</Text>
+        </View>
+        <View style={{ flex: 1, padding: contentPadding, justifyContent: "center", alignItems: "center" }}>
+          <Text style={{ fontSize: 16, color: "#6B7280", textAlign: "center" }}>Missing seller information. Open checkout from your cart.</Text>
+          <TouchableOpacity
+            onPress={() => router.replace("/(app)/cart" as any)}
+            style={{ marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: PRIMARY, borderRadius: 12 }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700" }}>Go to cart</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!providerCart?.items?.length) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: contentPadding,
+            paddingVertical: 14,
+            backgroundColor: "#fff",
+            borderBottomWidth: 1,
+            borderBottomColor: "#F3F4F6",
+          }}
+        >
+          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+            <Ionicons name="arrow-back" size={24} color="#111827" />
+          </TouchableOpacity>
+          <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>Checkout</Text>
+        </View>
+        <View style={{ flex: 1, padding: contentPadding, justifyContent: "center", alignItems: "center" }}>
+          <Ionicons name="cart-outline" size={56} color="#D1D5DB" />
+          <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginTop: 16 }}>No items for this seller</Text>
+          <Text style={{ fontSize: 14, color: "#6B7280", marginTop: 8, textAlign: "center" }}>
+            Add products from this provider to your cart first.
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.replace("/(app)/cart" as any)}
+            style={{ marginTop: 24, paddingVertical: 14, paddingHorizontal: 28, backgroundColor: PRIMARY, borderRadius: 12 }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700" }}>View cart</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     );
   }
@@ -314,79 +488,149 @@ export default function ProductCheckoutScreen() {
           ...constraintStyle,
         }}
       >
-        {/* Fulfillment type */}
-        <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
-          <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
-            How would you like to receive your order?
-          </Text>
-          <View style={{ flexDirection: "row" }}>
-            {shippingConfig?.offers_collection !== false && (
-              <TouchableOpacity
-                onPress={() => setFulfillment("collection")}
-                style={{
-                  flex: 1,
-                  padding: contentPadding,
-                  borderRadius: 14,
-                  borderWidth: 2,
-                  borderColor: fulfillment === "collection" ? PRIMARY : "#E5E7EB",
-                  backgroundColor: fulfillment === "collection" ? "rgba(255,0,119,0.04)" : "#fff",
-                  alignItems: "center",
-                  marginRight: 12,
-                }}
-              >
-                <Ionicons
-                  name="storefront-outline"
-                  size={28}
-                  color={fulfillment === "collection" ? PRIMARY : "#9CA3AF"}
-                />
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: "600",
-                    color: fulfillment === "collection" ? PRIMARY : "#374151",
-                    marginTop: 8,
-                  }}
-                >
-                  Collection
-                </Text>
-                <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>Free</Text>
-              </TouchableOpacity>
-            )}
-            {shippingConfig?.offers_delivery && (
-              <TouchableOpacity
-                onPress={() => setFulfillment("delivery")}
-                style={{
-                  flex: 1,
-                  padding: contentPadding,
-                  borderRadius: 14,
-                  borderWidth: 2,
-                  borderColor: fulfillment === "delivery" ? PRIMARY : "#E5E7EB",
-                  backgroundColor: fulfillment === "delivery" ? "rgba(255,0,119,0.04)" : "#fff",
-                  alignItems: "center",
-                }}
-              >
-                <Ionicons
-                  name="bicycle-outline"
-                  size={28}
-                  color={fulfillment === "delivery" ? PRIMARY : "#9CA3AF"}
-                />
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontWeight: "600",
-                    color: fulfillment === "delivery" ? PRIMARY : "#374151",
-                    marginTop: 8,
-                  }}
-                >
-                  Delivery
-                </Text>
-                <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>
-                  {deliveryFee === 0 ? "Free" : `R${deliveryFee.toFixed(2)}`}
-                </Text>
-              </TouchableOpacity>
-            )}
+        {!user ? (
+          <View
+            style={{
+              backgroundColor: "#EFF6FF",
+              borderRadius: 14,
+              padding: contentPadding,
+              marginBottom: 12,
+              borderWidth: 1,
+              borderColor: "#BFDBFE",
+            }}
+          >
+            <Text style={{ fontSize: 15, fontWeight: "700", color: "#1E40AF" }}>Sign in to place your order</Text>
+            <Text style={{ fontSize: 13, color: "#1E3A8A", marginTop: 6, lineHeight: 18 }}>
+              You can review delivery options below. When you are ready, sign in to pay and confirm.
+            </Text>
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: "/(auth)/login",
+                  params: {
+                    return_to: `/(app)/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
+                  },
+                } as any)
+              }
+              style={{
+                alignSelf: "flex-start",
+                marginTop: 12,
+                paddingVertical: 10,
+                paddingHorizontal: 18,
+                backgroundColor: PRIMARY,
+                borderRadius: 10,
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "700" }}>Sign in</Text>
+            </TouchableOpacity>
           </View>
-        </View>
+        ) : null}
+        {/* Fulfillment type */}
+        {(() => {
+          const sc = shippingConfig;
+          const pickupOnly = sc ? (sc.offers_collection && !sc.offers_delivery) : false;
+          const deliveryOnly = sc ? (!sc.offers_collection && sc.offers_delivery) : false;
+          const bothAvailable = sc ? (sc.offers_collection && sc.offers_delivery) : !sc;
+
+          if (pickupOnly) {
+            return (
+              <View style={{ backgroundColor: "#FFF7ED", marginBottom: 12, borderWidth: 1, borderColor: "#FED7AA", borderRadius: 14, padding: contentPadding }}>
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#FFEDD5", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                    <Ionicons name="storefront" size={22} color="#C2410C" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: "700", color: "#C2410C" }}>In-store pickup only</Text>
+                    <Text style={{ fontSize: 13, color: "#92400E", marginTop: 2 }}>
+                      This provider does not offer delivery. You must collect your order in person.
+                    </Text>
+                  </View>
+                </View>
+                {sc?.collection_notes ? (
+                  <View style={{ backgroundColor: "#FFEDD5", borderRadius: 10, padding: 10, marginTop: 4 }}>
+                    <Text style={{ fontSize: 13, color: "#7C2D12", lineHeight: 18 }}>{sc.collection_notes}</Text>
+                  </View>
+                ) : null}
+              </View>
+            );
+          }
+
+          if (deliveryOnly) {
+            return (
+              <View style={{ backgroundColor: "#EFF6FF", marginBottom: 12, borderWidth: 1, borderColor: "#BFDBFE", borderRadius: 14, padding: contentPadding }}>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#DBEAFE", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+                    <Ionicons name="bicycle" size={22} color="#1D4ED8" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: "700", color: "#1D4ED8" }}>Delivery only</Text>
+                    <Text style={{ fontSize: 13, color: "#1E40AF", marginTop: 2 }}>
+                      {deliveryFee === 0 ? "Free delivery to your address." : `Delivery fee: ${fmt(deliveryFee)}`}
+                    </Text>
+                  </View>
+                </View>
+                {sc?.delivery_notes ? (
+                  <View style={{ backgroundColor: "#DBEAFE", borderRadius: 10, padding: 10, marginTop: 8 }}>
+                    <Text style={{ fontSize: 13, color: "#1E3A8A", lineHeight: 18 }}>{sc.delivery_notes}</Text>
+                  </View>
+                ) : null}
+              </View>
+            );
+          }
+
+          return (
+            <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
+                How would you like to receive your order?
+              </Text>
+              <View style={{ flexDirection: "row" }}>
+                {(bothAvailable || sc?.offers_collection !== false) && (
+                  <TouchableOpacity
+                    onPress={() => setFulfillment("collection")}
+                    style={{
+                      flex: 1,
+                      padding: contentPadding,
+                      borderRadius: 14,
+                      borderWidth: 2,
+                      borderColor: fulfillment === "collection" ? PRIMARY : "#E5E7EB",
+                      backgroundColor: fulfillment === "collection" ? "rgba(255,0,119,0.04)" : "#fff",
+                      alignItems: "center",
+                      marginRight: sc?.offers_delivery ? 12 : 0,
+                    }}
+                  >
+                    <Ionicons name="storefront-outline" size={28} color={fulfillment === "collection" ? PRIMARY : "#9CA3AF"} />
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: fulfillment === "collection" ? PRIMARY : "#374151", marginTop: 8 }}>
+                      Collection
+                    </Text>
+                    <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>Free · In-store</Text>
+                  </TouchableOpacity>
+                )}
+                {sc?.offers_delivery && (
+                  <TouchableOpacity
+                    onPress={() => setFulfillment("delivery")}
+                    style={{
+                      flex: 1,
+                      padding: contentPadding,
+                      borderRadius: 14,
+                      borderWidth: 2,
+                      borderColor: fulfillment === "delivery" ? PRIMARY : "#E5E7EB",
+                      backgroundColor: fulfillment === "delivery" ? "rgba(255,0,119,0.04)" : "#fff",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Ionicons name="bicycle-outline" size={28} color={fulfillment === "delivery" ? PRIMARY : "#9CA3AF"} />
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: fulfillment === "delivery" ? PRIMARY : "#374151", marginTop: 8 }}>
+                      Delivery
+                    </Text>
+                    <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>
+                      {deliveryFee === 0 ? "Free" : fmt(deliveryFee)}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          );
+        })()}
 
         {/* Collection location */}
         {fulfillment === "collection" && locations.length > 0 && (
@@ -394,6 +638,12 @@ export default function ProductCheckoutScreen() {
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
               Collection Point
             </Text>
+            {shippingConfig?.collection_notes && !(shippingConfig.offers_collection && !shippingConfig.offers_delivery) ? (
+              <View style={{ backgroundColor: "#FFF7ED", borderRadius: 10, padding: 10, marginBottom: 12, flexDirection: "row", alignItems: "flex-start" }}>
+                <Ionicons name="information-circle-outline" size={16} color="#C2410C" style={{ marginRight: 6, marginTop: 1 }} />
+                <Text style={{ flex: 1, fontSize: 13, color: "#92400E", lineHeight: 18 }}>{shippingConfig.collection_notes}</Text>
+              </View>
+            ) : null}
             {locations.map((loc) => (
               <TouchableOpacity
                 key={loc.id}
@@ -449,18 +699,62 @@ export default function ProductCheckoutScreen() {
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
               Delivery Address
             </Text>
-            {addresses.length === 0 ? (
-              <View style={{ alignItems: "center", padding: contentPadding }}>
-                <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 12 }}>No addresses saved</Text>
+            {user && addressesLoadError ? (
+              <View
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: "#FEF2F2",
+                  borderWidth: 1,
+                  borderColor: "#FECACA",
+                  marginBottom: 8,
+                }}
+              >
+                <Text style={{ fontSize: 14, color: "#991B1B", marginBottom: 10 }}>{addressesLoadError}</Text>
                 <TouchableOpacity
-                  onPress={() => router.push("/account-settings/addresses" as any)}
-                  style={{ paddingHorizontal: contentPadding, paddingVertical: 10, borderRadius: 10, backgroundColor: PRIMARY }}
+                  onPress={() => void reloadAddressesOnly()}
+                  disabled={refetchingAddresses}
+                  style={{ alignSelf: "flex-start", opacity: refetchingAddresses ? 0.6 : 1 }}
                 >
-                  <Text style={{ color: "#fff", fontWeight: "600" }}>Add Address</Text>
+                  {refetchingAddresses ? (
+                    <ActivityIndicator size="small" color={PRIMARY} />
+                  ) : (
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: PRIMARY }}>Try again</Text>
+                  )}
                 </TouchableOpacity>
               </View>
-            ) : (
-              addresses.map((addr) => (
+            ) : null}
+            {!addressesLoadError && addresses.length === 0 ? (
+              <View style={{ alignItems: "center", padding: contentPadding }}>
+                <Text style={{ fontSize: 14, color: "#6B7280", marginBottom: 12, textAlign: "center" }}>
+                  {user ? "No addresses saved" : "Sign in to add a delivery address"}
+                </Text>
+                {user ? (
+                  <TouchableOpacity
+                    onPress={() => router.push("/(app)/account-settings/addresses" as any)}
+                    style={{ paddingHorizontal: contentPadding, paddingVertical: 10, borderRadius: 10, backgroundColor: PRIMARY }}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "600" }}>Add Address</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(auth)/login",
+                        params: {
+                          return_to: `/(app)/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
+                        },
+                      } as any)
+                    }
+                    style={{ paddingHorizontal: contentPadding, paddingVertical: 10, borderRadius: 10, backgroundColor: PRIMARY }}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "600" }}>Sign in</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : null}
+            {!addressesLoadError && addresses.length > 0
+              ? addresses.map((addr) => (
                 <TouchableOpacity
                   key={addr.id}
                   onPress={() => setSelectedAddress(addr.id)}
@@ -502,7 +796,7 @@ export default function ProductCheckoutScreen() {
                   </View>
                 </TouchableOpacity>
               ))
-            )}
+              : null}
           </View>
         )}
 
@@ -543,35 +837,37 @@ export default function ProductCheckoutScreen() {
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => setPaymentMethod("card_on_delivery")}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                padding: 14,
-                borderRadius: 12,
-                borderWidth: 1.5,
-                borderColor: paymentMethod === "card_on_delivery" ? PRIMARY : "#E5E7EB",
-                backgroundColor: paymentMethod === "card_on_delivery" ? "rgba(255,0,119,0.04)" : "#fff",
-              }}
-            >
-              <Ionicons
-                name="wallet-outline"
-                size={22}
-                color={paymentMethod === "card_on_delivery" ? PRIMARY : "#9CA3AF"}
-              />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: paymentMethod === "card_on_delivery" ? PRIMARY : "#374151" }}>
-                  Pay at {fulfillment === "delivery" ? "Delivery" : "Collection"}
-                </Text>
-                <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
-                  Cash or card when you receive your order
-                </Text>
-              </View>
-              <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: paymentMethod === "card_on_delivery" ? PRIMARY : "#D1D5DB", alignItems: "center", justifyContent: "center" }}>
-                {paymentMethod === "card_on_delivery" && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: PRIMARY }} />}
-              </View>
-            </TouchableOpacity>
+            {cashEnabledOnPlatform && (
+              <TouchableOpacity
+                onPress={() => setPaymentMethod("card_on_delivery")}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  padding: 14,
+                  borderRadius: 12,
+                  borderWidth: 1.5,
+                  borderColor: paymentMethod === "card_on_delivery" ? PRIMARY : "#E5E7EB",
+                  backgroundColor: paymentMethod === "card_on_delivery" ? "rgba(255,0,119,0.04)" : "#fff",
+                }}
+              >
+                <Ionicons
+                  name="wallet-outline"
+                  size={22}
+                  color={paymentMethod === "card_on_delivery" ? PRIMARY : "#9CA3AF"}
+                />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: paymentMethod === "card_on_delivery" ? PRIMARY : "#374151" }}>
+                    Pay at {fulfillment === "delivery" ? "Delivery" : "Collection"}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
+                    Cash or card when you receive your order
+                  </Text>
+                </View>
+                <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: paymentMethod === "card_on_delivery" ? PRIMARY : "#D1D5DB", alignItems: "center", justifyContent: "center" }}>
+                  {paymentMethod === "card_on_delivery" && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: PRIMARY }} />}
+                </View>
+              </TouchableOpacity>
+            )}
 
             {paymentMethod === "paystack" && user && walletBalance > 0 && (
               <Pressable
@@ -598,7 +894,7 @@ export default function ProductCheckoutScreen() {
                 </View>
                 <Ionicons name="wallet-outline" size={18} color={useWallet ? PRIMARY : "#6B7280"} style={{ marginRight: 10 }} />
                 <Text style={{ flex: 1, fontWeight: "500", color: useWallet ? PRIMARY : "#374151", fontSize: 14 }}>
-                  Use wallet balance — R{walletBalance.toFixed(2)} available
+                  Use wallet balance — {fmt(walletBalance)} available
                 </Text>
               </Pressable>
             )}
@@ -608,7 +904,15 @@ export default function ProductCheckoutScreen() {
             <View style={{ marginTop: 12, padding: 12, backgroundColor: "#FFF7ED", borderRadius: 10, flexDirection: "row", alignItems: "center" }}>
               <Ionicons name="information-circle-outline" size={16} color="#F59E0B" />
               <Text style={{ fontSize: 12, color: "#92400E", marginLeft: 8, flex: 1 }}>
-                A platform service fee of R{platformFee.toFixed(2)} applies to online payments
+                A platform service fee of {fmt(platformFee)} applies to online payments
+              </Text>
+            </View>
+          )}
+          {!cashEnabledOnPlatform && (
+            <View style={{ marginTop: 12, padding: 12, backgroundColor: "#EFF6FF", borderRadius: 10, flexDirection: "row", alignItems: "center" }}>
+              <Ionicons name="information-circle-outline" size={16} color="#1D4ED8" />
+              <Text style={{ fontSize: 12, color: "#1E3A8A", marginLeft: 8, flex: 1 }}>
+                Pay-at-collection/delivery is disabled by platform policy. Please pay online.
               </Text>
             </View>
           )}
@@ -634,7 +938,10 @@ export default function ProductCheckoutScreen() {
                 {item.product?.name} x{item.quantity}
               </Text>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
-                R{((item.product?.retail_price ?? 0) * item.quantity).toFixed(2)}
+                {fmt(
+                  (typeof item.effective_price === "number" ? item.effective_price : item.product?.retail_price ?? 0) *
+                    item.quantity,
+                )}
               </Text>
             </View>
           ))}
@@ -642,25 +949,25 @@ export default function ProductCheckoutScreen() {
           <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
               <Text style={{ fontSize: 14, color: "#6B7280" }}>Subtotal</Text>
-              <Text style={{ fontSize: 14, color: "#111827" }}>R{subtotal.toFixed(2)}</Text>
+              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(subtotal)}</Text>
             </View>
             {fulfillment === "delivery" && (
               <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                 <Text style={{ fontSize: 14, color: "#6B7280" }}>Delivery</Text>
                 <Text style={{ fontSize: 14, color: deliveryFee === 0 ? "#22C55E" : "#111827" }}>
-                  {deliveryFee === 0 ? "Free" : `R${deliveryFee.toFixed(2)}`}
+                  {deliveryFee === 0 ? "Free" : fmt(deliveryFee)}
                 </Text>
               </View>
             )}
             {platformFee > 0 && platformFeeConfig.show && (
               <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                 <Text style={{ fontSize: 14, color: "#6B7280" }}>Service Fee</Text>
-                <Text style={{ fontSize: 14, color: "#111827" }}>R{platformFee.toFixed(2)}</Text>
+                <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(platformFee)}</Text>
               </View>
             )}
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#E5E7EB" }}>
               <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Total</Text>
-              <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>R{total.toFixed(2)}</Text>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>{fmt(total)}</Text>
             </View>
           </View>
         </View>
@@ -696,7 +1003,7 @@ export default function ProductCheckoutScreen() {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={{ color: "#fff", fontSize: 17, fontWeight: "700" }}>
-              {paymentMethod === "paystack" ? "Pay" : "Place"} Order — R{total.toFixed(2)}
+              {paymentMethod === "paystack" ? "Pay" : "Place"} Order — {fmt(total)}
             </Text>
           )}
         </TouchableOpacity>

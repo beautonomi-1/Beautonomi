@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse } from "@/lib/supabase/api-helpers";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
 /**
  * GET /api/public/providers/[slug]/group-booking-settings
@@ -12,6 +13,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+
     const { slug } = await params;
     const supabase = await getSupabaseServer();
 
@@ -41,6 +46,7 @@ export async function GET(
       .from("providers")
       .select("id, online_group_booking_enabled, max_group_size")
       .eq("slug", decodedSlug)
+      .eq("tenant_id", tenantId)
       .maybeSingle();
 
     if (providerData1) {
@@ -51,6 +57,7 @@ export async function GET(
         .from("providers")
         .select("id, online_group_booking_enabled, max_group_size")
         .eq("slug", slug)
+        .eq("tenant_id", tenantId)
         .maybeSingle();
       
       if (providerData2) {

@@ -249,7 +249,11 @@ const Hero: React.FC<{ businessName?: string }> = ({ businessName = "Provider" }
         shareUrl={typeof window !== "undefined" ? window.location.href : undefined}
       />
 
-      <LoginModal open={isLoginModalOpen} setOpen={setIsLoginModalOpen} />
+      <LoginModal
+        open={isLoginModalOpen}
+        setOpen={setIsLoginModalOpen}
+        initialMode="login"
+      />
     </div>
   );
 };

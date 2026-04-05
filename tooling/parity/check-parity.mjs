@@ -43,7 +43,8 @@ const MOBILE_ROUTE_MAP = {
   account_referrals: "(app)/account-settings/referrals.tsx",
   gift_card: "(app)/gift-card-purchase.tsx",
   login: "(auth)/login.tsx",
-  signup: "(auth)/login.tsx",
+  signup: "(auth)/signup.tsx",
+  /** No dedicated onboarding route; auth entry covers first-run. */
   onboarding: "(auth)/login.tsx",
 };
 

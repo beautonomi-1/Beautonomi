@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /** Booking row shape from bulk select (id, status, version, customer_id, loyalty_points_earned, booking_number; subtotal/currency optional if expanded) */
 type BulkBookingRow = {
@@ -38,6 +40,15 @@ export async function POST(request: NextRequest) {
     if (!providerId) {
       return errorResponse("Provider not found", "NOT_FOUND", 404);
     }
+
+    const { data: provRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const providerTenantId = (provRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+    const tenantRegion = providerTenantId ? await getTenantRegionConfig(providerTenantId) : null;
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Verify all bookings belong to provider
     const { data: bookings, error: checkError } = await supabaseAdmin
@@ -127,7 +138,7 @@ export async function POST(request: NextRequest) {
                   .maybeSingle();
 
                 if (!existingTransaction) {
-                  const currency = row.currency ?? "ZAR";
+                  const currency = row.currency ?? lastResortCurrency;
                   const pointsEarned = await calculateLoyaltyPoints(subtotal, supabaseAdmin, currency);
 
                   if (pointsEarned > 0) {

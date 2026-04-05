@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, badRequestResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { validatePromoCode } from "@/lib/promotions/validate";
 import { z } from "zod";
 
@@ -26,6 +27,12 @@ const validateBodySchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) {
+      return tenantRes;
+    }
+    const { tenantId } = tenantRes;
+
     const supabase = await getSupabaseServer();
     const body = await request.json();
 
@@ -37,6 +44,16 @@ export async function POST(request: NextRequest) {
     }
 
     const { code, provider_id, booking_amount, location_type, location_id } = parsed.data;
+
+    const { data: providerOk } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("id", provider_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!providerOk) {
+      return badRequestResponse("Invalid provider for this site");
+    }
 
     const result = await validatePromoCode(supabase, {
       code,

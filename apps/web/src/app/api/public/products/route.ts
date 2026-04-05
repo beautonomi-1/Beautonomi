@@ -27,14 +27,13 @@ export async function GET(request: NextRequest) {
         id, name, slug, brand, category, retail_price, image_urls, short_description,
         quantity, tags, created_at,
         provider:providers (
-          id, business_name, slug, logo_url
+          id, business_name, slug, thumbnail_url, avatar_url
         )
       `,
         { count: "exact" },
       )
       .eq("is_active", true)
-      .eq("retail_sales_enabled", true)
-      .gt("quantity", 0);
+      .eq("retail_sales_enabled", true);
 
     if (search) {
       query = query.or(
@@ -87,7 +86,6 @@ export async function GET(request: NextRequest) {
         .select("category")
         .eq("is_active", true)
         .eq("retail_sales_enabled", true)
-        .gt("quantity", 0)
         .not("category", "is", null)
         .limit(50);
       const categoryList = (categories ?? []) as Array<{ category?: string }>;
@@ -97,8 +95,25 @@ export async function GET(request: NextRequest) {
       // keep uniqueCategories []
     }
 
+    const mapped = (products ?? []).map((p: Record<string, unknown>) => {
+      const prov = p.provider as
+        | { id: string; business_name: string; slug: string; thumbnail_url?: string | null; avatar_url?: string | null }
+        | null
+        | undefined;
+      if (!prov) return p;
+      return {
+        ...p,
+        provider: {
+          id: prov.id,
+          business_name: prov.business_name,
+          slug: prov.slug,
+          logo_url: prov.thumbnail_url ?? prov.avatar_url ?? null,
+        },
+      };
+    });
+
     return successResponse({
-      products: products ?? [],
+      products: mapped,
       categories: uniqueCategories,
       pagination: {
         page,

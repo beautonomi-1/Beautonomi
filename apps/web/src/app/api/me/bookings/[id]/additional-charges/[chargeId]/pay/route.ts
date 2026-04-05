@@ -3,6 +3,9 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
+import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * POST /api/me/bookings/[id]/additional-charges/[chargeId]/pay
@@ -22,7 +25,7 @@ export async function POST(
     // Verify booking belongs to customer
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, customer_id, currency, booking_number, ref_number")
+      .select("id, customer_id, currency, booking_number, ref_number, tenant_id")
       .eq("id", bookingId)
       .eq("customer_id", user.id)
       .single();
@@ -30,6 +33,17 @@ export async function POST(
     if (bookingError || !booking) {
       return notFoundResponse("Booking not found");
     }
+
+    const tenantResolved = await resolvePaymentTenantForBookingRequest(
+      request,
+      (booking as { tenant_id?: string | null }).tenant_id,
+    );
+    if (tenantResolved.ok === false) {
+      return tenantResolved.response;
+    }
+    const { paymentTenantId } = tenantResolved;
+    const tenantRegion = await getTenantRegionConfig(paymentTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Get additional charge
     const { data: charge, error: chargeError } = await supabase
@@ -76,7 +90,7 @@ export async function POST(
     }
 
     const amount = Number(charge.amount);
-    const currency = charge.currency || booking.currency || "ZAR";
+    const currency = charge.currency || booking.currency || lastResortCurrency;
     const amountInSmallestUnit = convertToSmallestUnit(amount);
     const reference = generateTransactionReference("charge", chargeId);
 
@@ -90,11 +104,13 @@ export async function POST(
         booking_id: bookingId,
         booking_number: booking.booking_number || booking.ref_number || bookingId.slice(0, 8).toUpperCase(),
         charge_id: chargeId,
+        additional_charge_id: chargeId,
         charge_description: charge.description,
         customer_id: user.id,
         payment_type: "additional_charge",
       },
       callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/account-settings/bookings/${bookingId}/payment-callback?charge_id=${chargeId}`,
+      tenantId: paymentTenantId,
     });
 
     if (!paystackResponse.data?.authorization_url) {

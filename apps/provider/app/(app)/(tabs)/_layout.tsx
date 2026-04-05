@@ -1,12 +1,12 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useMemo } from "react";
 import { View, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { AppHeader } from "@/components/AppHeader";
-import { useProvider } from "@/providers/ProviderContext";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -18,57 +18,58 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
   const { t } = useTranslation();
-  useProvider();
 
   const TAB_BAR_HEIGHT = 60 + (insets.bottom > 0 ? insets.bottom : 10);
+  const screenOptions = useMemo(
+    () => ({
+      sceneStyle: {
+        backgroundColor: "#ffffff",
+        ...(Platform.OS === "web" ? { paddingBottom: TAB_BAR_HEIGHT } : {}),
+      },
+      headerShown: false,
+      tabBarActiveTintColor: Colors.primary,
+      tabBarInactiveTintColor: "#9ca3af",
+      tabBarStyle: {
+        backgroundColor: "#ffffff",
+        borderTopWidth: 1,
+        borderTopColor: "#f3f4f6",
+        height: TAB_BAR_HEIGHT,
+        paddingTop: 8,
+        paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
+        elevation: 8,
+        ...(Platform.OS === "web"
+          ? { boxShadow: "0 -2px 6px rgba(0,0,0,0.06)" }
+          : {
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: -2 },
+              shadowOpacity: 0.06,
+              shadowRadius: 6,
+            }),
+        ...(isTablet ? { paddingHorizontal: 40 } : {}),
+        ...(Platform.OS === "web"
+          ? ({
+              position: "fixed",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              zIndex: 999,
+            } as any)
+          : {}),
+      },
+      tabBarLabelStyle: {
+        fontSize: 11,
+        fontWeight: "600" as const,
+        marginTop: 2,
+      },
+    }),
+    [TAB_BAR_HEIGHT, insets.bottom, isTablet],
+  );
 
   return (
     <View style={{ flex: 1 }}>
       <AppHeader />
 
-    <Tabs
-      screenOptions={{
-        sceneStyle: {
-          backgroundColor: "#ffffff",
-          ...(Platform.OS === "web" ? { paddingBottom: TAB_BAR_HEIGHT } : {}),
-        },
-        headerShown: false,
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: "#9ca3af",
-        tabBarStyle: {
-          backgroundColor: "#ffffff",
-          borderTopWidth: 1,
-          borderTopColor: "#f3f4f6",
-          height: TAB_BAR_HEIGHT,
-          paddingTop: 8,
-          paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
-          elevation: 8,
-          ...(Platform.OS === "web"
-            ? { boxShadow: "0 -2px 6px rgba(0,0,0,0.06)" }
-            : {
-                shadowColor: "#000",
-                shadowOffset: { width: 0, height: -2 },
-                shadowOpacity: 0.06,
-                shadowRadius: 6,
-              }),
-          ...(isTablet ? { paddingHorizontal: 40 } : {}),
-          ...(Platform.OS === "web"
-            ? ({
-                position: "fixed",
-                bottom: 0,
-                left: 0,
-                right: 0,
-                zIndex: 999,
-              } as any)
-            : {}),
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: "600",
-          marginTop: 2,
-        },
-      }}
-    >
+    <Tabs screenOptions={screenOptions}>
       <Tabs.Screen
         name="dashboard"
         options={{

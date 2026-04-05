@@ -1,12 +1,6 @@
-import React from 'react'
-import AccountantTab from './components/accountant-tab'
+import { redirect } from "next/navigation";
+import { getResolvedCareersPortalUrl } from "@/lib/cms/careers-page-server";
 
-const page = () => {
-  return (
-    <div>
-      <AccountantTab/>
-    </div>
-  )
+export default async function CareerApplyRedirectPage() {
+  redirect(await getResolvedCareersPortalUrl());
 }
-
-export default page

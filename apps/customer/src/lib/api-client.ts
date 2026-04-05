@@ -2,10 +2,11 @@
  * API client for customer app - calls apps/web with Bearer token.
  * Includes session recovery: on 401, refresh session and retry once; if still 401, sign out.
  */
-import { createApiClient } from "@beautonomi/api";
+import { createApiClient, type ApiClientExtraOptions } from "@beautonomi/api";
 import type { ApiResponse } from "@beautonomi/types";
 import { supabase } from "@/lib/supabase/client";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, webApiTenantHeaders } from "@/config/public-env";
+import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 
 async function getAccessToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
@@ -15,6 +16,10 @@ async function getAccessToken(): Promise<string | null> {
 const baseApi = createApiClient({
   baseUrl: APP_URL,
   getAccessToken,
+  getDefaultHeaders: () => ({
+    ...webApiTenantHeaders(),
+    "X-Active-Market-Country": getDeviceRegionCountryIso(),
+  }),
 });
 
 /** On 401: refresh session, retry request once; if still 401, sign out. */
@@ -37,15 +42,15 @@ async function withSessionRecovery<T>(
 }
 
 export const api = {
-  get: <T>(path: string, init?: RequestInit) =>
+  get: <T>(path: string, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => baseApi.get<T>(path, init)),
-  post: <T>(path: string, body?: Record<string, unknown>, init?: RequestInit) =>
+  post: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => baseApi.post<T>(path, body, init)),
-  put: <T>(path: string, body?: Record<string, unknown>, init?: RequestInit) =>
+  put: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => baseApi.put<T>(path, body, init)),
-  patch: <T>(path: string, body?: Record<string, unknown>, init?: RequestInit) =>
+  patch: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => baseApi.patch<T>(path, body, init)),
-  delete: <T>(path: string, init?: RequestInit) =>
+  delete: <T>(path: string, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => baseApi.delete<T>(path, init)),
   fetch: <T>(path: string, options?: Record<string, unknown>) =>
     withSessionRecovery<T>(() => baseApi.fetch<T>(path, options)),

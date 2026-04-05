@@ -73,6 +73,9 @@ export interface MockSupabaseChain {
   delete: ReturnType<typeof vi.fn>;
   eq: ReturnType<typeof vi.fn>;
   neq: ReturnType<typeof vi.fn>;
+  not: ReturnType<typeof vi.fn>;
+  or: ReturnType<typeof vi.fn>;
+  ilike: ReturnType<typeof vi.fn>;
   in: ReturnType<typeof vi.fn>;
   single: ReturnType<typeof vi.fn>;
   limit: ReturnType<typeof vi.fn>;
@@ -100,6 +103,9 @@ function createMockQueryBuilder(
   chain.delete = vi.fn().mockReturnValue(self());
   chain.eq = vi.fn().mockReturnValue(self());
   chain.neq = vi.fn().mockReturnValue(self());
+  chain.not = vi.fn().mockReturnValue(self());
+  chain.or = vi.fn().mockReturnValue(self());
+  chain.ilike = vi.fn().mockReturnValue(self());
   chain.in = vi.fn().mockReturnValue(self());
   chain.single = vi.fn().mockResolvedValue(defaultReturn);
   chain.limit = vi.fn().mockReturnValue(self());

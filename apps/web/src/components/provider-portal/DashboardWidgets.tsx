@@ -23,6 +23,8 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { isToday, parseISO } from "date-fns";
 import Link from "next/link";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 
 // Types
 interface UpcomingAppointment {
@@ -138,8 +140,22 @@ export function UpcomingAppointmentsWidget({
 }: UpcomingAppointmentsWidgetProps) {
   const displayAppointments = appointments.slice(0, maxItems);
 
+  const parseTimeParts = (
+    time?: string
+  ): { hour: number; minute: number } | null => {
+    if (typeof time !== "string") return null;
+    const [hourRaw, minuteRaw] = time.split(":").map(Number);
+    if (!Number.isFinite(hourRaw) || !Number.isFinite(minuteRaw)) return null;
+    return {
+      hour: Math.max(0, Math.min(23, hourRaw)),
+      minute: Math.max(0, Math.min(59, minuteRaw)),
+    };
+  };
+
   const formatTime12h = (time: string) => {
-    const [hour, minute] = time.split(":").map(Number);
+    const parsed = parseTimeParts(time);
+    if (!parsed) return "--:--";
+    const { hour, minute } = parsed;
     const ampm = hour >= 12 ? "PM" : "AM";
     const hour12 = hour % 12 || 12;
     return `${hour12}:${minute.toString().padStart(2, "0")} ${ampm}`;
@@ -402,10 +418,11 @@ export function TodaySummaryWidget({
   revenueToday,
   pendingCheckouts,
 }: TodaySummaryProps) {
+  const locale = useTenantLocaleTag();
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-ZA", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
-      currency: "ZAR",
+      currency: LAST_RESORT_CURRENCY,
       minimumFractionDigits: 0,
     }).format(amount);
   };

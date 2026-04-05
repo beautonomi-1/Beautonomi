@@ -11,6 +11,9 @@ import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import Link from "next/link";
 import AuthGuard from "@/components/auth/auth-guard";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface Receipt {
   booking_number: string;
@@ -31,6 +34,12 @@ interface Receipt {
     price: number;
     total: number;
   }>;
+  addons?: Array<{
+    name: string;
+    quantity: number;
+    price: number;
+    total: number;
+  }>;
   products: Array<{
     name: string;
     quantity: number;
@@ -39,8 +48,13 @@ interface Receipt {
   }>;
   subtotal: number;
   tax: number;
+  /** Platform / service fee */
   fees: number;
+  travel_fee?: number;
+  tip_amount?: number;
+  cancellation_fee?: number;
   discount: number;
+  discount_reason?: string | null;
   total: number;
   currency?: string;
   payment_status: string;
@@ -49,6 +63,10 @@ interface Receipt {
 export default function ReceiptPage() {
   const params = useParams();
   const bookingId = params.id as string;
+  const locale = useTenantLocaleTag();
+  const { bundle } = useConfigBundle();
+  const tenantCurrencyFallback =
+    bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
 
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -78,80 +96,16 @@ export default function ReceiptPage() {
   };
 
   const formatCurrency = (amount: number, currency?: string) => {
-    return new Intl.NumberFormat("en-ZA", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
-      currency: currency || receipt?.currency || "ZAR",
+      currency: currency || receipt?.currency || tenantCurrencyFallback,
     }).format(amount);
   };
 
   const handleDownload = () => {
     if (!receipt) return;
-    const currency = receipt.currency || "ZAR";
-    const fmt = (n: number) =>
-      new Intl.NumberFormat("en-ZA", { style: "currency", currency }).format(n);
-    const fmtDate = (d: string) =>
-      new Date(d).toLocaleDateString("en-ZA", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-    const items = [
-      ...receipt.services.map((s) => ({ name: s.name, qty: s.quantity, price: s.price, total: s.total })),
-      ...receipt.products.map((p) => ({ name: p.name, qty: p.quantity, price: p.price, total: p.total })),
-    ];
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Receipt #${receipt.booking_number}</title>
-  <style>
-    body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; color: #333; }
-    .header { border-bottom: 2px solid #FF0077; padding-bottom: 12px; margin-bottom: 20px; }
-    .section { margin-bottom: 16px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 8px 0; text-align: left; border-bottom: 1px solid #eee; }
-    .text-right { text-align: right; }
-    .total { font-weight: bold; font-size: 1.1em; margin-top: 12px; padding-top: 8px; border-top: 2px solid #333; }
-    .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1 style="margin: 0; color: #FF0077;">Receipt</h1>
-    <p style="margin: 4px 0 0;">Booking #${receipt.booking_number}</p>
-  </div>
-  <div class="section">
-    <p><strong>Customer:</strong> ${receipt.customer.full_name || "—"}<br>
-    <strong>Provider:</strong> ${receipt.provider.business_name}</p>
-    <p>Booking date: ${fmtDate(receipt.booking_date)}<br>Service date: ${fmtDate(receipt.service_date)}</p>
-  </div>
-  <table>
-    <thead><tr><th>Item</th><th class="text-right">Qty</th><th class="text-right">Price</th><th class="text-right">Total</th></tr></thead>
-    <tbody>
-      ${items.map((i) => `<tr><td>${i.name}</td><td class="text-right">${i.qty}</td><td class="text-right">${fmt(i.price)}</td><td class="text-right">${fmt(i.total)}</td></tr>`).join("")}
-    </tbody>
-  </table>
-  <div class="section">
-    <p>Subtotal: ${fmt(receipt.subtotal)}</p>
-    ${receipt.tax > 0 ? `<p>Tax: ${fmt(receipt.tax)}</p>` : ""}
-    ${receipt.fees > 0 ? `<p>Platform fee: ${fmt(receipt.fees)}</p>` : ""}
-    ${receipt.discount > 0 ? `<p>Discount: -${fmt(receipt.discount)}</p>` : ""}
-    <p class="total">Total: ${fmt(receipt.total)}</p>
-    <p>Payment status: ${receipt.payment_status}</p>
-  </div>
-  <div class="footer">
-    <p>You can print this page or use your browser’s Print → Save as PDF.</p>
-  </div>
-</body>
-</html>`;
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `receipt-${receipt.booking_number}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Receipt downloaded. Open the file or use Print → Save as PDF.");
+    window.open(`/api/bookings/${bookingId}/receipt/pdf`, "_blank");
+    toast.success("PDF receipt download started.");
   };
 
   const formatDate = (dateString: string) => {
@@ -198,7 +152,7 @@ export default function ReceiptPage() {
           <div className="flex gap-2">
             <Button variant="outline" onClick={handleDownload}>
               <Download className="w-4 h-4 mr-2" />
-              Download receipt
+              Download PDF
             </Button>
             <Button variant="outline" onClick={handlePrint}>
               <Printer className="w-4 h-4 mr-2" />
@@ -241,7 +195,7 @@ export default function ReceiptPage() {
               </div>
             </div>
 
-            {(receipt.services.length > 0 || receipt.products.length > 0) && (
+            {(receipt.services.length > 0 || (receipt.addons?.length ?? 0) > 0 || receipt.products.length > 0) && (
               <div className="border-t pt-4">
                 <h3 className="font-semibold mb-4">Items</h3>
                 <div className="space-y-4">
@@ -254,6 +208,17 @@ export default function ReceiptPage() {
                         </p>
                       </div>
                       <p className="font-medium">{formatCurrency(service.total)}</p>
+                    </div>
+                  ))}
+                  {(receipt.addons ?? []).map((addon, index) => (
+                    <div key={`addon-${index}`} className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium">Add-on: {addon.name}</p>
+                        <p className="text-sm text-gray-600">
+                          Quantity: {addon.quantity} × {formatCurrency(addon.price)}
+                        </p>
+                      </div>
+                      <p className="font-medium">{formatCurrency(addon.total)}</p>
                     </div>
                   ))}
                   {receipt.products.map((product, index) => (
@@ -282,10 +247,28 @@ export default function ReceiptPage() {
                   <span>{formatCurrency(receipt.tax)}</span>
                 </div>
               )}
-              {receipt.fees > 0 && (
+              {(receipt.fees ?? 0) > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>Platform Fee</span>
+                  <span>Service / platform fee</span>
                   <span>{formatCurrency(receipt.fees)}</span>
+                </div>
+              )}
+              {(receipt.travel_fee ?? 0) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span>Travel fee</span>
+                  <span>{formatCurrency(receipt.travel_fee!)}</span>
+                </div>
+              )}
+              {(receipt.tip_amount ?? 0) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span>Tip</span>
+                  <span>{formatCurrency(receipt.tip_amount!)}</span>
+                </div>
+              )}
+              {(receipt.cancellation_fee ?? 0) > 0 && (
+                <div className="flex justify-between text-sm text-amber-800">
+                  <span>Cancellation fee (retained)</span>
+                  <span>{formatCurrency(receipt.cancellation_fee!)}</span>
                 </div>
               )}
               {receipt.discount > 0 && (

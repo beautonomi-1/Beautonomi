@@ -1,6 +1,15 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
+import { requirePermission } from "@/lib/auth/requirePermission";
+import { isProviderOwner } from "@/lib/auth/permissions";
 import { z } from "zod";
 
 const updateStaffSchema = z.object({
@@ -11,33 +20,47 @@ const updateStaffSchema = z.object({
   role: z.string().optional(),
   is_active: z.boolean().optional(),
   mobileReady: z.boolean().optional(),
+  commission_rate: z.number().min(0).max(100).optional().nullable(),
+  location_ids: z.array(z.string().uuid()).optional(),
+  service_ids: z.array(z.string().uuid()).optional(),
 });
 
-/**
- * GET /api/provider/staff/[id]
- * 
- * Get a specific staff member
- */
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+async function canManageOwnerSensitiveOps(user: { id: string; role?: string }): Promise<boolean> {
+  if (user.role === "superadmin") return true;
+  return isProviderOwner(user.id);
+}
 
-    const supabase = await getSupabaseServer(request);
-    const { id } = await params;
+async function countOwners(
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  providerId: string,
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("provider_staff")
+    .select("id", { count: "exact", head: true })
+    .eq("provider_id", providerId)
+    .eq("role", "owner");
+  if (error) {
+    console.warn("countOwners:", error);
+    return 1;
+  }
+  return count ?? 0;
+}
 
-    // Get provider ID
-    const providerId = await getProviderIdForUser(user.id, supabase);
-    if (!providerId) {
-      return notFoundResponse("Provider not found");
-    }
+function mapDbRoleToApi(dbRole: string | null | undefined): string {
+  if (dbRole === "owner") return "provider_owner";
+  if (dbRole === "manager") return "provider_manager";
+  return "provider_staff";
+}
 
-    const { data: staff, error } = await supabase
-      .from("provider_staff")
-      .select(
-        `
+async function fetchStaffDetailForApi(
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  staffId: string,
+  providerId: string,
+): Promise<Record<string, unknown> | null> {
+  const { data: row, error } = await supabase
+    .from("provider_staff")
+    .select(
+      `
         id,
         user_id,
         provider_id,
@@ -47,34 +70,115 @@ export async function GET(
         avatar_url,
         role,
         is_active,
+        mobile_ready,
+        commission_rate,
+        commission_enabled,
         users:user_id(id, full_name, email, phone, avatar_url)
-      `
-      )
-      .eq("id", id)
-      .eq("provider_id", providerId)
-      .single();
+      `,
+    )
+    .eq("id", staffId)
+    .eq("provider_id", providerId)
+    .single();
 
-    if (error || !staff) {
+  if (error || !row) return null;
+
+  const r = row as {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    avatar_url?: string | null;
+    role?: string;
+    is_active?: boolean | null;
+    mobile_ready?: boolean | null;
+    commission_rate?: number | null;
+    users?: { full_name?: string; email?: string; phone?: string; avatar_url?: string } | null;
+  };
+
+  const locations: Array<{
+    location_id: string;
+    location_name: string | null;
+    location_city: string | null;
+    is_primary: boolean;
+  }> = [];
+
+  try {
+    const { data: assignments } = await supabase
+      .from("provider_staff_locations")
+      .select("location_id, is_primary")
+      .eq("staff_id", staffId);
+    const assignmentRows = assignments ?? [];
+    if (assignmentRows.length > 0) {
+      const locationIds = assignmentRows.map((a: { location_id: string }) => a.location_id);
+      const { data: locationDetails } = await supabase
+        .from("provider_locations")
+        .select("id, name, city")
+        .in("id", locationIds);
+      const locMap = new Map((locationDetails ?? []).map((loc: { id: string; name?: string; city?: string }) => [loc.id, loc]));
+      for (const sl of assignmentRows as { location_id: string; is_primary?: boolean }[]) {
+        const loc = locMap.get(sl.location_id);
+        locations.push({
+          location_id: sl.location_id,
+          location_name: loc?.name ?? null,
+          location_city: loc?.city ?? null,
+          is_primary: sl.is_primary ?? false,
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("fetchStaffDetail locations:", e);
+  }
+
+  const { data: svcRows } = await supabase
+    .from("staff_service_assignments")
+    .select("service_id")
+    .eq("staff_id", staffId);
+  const service_ids = (svcRows ?? []).map((x: { service_id: string }) => x.service_id);
+
+  const apiRole = mapDbRoleToApi(r.role);
+
+  return {
+    id: r.id,
+    name: r.name || r.users?.full_name || "Staff Member",
+    email: r.email || r.users?.email || "",
+    phone: r.phone || r.users?.phone || null,
+    avatar_url: r.avatar_url || r.users?.avatar_url || null,
+    role: apiRole,
+    is_active: r.is_active ?? true,
+    mobileReady: r.mobile_ready ?? false,
+    commission_rate: r.commission_rate ?? null,
+    locations,
+    primary_location_id: locations.find((l) => l.is_primary)?.location_id ?? null,
+    service_ids,
+  };
+}
+
+/**
+ * GET /api/provider/staff/[id]
+ *
+ * Get a specific staff member
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+
+    const supabase = await getSupabaseServer(request);
+    const { id } = await params;
+
+    const providerId = await getProviderIdForUser(user.id, supabase);
+    if (!providerId) {
+      return notFoundResponse("Provider not found");
+    }
+
+    const detail = await fetchStaffDetailForApi(supabase, id, providerId);
+    if (!detail) {
       return notFoundResponse("Staff member not found");
     }
 
-    // Map database role format to API format
-    const apiRole = staff.role === "owner" ? "provider_owner"
-                 : staff.role === "manager" ? "provider_manager"
-                 : "provider_staff";
-    
-    const transformedStaff = {
-      id: staff.id,
-      name: (staff as any).name || (staff as any).users?.full_name || "Staff Member",
-      email: (staff as any).email || (staff as any).users?.email || "",
-      phone: (staff as any).phone || (staff as any).users?.phone || null,
-      avatar_url: (staff as any).avatar_url || (staff as any).users?.avatar_url || null,
-      role: apiRole,
-      is_active: staff.is_active ?? true,
-      mobileReady: (staff as any).mobileReady ?? false,
-    };
-
-    return successResponse(transformedStaff);
+    return successResponse(detail);
   } catch (error) {
     return handleApiError(error, "Failed to fetch staff member");
   }
@@ -82,121 +186,158 @@ export async function GET(
 
 /**
  * PATCH /api/provider/staff/[id]
- * 
+ *
  * Update a staff member
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
+    const permissionCheck = await requirePermission("manage_team", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
 
-    // Validate input
     const validationResult = updateStaffSchema.safeParse(body);
     if (!validationResult.success) {
       return errorResponse(
         "Validation failed",
         "VALIDATION_ERROR",
         400,
-        validationResult.error.issues
+        validationResult.error.issues,
       );
     }
 
-    // Get provider ID
+    const replaceLocations = Object.prototype.hasOwnProperty.call(body, "location_ids");
+    const replaceServices = Object.prototype.hasOwnProperty.call(body, "service_ids");
+
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    // Verify staff belongs to provider
-    const { data: existingStaff } = await supabase
+    const { data: existingRow, error: existingErr } = await supabase
       .from("provider_staff")
-      .select("id")
+      .select("id, role")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
-    if (!existingStaff) {
+    if (existingErr || !existingRow) {
       return notFoundResponse("Staff member not found");
     }
 
-    // Build update data
-    // Map API role format to database format
-    const updateData: Record<string, any> = {};
-    if (validationResult.data.name !== undefined) {
-      updateData.name = validationResult.data.name;
+    const existing = existingRow as { id: string; role: string };
+    const ownerOps = await canManageOwnerSensitiveOps(user);
+
+    if (existing.role === "owner" && !ownerOps) {
+      return errorResponse(
+        "Only the business owner can change this team member.",
+        "FORBIDDEN",
+        403,
+      );
     }
-    if (validationResult.data.email !== undefined) {
-      updateData.email = validationResult.data.email;
+
+    const newRoleApi = validationResult.data.role;
+    if (newRoleApi === "provider_owner" && existing.role !== "owner") {
+      if (!ownerOps) {
+        return errorResponse(
+          "Only the business owner can assign the owner role.",
+          "FORBIDDEN",
+          403,
+        );
+      }
     }
-    if (validationResult.data.phone !== undefined) {
-      updateData.phone = validationResult.data.phone;
+
+    if (existing.role === "owner" && newRoleApi !== undefined && newRoleApi !== "provider_owner") {
+      const n = await countOwners(supabase, providerId);
+      if (n <= 1) {
+        return errorResponse(
+          "Cannot demote the only business owner. Add another owner first.",
+          "VALIDATION_ERROR",
+          400,
+        );
+      }
     }
-    if (validationResult.data.avatar_url !== undefined) {
-      updateData.avatar_url = validationResult.data.avatar_url;
-    }
-    if (validationResult.data.role !== undefined) {
-      // Map API role format to database format
-      // API uses: provider_staff, provider_manager, provider_owner
-      // Database expects: employee, manager, owner
-      const dbRole = validationResult.data.role === "provider_owner" ? "owner" 
-                   : validationResult.data.role === "provider_manager" ? "manager" 
-                   : "employee";
+
+    const updateData: Record<string, unknown> = {};
+    const d = validationResult.data;
+    if (d.name !== undefined) updateData.name = d.name;
+    if (d.email !== undefined) updateData.email = d.email;
+    if (d.phone !== undefined) updateData.phone = d.phone;
+    if (d.avatar_url !== undefined) updateData.avatar_url = d.avatar_url;
+    if (d.role !== undefined) {
+      const dbRole =
+        d.role === "provider_owner" ? "owner" : d.role === "provider_manager" ? "manager" : "employee";
       updateData.role = dbRole;
     }
-    if (validationResult.data.is_active !== undefined) {
-      updateData.is_active = validationResult.data.is_active;
-    }
-    if (validationResult.data.mobileReady !== undefined) {
-      updateData.mobile_ready = validationResult.data.mobileReady; // Map camelCase to snake_case for database
-    }
-
-    // Update staff
-    const { data: updatedStaff, error: updateError } = await (supabase
-      .from("provider_staff") as any)
-      .update(updateData)
-      .eq("id", id)
-      .select(
-        `
-        id,
-        user_id,
-        provider_id,
-        name,
-        email,
-        phone,
-        avatar_url,
-        role,
-        is_active,
-        users:user_id(id, full_name, email, phone, avatar_url)
-      `
-      )
-      .single();
-
-    if (updateError || !updatedStaff) {
-      throw updateError || new Error("Failed to update staff member");
+    if (d.is_active !== undefined) updateData.is_active = d.is_active;
+    if (d.mobileReady !== undefined) updateData.mobile_ready = d.mobileReady;
+    if (d.commission_rate !== undefined) {
+      if (d.commission_rate === null) {
+        updateData.commission_rate = null;
+        updateData.commission_enabled = false;
+      } else {
+        updateData.commission_rate = d.commission_rate;
+        updateData.commission_enabled = true;
+      }
     }
 
-    // Map database role format to API format
-    const apiRole = updatedStaff.role === "owner" ? "provider_owner"
-                 : updatedStaff.role === "manager" ? "provider_manager"
-                 : "provider_staff";
-    
-    const transformedStaff = {
-      id: updatedStaff.id,
-      name: updatedStaff.name || updatedStaff.users?.full_name || "Staff Member",
-      email: updatedStaff.email || updatedStaff.users?.email || "",
-      phone: updatedStaff.phone || updatedStaff.users?.phone || null,
-      avatar_url: updatedStaff.avatar_url || updatedStaff.users?.avatar_url || null,
-      role: apiRole,
-      is_active: updatedStaff.is_active ?? true,
-    };
+    if (Object.keys(updateData).length > 0) {
+      const { error: updateError } = await supabase.from("provider_staff").update(updateData).eq("id", id);
+      if (updateError) {
+        throw updateError;
+      }
+    }
 
-    return successResponse(transformedStaff);
+    if (replaceLocations) {
+      const locIds = d.location_ids ?? [];
+      await supabase.from("provider_staff_locations").delete().eq("staff_id", id);
+      if (locIds.length > 0) {
+        const { data: locs } = await supabase
+          .from("provider_locations")
+          .select("id")
+          .eq("provider_id", providerId)
+          .in("id", locIds);
+        const valid = new Set((locs ?? []).map((l: { id: string }) => l.id));
+        const assignments = locIds
+          .filter((lid) => valid.has(lid))
+          .map((locId, i) => ({
+            staff_id: id,
+            location_id: locId,
+            is_primary: i === 0,
+          }));
+        if (assignments.length > 0) {
+          await supabase.from("provider_staff_locations").insert(assignments);
+        }
+      }
+    }
+
+    if (replaceServices) {
+      const sids = d.service_ids ?? [];
+      await supabase.from("staff_service_assignments").delete().eq("staff_id", id);
+      if (sids.length > 0) {
+        await supabase.from("staff_service_assignments").insert(
+          sids.map((sid: string) => ({ staff_id: id, service_id: sid })),
+        );
+        await supabase.from("provider_staff").update({ assigned_service_ids: sids }).eq("id", id);
+      } else {
+        await supabase.from("provider_staff").update({ assigned_service_ids: [] }).eq("id", id);
+      }
+    }
+
+    const detail = await fetchStaffDetailForApi(supabase, id, providerId);
+    if (!detail) {
+      throw new Error("Failed to load staff member after update");
+    }
+
+    return successResponse(detail);
   } catch (error) {
     return handleApiError(error, "Failed to update staff member");
   }
@@ -204,42 +345,57 @@ export async function PATCH(
 
 /**
  * DELETE /api/provider/staff/[id]
- * 
+ *
  * Remove a staff member
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
+    const permissionCheck = await requirePermission("manage_team", request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
-    // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    // Verify staff belongs to provider
-    const { data: existingStaff } = await supabase
+    const { data: existingRow, error: existingErr } = await supabase
       .from("provider_staff")
-      .select("id")
+      .select("id, role")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
-    if (!existingStaff) {
+    if (existingErr || !existingRow) {
       return notFoundResponse("Staff member not found");
     }
 
-    // Delete staff member
-    const { error: deleteError } = await supabase
-      .from("provider_staff")
-      .delete()
-      .eq("id", id);
+    const existing = existingRow as { id: string; role: string };
+    const ownerOps = await canManageOwnerSensitiveOps(user);
+
+    if (existing.role === "owner") {
+      if (!ownerOps) {
+        return errorResponse(
+          "Only the business owner can remove this account.",
+          "FORBIDDEN",
+          403,
+        );
+      }
+      const n = await countOwners(supabase, providerId);
+      if (n <= 1) {
+        return errorResponse("Cannot remove the only business owner.", "VALIDATION_ERROR", 400);
+      }
+    }
+
+    const { error: deleteError } = await supabase.from("provider_staff").delete().eq("id", id);
 
     if (deleteError) {
       throw deleteError;

@@ -38,17 +38,17 @@ const GROUPS: SettingsGroup[] = [
     items: [
       { id: "personal-info", title: "Personal info", desc: "Name, photo, change email & phone", route: "personal-info", icon: "person-outline" },
       { id: "profile-details", title: "Profile details", desc: "Questions, interests and beauty preferences", route: "profile-details", icon: "sparkles-outline" },
-      { id: "login-and-security", title: "Login & security", desc: "Email, phone & password", route: "login-and-security", icon: "lock-closed-outline" },
+      { id: "login-and-security", title: "Login & security", desc: "Email, phone, password & deactivate", route: "login-and-security", icon: "lock-closed-outline" },
       { id: "identity-verification", title: "Identity verification", desc: "Verify your identity with a document", route: "identity-verification", icon: "card-outline" },
       { id: "addresses", title: "Saved addresses", desc: "Home, work and other addresses", route: "addresses", icon: "location-outline" },
-      { id: "privacy-and-sharing", title: "Privacy & sharing", desc: "Data preferences and visibility", route: "privacy-and-sharing", icon: "shield-checkmark-outline" },
+      { id: "privacy-and-sharing", title: "Privacy & sharing", desc: "Data preferences, visibility & delete account", route: "privacy-and-sharing", icon: "shield-checkmark-outline" },
     ],
   },
   {
     heading: "Bookings & Activity",
     items: [
       { id: "bookings", title: "Bookings", desc: "Upcoming, past and cancelled", route: "bookings", icon: "calendar-outline" },
-      { id: "recurring-bookings", title: "Recurring bookings", desc: "Manage repeat appointments", route: "recurring-bookings", icon: "repeat-outline" },
+      { id: "recurring-bookings", title: "Recurring bookings", desc: "Repeat visits; pay per appointment", route: "recurring-bookings", icon: "repeat-outline" },
       { id: "product-orders", title: "Product orders", desc: "Track purchases and deliveries", route: "/(app)/product-orders", icon: "bag-outline" },
       { id: "returns", title: "Returns & refunds", desc: "Return requests and status", route: "/(app)/my-returns", icon: "arrow-undo-outline" },
       { id: "custom-requests", title: "Custom requests", desc: "Bespoke service requests", route: "custom-requests", icon: "create-outline" },
@@ -72,7 +72,7 @@ const GROUPS: SettingsGroup[] = [
       { id: "notifications", title: "Notifications", desc: "Email, SMS and push alerts", route: "notifications", icon: "notifications-outline" },
       { id: "messages", title: "Messages", desc: "Conversations with providers", route: "messages", icon: "chatbubbles-outline" },
       { id: "preferences", title: "Language & region", desc: "Language, currency and timezone", route: "preferences", icon: "globe-outline" },
-      { id: "wishlists", title: "Saved & wishlists", desc: "Saved providers and posts", route: "wishlists", icon: "heart-outline" },
+      { id: "wishlists", title: "Saved & wishlists", desc: "Saved providers, products and posts", route: "wishlists", icon: "heart-outline" },
     ],
   },
   {

@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,11 +38,11 @@ export async function GET(request: NextRequest) {
     }
     const searchParams = request.nextUrl.searchParams;
     const fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 30);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 30));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
 
     // Get bookings with services (simplified query to avoid deep nesting)
     const { data: bookings, error: bookingsError } = await supabaseAdmin
@@ -111,7 +112,9 @@ export async function GET(request: NextRequest) {
       supabaseAdmin,
       providerId,
       fromDate,
-      toDate
+      toDate,
+      null,
+      { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES }
     );
 
     // Aggregate by service - distribute booking revenue proportionally across services
@@ -120,9 +123,8 @@ export async function GET(request: NextRequest) {
       serviceName: string;
       category: string;
       duration: number;
-      bookings: number;
+      bookingIds: Set<string>;
       revenue: number;
-      averagePrice: number;
     }>();
 
     (bookings || []).forEach((booking: any) => {
@@ -147,12 +149,11 @@ export async function GET(request: NextRequest) {
           serviceName: service.title || "Unknown",
           category: categoryName,
           duration: service.duration_minutes || 0,
-          bookings: 0,
+          bookingIds: new Set<string>(),
           revenue: 0,
-          averagePrice: 0,
         };
 
-        existing.bookings += 1;
+        existing.bookingIds.add(booking.id);
         const serviceProportion = totalServicePrice > 0
           ? Number(bs.price || 0) / totalServicePrice
           : 1 / booking.booking_services.length;
@@ -163,10 +164,18 @@ export async function GET(request: NextRequest) {
 
     // Calculate averages and sort
     const servicePerformance = Array.from(serviceMap.values())
-      .map((service) => ({
-        ...service,
-        averagePrice: service.bookings > 0 ? service.revenue / service.bookings : 0,
-      }))
+      .map((service) => {
+        const bc = service.bookingIds.size;
+        return {
+          serviceId: service.serviceId,
+          serviceName: service.serviceName,
+          category: service.category,
+          duration: service.duration,
+          bookings: bc,
+          revenue: service.revenue,
+          averagePrice: bc > 0 ? service.revenue / bc : 0,
+        };
+      })
       .sort((a, b) => b.revenue - a.revenue);
 
     // Aggregate by category

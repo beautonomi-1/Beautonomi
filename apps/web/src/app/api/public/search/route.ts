@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 import { runAdsAuction, recordAdImpressions } from "@/lib/ads/auction";
 import { haversineDistanceKmFromCoords } from "@/lib/geo/distance";
 import type { SearchFilters, SearchResult } from "@/types/beautonomi";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 export const dynamic = "force-dynamic";
 // Cache search results for 30 seconds
@@ -17,10 +20,23 @@ export const revalidate = 30;
 export async function GET(request: Request) {
   try {
     const supabase = await getSupabaseServer();
+    let tenantId: string;
+    try {
+      tenantId = await resolveTenantIdWithZaFallback(request);
+    } catch (tenantErr) {
+      console.error("Tenant resolution failed in /api/public/search:", tenantErr);
+      return NextResponse.json(
+        {
+          data: null,
+          error: { message: "Tenant not configured", code: "TENANT_UNAVAILABLE" },
+        },
+        { status: 503 }
+      );
+    }
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const defaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { searchParams } = new URL(request.url);
     
-    // Debug logging
-    console.log("Search API called with params:", Object.fromEntries(searchParams.entries()));
 
     // Get text query for provider name search (accept both "query" and "q" for compatibility)
     const queryText = searchParams.get("query") || searchParams.get("q") || undefined;
@@ -65,6 +81,15 @@ export async function GET(request: Request) {
     // Build query with count
     // Note: city and country are in provider_locations, not providers table
     // starting_price may need to be calculated from offerings
+    // Exclude providers whose user has opted out of public search / SEO
+    const { data: seoOptedOutProviders } = await supabase
+      .from("providers")
+      .select("id, users!inner(include_in_search_engines)")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .eq("users.include_in_search_engines", false);
+    const seoOptedOutIds = (seoOptedOutProviders ?? []).map((p: any) => p.id as string);
+
     let query = supabase
       .from("providers")
       .select(`
@@ -81,7 +106,13 @@ export async function GET(request: Request) {
         is_verified,
         currency
       `, { count: "exact" })
-      .eq("status", "active");
+      .eq("status", "active")
+      .eq("tenant_id", tenantId);
+
+    // Filter out SEO-opted-out providers
+    if (seoOptedOutIds.length > 0) {
+      query = query.not("id", "in", `(${seoOptedOutIds.map((id) => `"${id}"`).join(",")})`);
+    }
 
     // Apply text search for provider name
     // Search in business_name and description
@@ -98,8 +129,9 @@ export async function GET(request: Request) {
     if (filters.location?.city || filters.location?.country) {
       const locationQuery = supabase
         .from("provider_locations")
-        .select("provider_id")
-        .eq("is_active", true);
+        .select("provider_id, providers!inner(tenant_id)")
+        .eq("is_active", true)
+        .eq("providers.tenant_id", tenantId);
       
       // Use case-insensitive matching for city and country with partial matching
       if (filters.location?.city) {
@@ -149,9 +181,10 @@ export async function GET(request: Request) {
     if (filters.at_home === true) {
       const { data: atHomeOfferings } = await supabase
         .from("offerings")
-        .select("provider_id")
+        .select("provider_id, providers!inner(tenant_id)")
         .eq("is_active", true)
-        .eq("supports_at_home", true);
+        .eq("supports_at_home", true)
+        .eq("providers.tenant_id", tenantId);
       const atHomeProviderIds = [...new Set((atHomeOfferings ?? []).map((o: any) => o.provider_id))];
       if (atHomeProviderIds.length === 0) {
         return NextResponse.json({
@@ -209,8 +242,6 @@ export async function GET(request: Request) {
       );
     }
     
-    console.log(`Found ${providers?.length || 0} providers (total: ${count || 0})`);
-
     if (!providers || providers.length === 0) {
       return NextResponse.json({
         data: {
@@ -320,7 +351,7 @@ export async function GET(request: Request) {
         is_featured: provider.is_featured || false,
         is_verified: provider.is_verified || false,
         starting_price: priceInfo?.price,
-        currency: priceInfo?.currency || provider.currency || "ZAR",
+        currency: priceInfo?.currency || provider.currency || defaultCurrency,
         supports_house_calls,
         supports_salon,
         ...(distance_km != null ? { distance_km } : {}),
@@ -332,6 +363,7 @@ export async function GET(request: Request) {
     const sponsoredProviderIds = new Set<string>();
     try {
       const winners = await runAdsAuction({
+        tenantId,
         categorySlug: filters.category || undefined,
         maxSlots: 5,
         excludeProviderIds: [],
@@ -344,7 +376,8 @@ export async function GET(request: Request) {
           .from("providers")
           .select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, currency")
           .in("id", winnerProviderIds)
-          .eq("status", "active");
+          .eq("status", "active")
+          .eq("tenant_id", tenantId);
         const { data: sponsoredLocations } = await supabaseAdmin
           .from("provider_locations")
           .select("provider_id, city, country, is_primary, latitude, longitude")
@@ -384,7 +417,7 @@ export async function GET(request: Request) {
         const priceMapSponsored = new Map<string, { price: number; currency: string }>();
         (sponsoredOfferings ?? []).forEach((o: any) => {
           const ex = priceMapSponsored.get(o.provider_id);
-          if (!ex || o.price < ex.price) priceMapSponsored.set(o.provider_id, { price: o.price, currency: o.currency || "ZAR" });
+          if (!ex || o.price < ex.price) priceMapSponsored.set(o.provider_id, { price: o.price, currency: o.currency || defaultCurrency });
         });
         const sponsoredCards = (sponsoredProviders ?? []).map((p: any) => {
           sponsoredProviderIds.add(p.id);
@@ -405,7 +438,7 @@ export async function GET(request: Request) {
             is_featured: p.is_featured ?? false,
             is_verified: p.is_verified ?? false,
             starting_price: priceInfo?.price,
-            currency: priceInfo?.currency ?? p.currency ?? "ZAR",
+            currency: priceInfo?.currency ?? p.currency ?? defaultCurrency,
             is_sponsored: true,
             campaign_id: winnerToCampaign.get(p.id) ?? null,
             supports_house_calls: false,
@@ -454,7 +487,6 @@ export async function GET(request: Request) {
       }
     }
 
-    console.log(`Returning ${finalProviders.length} providers (${sponsoredProviderIds.size} sponsored)`);
 
     // Also search services/offerings
     let serviceResults: any[] = [];
@@ -462,12 +494,18 @@ export async function GET(request: Request) {
     if (searchQuery) {
       const { data: offerings } = await supabase
         .from("offerings")
-        .select("id, name, description, price, duration_minutes, type, provider_id, provider:providers(id, business_name, slug, avatar_url)")
+        .select(
+          "id, name, description, price, duration_minutes, type, provider_id, providers!inner(id, business_name, slug, avatar_url)"
+        )
         .eq("is_active", true)
         .eq("type", "service")
+        .eq("providers.tenant_id", tenantId)
         .or(`name.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`)
         .limit(20);
-      serviceResults = offerings || [];
+      serviceResults = (offerings ?? []).map((row: any) => {
+        const { providers: provider, ...rest } = row;
+        return { ...rest, provider };
+      });
     }
     const services: any[] = serviceResults;
 

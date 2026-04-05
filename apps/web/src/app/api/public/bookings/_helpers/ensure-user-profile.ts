@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { User } from "@supabase/supabase-js";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /** Placeholder email when auth has no email (e.g. phone-only). Must match trigger in 199_fix_handle_new_user_trigger_silent_errors.sql */
 const PLACEHOLDER_EMAIL_DOMAIN = "beautonomi.local";
@@ -11,7 +13,9 @@ const PLACEHOLDER_EMAIL_DOMAIN = "beautonomi.local";
  */
 export async function ensureUserProfileForAuthUser(
   adminSupabase: SupabaseClient,
-  user: User
+  user: User,
+  /** When set (e.g. public booking market), new wallets use this tenant's default currency. */
+  marketTenantId?: string | null
 ): Promise<void> {
   const { data: existing } = await adminSupabase
     .from("users")
@@ -74,9 +78,14 @@ export async function ensureUserProfileForAuthUser(
     .maybeSingle();
 
   if (!wallet) {
+    let walletCurrency: string = LAST_RESORT_CURRENCY;
+    if (marketTenantId) {
+      const tr = await getTenantRegionConfig(marketTenantId);
+      walletCurrency = tr?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    }
     const { error: walletError } = await adminSupabase.from("user_wallets").insert({
       user_id: user.id,
-      currency: "ZAR",
+      currency: walletCurrency,
     });
     if (walletError && walletError.code !== "23505") {
       console.warn("ensureUserProfileForAuthUser: failed to create wallet", walletError);

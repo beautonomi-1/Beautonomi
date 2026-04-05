@@ -5,7 +5,7 @@ Every screen under `(app)/*` is behind authentication. There are no unauthentica
 ## Flow
 
 1. **Root**  
-   User lands on `index` → if no session, redirect to `/(auth)/login`. If session, check portal (provider/customer/admin) and profile, then redirect to `(app)/(tabs)/dashboard` or `(app)/onboarding`.
+   User lands on `index` → if no session, redirect to `/(auth)/login`. If session, check portal (provider/customer/admin) and profile, then redirect to `(app)/(tabs)/dashboard` or `(app)/onboarding` (hub). **Full provider onboarding** runs in **`/(app)/onboarding/wizard`** (native steps + API draft/submit). Singular / deep links: `onboarding` → hub, `onboarding/wizard` or `screen=onboarding-wizard` → wizard.
 
 2. **App layout** `(app)/_layout.tsx`  
    - If auth is still loading → show "Checking authentication…".  
@@ -32,9 +32,21 @@ Every screen under `(app)/*` is behind authentication. There are no unauthentica
 
 - `auth/callback` receives the OAuth redirect, calls `exchangeCodeForSession` or `setSession`, then (on native) waits 50ms before `router.replace("/(app)/(tabs)")` so `AuthProvider`’s `onAuthStateChange` can run and the app layout sees the new session.
 
-## In-app browser (WebView)
+## Singular smart links & deep links
 
-- WebView content (e.g. subscription payment, onboarding web) loads the **web app**, which has its own session (cookies). The native app does not inject the Supabase token into the WebView. If the web app requires login, the user may need to sign in there or the web can support token-in-URL for in-app contexts; that is separate from native app auth.
+Routing is implemented in `src/lib/singular.ts` (`buildProviderRoute`) and wired from `SingularLinkHandler` in the `(app)` layout.
+
+| Destination | `screen` URL parameter | Deeplink path (no leading slash; query stripped) |
+|-------------|-------------------------|---------------------------------------------------|
+| Onboarding hub | `onboarding` | `onboarding` |
+| Full native wizard | `onboarding-wizard` or `onboarding_wizard` | `onboarding/wizard`, `onboarding-wizard`, or `onboarding_wizard` |
+
+`buildProviderRoute` sets an internal `screen` value from the `screen` URL parameter when present, otherwise from the deeplink path; some routes (e.g. wizard) also match explicit path forms such as `onboarding/wizard`. Users without a session still hit the `(app)` auth gate and are sent to `/(auth)/login`.
+
+## External browser links
+
+- Used only for unavoidable hosted flows (for example subscription checkout, invoice documents, or hosted verification pages).
+- The app opens these links in the **device browser** via deep-link/URL launch. Core onboarding and settings journeys remain native.
 
 ## Verification checklist
 
@@ -44,3 +56,4 @@ Every screen under `(app)/*` is behind authentication. There are no unauthentica
 - **OAuth sign-in** → After callback, user lands on (app)/(tabs) without flashing back to login.
 - **401 from API** (e.g. token revoked) → Next request refreshes then retries; if still 401, sign out and redirect to login.
 - **Logged in and opening /login** → (auth) layout redirects to `/`.
+- **Singular link** → Opens mapped `(app)` route; unauthenticated users redirect to login (same as any deep link).

@@ -9,7 +9,12 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, errorResponse, normalizePhoneToE164 } from "@/lib/supabase/api-helpers";
-import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
+import { isGiftCardsEnabledForTenant } from "@/lib/subscriptions/entitlements";
+import { checkBookingLimit } from "@/lib/subscriptions/limit-checker";
+import { formatPublicCustomerBookingLimitMessage } from "@/lib/subscriptions/subscription-limit-messages";
+import { evaluateMarketAvailabilityFromRequest } from "@/lib/tenant/market-availability";
+import { bookingProductLineSchema } from "@/lib/public-booking/booking-draft-schema";
 import { z } from "zod";
 
 const consumeBodySchema = z.object({
@@ -37,6 +42,7 @@ const consumeBodySchema = z.object({
   ).optional(),
   addons: z.array(z.string().uuid()).optional(),
   special_requests: z.string().optional().nullable(),
+  house_call_instructions: z.string().optional().nullable(),
   tip_amount: z.number().min(0).optional(),
   promotion_code: z.string().optional().nullable(),
   is_group_booking: z.boolean().optional(),
@@ -54,17 +60,10 @@ const consumeBodySchema = z.object({
     .nullable(),
   resource_ids: z.array(z.string().uuid()).optional(),
   reschedule_booking_id: z.string().uuid().optional(),
-  products: z
-    .array(
-      z.object({
-        productId: z.string().uuid("Invalid product ID"),
-        quantity: z.number().int().positive("Quantity must be positive"),
-        unitPrice: z.number().min(0, "Unit price must be non-negative"),
-        totalPrice: z.number().min(0, "Total price must be non-negative"),
-      })
-    )
-    .optional(),
+  products: z.array(bookingProductLineSchema).optional(),
   package_id: z.string().uuid().optional().nullable(),
+  /** Alias for `package_id` (e.g. mobile / analytics naming) — same `service_packages.id` on the booking */
+  primary_package_id: z.string().uuid().optional().nullable(),
 });
 
 export async function POST(
@@ -95,6 +94,22 @@ export async function POST(
       );
     }
 
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) {
+      return tenantRes;
+    }
+    const { tenantId: marketTenantId } = tenantRes;
+
+    const marketAvailability = evaluateMarketAvailabilityFromRequest(request);
+    if (marketAvailability.status === "restricted") {
+      return handleApiError(
+        new Error("Access unavailable for this country"),
+        "Access unavailable in your country due to legal or regulatory restrictions.",
+        "COUNTRY_RESTRICTED",
+        451
+      );
+    }
+
     const body = await request.json();
     const parsed = consumeBodySchema.safeParse(body);
     const clientInfo = parsed.success ? parsed.data.client_info : undefined;
@@ -108,6 +123,7 @@ export async function POST(
     const providerFormResponses = parsed.success ? parsed.data.provider_form_responses : undefined;
     const addons = parsed.success ? parsed.data.addons : undefined;
     const specialRequests = parsed.success ? parsed.data.special_requests : undefined;
+    const houseCallInstructions = parsed.success ? parsed.data.house_call_instructions : undefined;
     const tipAmount = parsed.success ? parsed.data.tip_amount : undefined;
     const promotionCode = parsed.success ? parsed.data.promotion_code : undefined;
     const isGroupBooking = parsed.success ? parsed.data.is_group_booking : undefined;
@@ -117,10 +133,12 @@ export async function POST(
     const setAsDefault = parsed.success ? parsed.data.set_as_default : undefined;
     const rescheduleBookingId = parsed.success ? parsed.data.reschedule_booking_id : undefined;
     const products = parsed.success ? parsed.data.products : undefined;
-    const packageId = parsed.success ? parsed.data.package_id : undefined;
+    const packageId = parsed.success
+      ? (parsed.data.package_id ?? parsed.data.primary_package_id) ?? undefined
+      : undefined;
 
     if (giftCardCode?.trim()) {
-      const giftCardsEnabled = await isFeatureEnabledServer("gift_cards");
+      const giftCardsEnabled = await isGiftCardsEnabledForTenant(marketTenantId);
       if (!giftCardsEnabled) {
         return errorResponse(
           "Gift cards are currently unavailable.",
@@ -131,6 +149,20 @@ export async function POST(
     }
 
     const adminSupabase = getSupabaseAdmin();
+
+    const { data: marketTenant } = await adminSupabase
+      .from("tenants")
+      .select("slug")
+      .eq("id", marketTenantId)
+      .maybeSingle();
+    if ((marketTenant as { slug?: string } | null)?.slug === "global") {
+      return handleApiError(
+        new Error("Bookings are unavailable on global entry"),
+        "Please switch to an available market to continue booking.",
+        "MARKET_SWITCH_REQUIRED",
+        403
+      );
+    }
 
     const { data: hold, error: holdError } = await adminSupabase
       .from("booking_holds")
@@ -143,6 +175,20 @@ export async function POST(
         new Error("Hold not found"),
         "Hold not found or expired",
         "NOT_FOUND",
+        404
+      );
+    }
+
+    const { data: holdProviderRow } = await adminSupabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", hold.provider_id)
+      .maybeSingle();
+    if (!holdProviderRow || (holdProviderRow as { tenant_id?: string }).tenant_id !== marketTenantId) {
+      return handleApiError(
+        new Error("Hold not available on this site"),
+        "This booking link is not valid here.",
+        "TENANT_MISMATCH",
         404
       );
     }
@@ -165,6 +211,21 @@ export async function POST(
         "Your hold has expired. Please select a new time.",
         "HOLD_EXPIRED",
         410
+      );
+    }
+
+    const bookingLimitCheck = await checkBookingLimit(hold.provider_id);
+    if (!bookingLimitCheck.canProceed) {
+      const publicMessage = formatPublicCustomerBookingLimitMessage(bookingLimitCheck);
+      console.error("[booking-holds/consume] booking limit denied", hold.provider_id, {
+        internalReason: bookingLimitCheck.reason,
+        planName: bookingLimitCheck.planName,
+      });
+      return handleApiError(
+        new Error(`Booking limit: ${bookingLimitCheck.reason}`),
+        publicMessage,
+        "SUBSCRIPTION_LIMIT_EXCEEDED",
+        403
       );
     }
 
@@ -217,6 +278,12 @@ export async function POST(
             postal_code: (address.postal_code ?? address.address_postal_code) as string | undefined,
             latitude: address.latitude as number | undefined,
             longitude: address.longitude as number | undefined,
+            apartment_unit: (address.apartment_unit ?? null) as string | null | undefined,
+            building_name: (address.building_name ?? null) as string | null | undefined,
+            floor_number: (address.floor_number ?? null) as string | null | undefined,
+            access_codes: (address.access_codes ?? null) as Record<string, string> | null | undefined,
+            parking_instructions: (address.parking_instructions ?? null) as string | null | undefined,
+            location_landmarks: (address.location_landmarks ?? null) as string | null | undefined,
           }
         : undefined;
 
@@ -263,6 +330,7 @@ export async function POST(
       hold_id: holdId,
       addons: addons ?? undefined,
       special_requests: specialRequests ?? undefined,
+      house_call_instructions: houseCallInstructions ?? undefined,
       tip_amount: tipAmount ?? undefined,
       promotion_code: promotionCode ?? undefined,
       reschedule_booking_id: rescheduleBookingId ?? undefined,
@@ -290,14 +358,28 @@ export async function POST(
 
     const cookieHeader = request.headers.get("cookie") || "";
 
-    const bookingRes = await fetch(`${baseUrl}/api/public/bookings`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Cookie: cookieHeader,
-      },
-      body: JSON.stringify(draft),
-    });
+    const forwardHost =
+      request.headers.get("x-forwarded-host")?.trim() ||
+      request.headers.get("host")?.trim() ||
+      "";
+
+    const paymentForwardAbort = new AbortController();
+    const paymentForwardTimer = setTimeout(() => paymentForwardAbort.abort(), 120_000);
+    let bookingRes: Response;
+    try {
+      bookingRes = await fetch(`${baseUrl}/api/public/bookings`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: cookieHeader,
+          ...(forwardHost ? { "x-forwarded-host": forwardHost } : {}),
+        },
+        body: JSON.stringify(draft),
+        signal: paymentForwardAbort.signal,
+      });
+    } finally {
+      clearTimeout(paymentForwardTimer);
+    }
 
     const bookingData = await bookingRes.json();
 

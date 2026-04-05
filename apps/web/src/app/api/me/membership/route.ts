@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/me/membership
@@ -16,6 +19,9 @@ export async function GET(request: NextRequest) {
       request
     );
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // 1) Platform membership (customer_memberships + memberships)
     const { data: activeRows, error: cmError } = await supabase
@@ -124,7 +130,7 @@ export async function GET(request: NextRequest) {
             plan_description: plan.description ?? null,
             discount_percent: Number(plan.discount_percent ?? 0),
             price_monthly: Number(plan.price_monthly ?? 0),
-            currency: plan.currency || "ZAR",
+            currency: plan.currency || lastResortCurrency,
             expires_at: row.expires_at ?? null,
             started_at: row.started_at || new Date().toISOString(),
           });

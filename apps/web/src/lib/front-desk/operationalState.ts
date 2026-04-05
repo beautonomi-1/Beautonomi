@@ -33,6 +33,17 @@ export function getOperationalBadge(booking: Booking): OperationalBadge {
     return fullyPaid ? "completed" : "ready_to_pay";
   }
 
+  // DB still pending — provider must confirm before normal front-desk flow (parity with mobile)
+  const dbStatus = booking.db_status;
+  if (
+    dbStatus === "pending" &&
+    status !== "in_progress" &&
+    currentStage !== "service_started" &&
+    currentStage !== "service_completed"
+  ) {
+    return "needs_confirmation";
+  }
+
   // In service
   if (status === "in_progress" || currentStage === "service_started") {
     // Service done (current_stage service_completed) but not marked completed - could be ready to pay
@@ -83,6 +94,8 @@ export function matchesQueueTab(
   switch (tabId) {
     case "all":
       return true;
+    case "needs_confirmation":
+      return badge === "needs_confirmation";
     case "arrivals":
       return ["late", "arriving", "checked_in"].includes(badge);
     case "in_service":
@@ -104,6 +117,7 @@ export function getQueueCounts(
 ): Record<string, number> {
   const counts: Record<string, number> = {
     all: bookings.length,
+    needs_confirmation: 0,
     arrivals: 0,
     in_service: 0,
     ready_to_pay: 0,
@@ -112,7 +126,8 @@ export function getQueueCounts(
 
   for (const b of bookings) {
     const badge = getOperationalBadge(b);
-    if (["late", "arriving", "checked_in"].includes(badge)) counts.arrivals++;
+    if (badge === "needs_confirmation") counts.needs_confirmation++;
+    else if (["late", "arriving", "checked_in"].includes(badge)) counts.arrivals++;
     else if (badge === "in_service") counts.in_service++;
     else if (badge === "ready_to_pay") counts.ready_to_pay++;
     else if (badge === "completed" || badge === "cancelled") counts.completed++;

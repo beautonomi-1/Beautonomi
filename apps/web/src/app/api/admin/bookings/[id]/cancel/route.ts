@@ -1,8 +1,10 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireAdminSection, successResponse, notFoundResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 
 /**
  * POST /api/admin/bookings/[id]/cancel
@@ -17,22 +19,21 @@ export async function POST(
     const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     if (!user) throw new Error("Authentication required");
     const { id } = await params;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
+    if (!supabase) throw new Error("Admin client unavailable");
     const body = await request.json();
+    const tenantId = await resolveAdminApiTenantId(request);
 
-    // Verify booking exists
-    const { data: booking } = await supabase
-      .from("bookings")
-      .select("id, status, customer_id, booking_number")
-      .eq("id", id)
-      .single();
-
-    if (!booking) {
-      return notFoundResponse("Booking not found");
-    }
+    const loaded = await fetchBookingInAdminTenant(
+      supabase,
+      id,
+      tenantId,
+      "id, status, customer_id, booking_number, tenant_id"
+    );
+    if ("error" in loaded) return loaded.error;
 
     type BookingRow = { status?: string; customer_id?: string; booking_number?: string };
-    const bookingRow = booking as BookingRow;
+    const bookingRow = loaded.booking as BookingRow;
     if (bookingRow.status === "cancelled") {
       return errorResponse("Booking is already cancelled", "INVALID_STATE", 400);
     }

@@ -1,8 +1,11 @@
 import { NextRequest } from "next/server";
-import { successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { successResponse, errorResponse, handleApiError, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
-import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { isGiftCardsEnabledForTenant } from "@/lib/subscriptions/entitlements";
 import { createClient } from "@supabase/supabase-js";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/provider/gift-cards/validate
@@ -22,11 +25,6 @@ export async function GET(request: NextRequest) {
       return permissionCheck.response!;
     }
 
-    const giftCardsEnabled = await isFeatureEnabledServer("gift_cards");
-    if (!giftCardsEnabled) {
-      return errorResponse("Gift cards are currently unavailable.", "FEATURE_DISABLED", 403);
-    }
-
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -37,6 +35,26 @@ export async function GET(request: NextRequest) {
         },
       }
     );
+
+    const providerId = await getProviderIdForUser(permissionCheck.user.id, supabaseAdmin);
+    let flagTenantId: string | null = null;
+    if (providerId) {
+      const { data: prow } = await supabaseAdmin
+        .from("providers")
+        .select("tenant_id")
+        .eq("id", providerId)
+        .maybeSingle();
+      flagTenantId = (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+    }
+
+    const giftCardsEnabled = await isGiftCardsEnabledForTenant(flagTenantId);
+    if (!giftCardsEnabled) {
+      return errorResponse("Gift cards are currently unavailable.", "FEATURE_DISABLED", 403);
+    }
+
+    const tenantForCurrency = flagTenantId ?? (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(tenantForCurrency);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const { searchParams } = new URL(request.url);
     const code = searchParams.get('code');
@@ -79,13 +97,13 @@ export async function GET(request: NextRequest) {
       gift_card: {
         id: giftCard.id,
         code: giftCard.code,
-        currency: giftCard.currency || 'ZAR',
+        currency: giftCard.currency || lastResortCurrency,
         initial_balance: Number(giftCard.initial_balance || 0),
         balance: balance,
         expires_at: giftCard.expires_at,
       },
       balance: balance,
-      message: `Gift card balance: ${giftCard.currency || 'ZAR'} ${balance.toFixed(2)}`,
+      message: `Gift card balance: ${giftCard.currency || lastResortCurrency} ${balance.toFixed(2)}`,
     });
   } catch (error) {
     return handleApiError(error, "Failed to validate gift card");

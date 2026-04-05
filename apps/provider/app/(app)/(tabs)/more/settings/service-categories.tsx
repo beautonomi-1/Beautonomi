@@ -7,6 +7,7 @@ import {
   TextInput,
   Alert,
   Switch,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -20,6 +21,8 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { twStyle } from "@/lib/twStyle";
+import { APP_URL } from "@/config/public-env";
+import { resolveGlobalCategoryIconUri } from "@beautonomi/utils";
 
 interface Category {
   id: string;
@@ -273,6 +276,7 @@ export default function ServiceCategoriesScreen() {
               );
             }
             const cat = item as Category & { type: "own" | "global" };
+            const iconUri = resolveGlobalCategoryIconUri(cat.icon, APP_URL);
             return (
               <TouchableOpacity
                 style={twStyle(`rounded-xl border bg-white p-4 ${
@@ -283,11 +287,20 @@ export default function ServiceCategoriesScreen() {
               >
                 <View style={twStyle("flex-row items-center")}>
                   <View style={twStyle("h-10 w-10 items-center justify-center rounded-xl bg-indigo-50")}>
-                    <Ionicons
-                      name={(cat.icon as any) || "grid-outline"}
-                      size={20}
-                      color="#6366f1"
-                    />
+                    {iconUri ? (
+                      <Image
+                        source={{ uri: iconUri }}
+                        style={{ width: 22, height: 22 }}
+                        resizeMode="contain"
+                        accessibilityIgnoresInvertColors
+                      />
+                    ) : (
+                      <Ionicons
+                        name={(cat.icon as keyof typeof Ionicons.glyphMap) || "grid-outline"}
+                        size={20}
+                        color="#6366f1"
+                      />
+                    )}
                   </View>
                   <View style={twStyle("ml-3 flex-1")}>
                     <View style={twStyle("flex-row items-center")}>

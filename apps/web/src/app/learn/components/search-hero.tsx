@@ -5,7 +5,13 @@ import { useLearnContext } from "../learn-context";
 import { SearchWithSuggestions } from "./search-with-suggestions";
 import { cn } from "@/lib/utils";
 
-export function SearchHero() {
+export function SearchHero({
+  title = "Beautonomi Learning Center",
+  subtitle = "Find guides and answers for customers and providers.",
+}: {
+  title?: string;
+  subtitle?: string;
+} = {}) {
   const ref = useRef<HTMLDivElement>(null);
   const { setSearchHeroVisible } = useLearnContext();
   const [searchQ, setSearchQ] = useState("");
@@ -49,12 +55,8 @@ export function SearchHero() {
           sticky && "md:pt-2"
         )}
       >
-        <h1 className="text-2xl md:text-4xl font-bold tracking-tight text-black">
-          Beautonomi Learning Center
-        </h1>
-        <p className="mt-2 text-sm text-zinc-600 md:text-base">
-          Find guides and answers for customers and providers.
-        </p>
+        <h1 className="text-2xl md:text-4xl font-bold tracking-tight text-black">{title}</h1>
+        <p className="mt-2 text-sm text-zinc-600 md:text-base">{subtitle}</p>
         {/* Search-First Hero: centered, minimalist, rounded-[24px], shadow-inner pill, ⌘K */}
         <div className="mt-6 max-w-2xl mx-auto">
           <div className="rounded-[24px] p-2 md:p-3 bg-zinc-50 border border-zinc-200/50">

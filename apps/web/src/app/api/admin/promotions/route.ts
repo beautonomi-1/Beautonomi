@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 interface Promotion {
   id: string;
@@ -30,10 +31,12 @@ export async function GET(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { data: promotions, error } = await supabase
       .from("promotions")
       .select("*")
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -73,6 +76,7 @@ export async function POST(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
     const {
       name,
@@ -102,8 +106,9 @@ export async function POST(request: NextRequest) {
     const { data: existing } = await supabase
       .from("promotions")
       .select("id")
+      .eq("tenant_id", tenantId)
       .eq("code", code.toUpperCase())
-      .single();
+      .maybeSingle();
 
     if (existing) {
       return errorResponse("Promotion code already exists", "DUPLICATE_CODE", 409);
@@ -115,6 +120,7 @@ export async function POST(request: NextRequest) {
     const { data: promotion, error } = await supabase
       .from("promotions")
       .insert({
+        tenant_id: tenantId,
         name,
         code: code.toUpperCase(),
         type: dbType,

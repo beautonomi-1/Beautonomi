@@ -9,6 +9,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { StatCard } from "@/components/ui/StatCard";
 import { formatCurrency } from "@/lib/format";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
 
 interface GiftCardSettings {
@@ -215,13 +216,13 @@ export default function GiftCardsSettingsScreen() {
             <View style={twStyle("mb-2 flex-row justify-between")}>
               <Text style={twStyle("text-xs text-gray-500")}>Min Value</Text>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                R {settings?.min_value ?? 50}
+                {`${getTenantDefaultCurrency()} ${settings?.min_value ?? 50}`}
               </Text>
             </View>
             <View style={twStyle("mb-2 flex-row justify-between")}>
               <Text style={twStyle("text-xs text-gray-500")}>Max Value</Text>
               <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                R {settings?.max_value ?? 10000}
+                {`${getTenantDefaultCurrency()} ${settings?.max_value ?? 10000}`}
               </Text>
             </View>
             <View style={twStyle("flex-row justify-between")}>
@@ -255,7 +256,7 @@ export default function GiftCardsSettingsScreen() {
               <>
                 <View style={twStyle("border-t border-gray-100 pt-3")}>
                   <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                    Min Value (R)
+                    {`Min Value (${getTenantDefaultCurrency()})`}
                   </Text>
                   <TextInput
                     style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -266,7 +267,7 @@ export default function GiftCardsSettingsScreen() {
                     placeholderTextColor="#9ca3af"
                   />
                   <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                    Max Value (R)
+                    {`Max Value (${getTenantDefaultCurrency()})`}
                   </Text>
                   <TextInput
                     style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}

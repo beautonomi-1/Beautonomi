@@ -1,0 +1,7 @@
+{
+  "platform_5xx_rate": 0.0012,
+  "tier1_5xx_rate": 0.0025,
+  "booking_failure_rate": 0.009,
+  "webhook_failure_rate": 0.0004,
+  "db_connection_utilization": 0.64
+}

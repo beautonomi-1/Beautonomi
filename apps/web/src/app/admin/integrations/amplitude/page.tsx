@@ -54,10 +54,13 @@ export default function AmplitudeIntegrationPage() {
   const loadConfig = async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<AmplitudeConfig>("/api/admin/integrations/amplitude?environment=production");
-      if (response) {
-        setConfig(response);
+      const response = await fetcher.get<{ data: AmplitudeConfig | null }>(
+        "/api/admin/integrations/amplitude?environment=production"
+      );
+      if (response?.data) {
+        setConfig(response.data);
       }
+      // When response.data is null, keep default state (empty form for new config)
     } catch (error) {
       if (error instanceof FetchError && error.status === 404) {
         // No config exists yet, use defaults (no log in production)

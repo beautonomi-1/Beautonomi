@@ -21,6 +21,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { Colors } from "@/constants/colors";
 
 interface PackageItem {
@@ -375,7 +376,7 @@ export default function PackagesScreen() {
 
           <View style={{ marginBottom: 12, flexDirection: "row" }}>
             <View style={{ flex: 1, marginRight: 12 }}>
-              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Price (R) *</Text>
+              <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{`Price (${getTenantDefaultCurrency()}) *`}</Text>
               <TextInput
                 style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, color: Colors.gray[900] }}
                 value={form.price}
@@ -477,7 +478,7 @@ export default function PackagesScreen() {
                 <Ionicons name="cut-outline" size={18} color="#6366f1" />
                 <View style={{ marginLeft: 10 }}>
                   <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{svc.title}</Text>
-                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{svc.duration_minutes}min · R{svc.price}</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{`${svc.duration_minutes}min · ${getTenantDefaultCurrency()} ${svc.price}`}</Text>
                 </View>
               </View>
               <Ionicons name="add-circle-outline" size={22} color="#6366f1" />
@@ -496,7 +497,7 @@ export default function PackagesScreen() {
                 <Ionicons name="cube-outline" size={18} color="#8b5cf6" />
                 <View style={{ marginLeft: 10 }}>
                   <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{prod.name}</Text>
-                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>R{prod.retail_price}</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{`${getTenantDefaultCurrency()} ${prod.retail_price}`}</Text>
                 </View>
               </View>
               <Ionicons name="add-circle-outline" size={22} color="#8b5cf6" />

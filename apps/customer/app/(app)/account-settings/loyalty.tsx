@@ -23,6 +23,7 @@ import { ScreenFrame } from "@/components/ScreenFrame";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { haptic } from "@/lib/haptics";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 interface Milestone {
   id: string;
@@ -65,6 +66,12 @@ interface LoyaltyData {
 }
 
 type Tab = "overview" | "history" | "milestones";
+
+function parseValidDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
 
 function AnimatedProgressBar({ progress, color = "#B45309" }: { progress: number; color?: string }) {
   const width = useSharedValue(0);
@@ -120,7 +127,7 @@ export default function LoyaltyScreen() {
   const points = data?.points_balance ?? data?.balance?.available ?? data?.points ?? 0;
   const lifetimePoints = data?.lifetime_points ?? data?.balance?.total_earned ?? points;
   const rate = data?.redemption_rate ?? data?.conversion?.rate ?? 100;
-  const currency = data?.redemption_currency ?? data?.conversion?.currency ?? "ZAR";
+  const currency = data?.redemption_currency ?? data?.conversion?.currency ?? getTenantDefaultCurrency();
   const redemptionValue = data?.redemption_value ?? (rate > 0 ? points / rate : 0);
   const earnDesc = data?.earning_rate_description ?? "Earn points with every booking";
   const minRedeem = data?.minimum_redemption ?? data?.config?.min_redemption_points ?? 100;
@@ -181,7 +188,9 @@ export default function LoyaltyScreen() {
   }
 
   function formatDate(iso: string) {
-    return new Date(iso).toLocaleDateString("en-US", {
+    const parsed = parseValidDate(iso);
+    if (!parsed) return "—";
+    return parsed.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -300,14 +309,17 @@ export default function LoyaltyScreen() {
 
         {tab === "history" && (
           <View>
-            {(!data?.history || data.history.length === 0) ? (
+            {((): boolean => {
+              const combined = [...(data?.history ?? []), ...(data?.recent_transactions ?? [])];
+              return combined.length === 0;
+            })() ? (
               <View style={{ paddingVertical: 48, alignItems: "center" }}>
                 <Ionicons name="receipt-outline" size={40} color={Colors.gray[400]} />
                 <Text style={{ color: Colors.gray[600], marginTop: 12, fontWeight: "500" }}>No transactions yet</Text>
                 <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 4 }}>Points will appear here after your first booking</Text>
               </View>
             ) : (
-              (data.history ?? data.recent_transactions ?? []).map((tx: any) => {
+              [...(data?.history ?? []), ...(data?.recent_transactions ?? [])].map((tx: any) => {
                 const txType = tx.type ?? (tx.transaction_type === "earned" ? "earn" : tx.transaction_type === "redeemed" ? "redeem" : tx.transaction_type === "expired" ? "expire" : "earn");
                 const desc = tx.description ?? (txType === "earn" ? "Points earned" : txType === "redeem" ? "Points redeemed" : "Points expired");
                 const pts = Number(tx.points ?? tx.points_amount ?? 0) || 0;

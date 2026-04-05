@@ -27,6 +27,9 @@ import { useReferenceData } from "@/hooks/useReferenceData";
 import { AdvancedPricingModal } from "./AdvancedPricingModal";
 import { handleError } from "@/lib/provider-portal/error-handler";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface ServiceCreateEditDialogProps {
   open: boolean;
@@ -55,6 +58,7 @@ export function ServiceCreateEditDialog({
   onSave,
   onCategoriesChange,
 }: ServiceCreateEditDialogProps) {
+  const { currencyCode, format: fmt } = useReportCurrency();
   // Fetch reference data for all dropdowns
   const { 
     getOptions, 
@@ -237,12 +241,16 @@ export function ServiceCreateEditDialog({
       toast.error("Name, email, and mobile are required");
       return;
     }
+    if (!isCompleteE164(teamMemberFormData.mobile)) {
+      toast.error("Enter a valid mobile number in international format (e.g. +27…).");
+      return;
+    }
 
     try {
       const newMember = await providerApi.createTeamMember({
         name: teamMemberFormData.name,
         email: teamMemberFormData.email,
-        mobile: teamMemberFormData.mobile,
+        mobile: teamMemberFormData.mobile.trim(),
         role: teamMemberFormData.role === "staff" ? "employee" : teamMemberFormData.role,
       });
       toast.success("Team member created");
@@ -1255,7 +1263,7 @@ export function ServiceCreateEditDialog({
                   <div>
                     <Label className="text-sm sm:text-base">Price *</Label>
                     <div className="relative mt-1.5">
-                      <span className="absolute left-3 top-2.5 text-gray-500 text-sm">ZAR</span>
+                      <span className="absolute left-3 top-2.5 text-gray-500 text-sm">{currencyCode}</span>
                       <Input 
                         type="number" 
                         step="0.01"
@@ -1443,7 +1451,7 @@ export function ServiceCreateEditDialog({
                     <span className="absolute right-3 top-2.5 text-gray-500">%</span>
                   </div>
                   <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-gray-500">ZAR</span>
+                    <span className="absolute left-3 top-2.5 text-gray-500">{currencyCode}</span>
                     <Input 
                       type="number" 
                       readOnly
@@ -1528,7 +1536,7 @@ export function ServiceCreateEditDialog({
                   <Label htmlFor={`inc-${svc.id}`} className="flex-1 cursor-pointer">
                     <div className="font-medium">{svc.name}</div>
                     <div className="text-xs text-gray-500">
-                      {svc.duration_minutes} min • ZAR {svc.price}
+                      {svc.duration_minutes} min • {fmt(svc.price)}
                     </div>
                   </Label>
                 </div>
@@ -1670,13 +1678,12 @@ export function ServiceCreateEditDialog({
             </div>
 
             <div>
-              <Label htmlFor="teamMemberMobile" className="text-sm sm:text-base">Mobile Number *</Label>
-              <Input
-                id="teamMemberMobile"
-                type="tel"
+              <PhoneInput
+                inputId="catalogue-team-member-mobile"
+                label="Mobile Number *"
                 value={teamMemberFormData.mobile}
-                onChange={(e) => setTeamMemberFormData({ ...teamMemberFormData, mobile: e.target.value })}
-                placeholder="Enter mobile number"
+                onChange={(e164) => setTeamMemberFormData({ ...teamMemberFormData, mobile: e164 })}
+                placeholder="Phone number"
                 required
                 className="mt-1.5"
               />
@@ -1715,7 +1722,11 @@ export function ServiceCreateEditDialog({
             <Button 
               onClick={handleCreateTeamMember} 
               className="bg-primary hover:bg-primary-hover w-full sm:w-auto"
-              disabled={!teamMemberFormData.name.trim() || !teamMemberFormData.email.trim() || !teamMemberFormData.mobile.trim()}
+              disabled={
+                !teamMemberFormData.name.trim() ||
+                !teamMemberFormData.email.trim() ||
+                !isCompleteE164(teamMemberFormData.mobile)
+              }
             >
               Add Member
             </Button>

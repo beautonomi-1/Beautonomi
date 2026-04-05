@@ -2,8 +2,11 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { convertToSmallestUnit } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const schema = z.object({
   amount: z.number().min(1, "Minimum top up amount is 1"),
@@ -16,10 +19,21 @@ export async function POST(request: NextRequest) {
 
     const body = schema.parse(await request.json());
 
-    const { data: userRow } = await supabase.from("users").select("email, preferred_currency").eq("id", user.id).single();
-    const currency = (userRow as any)?.preferred_currency || "ZAR";
+    const { data: userRow } = await supabase
+      .from("users")
+      .select("email, preferred_currency")
+      .eq("id", user.id)
+      .single();
+
     const email = (userRow as any)?.email;
     if (!email) throw new Error("User email is required");
+
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = tenantId ? await getTenantRegionConfig(tenantId) : null;
+    const currency =
+      (userRow as any)?.preferred_currency ||
+      tenantRegion?.defaultCurrency ||
+      LAST_RESORT_CURRENCY;
 
     // Create pending topup row first (we'll update with reference + payment_url)
     const { data: topup, error: topupError } = await (supabase.from("wallet_topups") as any)
@@ -28,6 +42,7 @@ export async function POST(request: NextRequest) {
         amount: Number(body.amount),
         currency,
         status: "pending",
+        tenant_id: tenantId,
       })
       .select()
       .single();
@@ -47,7 +62,9 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         amount: Number(body.amount),
         currency,
+        tenant_id: tenantId,
       },
+      tenantId,
     });
 
     const paymentUrl = paystackData?.data?.authorization_url || null;

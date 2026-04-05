@@ -1,43 +1,115 @@
 import { useEffect, useRef } from "react";
-import { Linking } from "react-native";
+import { Linking, Platform } from "react-native";
 import { fetchAmplitudeConfig } from "@beautonomi/analytics";
 import { initAnalytics, handleEngagementURL } from "@/lib/analytics-rn";
 import { APP_URL } from "@/config/public-env";
+import { api } from "@/lib/api-client";
+import { setAnalyticsInstance } from "@/lib/analytics";
 import { useAuth } from "./AuthProvider";
-import { setAnalyticsInstance, identifyProvider } from "@/lib/analytics";
+
+type AnalyticsClient = NonNullable<Awaited<ReturnType<typeof initAnalytics>>>;
 
 export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const analyticsRef = useRef<Awaited<ReturnType<typeof initAnalytics>> | null>(null);
+  const clientRef = useRef<AnalyticsClient | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+
     (async () => {
       try {
+        if (user) {
+          const consentRes = await api.get<{ analytics_consent?: boolean }>(
+            "/api/me/analytics/consent"
+          );
+          if (cancelled) return;
+          if (consentRes.error) {
+            if (__DEV__) {
+              console.log("[Analytics] Skipped: consent check failed (fail-closed)");
+            }
+            try {
+              clientRef.current?.reset();
+            } catch {
+              /* ignore */
+            }
+            clientRef.current = null;
+            setAnalyticsInstance(null);
+            return;
+          }
+          if (consentRes.data?.analytics_consent === false) {
+            if (__DEV__) {
+              console.log("[Analytics] Skipped: analytics consent declined");
+            }
+            try {
+              clientRef.current?.reset();
+            } catch {
+              /* ignore */
+            }
+            clientRef.current = null;
+            setAnalyticsInstance(null);
+            return;
+          }
+        }
+
         const config = await fetchAmplitudeConfig(
           APP_URL,
           __DEV__ ? "development" : "production"
         );
         if (cancelled) return;
-        const client = await initAnalytics(config, "provider");
-        if (cancelled) return;
-        analyticsRef.current = client;
 
-        // Bridge to the analytics module for use throughout the app
+        const enableSessionReplay = Boolean(user);
+        const client = await initAnalytics(config, "provider", { enableSessionReplay });
+        if (cancelled) return;
+
+        clientRef.current = client;
+
         if (client) {
           setAnalyticsInstance({
             logEvent: client.track,
             identify: client.identify,
           });
+        } else {
+          setAnalyticsInstance(null);
+        }
+
+        if (user && client) {
+          try {
+            const res = await api.post<Record<string, unknown>>("/api/me/analytics/identify", {
+              portal: "provider",
+              platform: Platform.OS,
+              device_type: Platform.OS,
+            });
+            if (cancelled) return;
+            if (res.error) {
+              console.error("[Analytics] Identify API error:", res.error);
+              return;
+            }
+            if (!res.data || typeof res.data !== "object") {
+              console.error("[Analytics] Identify API returned no properties (fail-closed)");
+              return;
+            }
+            client.identify(user.id, res.data as Record<string, unknown>);
+          } catch (e) {
+            console.error("[Analytics] Identify request failed:", e);
+          }
         }
       } catch {
-        // No-op if config fetch fails
+        clientRef.current = null;
+        setAnalyticsInstance(null);
       }
     })();
+
     return () => {
       cancelled = true;
+      try {
+        clientRef.current?.reset();
+      } catch {
+        /* ignore */
+      }
+      clientRef.current = null;
+      setAnalyticsInstance(null);
     };
-  }, []);
+  }, [user]);
 
   // Deep links for Amplitude Guides & Surveys (preview, etc.). Same API key / CDP as web.
   useEffect(() => {
@@ -46,7 +118,6 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
       if (cancelled || !url) return;
       const handled = await handleEngagementURL(url);
       if (handled) return;
-      // App can handle non-Amplitude URLs (e.g. notification deep links) elsewhere
     });
     const subscription = Linking.addEventListener("url", async ({ url }) => {
       const handled = await handleEngagementURL(url);
@@ -57,19 +128,6 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
       subscription.remove();
     };
   }, []);
-
-  useEffect(() => {
-    const client = analyticsRef.current;
-    if (client && user) {
-      // Set comprehensive user properties for provider segmentation
-      identifyProvider(user.id, {
-        role: user.user_metadata?.role ?? "provider_owner",
-        provider_id: user.user_metadata?.provider_id,
-        country: user.user_metadata?.country,
-        city: user.user_metadata?.city,
-      });
-    }
-  }, [user]);
 
   return <>{children}</>;
 }

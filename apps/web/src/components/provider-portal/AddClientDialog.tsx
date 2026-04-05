@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Sheet,
@@ -37,6 +39,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { currencySelectLabel } from "@/lib/locale/currency";
 
 interface Client {
   id?: string;
@@ -85,13 +89,6 @@ const LANGUAGES = [
   { value: "fr", label: "French" },
 ];
 
-const CURRENCIES = [
-  { value: "ZAR", label: "South African Rand (ZAR)" },
-  { value: "USD", label: "US Dollar (USD)" },
-  { value: "EUR", label: "Euro (EUR)" },
-  { value: "GBP", label: "British Pound (GBP)" },
-];
-
 const TIMEZONES = [
   { value: "Africa/Johannesburg", label: "South Africa (SAST)" },
   { value: "Africa/Cairo", label: "Egypt (EET)" },
@@ -113,10 +110,28 @@ export function AddClientDialog({
   open,
   onOpenChange,
   onSuccess,
-  defaultCountryCode = "+27",
+  defaultCountryCode,
 }: AddClientDialogProps) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+  const tenantRegionCode = bundle?.meta?.tenant_region?.code ?? "ZA";
+  const currencyOptions = useMemo(
+    () =>
+      [
+        { value: LAST_RESORT_CURRENCY, label: currencySelectLabel(LAST_RESORT_CURRENCY) },
+        { value: "USD", label: currencySelectLabel("USD") },
+        { value: "EUR", label: currencySelectLabel("EUR") },
+        { value: "GBP", label: currencySelectLabel("GBP") },
+      ] as const,
+    []
+  );
   const [isLoading, setIsLoading] = useState(false);
-  const [defaultCountry, setDefaultCountry] = useState(defaultCountryCode);
+  const [defaultCountry, setDefaultCountry] = useState<string | undefined>(() => defaultCountryCode);
+  const prevOpenRef = useRef(false);
+
+  useEffect(() => {
+    setDefaultCountry(defaultCountryCode);
+  }, [defaultCountryCode]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [formData, setFormData] = useState<Client>({
     first_name: "",
@@ -131,7 +146,7 @@ export function AddClientDialog({
       city: "",
       state: "",
       postal_code: "",
-      country: "ZA",
+      country: tenantRegionCode,
     },
     emergency_contact: {
       name: "",
@@ -139,7 +154,7 @@ export function AddClientDialog({
       relationship: "",
     },
     preferred_language: "en",
-    preferred_currency: "ZAR",
+    preferred_currency: tenantCurrency,
     timezone: "Africa/Johannesburg",
     communication_preferences: {
       email_notifications: true,
@@ -148,6 +163,21 @@ export function AddClientDialog({
     },
     notes: "",
   });
+
+  /** When bundle loads after first paint, replace stale ZA default country (user edits preserved). */
+  useEffect(() => {
+    const code = bundle?.meta?.tenant_region?.code?.trim();
+    if (!code) return;
+    setFormData((prev) => {
+      const cur = prev.address?.country ?? "";
+      if (cur === code) return prev;
+      if (cur !== "ZA") return prev;
+      return {
+        ...prev,
+        address: { ...prev.address!, country: code },
+      };
+    });
+  }, [bundle?.meta?.tenant_region?.code]);
 
   useEffect(() => {
     if (open) {
@@ -175,7 +205,7 @@ export function AddClientDialog({
           city: "",
           state: "",
           postal_code: "",
-          country: "ZA",
+          country: tenantRegionCode,
         },
         emergency_contact: {
           name: "",
@@ -183,7 +213,7 @@ export function AddClientDialog({
           relationship: "",
         },
         preferred_language: "en",
-        preferred_currency: "ZAR",
+        preferred_currency: tenantCurrency,
         timezone: "Africa/Johannesburg",
         communication_preferences: {
           email_notifications: true,
@@ -194,7 +224,14 @@ export function AddClientDialog({
       });
       setShowAdvanced(false);
     }
-  }, [open]);
+  }, [open, tenantCurrency, tenantRegionCode]);
+
+  useEffect(() => {
+    if (open && !prevOpenRef.current) {
+      setFormData((prev) => ({ ...prev, preferred_currency: tenantCurrency }));
+    }
+    prevOpenRef.current = open;
+  }, [open, tenantCurrency]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -226,7 +263,7 @@ export function AddClientDialog({
         emergency_contact_phone: formData.emergency_contact?.phone || null,
         emergency_contact_relationship: formData.emergency_contact?.relationship || null,
         preferred_language: formData.preferred_language || "en",
-        preferred_currency: formData.preferred_currency || "ZAR",
+        preferred_currency: formData.preferred_currency || tenantCurrency,
         timezone: formData.timezone || "Africa/Johannesburg",
         email_notifications_enabled: formData.communication_preferences?.email_notifications ?? true,
         sms_notifications_enabled: formData.communication_preferences?.sms_notifications ?? false,
@@ -240,7 +277,7 @@ export function AddClientDialog({
         city: formData.address.city,
         state: formData.address.state || null,
         postal_code: formData.address.postal_code || null,
-        country: formData.address.country || "ZA",
+        country: formData.address.country || tenantRegionCode,
         is_default: true,
       } : null;
 
@@ -461,7 +498,7 @@ export function AddClientDialog({
                       address: {
                         ...formData.address!,
                         line1: e.target.value,
-                        country: formData.address?.country || "ZA",
+                        country: formData.address?.country || tenantRegionCode,
                       },
                     })
                   }
@@ -482,7 +519,7 @@ export function AddClientDialog({
                       address: {
                         ...formData.address!,
                         line2: e.target.value,
-                        country: formData.address?.country || "ZA",
+                        country: formData.address?.country || tenantRegionCode,
                       },
                     })
                   }
@@ -504,7 +541,7 @@ export function AddClientDialog({
                         address: {
                           ...formData.address!,
                           city: e.target.value,
-                          country: formData.address?.country || "ZA",
+                          country: formData.address?.country || tenantRegionCode,
                         },
                       })
                     }
@@ -525,7 +562,7 @@ export function AddClientDialog({
                         address: {
                           ...formData.address!,
                           state: e.target.value,
-                          country: formData.address?.country || "ZA",
+                          country: formData.address?.country || tenantRegionCode,
                         },
                       })
                     }
@@ -548,7 +585,7 @@ export function AddClientDialog({
                         address: {
                           ...formData.address!,
                           postal_code: e.target.value,
-                          country: formData.address?.country || "ZA",
+                          country: formData.address?.country || tenantRegionCode,
                         },
                       })
                     }
@@ -560,7 +597,7 @@ export function AddClientDialog({
                     Country
                   </Label>
                   <Select
-                    value={formData.address?.country || "ZA"}
+                    value={formData.address?.country || tenantRegionCode}
                     onValueChange={(value) =>
                       setFormData({
                         ...formData,
@@ -733,7 +770,7 @@ export function AddClientDialog({
                           Preferred Currency
                         </Label>
                         <Select
-                          value={formData.preferred_currency || "ZAR"}
+                          value={formData.preferred_currency || tenantCurrency}
                           onValueChange={(value) =>
                             setFormData({
                               ...formData,
@@ -745,7 +782,7 @@ export function AddClientDialog({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {CURRENCIES.map((curr) => (
+                            {currencyOptions.map((curr) => (
                               <SelectItem key={curr.value} value={curr.value} className="h-12">
                                 {curr.label}
                               </SelectItem>

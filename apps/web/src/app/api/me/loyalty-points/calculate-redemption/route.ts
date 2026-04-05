@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { handleApiError, successResponse, badRequestResponse, requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { percentOf } from "@beautonomi/utils";
 
 /**
  * POST /api/me/loyalty-points/calculate-redemption
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     const discount_amount = points_to_redeem / config.redemption_rate;
 
     // Check max redemption percentage
-    const max_discount_allowed = booking_subtotal * (config.max_redemption_percentage / 100);
+    const max_discount_allowed = percentOf(booking_subtotal, config.max_redemption_percentage);
     let actual_discount = discount_amount;
     let actual_points = points_to_redeem;
 
@@ -77,8 +78,8 @@ export async function POST(request: NextRequest) {
         discount_amount: actual_discount,
         available_balance,
         balance_after,
-        max_redeemable_points: Math.floor((booking_subtotal * (config.max_redemption_percentage / 100)) * config.redemption_rate),
-        max_redeemable_amount: booking_subtotal * (config.max_redemption_percentage / 100),
+        max_redeemable_points: Math.floor(percentOf(booking_subtotal, config.max_redemption_percentage) * config.redemption_rate),
+        max_redeemable_amount: percentOf(booking_subtotal, config.max_redemption_percentage),
       },
       config: {
         redemption_rate: config.redemption_rate,

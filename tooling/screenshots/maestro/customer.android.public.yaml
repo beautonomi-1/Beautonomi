@@ -1,0 +1,30 @@
+# Customer — public auth screens (run while signed OUT).
+# EXPO_PUBLIC_SCREENSHOT_MODE=1 in apps/customer/.env.local
+#
+appId: com.beautonomi
+---
+- launchApp:
+    clearState: false
+    stopApp: false
+
+- openLink: customer://screenshot/auth/login
+- waitForAnimationToEnd:
+    timeout: 8000
+- extendedWaitUntil:
+    visible: "Welcome to Beautonomi"
+    timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot:
+    path: cu_01_login_welcome
+
+- openLink: customer://screenshot/auth/signup
+- waitForAnimationToEnd:
+    timeout: 8000
+- extendedWaitUntil:
+    visible: "Create Your Account"
+    timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot:
+    path: cu_02_signup_onboarding

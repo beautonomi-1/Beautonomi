@@ -1,22 +1,26 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, CreditCard, Calendar, MapPin, Wallet, Gift, Banknote, Check, Plus, Shield, ArrowLeft, Lock, Info } from "lucide-react";
+import { CheckCircle, CreditCard, Calendar, MapPin, Wallet, Gift, Banknote, Check, Plus, Shield, ArrowLeft, Lock, Info, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { BookingState } from "../booking-flow";
-import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import { initializePayment, chargeSavedCard } from "../../actions/payment-actions";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
+import { getTravelBuffer } from "@/lib/config/house-call-config";
 import { fetcher } from "@/lib/http/fetcher";
 import { useTranslation } from "@beautonomi/i18n";
 import LoginModal from "@/components/global/login-modal";
 import { useMultipleFeatureFlags } from "@/hooks/useFeatureFlag";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface SavedCard {
   id: string;
@@ -33,18 +37,57 @@ interface SavedCard {
 interface StepPaymentProps {
   bookingState: BookingState;
   updateBookingState: (updates: Partial<BookingState>) => void;
+  /** STEP_ORDER index (0 = services, 4 = calendar, …). */
+  onNavigateToStep: (stepIndex: number) => void;
 }
+
+/** Services + add-ons + products + travel fee, minus discounts — tip percentages apply to this (before tax & platform fees). */
+function getSubtotalAfterDiscounts(state: BookingState): number {
+  let services = 0;
+  if (state.isGroupBooking && state.groupParticipants) {
+    services = state.groupParticipants.reduce((total, participant) => {
+      const participantTotal = participant.serviceIds.reduce((sum, serviceId) => {
+        const service = state.selectedServices.find((s) => s.id === serviceId);
+        return sum + (service?.price || 0);
+      }, 0);
+      return total + participantTotal;
+    }, 0);
+  } else {
+    services = state.selectedServices.reduce((sum, s) => sum + s.price, 0);
+  }
+  const addons = state.selectedAddons.reduce((sum, a) => sum + a.price, 0);
+  const products = state.selectedProducts.reduce((sum, p) => sum + p.price * p.quantity, 0);
+  const travelFee = state.address?.travelFee || 0;
+  const subtotal = services + addons + products + travelFee;
+  const discounts =
+    (state.promotions.couponDiscount || 0) +
+    (state.promotions.giftCardAmount || 0) +
+    (state.promotions.loyaltyDiscount || 0) +
+    (state.promotions.membershipDiscount || 0);
+  return Math.max(0, subtotal - discounts);
+}
+
+function roundTipAmount(amount: number): number {
+  return Math.round(amount * 100) / 100;
+}
+
+/** Common preset percentages for gratuity (computed from subtotal after discounts). */
+const TIP_PERCENT_PRESETS = [10, 15, 18, 20] as const;
 
 export default function StepPayment({
   bookingState,
   updateBookingState,
+  onNavigateToStep,
 }: StepPaymentProps) {
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [tipAmount, _setTipAmount] = useState(bookingState.tipAmount || 0);
-  const [_customTip, _setCustomTip] = useState("");
+  const [tipAmount, setTipAmount] = useState(bookingState.tipAmount || 0);
+  const [tipPercentSelection, setTipPercentSelection] = useState<number | null>(
+    bookingState.tipPercentSelection ?? null
+  );
+  const [tipSuggestions, setTipSuggestions] = useState<number[]>([0, 50, 100, 150, 200]);
   const [paymentMethod, setPaymentMethod] = useState<"card" | "cash" | "giftcard">(
     bookingState.paymentMethod || "card"
   );
@@ -66,26 +109,56 @@ export default function StepPayment({
     late_cancellation_type: string;
   } | null>(null);
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [walletBalance, setWalletBalance] = useState<number>(0);
-  const [walletCurrency, setWalletCurrency] = useState<string>("ZAR");
+  const [walletCurrency, setWalletCurrency] = useState<string>(tenantCurrency);
   const [walletLoading, setWalletLoading] = useState(false);
+  const [depositPercentage, setDepositPercentage] = useState<number>(30);
+  const [providerRequiresDeposit, setProviderRequiresDeposit] = useState<boolean>(false);
   const useWallet = bookingState.useWallet ?? false;
-  const { features: featureFlags, loading: flagsLoading } = useMultipleFeatureFlags(["payment_paystack", "gift_cards", "payment_wallet"]);
-  const paystackEnabled = flagsLoading ? true : (featureFlags["payment_paystack"] ?? false);
-  const giftCardsEnabled = flagsLoading ? true : (featureFlags["gift_cards"] ?? false);
-  const walletEnabled = flagsLoading ? true : (featureFlags["payment_wallet"] ?? false);
+  const { features: featureFlags, loading: flagsLoading } = useMultipleFeatureFlags([
+    "payment_paystack",
+    "gift_cards",
+    "payment_wallet",
+  ]);
+  const paystackEnabled = flagsLoading ? true : featureFlags["payment_paystack"] ?? false;
+  const giftCardsEnabled = flagsLoading ? true : featureFlags["gift_cards"] ?? false;
+  const walletEnabled = flagsLoading ? true : featureFlags["payment_wallet"] ?? false;
+  const [cashEnabledOnPlatform, setCashEnabledOnPlatform] = useState(false);
 
-  const SAVE_CARD_INFO =
-    "We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. R1) may be placed and reversed—this confirms your card for future use.";
+  const saveCardInfo = useMemo(() => {
+    const example = formatCurrency(1, tenantCurrency);
+    return `We'll save your card securely when you pay. To verify your card, a small temporary charge (e.g. ${example}) may be placed and reversed—this confirms your card for future use.`;
+  }, [tenantCurrency]);
 
-  // When Paystack or gift cards are disabled, switch away from that method
+
+  // When Paystack / gift cards / cash are disabled, switch away from that method
   useEffect(() => {
     if (paymentMethod === "card" && !paystackEnabled) {
-      setPaymentMethod(giftCardsEnabled ? "giftcard" : "cash");
+      setPaymentMethod(giftCardsEnabled ? "giftcard" : cashEnabledOnPlatform ? "cash" : "card");
     } else if (paymentMethod === "giftcard" && !giftCardsEnabled) {
-      setPaymentMethod(paystackEnabled ? "card" : "cash");
+      setPaymentMethod(paystackEnabled ? "card" : cashEnabledOnPlatform ? "cash" : "giftcard");
+    } else if (paymentMethod === "cash" && !cashEnabledOnPlatform) {
+      setPaymentMethod(paystackEnabled ? "card" : giftCardsEnabled ? "giftcard" : "cash");
     }
-  }, [paystackEnabled, giftCardsEnabled, paymentMethod]);
+  }, [paystackEnabled, giftCardsEnabled, paymentMethod, cashEnabledOnPlatform]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetcher
+      .get<{ data?: { cash_enabled_on_platform?: boolean } }>("/api/public/platform-fees")
+      .then((res) => {
+        if (cancelled) return;
+        setCashEnabledOnPlatform((res?.data as any)?.cash_enabled_on_platform === true);
+      })
+      .catch(() => {
+        if (!cancelled) setCashEnabledOnPlatform(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSetDefaultCard = async (cardId: string) => {
     setSettingDefaultId(cardId);
@@ -138,6 +211,47 @@ export default function StepPayment({
     fetchCancellationPolicy();
   }, [bookingState.providerId, bookingState.mode]);
 
+  // Fetch provider online booking settings: tip suggestions, deposit requirements
+  useEffect(() => {
+    if (!bookingState.providerId) return;
+    let cancelled = false;
+    fetcher
+      .get<{ data?: { tip_suggestions?: number[]; deposit_required?: boolean; deposit_percent?: number | null } }>(
+        `/api/public/provider-online-booking-settings?provider_id=${bookingState.providerId}`
+      )
+      .then((res) => {
+        if (cancelled) return;
+        const d = res?.data;
+        const tips = d?.tip_suggestions;
+        setTipSuggestions(Array.isArray(tips) && tips.length > 0 ? tips : [0, 50, 100, 150, 200]);
+        if (d?.deposit_required) {
+          setProviderRequiresDeposit(true);
+          setDepositPercentage(Number(d.deposit_percent ?? 30));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setTipSuggestions([0, 50, 100, 150, 200]);
+      });
+    return () => { cancelled = true; };
+  }, [bookingState.providerId]);
+
+  // True when the user has a saved card selected (not entering a new card).
+  // When true we pass payment_method_id to the booking API so the server charges it
+  // at the correct deposit amount, avoiding a separate client-side charge.
+  const usingSavedCard = paymentMethod === "card" && Boolean(selectedCardId) && !useNewCard && savedCards.length > 0;
+
+  const tipPercentageBase = useMemo(() => getSubtotalAfterDiscounts(bookingState), [bookingState]);
+
+  // Keep tip amount in sync when user chose a % and the subtotal changes (e.g. promo applied earlier)
+  useEffect(() => {
+    if (tipPercentSelection === null) return;
+    if (tipPercentageBase <= 0) {
+      setTipAmount(0);
+      return;
+    }
+    setTipAmount(roundTipAmount((tipPercentageBase * tipPercentSelection) / 100));
+  }, [tipPercentSelection, tipPercentageBase]);
+
   // Fetch saved payment methods
   useEffect(() => {
     if (!user) return;
@@ -168,7 +282,9 @@ export default function StepPayment({
       .then((res) => {
         if (res?.data?.wallet) {
           setWalletBalance(Number(res.data.wallet.balance) || 0);
-          setWalletCurrency(res.data.wallet.currency || "ZAR");
+          setWalletCurrency(res.data.wallet.currency || tenantCurrency);
+        } else {
+          setWalletCurrency(tenantCurrency);
         }
       })
       .catch(() => {})
@@ -177,15 +293,16 @@ export default function StepPayment({
 
   // Update booking state when payment options change
   useEffect(() => {
-    updateBookingState({ 
+    updateBookingState({
       tipAmount,
+      tipPercentSelection,
       paymentMethod,
       paymentOption,
       useWallet,
       saveCard,
       setAsDefault,
     });
-  }, [tipAmount, paymentMethod, paymentOption, useWallet, saveCard, setAsDefault]);
+  }, [tipAmount, tipPercentSelection, paymentMethod, paymentOption, useWallet, saveCard, setAsDefault]);
 
   // Calculate totals - for group bookings, sum all participant services
   const calculateServicesTotal = () => {
@@ -219,13 +336,13 @@ export default function StepPayment({
     taxRate: bookingState.taxRate || 0,
     serviceFeeAmount: bookingState.serviceFeeAmount || 0,
     serviceFeePercentage: bookingState.serviceFeePercentage || 0,
-    tipAmount: bookingState.tipAmount || 0,
+    tipAmount,
     total: 0,
-    currency: bookingState.selectedServices[0]?.currency || "ZAR",
+    currency: bookingState.selectedServices[0]?.currency || tenantCurrency,
   };
 
   totals.subtotal = totals.services + totals.addons + totals.products + totals.travelFee;
-  totals.subtotalAfterDiscounts = Math.max(0, totals.subtotal - totals.discounts);
+  totals.subtotalAfterDiscounts = getSubtotalAfterDiscounts(bookingState);
   totals.total = totals.subtotalAfterDiscounts + totals.taxAmount + totals.serviceFeeAmount + totals.tipAmount;
 
   const createBookingDraft = async () => {
@@ -288,12 +405,19 @@ export default function StepPayment({
         location_landmarks: bookingState.address.locationLandmarks,
       } : null,
       addons: bookingState.selectedAddons.map(a => a.id),
-      products: bookingState.selectedProducts.map(p => ({
-        productId: p.id,
-        quantity: p.quantity,
-        unitPrice: p.price,
-        totalPrice: p.price * p.quantity,
-      })),
+      products: bookingState.selectedProducts.map(p => {
+        // id may be "productUUID" or "productUUID:variantUUID" for variant products
+        const colonIdx = p.id.indexOf(":");
+        const productId = colonIdx !== -1 ? p.id.slice(0, colonIdx) : p.id;
+        const productVariantId = colonIdx !== -1 ? p.id.slice(colonIdx + 1) : null;
+        return {
+          productId,
+          productVariantId: productVariantId || null,
+          quantity: p.quantity,
+          unitPrice: p.price,
+          totalPrice: p.price * p.quantity,
+        };
+      }),
       package_id: bookingState.selectedPackage?.id || null,
       tip_amount: tipAmount,
       travel_fee: bookingState.address?.travelFee || 0,
@@ -302,6 +426,7 @@ export default function StepPayment({
       client_info: bookingState.clientInfo,
       payment_method: paymentMethod,
       payment_option: paymentOption,
+      payment_method_id: usingSavedCard ? selectedCardId : null,
       save_card: saveCard,
       set_as_default: setAsDefault,
       promotion_code: bookingState.promotions.couponCode || null,
@@ -309,6 +434,14 @@ export default function StepPayment({
       membership_plan_id: bookingState.promotions.membershipPlanId || null,
       use_wallet: (bookingState.useWallet ?? false) || (bookingState.promotions.loyaltyPointsUsed ? true : false),
       loyalty_points_used: bookingState.promotions.loyaltyPointsUsed ?? 0,
+      ...(bookingState.mode === "mobile"
+        ? {
+            availability_travel_buffer_minutes: getTravelBuffer(
+              "mobile",
+              bookingState.address?.travelTimeMinutes
+            ),
+          }
+        : {}),
     };
 
     // Add group booking data if it's a group booking
@@ -325,7 +458,10 @@ export default function StepPayment({
 
     const response = await fetcher.post<{
       data: { booking_id: string; booking_number: string; payment_url?: string | null };
-    }>("/api/public/bookings", bookingData);
+    }>("/api/public/bookings", bookingData, {
+      // Server often runs validate + create_booking RPC + Paystack init; 10s default aborts before response.
+      timeoutMs: 120000,
+    });
 
     return response.data;
   };
@@ -354,7 +490,7 @@ export default function StepPayment({
       return;
     }
 
-    if (!acceptedCancellationPolicy) {
+    if (cancellationPolicy && !acceptedCancellationPolicy) {
       toast.error("Please accept the cancellation policy to continue");
       return;
     }
@@ -372,8 +508,7 @@ export default function StepPayment({
           toast.error(error.message || "This time slot is no longer available. Please select another time.", {
             duration: 5000,
           });
-          // Navigate back to calendar step to select a new time (calendar is index 4 in STEP_ORDER)
-          updateBookingState({ currentStepIndex: 4 });
+          onNavigateToStep(4);
           return;
         }
         
@@ -384,7 +519,11 @@ export default function StepPayment({
       // Step 2: Process payment based on method
       if (paymentMethod === "cash") {
         // Cash payment - booking already created, just redirect
-        toast.success("Booking created! You'll pay at the salon.");
+        const isAtHome = bookingState.mode === "mobile";
+        const cashLocationMsg = isAtHome
+          ? "Booking confirmed! You'll pay when your provider arrives."
+          : "Booking confirmed! You'll pay at the salon.";
+        toast.success(cashLocationMsg);
         router.push(`/booking/confirmation?bookingId=${bookingDraft.booking_id}`);
         return;
       }
@@ -396,55 +535,37 @@ export default function StepPayment({
         return;
       }
 
-      // Wallet covered full amount – no payment_url returned
       const draftWithUrl = bookingDraft as { booking_id: string; booking_number: string; payment_url?: string | null };
+
+      // Wallet covered full amount — server returned null payment_url
       if ((bookingState.useWallet ?? false) && (draftWithUrl.payment_url == null || draftWithUrl.payment_url === "")) {
         toast.success("Booking created! Payment processed from wallet.");
         router.push(`/booking/confirmation?bookingId=${bookingDraft.booking_id}`);
         return;
       }
 
-      const amountToCharge = paymentOption === "deposit" 
-        ? totals.total * 0.5 * 100
-        : totals.total * 100;
-
-      // Saved card flow: charge directly without redirect
-      if (selectedCardId && !useNewCard && savedCards.length > 0) {
-        setIsChargingCard(true);
-        try {
-          const chargeResult = await chargeSavedCard({
-            payment_method_id: selectedCardId,
-            amount: amountToCharge / 100,
-            email: bookingState.clientInfo.email,
-            currency: totals.currency,
-            metadata: {
-              booking_id: bookingDraft.booking_id,
-              booking_number: bookingDraft.booking_number,
-            },
-          });
-          
-          const status = chargeResult.status || chargeResult.transaction?.status;
-          if (status === "success") {
-            toast.success("Payment successful!");
-            router.push(`/booking/confirmation?bookingId=${bookingDraft.booking_id}`);
-          } else {
-            toast.error("Card payment failed. Please try another card or use a new one.");
-          }
-        } catch (chargeError: any) {
-          toast.error(chargeError.message || "Failed to charge saved card. Please try a new card.");
-        } finally {
-          setIsChargingCard(false);
+      // Saved card: server charged it directly (payment_method_id was sent); payment_url will be null
+      if (usingSavedCard) {
+        if (draftWithUrl.payment_url == null || draftWithUrl.payment_url === "") {
+          toast.success("Payment successful!");
+          router.push(`/booking/confirmation?bookingId=${bookingDraft.booking_id}`);
+        } else {
+          // Server returned a URL despite saved card — unexpected; fall back to redirect
+          toast.info("Redirecting to complete payment…");
+          window.location.href = draftWithUrl.payment_url;
         }
         return;
       }
 
-      // New card flow: use payment_url from API when present (avoids double Paystack init)
+      // New card / Paystack redirect flow
       if (draftWithUrl.payment_url && draftWithUrl.payment_url.trim() !== "") {
         window.location.href = draftWithUrl.payment_url;
         return;
       }
 
       // Fallback: initialize payment client-side if API did not return payment_url
+      const depositAmount = Math.ceil((totals.total * depositPercentage) / 100);
+      const amountToCharge = paymentOption === "deposit" ? depositAmount : totals.total;
       const result = await initializePayment({
         email: bookingState.clientInfo.email,
         amount: amountToCharge,
@@ -495,7 +616,7 @@ export default function StepPayment({
             </h3>
             <button
               type="button"
-              onClick={() => updateBookingState({ currentStepIndex: 0 })}
+              onClick={() => onNavigateToStep(0)}
               className="text-sm font-medium text-primary hover:underline"
             >
               Change
@@ -601,7 +722,7 @@ export default function StepPayment({
             </div>
             <button
               type="button"
-              onClick={() => updateBookingState({ currentStepIndex: 4 })}
+              onClick={() => onNavigateToStep(4)}
               className="text-sm font-medium text-primary hover:underline shrink-0"
             >
               Change
@@ -669,6 +790,15 @@ export default function StepPayment({
               <span>{formatCurrency(totals.serviceFeeAmount, totals.currency)}</span>
             </div>
           )}
+          {tipAmount > 0 && (
+            <div className="flex justify-between text-sm text-gray-700">
+              <span className="flex items-center gap-1.5">
+                <Heart className="w-3.5 h-3.5 text-primary shrink-0" />
+                Tip
+              </span>
+              <span className="font-medium">{formatCurrency(tipAmount, totals.currency)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-lg font-semibold pt-2 border-t">
             <span>{t("booking.total")}</span>
             <span>{formatCurrency(totals.total, totals.currency)}</span>
@@ -676,12 +806,141 @@ export default function StepPayment({
         </div>
       </div>
 
+      {/* Tip — % presets (of subtotal after discounts) + optional fixed amounts from provider */}
+      {bookingState.providerId && (
+        <div className="p-4 rounded-xl border-2 border-primary/20 bg-gradient-to-br from-white to-pink-50/40 shadow-sm space-y-5">
+          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+            <Heart className="w-5 h-5 text-primary shrink-0" />
+            Add a tip (optional)
+          </h3>
+          <p className="text-xs text-gray-600 leading-relaxed">
+            Percentages apply to your <strong>service subtotal after discounts</strong> (before tax and platform fees). They
+            update automatically if your booking total changes. 100% of tips go to your provider and are charged with
+            your booking total.
+          </p>
+
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-gray-900">Tip by percentage</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setTipPercentSelection(null);
+                  setTipAmount(0);
+                }}
+                className={cn(
+                  "rounded-xl px-3 py-2.5 text-sm font-semibold min-h-[48px] min-w-[72px] transition-colors border-2 flex flex-col items-center justify-center gap-0.5",
+                  tipAmount === 0 && tipPercentSelection === null
+                    ? "bg-primary text-white border-primary shadow-sm"
+                    : "bg-white text-gray-800 border-gray-200 hover:border-primary/50"
+                )}
+              >
+                <span>No tip</span>
+              </button>
+              {TIP_PERCENT_PRESETS.map((p) => {
+                const computed =
+                  tipPercentageBase > 0 ? roundTipAmount((tipPercentageBase * p) / 100) : 0;
+                const selected = tipPercentSelection === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    disabled={tipPercentageBase <= 0}
+                    onClick={() => setTipPercentSelection(p)}
+                    title={
+                      tipPercentageBase <= 0
+                        ? "Add services to use percentage tips"
+                        : `${p}% of ${formatCurrency(tipPercentageBase, totals.currency)}`
+                    }
+                    className={cn(
+                      "rounded-xl px-3 py-2.5 text-sm min-h-[48px] min-w-[76px] transition-colors border-2 flex flex-col items-center justify-center gap-0.5",
+                      tipPercentageBase <= 0 && "opacity-50 cursor-not-allowed",
+                      selected
+                        ? "bg-primary text-white border-primary shadow-sm"
+                        : "bg-white text-gray-800 border-gray-200 hover:border-primary/50"
+                    )}
+                  >
+                    <span className="font-bold leading-tight">{p}%</span>
+                    <span className={cn("text-[11px] leading-tight", selected ? "text-white/90" : "text-gray-600")}>
+                      {tipPercentageBase <= 0 ? "—" : formatCurrency(computed, totals.currency)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {tipPercentageBase <= 0 && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Add at least one service to enable percentage-based tips.
+              </p>
+            )}
+          </div>
+
+          {tipSuggestions.some((n) => n > 0) && (
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-gray-900">Or choose a set amount</p>
+              <p className="text-xs text-gray-500">Quick amounts from this provider (fixed currency).</p>
+              <div className="flex flex-wrap gap-2">
+                {tipSuggestions
+                  .filter((n) => n > 0)
+                  .map((n) => {
+                    const selected =
+                      tipPercentSelection === null && tipAmount === n && tipSuggestions.includes(n);
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => {
+                          setTipPercentSelection(null);
+                          setTipAmount(n);
+                        }}
+                        className={cn(
+                          "rounded-xl px-4 py-2.5 text-sm font-semibold min-h-[44px] transition-colors border-2",
+                          selected
+                            ? "bg-primary text-white border-primary shadow-sm"
+                            : "bg-white text-gray-800 border-gray-200 hover:border-primary/50"
+                        )}
+                      >
+                        {formatCurrency(n, totals.currency)}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Label htmlFor="booking-tip-custom" className="text-sm font-medium text-gray-700">
+              Custom amount
+            </Label>
+            <Input
+              id="booking-tip-custom"
+              type="number"
+              min={0}
+              step={10}
+              placeholder="0"
+              className="w-28 h-10 rounded-lg border-2 border-gray-200"
+              value={
+                tipPercentSelection !== null
+                  ? ""
+                  : tipAmount > 0 && !tipSuggestions.includes(tipAmount)
+                    ? tipAmount
+                    : ""
+              }
+              onChange={(e) => {
+                setTipPercentSelection(null);
+                setTipAmount(Math.max(0, Number(e.target.value) || 0));
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Payment Method Selection */}
       <div className="space-y-4">
         <h3 className="text-lg font-semibold text-gray-900">Payment Method</h3>
         
         {/* Method toggle: Card / Cash / Gift Card (each gated by feature flags) */}
-        <div className={`grid gap-3 ${paystackEnabled && giftCardsEnabled ? "grid-cols-3" : paystackEnabled || giftCardsEnabled ? "grid-cols-2" : "grid-cols-1"}`}>
+        <div className={`grid gap-3 ${paystackEnabled && giftCardsEnabled && cashEnabledOnPlatform ? "grid-cols-3" : (paystackEnabled || giftCardsEnabled || cashEnabledOnPlatform) ? "grid-cols-2" : "grid-cols-1"}`}>
           {paystackEnabled && (
             <button
               type="button"
@@ -697,19 +956,21 @@ export default function StepPayment({
               {paymentMethod === "card" && <Check className="w-4 h-4 text-primary" />}
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setPaymentMethod("cash")}
-            className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
-              paymentMethod === "cash"
-                ? "border-primary bg-pink-50"
-                : "border-gray-200 hover:border-gray-300 bg-white"
-            }`}
-          >
-            <Banknote className={`w-5 h-5 ${paymentMethod === "cash" ? "text-primary" : "text-gray-500"}`} />
-            <span className={`text-sm font-medium ${paymentMethod === "cash" ? "text-primary" : "text-gray-700"}`}>Cash</span>
-            {paymentMethod === "cash" && <Check className="w-4 h-4 text-primary" />}
-          </button>
+          {cashEnabledOnPlatform && (
+            <button
+              type="button"
+              onClick={() => setPaymentMethod("cash")}
+              className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                paymentMethod === "cash"
+                  ? "border-primary bg-pink-50"
+                  : "border-gray-200 hover:border-gray-300 bg-white"
+              }`}
+            >
+              <Banknote className={`w-5 h-5 ${paymentMethod === "cash" ? "text-primary" : "text-gray-500"}`} />
+              <span className={`text-sm font-medium ${paymentMethod === "cash" ? "text-primary" : "text-gray-700"}`}>Cash</span>
+              {paymentMethod === "cash" && <Check className="w-4 h-4 text-primary" />}
+            </button>
+          )}
           {giftCardsEnabled && (
             <button
               type="button"
@@ -751,8 +1012,8 @@ export default function StepPayment({
           </div>
         )}
 
-        {/* Deposit vs Full payment option */}
-        {paymentMethod === "card" && (
+        {/* Deposit vs Full payment option — only when provider accepts deposits */}
+        {paymentMethod === "card" && providerRequiresDeposit && (
           <div className="grid grid-cols-2 gap-3">
             <button
               type="button"
@@ -779,7 +1040,7 @@ export default function StepPayment({
             >
               {paymentOption === "deposit" && <CheckCircle className="w-4 h-4 text-primary" />}
               <span className={`text-sm font-medium ${paymentOption === "deposit" ? "text-primary" : "text-gray-700"}`}>
-                Deposit (50%)
+                Deposit ({depositPercentage}%)
               </span>
             </button>
           </div>
@@ -896,7 +1157,7 @@ export default function StepPayment({
                         <p className="text-sm font-medium text-gray-900">Save this card</p>
                         <button
                           type="button"
-                          onClick={() => toast.info(SAVE_CARD_INFO, { duration: 8000 })}
+                          onClick={() => toast.info(saveCardInfo, { duration: 8000 })}
                           className="p-0.5 rounded-full hover:bg-gray-200 text-primary"
                           aria-label="Info about saving card"
                         >
@@ -930,32 +1191,69 @@ export default function StepPayment({
 
       {/* Cancellation Policy Acceptance */}
       {cancellationPolicy && (
-        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <h3 className="font-semibold text-gray-900 mb-2">Cancellation Policy</h3>
-          <p className="text-sm text-gray-600 mb-4">{cancellationPolicy.policy_text}</p>
-          <div className="flex items-start gap-3">
+        <div
+          className={cn(
+            "rounded-xl p-5 border-2 transition-all",
+            acceptedCancellationPolicy
+              ? "border-primary/35 bg-white shadow-sm"
+              : "border-amber-400 bg-amber-50/90 shadow-md ring-2 ring-amber-300/70"
+          )}
+        >
+          <div className="flex items-start gap-3 mb-3">
+            <div className="rounded-full bg-primary/15 p-2 shrink-0">
+              <Shield className="w-6 h-6 text-primary" aria-hidden />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold text-gray-900 text-base mb-1">Cancellation Policy</h3>
+              <p className="text-sm text-gray-700 leading-relaxed">{cancellationPolicy.policy_text}</p>
+            </div>
+          </div>
+          <div
+            className={cn(
+              "flex items-start gap-4 rounded-lg p-4 border-2 bg-white",
+              acceptedCancellationPolicy ? "border-primary/25" : "border-gray-300"
+            )}
+          >
             <Checkbox
               id="accept-cancellation-policy"
               checked={acceptedCancellationPolicy}
               onCheckedChange={(checked) => setAcceptedCancellationPolicy(checked === true)}
-              className="mt-1"
+              className={cn(
+                "mt-0.5 shrink-0 h-7 w-7 rounded-md border-2",
+                "border-gray-500 data-[state=checked]:bg-primary data-[state=checked]:border-primary",
+                "data-[state=unchecked]:bg-white",
+                "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              )}
             />
             <Label
               htmlFor="accept-cancellation-policy"
-              className="text-sm text-gray-700 cursor-pointer leading-relaxed"
+              className="text-sm sm:text-base font-medium text-gray-900 cursor-pointer leading-snug"
             >
-              I understand and accept the cancellation policy. I acknowledge that cancellations made within {cancellationPolicy.hours_before_cutoff} hours of my appointment may result in a {cancellationPolicy.late_cancellation_type === "no_refund" ? "no refund" : cancellationPolicy.late_cancellation_type === "partial_refund" ? "partial refund" : "full refund"}.
+              I understand and accept the cancellation policy. I acknowledge that cancellations made within{" "}
+              {cancellationPolicy.hours_before_cutoff} hours of my appointment may result in a{" "}
+              {cancellationPolicy.late_cancellation_type === "no_refund"
+                ? "no refund"
+                : cancellationPolicy.late_cancellation_type === "partial_refund"
+                  ? "partial refund"
+                  : "full refund"}
+              .
             </Label>
           </div>
+          {!acceptedCancellationPolicy && (
+            <p className="mt-3 text-sm font-medium text-amber-900 flex items-center gap-2">
+              <span className="inline-flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" aria-hidden />
+              Check the box above to continue to payment
+            </p>
+          )}
         </div>
       )}
 
       {/* Payment Button */}
       <div className="sticky bottom-0 bg-white border-t border-gray-200 -mx-4 px-4 py-4 safe-area-bottom">
         {(() => {
-          const usingSavedCard = paymentMethod === "card" && !!selectedCardId && !useNewCard && savedCards.length > 0;
           const selectedCard = usingSavedCard ? savedCards.find((c) => c.id === selectedCardId) : null;
-          const chargeAmount = paymentOption === "deposit" ? totals.total * 0.5 : totals.total;
+          const depositAmount = Math.ceil((totals.total * depositPercentage) / 100);
+          const chargeAmount = paymentOption === "deposit" ? depositAmount : totals.total;
           
           return (
             <Button
@@ -1005,7 +1303,7 @@ export default function StepPayment({
         setOpen={(open) => {
           setIsLoginModalOpen(open);
         }}
-        initialMode="signup"
+        // Keep booking checkout auth friction low: phone OTP first.
         redirectContext="customer"
         onAuthSuccess={async () => {
           // After successful auth, automatically retry booking

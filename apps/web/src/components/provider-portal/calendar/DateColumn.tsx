@@ -1,0 +1,153 @@
+"use client";
+
+import React, { memo, useMemo } from "react";
+import { cn } from "@/lib/utils";
+import { format, isToday } from "date-fns";
+import type { Appointment, TeamMember, TimeBlock, AvailabilityBlockDisplay } from "@/lib/provider-portal/types";
+import { GestureLayer } from "./GestureLayer";
+import { BookingBlock } from "./BookingBlock";
+import { TimeBlockElement } from "./TimeBlockElement";
+import { toDateStr, type CalendarBlock } from "./utils";
+
+interface DateColumnProps {
+  date: Date;
+  appointments: Appointment[];
+  timeBlocks: TimeBlock[];
+  availabilityBlocks: AvailabilityBlockDisplay[];
+  teamMembers: TeamMember[];
+  timeSlots: string[];
+  startHour: number;
+  useMangomintMode: boolean;
+  colorBy: "status" | "service" | "team_member";
+  showCanceled: boolean;
+  showPrices: boolean;
+  highContrast: boolean;
+  workStart: number;
+  workEnd: number;
+  locationOperatingHours?: Record<string, { open: string; close: string; closed: boolean }> | null;
+  onAppointmentClick: (apt: Appointment) => void;
+  onTimeSlotClick: (date: Date, time: string, staffId: string) => void;
+  onTimeBlockClick?: (block: TimeBlock) => void;
+}
+
+function DateColumnComponent({
+  date,
+  appointments,
+  timeBlocks,
+  availabilityBlocks,
+  teamMembers,
+  timeSlots,
+  startHour,
+  useMangomintMode,
+  colorBy,
+  showCanceled,
+  showPrices,
+  highContrast,
+  workStart,
+  workEnd,
+  locationOperatingHours,
+  onAppointmentClick,
+  onTimeSlotClick,
+  onTimeBlockClick,
+}: DateColumnProps) {
+  const dateStr = format(date, "yyyy-MM-dd");
+  const staffId = teamMembers[0]?.id || "";
+
+  const dateAppointments = useMemo(
+    () => appointments.filter((a) => toDateStr(a.scheduled_date || "") === dateStr),
+    [appointments, dateStr],
+  );
+
+  const dateBlocks = useMemo<CalendarBlock[]>(() => {
+    const tb = timeBlocks.filter((b) => b.date === dateStr).map((t) => ({ ...t, _source: "time_block" as const }));
+    const ab = availabilityBlocks
+      .filter((b) => b.date === dateStr)
+      .map((a) => ({
+        ...a,
+        name:
+          a._source === "staff_unavailability"
+            ? (a.reason?.trim() || "Time off")
+            : (a.reason || a.block_type),
+      }));
+    return [...tb, ...ab];
+  }, [timeBlocks, availabilityBlocks, dateStr]);
+
+  const visibleAppointments = useMemo(() => {
+    if (useMangomintMode && !showCanceled) {
+      return dateAppointments.filter((a) => a.status !== "cancelled");
+    }
+    return dateAppointments;
+  }, [dateAppointments, useMangomintMode, showCanceled]);
+
+  return (
+    <div
+      className={cn(
+        "flex-1 min-w-[90px] max-w-[200px] border-r border-gray-200 last:border-r-0 relative",
+        isToday(date) && "bg-primary/3",
+      )}
+    >
+      <GestureLayer
+        timeSlots={timeSlots}
+        date={date}
+        dateStr={dateStr}
+        staffId={staffId}
+        useMangomintMode={useMangomintMode}
+        highContrast={highContrast}
+        workStart={workStart}
+        workEnd={workEnd}
+        locationOperatingHours={locationOperatingHours}
+        onTimeSlotClick={onTimeSlotClick}
+      />
+
+      {dateBlocks.map((block) => (
+        <TimeBlockElement
+          key={`block-${block.id}`}
+          block={block}
+          startHour={startHour}
+          useMangomintMode={useMangomintMode}
+          onTimeBlockClick={onTimeBlockClick}
+          variant="week"
+        />
+      ))}
+
+      {visibleAppointments.map((apt) => (
+        <BookingBlock
+          key={apt.id}
+          appointment={apt}
+          startHour={startHour}
+          useMangomintMode={useMangomintMode}
+          colorBy={colorBy}
+          showCanceled={showCanceled}
+          showPrices={showPrices}
+          onClick={onAppointmentClick}
+          variant="week"
+        />
+      ))}
+    </div>
+  );
+}
+
+export const DateColumn = memo(DateColumnComponent, (prev, next) => {
+  if (prev.date.getTime() !== next.date.getTime()) return false;
+  if (prev.startHour !== next.startHour) return false;
+  if (prev.useMangomintMode !== next.useMangomintMode) return false;
+  if (prev.colorBy !== next.colorBy) return false;
+  if (prev.showCanceled !== next.showCanceled) return false;
+  if (prev.showPrices !== next.showPrices) return false;
+  if (prev.highContrast !== next.highContrast) return false;
+  if (prev.workStart !== next.workStart) return false;
+  if (prev.workEnd !== next.workEnd) return false;
+  if (prev.timeSlots.length !== next.timeSlots.length) return false;
+
+  if (prev.appointments.length !== next.appointments.length) return false;
+  if (prev.timeBlocks.length !== next.timeBlocks.length) return false;
+  if (prev.availabilityBlocks.length !== next.availabilityBlocks.length) return false;
+
+  if (prev.onAppointmentClick !== next.onAppointmentClick) return false;
+  if (prev.onTimeSlotClick !== next.onTimeSlotClick) return false;
+  if (prev.locationOperatingHours !== next.locationOperatingHours) return false;
+
+  return true;
+});
+
+DateColumn.displayName = "DateColumn";

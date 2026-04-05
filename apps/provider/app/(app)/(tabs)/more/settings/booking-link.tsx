@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import QRCode from "react-native-qrcode-svg";
 import * as Haptics from "expo-haptics";
 import * as Clipboard from "expo-clipboard";
+import { useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -35,6 +36,7 @@ interface BookingLink {
 }
 
 export default function BookingLinkScreen() {
+  const router = useRouter();
   const [slug, setSlug] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [dirty, setDirty] = useState(false);
@@ -320,6 +322,16 @@ export default function BookingLinkScreen() {
         disabled={!dirty}
         fullWidth
       />
+
+      <TouchableOpacity
+        style={twStyle("mt-4 flex-row items-center justify-center rounded-2xl border border-indigo-100 bg-white py-4")}
+        onPress={() => router.push("/(app)/(tabs)/more/express-booking" as never)}
+        accessibilityLabel="Open express short links and checkout prefill"
+        accessibilityRole="button"
+      >
+        <Text style={twStyle("text-sm font-semibold text-indigo-600")}>Express short links & checkout prefill</Text>
+      </TouchableOpacity>
+
       <View style={twStyle("h-24")} />
     </ScreenContainer>
   );

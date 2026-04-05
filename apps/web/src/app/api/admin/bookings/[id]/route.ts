@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/bookings/[id]
@@ -17,6 +18,7 @@ export async function GET(
 
     const { id } = await params;
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     // Get booking with related data
     const { data: booking, error } = await supabase
@@ -46,6 +48,7 @@ export async function GET(
         )
       `)
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (error || !booking) {
@@ -83,6 +86,7 @@ export async function PATCH(
     await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const { id } = await params;
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     // Verify booking exists
@@ -90,6 +94,7 @@ export async function PATCH(
       .from("bookings")
       .select("id, status")
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (!booking) {
@@ -116,6 +121,7 @@ export async function PATCH(
       .from("bookings")
       .update(updateData)
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .select(`
         *,
         customer:users!bookings_customer_id_fkey(id, full_name, email, phone, avatar_url),
@@ -154,6 +160,7 @@ export async function PATCH(
           .from("bookings")
           .select("customer_id, booking_number")
           .eq("id", id)
+          .eq("tenant_id", tenantId)
           .single();
 
         if (bookingData) {

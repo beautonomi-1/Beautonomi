@@ -1,16 +1,17 @@
-import { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  FlatList,
   Alert,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiPost } from "@/hooks/useApi";
+import { useFocusedApi } from "@/hooks/useFocusedApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -26,6 +27,9 @@ import { formatPhone, formatTimeAgo, formatCurrency } from "@/lib/format";
 import { api } from "@/lib/api-client";
 import { useProvider } from "@/providers/ProviderContext";
 import { Colors } from "@/constants/colors";
+import { E164PhoneField } from "@/components/E164PhoneField";
+import { validateE164Phone } from "@/lib/phone-country-codes";
+import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -76,11 +80,96 @@ function validateEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-function validatePhone(phone: string): boolean {
-  if (!phone) return true;
-  const cleaned = phone.replace(/\D/g, "");
-  return cleaned.length >= 10 && cleaned.length <= 15;
+/* ------------------------------------------------------------------ */
+/*  Client card (memoized for FlashList performance)                   */
+/* ------------------------------------------------------------------ */
+
+interface ClientCardProps {
+  client: Client;
+  onPress: (client: Client) => void;
+  onBook: (client: Client) => void;
+  onMessage: (client: Client) => void;
 }
+
+const ClientCard = React.memo(function ClientCard({ client, onPress, onBook, onMessage }: ClientCardProps) {
+  const isVip =
+    client.tags?.includes("vip") ||
+    (client.total_bookings != null && client.total_bookings >= 10) ||
+    (client.total_spent != null && client.total_spent >= 5000);
+
+  return (
+    <View style={{ marginBottom: 8, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, elevation: 1 }}>
+      <TouchableOpacity
+        onPress={() => onPress(client)}
+        accessibilityRole="button"
+        accessibilityLabel={`${client.full_name}, ${client.total_bookings ?? 0} visits`}
+        activeOpacity={0.7}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Avatar name={client.full_name} imageUrl={client.avatar_url} size="md" />
+          <View style={{ marginLeft: 12, flex: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
+                {client.full_name}
+              </Text>
+              {isVip && (
+                <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 2 }}>
+                  <Text style={{ fontSize: 10, fontWeight: "700", color: "#b45309" }}>VIP</Text>
+                </View>
+              )}
+            </View>
+            <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }} numberOfLines={1}>
+              {client.phone ? formatPhone(client.phone) : client.email || "No contact info"}
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderTopColor: Colors.gray[50], paddingTop: 12 }}>
+        <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+          <Ionicons name="calendar-outline" size={13} color={Colors.gray[400]} />
+          <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[500] }}>
+            {client.total_bookings ?? 0} visit{(client.total_bookings ?? 0) !== 1 ? "s" : ""}
+          </Text>
+        </View>
+        <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+          <Ionicons name="wallet-outline" size={13} color={Colors.gray[400]} />
+          <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[500] }}>
+            {formatCurrency(client.total_spent ?? 0)}
+          </Text>
+        </View>
+        {client.last_visit && (
+          <View style={{ flex: 1, alignItems: "flex-end" }}>
+            <Text style={{ fontSize: 10, color: Colors.gray[400] }}>
+              Last: {formatTimeAgo(client.last_visit)}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      <View style={{ marginTop: 12, flexDirection: "row" }}>
+        <TouchableOpacity
+          style={{ flex: 1, marginRight: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: Colors.gray[900], paddingVertical: 8 }}
+          onPress={() => onBook(client)}
+          accessibilityRole="button"
+          accessibilityLabel={`Book appointment for ${client.full_name}`}
+        >
+          <Ionicons name="calendar" size={14} color="#fff" />
+          <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.white }}>Book</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 8 }}
+          onPress={() => onMessage(client)}
+          accessibilityRole="button"
+          accessibilityLabel={`Message ${client.full_name}`}
+        >
+          <Ionicons name="chatbubble-outline" size={14} color={Colors.gray[700]} />
+          <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Message</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+});
 
 /* ------------------------------------------------------------------ */
 /*  Main component                                                     */
@@ -89,6 +178,7 @@ function validatePhone(phone: string): boolean {
 export default function ClientsScreen() {
   const router = useRouter();
   useResponsive();
+  const defaultPhoneDial = useDefaultPhoneDial();
   const { selectedLocationId } = useProvider();
   const locQ = selectedLocationId ? `?location_id=${selectedLocationId}` : "";
   const [search, setSearch] = useState("");
@@ -99,13 +189,23 @@ export default function ClientsScreen() {
   // Form state - separate first/last name fields
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phoneE164, setPhoneE164] = useState("");
   const [email, setEmail] = useState("");
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const { isFocused } = useFocusedApi();
 
-  const { data: rawClients, loading, error: clientsError, refresh } = useApi<ApiClient[]>(`/api/provider/clients${locQ}`);
-  const { data: servicedClients, refresh: refreshServiced } = useApi<any[]>(`/api/provider/clients/serviced${locQ}`);
-  const { data: conversationClients, refresh: refreshConversations } = useApi<any[]>(`/api/provider/clients/conversations${locQ}`);
+  const { data: rawClients, loading, error: clientsError, refresh } = useApi<ApiClient[]>(
+    `/api/provider/clients${locQ}`,
+    { enabled: isFocused, staleTimeMs: 20_000 },
+  );
+  const { data: servicedClients, refresh: refreshServiced } = useApi<any[]>(
+    `/api/provider/clients/serviced${locQ}`,
+    { enabled: isFocused, staleTimeMs: 20_000 },
+  );
+  const { data: conversationClients, refresh: refreshConversations } = useApi<any[]>(
+    `/api/provider/clients/conversations${locQ}`,
+    { enabled: isFocused, staleTimeMs: 20_000 },
+  );
 
   const clients = useMemo<Client[] | null>(() => {
     if (!rawClients) return null;
@@ -220,6 +320,15 @@ export default function ClientsScreen() {
     };
   }, [clients]);
 
+  const filterChipOptions = useMemo(
+    () =>
+      filterOptions.map((f) => ({
+        ...f,
+        label: `${f.label} (${filterCounts[f.value as ClientFilter]})`,
+      })),
+    [filterOptions, filterCounts],
+  );
+
   // Validation
   function validateForm(): boolean {
     const errors: Record<string, string> = {};
@@ -232,11 +341,12 @@ export default function ClientsScreen() {
       errors.email = "Please enter a valid email";
     }
 
-    if (phone && !validatePhone(phone)) {
-      errors.phone = "Please enter a valid phone number";
+    if (phoneE164.trim()) {
+      const pe = validateE164Phone(phoneE164);
+      if (pe) errors.phone = pe;
     }
 
-    if (!phone.trim() && !email.trim()) {
+    if (!phoneE164.trim() && !email.trim()) {
       errors.phone = "Please provide phone or email";
       errors.email = "Please provide phone or email";
     }
@@ -248,7 +358,7 @@ export default function ClientsScreen() {
   function resetForm() {
     setFirstName("");
     setLastName("");
-    setPhone("");
+    setPhoneE164("");
     setEmail("");
     setFormErrors({});
   }
@@ -262,7 +372,7 @@ export default function ClientsScreen() {
       full_name: fullName,
       first_name: firstName.trim(),
       last_name: lastName.trim(),
-      phone: phone.trim() || undefined,
+      phone: phoneE164.trim() || undefined,
       email: email.trim() || undefined,
     });
 
@@ -277,11 +387,15 @@ export default function ClientsScreen() {
     Alert.alert("Success", "Client added successfully");
   }
 
-  function handleBook(client: Client) {
-    router.push(`/(app)/(tabs)/more/bookings/new?clientId=${client.customer_id}` as any);
-  }
+  const handleViewClient = useCallback((client: Client) => {
+    router.push(`/(app)/(tabs)/more/clients/${client.id}` as any);
+  }, [router]);
 
-  async function handleMessage(client: Client) {
+  const handleBook = useCallback((client: Client) => {
+    router.push(`/(app)/(tabs)/more/bookings/new?clientId=${client.customer_id}` as any);
+  }, [router]);
+
+  const handleMessage = useCallback(async (client: Client) => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       const result = await api.post<{ id: string }>("/api/provider/conversations/create", {
@@ -297,91 +411,20 @@ export default function ClientsScreen() {
     } catch {
       Alert.alert("Error", "Failed to start conversation");
     }
-  }
+  }, [router]);
 
   /* ---------------------------------------------------------------- */
   /*  Client card                                                     */
   /* ---------------------------------------------------------------- */
 
-  function renderClient({ item: client }: { item: Client }) {
-    const isVip =
-      client.tags?.includes("vip") ||
-      (client.total_bookings != null && client.total_bookings >= 10) ||
-      (client.total_spent != null && client.total_spent >= 5000);
-
-    return (
-      <View style={{ marginBottom: 8, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: Colors.white, padding: 16, elevation: 1 }}>
-        <TouchableOpacity
-          onPress={() => router.push(`/(app)/(tabs)/more/clients/${client.id}` as any)}
-          accessibilityRole="button"
-          accessibilityLabel={`${client.full_name}, ${client.total_bookings ?? 0} visits`}
-          activeOpacity={0.7}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Avatar name={client.full_name} imageUrl={client.avatar_url} size="md" />
-            <View style={{ marginLeft: 12, flex: 1 }}>
-              <View style={{ flexDirection: "row", alignItems: "center" }}>
-                <Text style={{ fontSize: 16, fontWeight: "500", color: Colors.gray[900] }} numberOfLines={1}>
-                  {client.full_name}
-                </Text>
-                {isVip && (
-                  <View style={{ marginLeft: 8, borderRadius: 9999, backgroundColor: "#fef3c7", paddingHorizontal: 8, paddingVertical: 2 }}>
-                    <Text style={{ fontSize: 10, fontWeight: "700", color: "#b45309" }}>VIP</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }} numberOfLines={1}>
-                {client.phone ? formatPhone(client.phone) : client.email || "No contact info"}
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", borderTopWidth: 1, borderTopColor: Colors.gray[50], paddingTop: 12 }}>
-          <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name="calendar-outline" size={13} color={Colors.gray[400]} />
-            <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[500] }}>
-              {client.total_bookings ?? 0} visit{(client.total_bookings ?? 0) !== 1 ? "s" : ""}
-            </Text>
-          </View>
-          <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name="wallet-outline" size={13} color={Colors.gray[400]} />
-            <Text style={{ marginLeft: 4, fontSize: 12, color: Colors.gray[500] }}>
-              {formatCurrency(client.total_spent ?? 0)}
-            </Text>
-          </View>
-          {client.last_visit && (
-            <View style={{ flex: 1, alignItems: "flex-end" }}>
-              <Text style={{ fontSize: 10, color: Colors.gray[400] }}>
-                Last: {formatTimeAgo(client.last_visit)}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <View style={{ marginTop: 12, flexDirection: "row" }}>
-          <TouchableOpacity
-            style={{ flex: 1, marginRight: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: Colors.gray[900], paddingVertical: 8 }}
-            onPress={() => handleBook(client)}
-            accessibilityRole="button"
-            accessibilityLabel={`Book appointment for ${client.full_name}`}
-          >
-            <Ionicons name="calendar" size={14} color="#fff" />
-            <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.white }}>Book</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 8 }}
-            onPress={() => handleMessage(client)}
-            accessibilityRole="button"
-            accessibilityLabel={`Message ${client.full_name}`}
-          >
-            <Ionicons name="chatbubble-outline" size={14} color={Colors.gray[700]} />
-            <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Message</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
+  const renderClient = useCallback(({ item: client }: { item: Client }) => (
+    <ClientCard
+      client={client}
+      onPress={handleViewClient}
+      onBook={handleBook}
+      onMessage={handleMessage}
+    />
+  ), [handleViewClient, handleBook, handleMessage]);
 
   /* ---------------------------------------------------------------- */
   /*  JSX                                                             */
@@ -410,10 +453,7 @@ export default function ClientsScreen() {
       <View style={{ flex: 1, minHeight: 0 }}>
       <View style={{ marginBottom: 8 }}>
         <FilterChipGroup
-          options={filterOptions.map((f) => ({
-            ...f,
-            label: `${f.label} (${filterCounts[f.value as ClientFilter]})`,
-          }))}
+          options={filterChipOptions}
           selected={clientFilter}
           onSelect={(v) => setClientFilter(v as ClientFilter)}
         />
@@ -447,11 +487,10 @@ export default function ClientsScreen() {
           }
         />
       ) : (
-        <FlatList
+        <FlashList
           data={filteredClients}
           keyExtractor={(c: Client) => c.id}
           renderItem={renderClient}
-          style={{ flex: 1, minHeight: 0 }}
           showsVerticalScrollIndicator={true}
           refreshing={refreshing}
           onRefresh={handleRefresh}
@@ -512,27 +551,16 @@ export default function ClientsScreen() {
           </View>
 
           <View style={{ marginBottom: 16 }}>
-            <Text style={{ marginBottom: 6, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Phone</Text>
-            <TextInput
-              style={{
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: formErrors.phone ? "#f87171" : Colors.gray[200],
-                backgroundColor: Colors.gray[50],
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                fontSize: 16,
-                color: Colors.gray[900],
-              }}
-              placeholder="+27 xxx xxx xxxx"
-              placeholderTextColor={Colors.gray[400]}
-              value={phone}
-              onChangeText={(t) => {
-                setPhone(t);
+            <E164PhoneField
+              label="Phone"
+              valueE164={phoneE164}
+              onChangeE164={(e164) => {
+                setPhoneE164(e164);
                 if (formErrors.phone) setFormErrors((e) => ({ ...e, phone: "" }));
               }}
-              keyboardType="phone-pad"
-              accessibilityLabel="Phone number"
+              defaultCountryDial={defaultPhoneDial}
+              muted
+              accessibilityLabel="Client phone"
             />
             {formErrors.phone ? (
               <Text style={{ marginTop: 4, fontSize: 12, color: Colors.error }}>{formErrors.phone}</Text>

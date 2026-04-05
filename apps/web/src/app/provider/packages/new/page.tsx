@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { toast } from "sonner";
 import { Plus, Trash2, Package } from "lucide-react";
 import type { OfferingCard } from "@/types/beautonomi";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface Product {
   id: string;
@@ -45,7 +46,7 @@ export default function CreatePackagePage() {
     name: "",
     description: "",
     price: "",
-    currency: "ZAR",
+    currency: LAST_RESORT_CURRENCY as string,
     discount_percentage: "",
     is_active: true,
   });
@@ -297,7 +298,7 @@ export default function CreatePackagePage() {
                     onChange={(e) =>
                       setFormData({ ...formData, currency: e.target.value })
                     }
-                    placeholder="ZAR"
+                    placeholder={LAST_RESORT_CURRENCY}
                   />
                 </div>
               </div>
@@ -469,7 +470,7 @@ export default function CreatePackagePage() {
                                   <option value="">Select a product</option>
                                   {products.map((product) => (
                                     <option key={product.id} value={product.id}>
-                                      {product.name} - {product.currency || "ZAR"}{" "}
+                                      {product.name} - {product.currency || LAST_RESORT_CURRENCY}{" "}
                                       {product.retail_price}
                                       {product.sku && ` (SKU: ${product.sku})`}
                                     </option>

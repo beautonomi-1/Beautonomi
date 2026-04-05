@@ -12,6 +12,7 @@ import * as Haptics from "expo-haptics";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { format, subDays } from "date-fns";
 import { useApi, useApiPost } from "@/hooks/useApi";
+import { useFocusedApi } from "@/hooks/useFocusedApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -24,12 +25,14 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import {
   formatCurrency,
   formatDate,
   formatTime,
 } from "@/lib/format";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 interface DashboardMetrics {
   revenue_today: number;
@@ -143,6 +146,7 @@ const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof
 
 export default function SalesScreen() {
   const router = useRouter();
+  const tenantCurrency = getTenantDefaultCurrency();
   const { isTablet } = useResponsive();
   const { selectedLocationId } = useProvider();
   const locQ = selectedLocationId ? `&location_id=${selectedLocationId}` : "";
@@ -168,10 +172,15 @@ export default function SalesScreen() {
     date: string;
   } | null>(null);
 
+  const { isFocused } = useFocusedApi();
+
   const {
     data: metrics,
     refresh: refreshMetrics,
-  } = useApi<DashboardMetrics>(`/api/provider/dashboard${locQFirst}`);
+  } = useApi<DashboardMetrics>(`/api/provider/dashboard${locQFirst}`, {
+    enabled: isFocused,
+    staleTimeMs: 15_000,
+  });
 
   const dateParams = useMemo(() => {
     const now = new Date();
@@ -191,17 +200,21 @@ export default function SalesScreen() {
   const {
     data: salesResponse,
     loading: salesLoading,
+    error: salesError,
     refresh: refreshSales,
   } = useApi<SalesResponse>(
-    `/api/provider/sales?limit=50${dateParams}${locQ}`
+    `/api/provider/sales?limit=50${dateParams}${locQ}`,
+    { enabled: isFocused, staleTimeMs: 15_000 },
   );
   const sales = salesResponse?.data ?? [];
 
   const { data: catalogue } = useApi<CatalogueService[]>(
-    "/api/provider/services?is_active=true"
+    "/api/provider/services?is_active=true",
+    { enabled: isFocused, staleTimeMs: 60_000 },
   );
   const { data: productsResponse } = useApi<ProductsResponse>(
-    "/api/provider/products?limit=200"
+    "/api/provider/products?limit=200",
+    { enabled: isFocused, staleTimeMs: 60_000 },
   );
   const products = useMemo<ProductItem[]>(() => {
     if (!productsResponse) return [];
@@ -209,9 +222,13 @@ export default function SalesScreen() {
     return raw.products ?? raw ?? [];
   }, [productsResponse]);
   const { data: staffMembers } = useApi<StaffMember[]>(
-    selectedLocationId ? `/api/provider/staff?location_id=${selectedLocationId}` : "/api/provider/staff"
+    selectedLocationId ? `/api/provider/staff?location_id=${selectedLocationId}` : "/api/provider/staff",
+    { enabled: isFocused, staleTimeMs: 30_000 },
   );
-  const { data: rawClients } = useApi<ApiClient[]>(`/api/provider/clients${locQFirst}`);
+  const { data: rawClients } = useApi<ApiClient[]>(`/api/provider/clients${locQFirst}`, {
+    enabled: isFocused,
+    staleTimeMs: 30_000,
+  });
   const clients = useMemo<Client[] | null>(() => {
     if (!rawClients) return null;
     return rawClients.map((c) => ({
@@ -235,7 +252,8 @@ export default function SalesScreen() {
 
   // Cart helpers
   const { data: paymentSettings } = useApi<{ taxRatePercent?: number; taxInclusive?: boolean }>(
-    "/api/provider/settings/payments"
+    "/api/provider/settings/payments",
+    { enabled: isFocused, staleTimeMs: 60_000 },
   );
   const taxRate = (paymentSettings?.taxRatePercent ?? 15) / 100;
   const taxInclusive = paymentSettings?.taxInclusive ?? true;
@@ -664,7 +682,7 @@ export default function SalesScreen() {
 
         <View style={{ marginTop: 16 }}>
           <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
-            Discount (R)
+            Discount ({tenantCurrency})
           </Text>
           <TextInput
             style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, color: Colors.gray[900] }}
@@ -679,7 +697,7 @@ export default function SalesScreen() {
 
         <View style={{ marginTop: 12 }}>
           <Text style={{ marginBottom: 4, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
-            Tip (R)
+            Tip ({tenantCurrency})
           </Text>
           <TextInput
             style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, color: Colors.gray[900] }}
@@ -862,18 +880,16 @@ export default function SalesScreen() {
             trend={metrics?.revenue_growth ? { value: metrics.revenue_growth } : undefined}
           />
         </View>
-        {isTablet && (
-          <View style={{ flex: 1, marginTop: 0 }}>
-            <StatCard
-              title="Pending"
-              value={formatCurrency(metrics?.pending_payments_amount ?? 0)}
-              subtitle={`${metrics?.pending_payments_count ?? 0} payments`}
-              icon="time-outline"
-              iconColor="#f59e0b"
-              iconBg="#fffbeb"
-            />
-          </View>
-        )}
+        <View style={[ isTablet ? { flex: 1 } : { marginTop: 12 } ]}>
+          <StatCard
+            title="Pending"
+            value={formatCurrency(metrics?.pending_payments_amount ?? 0)}
+            subtitle={`${metrics?.pending_payments_count ?? 0} payments`}
+            icon="time-outline"
+            iconColor="#f59e0b"
+            iconBg="#fffbeb"
+          />
+        </View>
       </View>
 
       <View style={{ marginTop: 16 }}>
@@ -891,6 +907,8 @@ export default function SalesScreen() {
 
         {salesLoading && sales.length === 0 ? (
           <LoadingState fullScreen={false} />
+        ) : salesError && sales.length === 0 ? (
+          <ErrorState message={salesError} onRetry={refreshSales} />
         ) : sales.length === 0 ? (
           <EmptyState
             icon="receipt-outline"
@@ -953,7 +971,7 @@ export default function SalesScreen() {
         visible={showYocoPayment}
         onClose={() => setShowYocoPayment(false)}
         amountCents={Math.round(grandTotal * 100)}
-        currency="ZAR"
+        currency={tenantCurrency}
         description={`POS Sale for ${selectedClient?.full_name ?? "Walk-in"}`}
         onPaymentSuccess={async (result) => {
           await completeSaleWithMethod("card", result.reference);

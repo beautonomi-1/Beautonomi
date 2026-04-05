@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
  * GET /api/me/verification
- * Get current user's verification status
+ * Get current user's verification status, plus whether SumSub is available
+ * so the front-end can decide to show the automated or manual flow.
  */
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
 
-    // Get user's verification status from users table
+    // User verification fields
     const { data: userData, error: userError } = await supabase
       .from("users")
       .select("identity_verified, identity_verification_status, identity_verification_submitted_at, identity_verification_reviewed_at")
@@ -20,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     if (userError) throw userError;
 
-    // Get all verification records
+    // All verification records (most recent first)
     const { data: verifications, error: verificationsError } = await supabase
       .from("user_verifications")
       .select("*")
@@ -29,12 +32,45 @@ export async function GET(request: NextRequest) {
 
     if (verificationsError) throw verificationsError;
 
+    // Check if SumSub is configured for this environment (admin client — no RLS)
+    const adminClient = getSupabaseAdmin();
+    const { searchParams } = new URL(request.url);
+    const env = searchParams.get("environment") ?? "production";
+    const { data: sumsubConfig } = await adminClient
+      .from("sumsub_integration_config")
+      .select("enabled, app_token_secret, secret_key_secret")
+      .eq("environment", env)
+      .maybeSingle();
+
+    const sumsubAvailable = Boolean(
+      sumsubConfig?.enabled &&
+      sumsubConfig?.app_token_secret &&
+      sumsubConfig?.secret_key_secret
+    );
+
+    // Derive a combined status
+    const userStatus = userData.identity_verification_status ?? "none";
+    const mostRecentManual = (verifications ?? []).find(
+      (v) => v.document_type !== "sumsub"
+    );
+
     return successResponse({
       verified: userData.identity_verified || false,
-      status: userData.identity_verification_status || 'pending',
+      status: userStatus,
       submitted_at: userData.identity_verification_submitted_at,
       reviewed_at: userData.identity_verification_reviewed_at,
       verifications: verifications || [],
+      // Whether SumSub automated verification is available
+      sumsub_available: sumsubAvailable,
+      // Most recent manual document submission
+      manual_verification: mostRecentManual
+        ? {
+            id: mostRecentManual.id,
+            status: mostRecentManual.status,
+            document_type: mostRecentManual.document_type,
+            submitted_at: mostRecentManual.submitted_at,
+          }
+        : null,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch verification status");
@@ -123,6 +159,8 @@ export async function POST(request: NextRequest) {
       .from('verification-documents')
       .getPublicUrl(filePath);
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+
     // Create verification record
     const { data: verification, error: verificationError } = await supabase
       .from("user_verifications")
@@ -132,6 +170,7 @@ export async function POST(request: NextRequest) {
         country: country,
         document_url: publicUrl,
         status: 'pending',
+        tenant_id: tenantId,
       })
       .select()
       .single();

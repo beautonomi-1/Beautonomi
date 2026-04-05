@@ -26,6 +26,11 @@ function urlParamsFrom(params: SingularLinkParams): Record<string, string> {
 /**
  * Build Expo Router href from Singular link params for the provider app.
  * Supports urlParameters: screen, id (chat_id, booking_id, etc.).
+ *
+ * Onboarding:
+ * - Hub: screen=onboarding or deeplink path `onboarding`
+ * - Native wizard: screen=onboarding-wizard | onboarding_wizard, or path
+ *   `onboarding/wizard` | `onboarding-wizard` | `onboarding_wizard`
  */
 export function buildProviderRoute(params: SingularLinkParams): { pathname: string; params?: Record<string, string> } | null {
   const q = urlParamsFrom(params);
@@ -50,6 +55,15 @@ export function buildProviderRoute(params: SingularLinkParams): { pathname: stri
   }
   if (screen === "onboarding" || path === "onboarding") {
     return { pathname: "/(app)/onboarding" };
+  }
+  if (
+    screen === "onboarding-wizard" ||
+    screen === "onboarding_wizard" ||
+    path === "onboarding/wizard" ||
+    path === "onboarding-wizard" ||
+    path === "onboarding_wizard"
+  ) {
+    return { pathname: "/(app)/onboarding/wizard" };
   }
   if (screen === "dashboard" || path === "dashboard" || screen === "home" || path === "" || screen === "") {
     return { pathname: "/(app)/(tabs)/dashboard" };
@@ -99,9 +113,25 @@ function onSingularLink(params: SingularLinkParams) {
   }
 }
 
+async function requestIosAttBeforeAttribution(): Promise<void> {
+  if (Platform.OS !== "ios") return;
+  try {
+    const { getTrackingPermissionsAsync, requestTrackingPermissionsAsync } = await import(
+      "expo-tracking-transparency"
+    );
+    const { status } = await getTrackingPermissionsAsync();
+    if (status === "undetermined") {
+      await requestTrackingPermissionsAsync();
+    }
+  } catch {
+    // Expo Go / missing native module — Singular still initializes without IDFA until next launch
+  }
+}
+
 /**
  * Initialize Singular. Call once at app startup (root layout).
  * No-op on web or when key/secret missing.
+ * On iOS, requests App Tracking Transparency before init when status is undetermined (store requirement with Singular).
  */
 export function initSingular() {
   if (Platform.OS === "web") return;
@@ -110,12 +140,15 @@ export function initSingular() {
   const secret = getSingularSecret();
   if (!apikey || !secret) return;
 
-  try {
-    const config = new SingularConfig(apikey, secret).withSingularLink(onSingularLink);
-    Singular.init(config);
-  } catch (e) {
-    if (__DEV__) {
-      console.warn("[Singular] Init failed:", e);
+  void (async () => {
+    await requestIosAttBeforeAttribution();
+    try {
+      const config = new SingularConfig(apikey, secret).withSingularLink(onSingularLink);
+      Singular.init(config);
+    } catch (e) {
+      if (__DEV__) {
+        console.warn("[Singular] Init failed:", e);
+      }
     }
-  }
+  })();
 }

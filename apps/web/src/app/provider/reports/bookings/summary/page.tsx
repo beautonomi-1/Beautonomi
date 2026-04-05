@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -38,6 +39,7 @@ interface BookingSummaryData {
 }
 
 export default function BookingSummaryReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -92,7 +94,7 @@ export default function BookingSummaryReport() {
   const handleExport = (format: "csv" | "pdf" = "csv") => {
     if (!data) return;
     if (format === "csv") {
-      const exportData = formatReportDataForExport(data as unknown as ReportRow, "booking-summary");
+      const exportData = formatReportDataForExport(data as unknown as ReportRow, "booking-summary", exportCurrency);
       exportToCSV(exportData, "booking-summary-report");
     } else {
       exportToPDF("booking-summary-report", "booking-summary-report", "Booking Summary Report");
@@ -227,7 +229,7 @@ export default function BookingSummaryReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalRevenue.toLocaleString()}
+                  {fmt(data.totalRevenue)}
                 </p>
                 <DollarSign className="w-5 h-5 text-green-600" />
               </div>
@@ -241,7 +243,7 @@ export default function BookingSummaryReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.averageBookingValue.toLocaleString()}
+                  {fmt(data.averageBookingValue)}
                 </p>
                 <TrendingUp className="w-5 h-5 text-blue-600" />
               </div>
@@ -296,7 +298,7 @@ export default function BookingSummaryReport() {
                     <div className="text-right">
                       <p className="font-semibold text-gray-900">{status.count} bookings</p>
                       <p className="text-sm text-gray-600">
-                        ZAR {status.revenue.toLocaleString()}
+                        {fmt(status.revenue)}
                       </p>
                     </div>
                   </div>
@@ -330,7 +332,7 @@ export default function BookingSummaryReport() {
                     <div className="text-right">
                       <p className="font-semibold text-gray-900">{service.bookings} bookings</p>
                       <p className="text-sm text-gray-600">
-                        ZAR {service.revenue.toLocaleString()}
+                        {fmt(service.revenue)}
                       </p>
                     </div>
                   </div>

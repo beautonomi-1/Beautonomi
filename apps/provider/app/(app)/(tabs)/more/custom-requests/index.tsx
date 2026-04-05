@@ -24,6 +24,13 @@ type CustomRequest = {
   offers?: { status?: string; price?: number; created_at?: string }[];
 };
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
+
 export default function CustomRequestsListScreen() {
   const router = useRouter();
   const { selectedLocationId } = useProvider();
@@ -107,7 +114,7 @@ export default function CustomRequestsListScreen() {
                   </Text>
                 ) : null}
                 <Text style={{ marginTop: 8, fontSize: 12, color: Colors.gray[500] }}>
-                  {new Date(r.created_at).toLocaleDateString()}
+                  {formatDateSafe(r.created_at)}
                   {r.location_type === "at_home" ? " · At home" : " · At salon"}
                   {r.offers?.length ? ` · ${r.offers.length} offer(s)` : " · No offer yet"}
                 </Text>

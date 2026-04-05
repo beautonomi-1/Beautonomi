@@ -1,12 +1,22 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { handleApiError } from "@/lib/supabase/api-helpers";
-import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import {
+  isPaystackEnabledForTenant,
+  isWalletEnabledForTenant,
+  isGiftCardsEnabledForTenant,
+} from "@/lib/subscriptions/entitlements";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { chargeAuthorization } from "@/lib/payments/paystack-complete";
 import { getAppointmentSettingsFromDB } from "@/lib/provider-portal/appointment-settings";
+import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
 import type { BookingDraft } from "@/types/beautonomi";
 import type { ValidatedBookingData } from "./validate-booking";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { percentOf, subtractMoney, toCents } from "@beautonomi/utils";
+import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
+import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
+import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -14,13 +24,22 @@ export interface PaymentResult {
   paymentUrl: string | null;
 }
 
+/** Fields read from the booking row after `create_booking_with_locking` (and similar). */
+export interface PublicBookingPaymentRow {
+  id: string;
+  booking_number?: string | null;
+  tenant_id?: string | null;
+}
+
 export interface ProcessPaymentInput {
   supabase: SupabaseClient;
   supabaseAdmin: SupabaseClient;
   draft: BookingDraft;
-  validatedDraft: Record<string, any>;
+  validatedDraft: PublicBookingValidatedBody;
   v: ValidatedBookingData;
-  booking: any;
+  booking: PublicBookingPaymentRow;
+  /** Request Host → tenant; must align with `booking.tenant_id` for payment routing. */
+  request: Request;
 }
 
 // ─── Main function ────────────────────────────────────────────────────────────
@@ -36,16 +55,38 @@ export interface ProcessPaymentInput {
 export async function processPayment(
   input: ProcessPaymentInput
 ): Promise<PaymentResult | Response> {
-  const { supabase, supabaseAdmin, draft, validatedDraft, v, booking } = input;
+  const { supabase, supabaseAdmin, draft, validatedDraft, v, booking, request } = input;
+
+  const tenantResolved = await resolvePaymentTenantForBookingRequest(
+    request,
+    booking.tenant_id,
+  );
+  if (tenantResolved.ok === false) {
+    return tenantResolved.response;
+  }
+  const flagTenantId = tenantResolved.paymentTenantId;
 
   const paymentMethod = validatedDraft.payment_method || "card";
   const paymentOption = validatedDraft.payment_option || "deposit";
+  const paymentTypes = await getPlatformPaymentTypesForTenant(
+    supabaseAdmin as any,
+    flagTenantId,
+  );
+
+  if (paymentMethod === "cash" && !paymentTypes.cash) {
+    return handleApiError(
+      new Error("Cash payments are currently unavailable"),
+      "Cash payments are currently unavailable. Please pay online.",
+      "FEATURE_DISABLED",
+      400,
+    );
+  }
 
   // ── Determine amount to collect ──────────────────────────────────────────
   let amountToCollect = v.totalAmount;
   if (v.provider.requires_deposit) {
     const pct = Number(v.provider.deposit_percentage || 30);
-    const deposit = Math.ceil((v.totalAmount * pct) / 100);
+    const deposit = percentOf(v.totalAmount, pct);
     amountToCollect = paymentOption === "full" ? v.totalAmount : deposit;
   }
 
@@ -55,7 +96,7 @@ export async function processPayment(
   let giftCardId: string | null = null;
 
   if (giftCardCode && amountToCollect > 0) {
-    const giftCardsEnabled = await isFeatureEnabledServer("gift_cards");
+    const giftCardsEnabled = await isGiftCardsEnabledForTenant(flagTenantId);
     if (!giftCardsEnabled) {
       return handleApiError(
         new Error("Gift cards are currently unavailable"),
@@ -110,7 +151,7 @@ export async function processPayment(
   let walletAmountApplied = 0;
 
   if (useWallet && amountToCollect > 0) {
-    const walletEnabled = await isFeatureEnabledServer("payment_wallet");
+    const walletEnabled = await isWalletEnabledForTenant(flagTenantId);
     if (!walletEnabled) {
       return handleApiError(
         new Error("Wallet payments are currently unavailable"),
@@ -130,11 +171,17 @@ export async function processPayment(
       if (walletBalance > 0) {
         walletAmountApplied = Math.min(walletBalance, amountToCollect);
 
+        const walletLedgerTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+          tenant_id: booking.tenant_id,
+          provider_id: draft.provider_id,
+        });
+
         await (supabase.rpc as any)("wallet_debit_self", {
           p_amount: walletAmountApplied,
           p_description: `Wallet spend for booking ${booking.booking_number}`,
           p_reference_id: booking.id,
           p_reference_type: "booking",
+          p_tenant_id: walletLedgerTenantId,
         });
 
         await (supabase.from("bookings") as any)
@@ -156,7 +203,7 @@ export async function processPayment(
     );
     const shouldAutoConfirmStatus = !appointmentSettings.requireConfirmationForBookings;
 
-    const loyaltyPointsUsed = Number((validatedDraft as any).loyalty_points_used ?? 0);
+    const loyaltyPointsUsed = Number(validatedDraft.loyalty_points_used ?? 0);
     if (loyaltyPointsUsed > 0) {
       await (supabase.from("bookings") as any)
         .update({ loyalty_points_used: loyaltyPointsUsed })
@@ -192,6 +239,7 @@ export async function processPayment(
       giftCardAmountApplied,
       giftCardCode,
       walletAmountApplied,
+      marketTenantId: flagTenantId,
     });
 
     return { paymentUrl: null };
@@ -201,7 +249,7 @@ export async function processPayment(
   let paymentUrl: string | null = null;
 
   if (paymentMethod === "card") {
-    const paystackEnabled = await isFeatureEnabledServer("payment_paystack");
+    const paystackEnabled = await isPaystackEnabledForTenant(flagTenantId);
     if (!paystackEnabled) {
       return handleApiError(
         new Error("Online card payment is currently unavailable"),
@@ -229,11 +277,11 @@ export async function processPayment(
 
     const reference = generateTransactionReference("booking", booking.id);
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
-    const callbackUrl = `${baseUrl}/checkout/success?booking_id=${encodeURIComponent(booking.id)}&booking_number=${encodeURIComponent((booking as any).booking_number || "")}`;
+    const callbackUrl = `${baseUrl}/checkout/success?booking_id=${encodeURIComponent(booking.id)}&booking_number=${encodeURIComponent(booking.booking_number || "")}`;
 
-    const savedPaymentMethodId = (draft as any).payment_method_id;
-    const saveCard = (draft as any).save_card === true;
-    const setAsDefault = (draft as any).set_as_default === true;
+    const savedPaymentMethodId = validatedDraft.payment_method_id ?? null;
+    const saveCard = validatedDraft.save_card === true;
+    const setAsDefault = validatedDraft.set_as_default === true;
 
     if (savedPaymentMethodId) {
       // ── Saved card charge ──────────────────────────────────────────────
@@ -254,7 +302,7 @@ export async function processPayment(
         );
       }
 
-      const loyaltyPointsUsed = Number((validatedDraft as any).loyalty_points_used ?? 0);
+      const loyaltyPointsUsed = Number(validatedDraft.loyalty_points_used ?? 0);
       const chargeResult = await chargeAuthorization(
         savedCard.provider_payment_method_id,
         email,
@@ -276,7 +324,8 @@ export async function processPayment(
           payment_method_id: savedPaymentMethodId,
           hold_id: validatedDraft.hold_id || null,
           loyalty_points_used: loyaltyPointsUsed > 0 ? loyaltyPointsUsed : undefined,
-        }
+        },
+        { tenantId: flagTenantId }
       );
 
       if (!chargeResult.status) {
@@ -290,13 +339,43 @@ export async function processPayment(
 
       paymentUrl = null;
 
-      await (supabase.from("bookings") as any)
-        .update({
-          payment_reference: chargeResult.data.reference,
-          payment_provider: "paystack",
-          payment_status: "pending",
-        })
-        .eq("id", booking.id);
+      const chargeData = chargeResult.data as { id?: number; reference?: string; amount?: number };
+      const paystackTxId =
+        chargeData?.id !== undefined && chargeData?.id !== null
+          ? String(chargeData.id)
+          : null;
+      if (paystackTxId) {
+        const { data: existingBp } = await supabaseAdmin
+          .from("booking_payments")
+          .select("id")
+          .eq("payment_provider", "paystack")
+          .eq("payment_provider_id", paystackTxId)
+          .maybeSingle();
+        if (!existingBp) {
+          const amountMajor =
+            typeof chargeData.amount === "number" ? chargeData.amount / 100 : amountToCollect;
+          const bookingTenantId = booking.tenant_id ?? null;
+          await supabaseAdmin.from("booking_payments").insert({
+            booking_id: booking.id,
+            ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
+            amount: amountMajor,
+            payment_method: "card",
+            payment_provider: "paystack",
+            payment_provider_id: paystackTxId,
+            status: "completed",
+            notes: `Saved card charge. Ref: ${chargeData.reference ?? ""}`,
+            payment_provider_data: {
+              source: "process_payment_saved_card",
+              reference: chargeData.reference,
+            },
+          });
+        }
+      }
+
+      await syncBookingAfterPaystackSuccess(supabaseAdmin, booking.id, {
+        paymentReference: chargeData?.reference,
+        paymentProvider: "paystack",
+      });
 
       await (supabase.from("payments") as any).insert({
         booking_id: booking.id,
@@ -305,7 +384,7 @@ export async function processPayment(
         payment_number: "",
         amount: amountToCollect,
         currency: v.currency,
-        status: "pending",
+        status: "completed",
         payment_provider: "paystack",
         payment_provider_transaction_id: chargeResult.data.reference,
         payment_provider_response: chargeResult,
@@ -321,7 +400,7 @@ export async function processPayment(
       });
     } else {
       // ── New card (Paystack redirect) ───────────────────────────────────
-      const loyaltyPointsUsed = Number((validatedDraft as any).loyalty_points_used ?? 0);
+      const loyaltyPointsUsed = Number(validatedDraft.loyalty_points_used ?? 0);
       const paystackData = await initializePaystackTransaction({
         email,
         amountInSmallestUnit: convertToSmallestUnit(amountToCollect),
@@ -332,6 +411,9 @@ export async function processPayment(
           booking_id: booking.id,
           customer_id: v.customerId,
           amount_to_collect: amountToCollect,
+          booking_total_amount: v.totalAmount,
+          payment_option: v.provider.requires_deposit ? paymentOption : "full",
+          requires_deposit: Boolean(v.provider.requires_deposit),
           gift_card_amount_applied: giftCardAmountApplied,
           gift_card_code: giftCardCode || null,
           wallet_amount_applied: walletAmountApplied,
@@ -347,6 +429,7 @@ export async function processPayment(
           hold_id: validatedDraft.hold_id || undefined,
           loyalty_points_used: loyaltyPointsUsed > 0 ? loyaltyPointsUsed : undefined,
         },
+        tenantId: flagTenantId,
       });
 
       paymentUrl = paystackData?.data?.authorization_url || null;
@@ -382,6 +465,23 @@ export async function processPayment(
     }
   }
 
+  // ── Cash payment — explicitly mark as pending (pay at appointment) ──────────
+  if (paymentMethod === "cash") {
+    const appointmentSettings = await getAppointmentSettingsFromDB(
+      supabaseAdmin,
+      draft.provider_id
+    );
+    const cashStatus = appointmentSettings.requireConfirmationForBookings ? "pending" : "confirmed";
+    await (supabase.from("bookings") as any)
+      .update({
+        payment_provider: "cash",
+        payment_status: "pending",
+        payment_method: "cash",
+        status: cashStatus,
+      })
+      .eq("id", booking.id);
+  }
+
   return { paymentUrl };
 }
 
@@ -394,15 +494,21 @@ export async function processPayment(
 async function insertNoGatewayLedger(
   supabase: SupabaseClient,
   ctx: {
-    booking: any;
+    booking: PublicBookingPaymentRow;
     draft: BookingDraft;
     v: ValidatedBookingData;
     giftCardAmountApplied: number;
     giftCardCode: string;
     walletAmountApplied: number;
+    marketTenantId?: string | null;
   }
 ) {
-  const { booking, draft, v, giftCardAmountApplied, giftCardCode: _giftCardCode, walletAmountApplied } = ctx;
+  const { booking, draft, v, giftCardAmountApplied, giftCardCode: _giftCardCode, walletAmountApplied, marketTenantId } = ctx;
+
+  const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: booking.tenant_id ?? marketTenantId ?? null,
+    provider_id: draft.provider_id,
+  });
 
   // Platform settings for commission
   const { data: settingsRow } = await (supabase.from("platform_settings") as any)
@@ -419,9 +525,9 @@ async function insertNoGatewayLedger(
     : 0;
 
   const platformCommission =
-    commissionEnabled && commissionRate > 0 ? (v.commissionBase * commissionRate) / 100 : 0;
+    commissionEnabled && commissionRate > 0 ? percentOf(v.commissionBase, commissionRate) : 0;
 
-  const providerEarnings = v.commissionBase - platformCommission + v.travelFee + v.tipAmount;
+  const providerEarnings = subtractMoney(v.commissionBase, platformCommission) + v.travelFee + v.tipAmount;
 
   const internalRef =
     walletAmountApplied > 0
@@ -449,6 +555,7 @@ async function insertNoGatewayLedger(
     {
       booking_id: booking.id,
       provider_id: draft.provider_id,
+      tenant_id: financeTenantId,
       transaction_type: "payment",
       amount: v.commissionBase,
       fees: 0,
@@ -460,6 +567,7 @@ async function insertNoGatewayLedger(
     {
       booking_id: booking.id,
       provider_id: draft.provider_id,
+      tenant_id: financeTenantId,
       transaction_type: "provider_earnings",
       amount: providerEarnings,
       fees: 0,
@@ -471,17 +579,7 @@ async function insertNoGatewayLedger(
     {
       booking_id: booking.id,
       provider_id: draft.provider_id,
-      transaction_type: "service_fee",
-      amount: v.serviceFeeAmount,
-      fees: 0,
-      commission: 0,
-      net: v.serviceFeeAmount,
-      description: `Service fee for booking ${booking.booking_number}`,
-      created_at: new Date().toISOString(),
-    },
-    {
-      booking_id: booking.id,
-      provider_id: draft.provider_id,
+      tenant_id: financeTenantId,
       transaction_type: "tip",
       amount: v.tipAmount,
       fees: 0,
@@ -493,6 +591,7 @@ async function insertNoGatewayLedger(
     {
       booking_id: booking.id,
       provider_id: draft.provider_id,
+      tenant_id: financeTenantId,
       transaction_type: "tax",
       amount: v.taxAmount,
       fees: 0,
@@ -506,6 +605,7 @@ async function insertNoGatewayLedger(
           {
             booking_id: booking.id,
             provider_id: draft.provider_id,
+            tenant_id: financeTenantId,
             transaction_type: "travel_fee",
             amount: v.travelFee,
             fees: 0,
@@ -521,6 +621,7 @@ async function insertNoGatewayLedger(
           {
             booking_id: booking.id,
             provider_id: draft.provider_id,
+            tenant_id: financeTenantId,
             transaction_type: "service_fee",
             amount: v.serviceFeeAmount,
             fees: 0,

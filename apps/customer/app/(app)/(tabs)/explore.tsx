@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState, useRef } from "react";
+import React, { useEffect, useCallback, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -59,7 +59,7 @@ function getPostAspect(post: ExplorePost): number {
 }
 
 /* ─── Pinterest-style Post Card ─── */
-function PinCard({
+const PinCard = React.memo(function PinCard({
   post,
   onPress,
   cardWidth,
@@ -292,7 +292,7 @@ function PinCard({
       </View>
     </Animated.View>
   );
-}
+});
 
 /* ─── Category Chip ─── */
 function CategoryChip({
@@ -491,6 +491,7 @@ export default function ExploreScreen() {
     initialLoad,
     applyFilters,
     setPostSaved,
+    setPostLiked,
   } = useExploreFeed();
 
   useEffect(() => {
@@ -532,8 +533,10 @@ export default function ExploreScreen() {
     async (post: ExplorePost) => {
       if (!user) return;
       haptic.light();
+      const wasLiked = Boolean(post.is_liked);
+      setPostLiked(post.id, !wasLiked, wasLiked ? -1 : 1);
       try {
-        if (post.is_liked) {
+        if (wasLiked) {
           await api.delete(`/api/explore/events?post_id=${post.id}&event_type=like`);
         } else {
           await api.post("/api/explore/events", {
@@ -542,9 +545,11 @@ export default function ExploreScreen() {
             idempotency_key: `like-${post.id}-${user.id}-${Date.now()}`,
           });
         }
-      } catch {}
+      } catch {
+        setPostLiked(post.id, wasLiked, wasLiked ? 1 : -1);
+      }
     },
-    [user],
+    [user, setPostLiked],
   );
 
   const handleSave = useCallback(

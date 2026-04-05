@@ -25,8 +25,21 @@ import { RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
 import { APP_URL } from "@/config/public-env";
 import { haptic } from "@/lib/haptics";
 import { api } from "@/lib/api-client";
+import { stashPostOnboardingHref } from "@/lib/post-onboarding-redirect";
+import { trackSignUp } from "@/lib/analytics";
+import { useTranslation, supportedLanguages, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
+import { changeLanguage } from "@/lib/i18n";
+import * as Localization from "expo-localization";
+import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 
 const REFERRAL_REF_KEY = "referral_ref";
+const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
+const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
+
+function getDefaultLanguage(): string {
+  const deviceCode = Localization.getLocales()[0]?.languageCode?.split("-")[0] || "en";
+  return supportedLanguages.some((l) => l.code === deviceCode) ? deviceCode : "en";
+}
 
 const PRIMARY = Colors.primary;
 
@@ -99,8 +112,9 @@ function parseRefFromUrl(url: string): string | null {
 
 export default function SignupScreen() {
   useScreenTracking("Signup");
+  const { t } = useTranslation();
   const { signUpWithEmail, signInWithOAuth } = useAuth();
-  const params = useLocalSearchParams<{ ref?: string }>();
+  const params = useLocalSearchParams<{ ref?: string; return_to?: string }>();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -108,7 +122,7 @@ export default function SignupScreen() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [phone, setPhone] = useState("");
-  const [countryCode, setCountryCode] = useState("+27");
+  const [countryCode, setCountryCode] = useState(getDeviceDefaultCountryDial);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [countrySearch, setCountrySearch] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -116,6 +130,10 @@ export default function SignupScreen() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [referralCode, setReferralCode] = useState<string | null>(params.ref?.trim() ?? null);
+  const [preferredLanguage, setPreferredLanguage] = useState(getDefaultLanguage);
+  const [signupSource, setSignupSource] = useState<string | null>(null);
+  const [showLanguagePicker, setShowLanguagePicker] = useState(false);
+  const [showSignupSourcePicker, setShowSignupSourcePicker] = useState(false);
 
   // Capture ref from route params or from initial/deep-link URL (e.g. customer://signup?ref=CODE)
   useEffect(() => {
@@ -167,7 +185,10 @@ export default function SignupScreen() {
     if (!password) newErrors.password = "Password is required";
     else if (password.length < 8) newErrors.password = "Password must be at least 8 characters";
     if (password !== confirmPassword) newErrors.confirmPassword = "Passwords don't match";
-    if (!agreedToTerms) newErrors.terms = "You must agree to the terms";
+    if (!agreedToTerms) {
+      newErrors.terms =
+        "Confirm you agree to the Terms of Service, Privacy Policy, and Cookie Policy (including product analytics and optional session replay while signed in).";
+    }
     if (phone.trim()) {
       const pErr = validatePhone(phone, countryCode);
       if (pErr) newErrors.phone = pErr;
@@ -188,7 +209,9 @@ export default function SignupScreen() {
       }
       if (result.requiresConfirmation) {
         haptic.success();
-        // Keep referral_ref in AsyncStorage so we attach when they log in after verifying
+        trackSignUp("email");
+        if (signupSource) AsyncStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource).catch(() => {});
+        AsyncStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage).catch(() => {});
         Alert.alert(
           "Check Your Email",
           "We've sent a confirmation link to your email. Please confirm to activate your account.",
@@ -196,12 +219,16 @@ export default function SignupScreen() {
         );
         return;
       }
-      // Session is available: persist phone and attach referral
+      // Session is available: persist phone, signup source, language, and attach referral
+      trackSignUp("email");
       const fullPhone =
         phone.trim() ? `${countryCode}${stripLeadingZero(phone.replace(/\D/g, ""))}`.trim() : "";
-      if (fullPhone) {
-        api.patch("/api/me/profile", { phone: fullPhone }).catch(() => {});
-      }
+      const profilePayload: { phone?: string; signup_source?: string; preferred_language?: string } = {};
+      if (fullPhone) profilePayload.phone = fullPhone;
+      if (signupSource) profilePayload.signup_source = signupSource;
+      profilePayload.preferred_language = preferredLanguage;
+      api.patch("/api/me/profile", profilePayload).catch(() => {});
+      await changeLanguage(preferredLanguage);
       const refToAttach = referralCode ?? (await AsyncStorage.getItem(REFERRAL_REF_KEY));
       if (refToAttach?.trim()) {
         try {
@@ -212,7 +239,8 @@ export default function SignupScreen() {
         await AsyncStorage.removeItem(REFERRAL_REF_KEY);
       }
       haptic.success();
-      router.replace("/(app)/(tabs)/home");
+      await stashPostOnboardingHref(params.return_to);
+      router.replace("/(app)/onboarding");
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Signup failed");
     } finally {
@@ -226,7 +254,14 @@ export default function SignupScreen() {
     const { error } = await signInWithOAuth(provider);
     setLoading(false);
     if (error) {
-      Alert.alert("Sign Up Failed", error.message);
+      // Cancelled is not an error worth surfacing
+      if (!error.message.toLowerCase().includes("cancel")) {
+        Alert.alert("Sign Up Failed", error.message);
+      }
+    } else {
+      trackSignUp(provider);
+      await stashPostOnboardingHref(params.return_to);
+      router.replace("/(app)/onboarding" as never);
     }
   }
 
@@ -332,6 +367,33 @@ export default function SignupScreen() {
           <Text style={{ marginHorizontal: contentPadding, fontSize: 13, color: "#9CA3AF" }}>or sign up with email</Text>
           <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
         </View>
+
+        {/* Preferred language (early) */}
+        <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
+          {t("auth.preferredLanguage")}
+        </Text>
+        <TouchableOpacity
+          onPress={() => setShowLanguagePicker(true)}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
+            borderRadius: RADIUS_INPUT,
+            backgroundColor: "#FAFAFA",
+            paddingHorizontal: 14,
+            paddingVertical: 14,
+            marginBottom: 16,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={t("auth.preferredLanguage")}
+        >
+          <Text style={{ fontSize: 15, color: "#111827" }}>
+            {supportedLanguages.find((l) => l.code === preferredLanguage)?.nativeName ?? supportedLanguages[0].nativeName}
+          </Text>
+          <Ionicons name="chevron-down" size={18} color="#6B7280" />
+        </TouchableOpacity>
 
         {/* Full Name */}
         <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
@@ -557,6 +619,35 @@ export default function SignupScreen() {
           <Text style={{ fontSize: 12, color: "#EF4444", marginBottom: 12 }}>{phoneError || errors.phone}</Text>
         ) : null}
 
+        {/* How did you hear about us? (optional) */}
+        <Text style={{ fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6 }}>
+          {t("auth.howHearAboutUs")} <Text style={{ fontWeight: "400", color: "#9CA3AF" }}>(optional)</Text>
+        </Text>
+        <TouchableOpacity
+          onPress={() => setShowSignupSourcePicker(true)}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            borderWidth: 1,
+            borderColor: Colors.gray[200],
+            borderRadius: RADIUS_INPUT,
+            backgroundColor: "#FAFAFA",
+            paddingHorizontal: 14,
+            paddingVertical: 14,
+            marginBottom: 16,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={t("auth.howHearAboutUs")}
+        >
+          <Text style={{ fontSize: 15, color: signupSource ? "#111827" : "#9CA3AF" }}>
+            {signupSource
+              ? t(SIGNUP_SOURCE_OPTIONS.find((o) => o.value === signupSource)?.labelKey ?? "auth.signupSourceOther")
+              : t("auth.signupSourceSkip")}
+          </Text>
+          <Ionicons name="chevron-down" size={18} color="#6B7280" />
+        </TouchableOpacity>
+
         {/* Terms checkbox */}
         <TouchableOpacity
           onPress={() => { setAgreedToTerms(!agreedToTerms); setErrors((p) => ({ ...p, terms: "" })); }}
@@ -580,7 +671,7 @@ export default function SignupScreen() {
             {agreedToTerms && <Ionicons name="checkmark" size={14} color="#fff" />}
           </View>
           <Text style={{ marginLeft: 10, flex: 1, fontSize: 13, color: "#6B7280", lineHeight: 20 }}>
-            I agree to the{" "}
+            I have read and agree to the{" "}
             <Text
               style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
               onPress={() => Linking.openURL(`${APP_URL}/terms-and-condition`)}
@@ -594,6 +685,14 @@ export default function SignupScreen() {
             >
               Privacy Policy
             </Text>
+            , and{" "}
+            <Text
+              style={{ fontWeight: "600", color: "#111827", textDecorationLine: "underline" }}
+              onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/cookie-policy`)}
+            >
+              Cookie Policy
+            </Text>
+            . I understand Beautonomi may use cookies and similar technologies, process data as described in the Privacy Policy and Cookie Policy, and (while signed in) use product analytics and limited session replay. I can update analytics preferences in my account privacy settings.
           </Text>
         </TouchableOpacity>
         {errors.terms ? <Text style={{ fontSize: 12, color: "#EF4444", marginTop: -12, marginBottom: 16 }}>{errors.terms}</Text> : null}
@@ -710,6 +809,139 @@ export default function SignupScreen() {
                     {c.label}
                   </Text>
                   {countryCode === c.code && <Ionicons name="checkmark-circle" size={20} color={PRIMARY} />}
+                </TouchableOpacity>
+              )}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Language picker modal */}
+      <Modal
+        visible={showLanguagePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLanguagePicker(false)}
+      >
+        <Pressable
+          style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" }}
+          onPress={() => setShowLanguagePicker(false)}
+        >
+          <Pressable
+            style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "70%" }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 4 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB" }} />
+            </View>
+            <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12, marginTop: 8 }}>
+              {t("auth.preferredLanguage")}
+            </Text>
+            <FlatList
+              data={[...supportedLanguages]}
+              keyExtractor={(l) => l.code}
+              renderItem={({ item: lang }) => (
+                <TouchableOpacity
+                  onPress={() => {
+                    setPreferredLanguage(lang.code);
+                    setShowLanguagePicker(false);
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingVertical: 14,
+                    paddingHorizontal: contentPadding,
+                    borderBottomWidth: 1,
+                    borderColor: "#F9FAFB",
+                  }}
+                >
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontSize: 15,
+                      color: preferredLanguage === lang.code ? PRIMARY : "#111827",
+                      fontWeight: preferredLanguage === lang.code ? "700" : "400",
+                    }}
+                  >
+                    {lang.nativeName}
+                  </Text>
+                  {preferredLanguage === lang.code && <Ionicons name="checkmark-circle" size={20} color={PRIMARY} />}
+                </TouchableOpacity>
+              )}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* How did you hear about us modal */}
+      <Modal
+        visible={showSignupSourcePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSignupSourcePicker(false)}
+      >
+        <Pressable
+          style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.4)" }}
+          onPress={() => setShowSignupSourcePicker(false)}
+        >
+          <Pressable
+            style={{ backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: "70%" }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={{ alignItems: "center", paddingTop: 12, paddingBottom: 4 }}>
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: "#D1D5DB" }} />
+            </View>
+            <Text style={{ textAlign: "center", fontWeight: "700", fontSize: 17, color: "#111827", marginBottom: 12, marginTop: 8 }}>
+              {t("auth.howHearAboutUs")}
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                setSignupSource(null);
+                setShowSignupSourcePicker(false);
+              }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingVertical: 14,
+                paddingHorizontal: contentPadding,
+                borderBottomWidth: 1,
+                borderColor: "#F9FAFB",
+              }}
+            >
+              <Text style={{ flex: 1, fontSize: 15, color: !signupSource ? PRIMARY : "#111827", fontWeight: !signupSource ? "700" : "400" }}>
+                {t("auth.signupSourceSkip")}
+              </Text>
+              {!signupSource && <Ionicons name="checkmark-circle" size={20} color={PRIMARY} />}
+            </TouchableOpacity>
+            <FlatList
+              data={SIGNUP_SOURCE_OPTIONS}
+              keyExtractor={(o) => o.value}
+              renderItem={({ item: opt }) => (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSignupSource(opt.value);
+                    setShowSignupSourcePicker(false);
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingVertical: 14,
+                    paddingHorizontal: contentPadding,
+                    borderBottomWidth: 1,
+                    borderColor: "#F9FAFB",
+                  }}
+                >
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontSize: 15,
+                      color: signupSource === opt.value ? PRIMARY : "#111827",
+                      fontWeight: signupSource === opt.value ? "700" : "400",
+                    }}
+                  >
+                    {t(opt.labelKey)}
+                  </Text>
+                  {signupSource === opt.value && <Ionicons name="checkmark-circle" size={20} color={PRIMARY} />}
                 </TouchableOpacity>
               )}
             />

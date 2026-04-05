@@ -72,7 +72,7 @@ export function SettingsBusinessContent() {
       </View>
       <Text style={twStyle("text-lg font-semibold text-gray-900")}>Business</Text>
       <Text style={twStyle("mt-2 text-sm text-gray-600")}>
-        Your business details. Edit locations, hours, and more in the provider portal when needed.
+        Your business details. Edit locations, hours, and related settings directly in-app.
       </Text>
 
       <View style={twStyle("mt-6 rounded-2xl border border-gray-200 bg-white p-4")}>
@@ -123,7 +123,7 @@ export function SettingsBusinessContent() {
       <View style={twStyle("mt-4 rounded-xl bg-gray-50 p-3")}>
         <Text style={twStyle("text-sm text-gray-600")}>
           To update locations, operating hours, online booking, team permissions, or notifications,
-          use the provider portal on the web.
+          use the Settings & Account sections in this app.
         </Text>
       </View>
     </ScrollView>

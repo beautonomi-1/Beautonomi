@@ -15,9 +15,18 @@ export interface ConflictCheckResult {
 }
 
 /**
- * Check if a booking time slot conflicts with existing bookings
- * Includes buffer time in the conflict check.
- * @param excludeBookingId - When set (e.g. for reschedule), ignore this booking's services so the same booking is not considered a conflict.
+ * Check if a booking time slot conflicts with existing bookings (staff-scoped).
+ *
+ * `endAt` + `bufferMinutes` together define the **blocking** window. Passing the default
+ * `bufferMinutes` (15) is correct when `endAt` is the **end of the last service segment**
+ * (scheduled end), not including turnover yet.
+ *
+ * When `endAt` **already** includes the trailing turnover buffer (e.g. summed per-service
+ * buffers in validate-booking, `booking_holds.end_at`, or provider POST `endAt`), pass
+ * **`bufferMinutes: 0`** — otherwise the buffer is applied twice and the next slot can
+ * falsely conflict (409).
+ *
+ * @param excludeBookingId - When set (e.g. for reschedule), ignore this booking's rows.
  */
 export async function checkBookingConflict(
   supabase: SupabaseClient,
@@ -27,7 +36,6 @@ export async function checkBookingConflict(
   bufferMinutes: number = 15,
   excludeBookingId?: string
 ): Promise<ConflictCheckResult> {
-  // Calculate effective end time (including buffer)
   const effectiveEndAt = new Date(endAt.getTime() + bufferMinutes * 60000);
 
   // Query for overlapping bookings
@@ -94,11 +102,163 @@ export async function checkBookingConflict(
   };
 }
 
+export type SnapshotLineForConflict = {
+  offering_id: string;
+  staff_id: string | null;
+  scheduled_start_at: string;
+  scheduled_end_at: string;
+};
+
 /**
- * Lock booking services for a time range (for transaction)
- * Uses SELECT FOR UPDATE to prevent concurrent modifications
- * Returns a lock key that should be released after booking creation
+ * Validate each scheduled line against existing bookings: per-segment staff (or provider-wide when staff is null).
+ * Use this for multi-service holds where different lines may reference different staff.
  */
+export async function checkBookingSnapshotSegmentConflicts(
+  supabase: SupabaseClient,
+  providerId: string,
+  snapshot: SnapshotLineForConflict[],
+  offeringBufferMinutesById: Map<string, number>
+): Promise<ConflictCheckResult> {
+  for (const line of snapshot) {
+    const segStart = new Date(line.scheduled_start_at);
+    const segEnd = new Date(line.scheduled_end_at);
+    const buf = offeringBufferMinutesById.get(line.offering_id) ?? 15;
+    if (line.staff_id) {
+      const r = await checkBookingConflict(
+        supabase,
+        line.staff_id,
+        segStart,
+        segEnd,
+        buf
+      );
+      if (r.hasConflict) return r;
+    } else {
+      const r = await checkBookingConflictForProvider(
+        supabase,
+        providerId,
+        segStart,
+        segEnd,
+        buf
+      );
+      if (r.hasConflict) return r;
+    }
+  }
+  return { hasConflict: false };
+}
+
+/**
+ * Solo / synthetic staff: any booking_services row under this provider that overlaps the window.
+ */
+export async function checkBookingConflictForProvider(
+  supabase: SupabaseClient,
+  providerId: string,
+  startAt: Date,
+  endAt: Date,
+  bufferMinutes: number = 15,
+  excludeBookingId?: string
+): Promise<ConflictCheckResult> {
+  const effectiveEndAt = new Date(endAt.getTime() + bufferMinutes * 60000);
+
+  let query = supabase
+    .from('booking_services')
+    .select(`
+      booking_id,
+      scheduled_start_at,
+      scheduled_end_at,
+      bookings!inner (
+        id,
+        status,
+        provider_id
+      ),
+      offerings!inner (
+        buffer_minutes
+      )
+    `)
+    .eq('bookings.provider_id', providerId)
+    .neq('bookings.status', 'cancelled')
+    .lt('scheduled_start_at', effectiveEndAt.toISOString())
+    .gt('scheduled_end_at', startAt.toISOString());
+
+  if (excludeBookingId) {
+    query = query.neq('booking_id', excludeBookingId);
+  }
+
+  const { data: conflictingServices, error } = await query;
+
+  if (error) {
+    console.error('Error checking provider booking conflict:', error);
+    return { hasConflict: true };
+  }
+
+  if (!conflictingServices || conflictingServices.length === 0) {
+    return { hasConflict: false };
+  }
+
+  const actualConflicts = conflictingServices.filter((cs: any) => {
+    const conflictStart = new Date(cs.scheduled_start_at);
+    const conflictEnd = new Date(cs.scheduled_end_at);
+    const conflictBuffer = cs.offerings?.buffer_minutes || 15;
+    const conflictEffectiveEnd = new Date(conflictEnd.getTime() + conflictBuffer * 60000);
+
+    return startAt < conflictEffectiveEnd && effectiveEndAt > conflictStart;
+  });
+
+  if (actualConflicts.length === 0) {
+    return { hasConflict: false };
+  }
+
+  return {
+    hasConflict: true,
+    conflictingBookings: actualConflicts.map((cs: any) => ({
+      booking_id: cs.booking_id,
+      scheduled_start_at: cs.scheduled_start_at,
+      scheduled_end_at: cs.scheduled_end_at,
+    })),
+  };
+}
+
+/**
+ * Advisory lock + `lock_booking_services_for_update` (or {@link checkBookingConflict} fallback).
+ *
+ * @param bufferMinutes - Extra slack after `endAt` (default 15). Use **0** when `endAt` already
+ *   includes trailing turnover (hold end, validate-booking computed end, etc.) — same contract as {@link checkBookingConflict}.
+ */
+/**
+ * True if another guest’s active hold overlaps [startAt, endAt) for this provider/staff.
+ * When `dbStaffId` is null (e.g. synthetic solo staff), any hold on the provider overlaps.
+ */
+export async function checkActiveHoldOverlap(
+  supabase: SupabaseClient,
+  providerId: string,
+  startAt: Date,
+  endAt: Date,
+  options: { dbStaffId: string | null }
+): Promise<boolean> {
+  const nowIso = new Date().toISOString();
+
+  let q = supabase
+    .from('booking_holds')
+    .select('id')
+    .eq('provider_id', providerId)
+    .eq('hold_status', 'active')
+    .gt('expires_at', nowIso)
+    .lt('start_at', endAt.toISOString())
+    .gt('end_at', startAt.toISOString());
+
+  if (options.dbStaffId) {
+    q = q.or(`staff_id.eq.${options.dbStaffId},staff_id.is.null`);
+  }
+
+  const { data, error } = await q.limit(1);
+
+  if (error) {
+    console.error('Error checking active booking holds:', error);
+    return true;
+  }
+
+  return (data?.length ?? 0) > 0;
+}
+
 export async function lockBookingServices(
   supabase: SupabaseClient,
   staffId: string,

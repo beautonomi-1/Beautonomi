@@ -28,11 +28,11 @@ interface NotificationPreferences {
   reminders?: { email: boolean; sms: boolean; push: boolean };
   subscription_renewal?: { email: boolean; sms: boolean; push: boolean };
   messages?: { email: boolean; sms: boolean; push: boolean };
-  vat_reminders?: { email: boolean; sms: boolean; push: boolean };
   unsubscribe_marketing?: boolean;
 }
 
-const notificationSections = [
+/** Sections for the "Offers and updates" tab */
+const offersUpdatesSections = [
   {
     id: "inspiration_and_offers",
     title: "Inspiration and offers",
@@ -45,6 +45,10 @@ const notificationSections = [
     description: "Stay in the know about brand new programs and announcements.",
     icon: FileText,
   },
+];
+
+/** Sections for the "Beautonomi updates" sub-group inside the Offers tab */
+const beautonomiUpdatesSections = [
   {
     id: "feedback",
     title: "Feedback",
@@ -57,6 +61,10 @@ const notificationSections = [
     description: "Stay up to date on travel requirements.",
     icon: FileText,
   },
+];
+
+/** Sections for the "Account" tab */
+const accountSections = [
   {
     id: "account_activity",
     title: "Account activity",
@@ -72,7 +80,7 @@ const notificationSections = [
   {
     id: "reminders",
     title: "Reminders",
-    description: "Get important reminders.",
+    description: "Get important reminders about your upcoming bookings.",
     icon: Clock,
   },
   {
@@ -84,15 +92,16 @@ const notificationSections = [
   {
     id: "messages",
     title: "Messages",
-    description: "Keep in touch with your beauty partner or clients",
+    description: "Keep in touch with your beauty partner or clients.",
     icon: MessageSquare,
   },
-  {
-    id: "vat_reminders",
-    title: "VAT Remittance Reminders",
-    description: "Get reminders about upcoming VAT remittance deadlines (VAT-registered providers only)",
-    icon: AlertCircle,
-  },
+];
+
+/** All sections combined — used only for rendering modals */
+const notificationSections = [
+  ...offersUpdatesSections,
+  ...beautonomiUpdatesSections,
+  ...accountSections,
 ];
 
 interface NotificationModalProps {
@@ -366,7 +375,7 @@ const Page = () => {
                 transition={{ delay: 0.3, duration: 0.5, ease: "easeOut" }}
                 className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-lg rounded-2xl p-6 md:p-8 space-y-6"
               >
-                {notificationSections.slice(0, 2).map((section, index) => {
+                {offersUpdatesSections.map((section, index) => {
                   const Icon = section.icon;
                   return (
                     <motion.div
@@ -413,7 +422,7 @@ const Page = () => {
                     improve.
                   </p>
 
-                  {notificationSections.slice(2, 5).map((section, index) => {
+                  {beautonomiUpdatesSections.map((section, index) => {
                     const Icon = section.icon;
                     return (
                       <motion.div
@@ -491,13 +500,16 @@ const Page = () => {
                     policies.
                   </p>
 
-                  {notificationSections
-                    .filter((section) => section.id === "account_activity")
-                    .map((section) => {
+                  {accountSections
+                    .filter((s) => s.id === "account_activity" || s.id === "client_policies")
+                    .map((section, index) => {
                       const Icon = section.icon;
                       return (
                         <motion.div
                           key={section.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.1 * index, duration: 0.4, ease: "easeOut" }}
                           whileHover={{ scale: 1.01 }}
                           className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5 mb-4"
                         >
@@ -533,15 +545,12 @@ const Page = () => {
                       Reminders
                     </h2>
                     <p className="text-sm md:text-base font-light text-gray-600 mb-6">
-                      Get important reminders about your reservations, listings, and account
+                      Get important reminders about your bookings, reservations, and account
                       activity.
                     </p>
 
-                    {notificationSections
-                      .filter(
-                        (section) =>
-                          section.id === "reminders" || section.id === "subscription_renewal"
-                      )
+                    {accountSections
+                      .filter((s) => s.id === "reminders" || s.id === "subscription_renewal")
                       .map((section, index) => {
                         const Icon = section.icon;
                         return (
@@ -583,14 +592,14 @@ const Page = () => {
 
                   <div className="mt-8 pt-6 border-t border-gray-200">
                     <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
-                      Client and Beauty Partner messages
+                      Messages
                     </h2>
                     <p className="text-sm md:text-base font-light text-gray-600 mb-6">
-                      Keep in touch with your Beauty Partner or clients before and during your trip.
+                      Keep in touch with your Beauty Partner before and during your appointment.
                     </p>
 
-                    {notificationSections
-                      .filter((section) => section.id === "messages")
+                    {accountSections
+                      .filter((s) => s.id === "messages")
                       .map((section) => {
                         const Icon = section.icon;
                         return (

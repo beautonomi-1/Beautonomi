@@ -6,6 +6,7 @@
  */
 
 import { fetcher } from "@/lib/http/fetcher";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import type { YocoDevice, YocoPayment, YocoIntegration } from "./types";
 
 export class YocoApi {
@@ -138,7 +139,7 @@ export class YocoApi {
       {
         device_id: data.device_id,
         amount: data.amount, // API will convert to cents
-        currency: data.currency || "ZAR",
+        currency: data.currency || LAST_RESORT_CURRENCY,
         appointment_id: data.appointment_id,
         sale_id: data.sale_id,
         metadata: data.metadata,

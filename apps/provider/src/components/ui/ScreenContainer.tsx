@@ -11,6 +11,8 @@ interface ScreenContainerProps {
   edges?: ("top" | "bottom" | "left" | "right")[];
   style?: ViewStyle;
   noPadding?: boolean;
+  /** When false, omit tab-bar bottom reserve (stack-only flows such as onboarding). Default true. */
+  reserveTabBarSpace?: boolean;
 }
 
 export function ScreenContainer({
@@ -21,11 +23,14 @@ export function ScreenContainer({
   edges = ["top"],
   style,
   noPadding = false,
+  reserveTabBarSpace = true,
 }: ScreenContainerProps) {
   const { screenPadding, isTablet, contentMaxWidth } = useResponsive();
   const insets = useSafeAreaInsets();
   const padding = noPadding ? 0 : screenPadding;
-  const contentBottomPadding = TAB_BAR_BASE_HEIGHT + 24 + insets.bottom;
+  const contentBottomPadding = reserveTabBarSpace
+    ? TAB_BAR_BASE_HEIGHT + 24 + insets.bottom
+    : 28 + insets.bottom;
   const tabletWrapperStyle = isTablet
     ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const, flex: 1, minHeight: 0, backgroundColor: "#ffffff" as const }
     : undefined;

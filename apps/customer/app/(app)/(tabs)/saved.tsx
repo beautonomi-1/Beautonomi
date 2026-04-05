@@ -6,7 +6,7 @@ import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 import { SavedTabContent } from "@/components/SavedTabContent";
 
 /**
- * Saved tab: saved posts + saved providers (unified with wishlists).
+ * Saved tab: saved posts + providers + products (unified with wishlists).
  * When authenticated, shows tabbed content; when not, shows sign-in message.
  */
 export default function SavedScreen() {
@@ -29,7 +29,7 @@ export default function SavedScreen() {
         <View style={[styles.center, { paddingHorizontal: contentPadding }]}>
           <Text style={styles.emptyTitle}>Saved</Text>
           <Text style={styles.emptySubtitle}>
-            Sign in to see your saved providers and posts
+            Sign in to see your saved providers, products and posts
           </Text>
         </View>
       </ScreenFrame>

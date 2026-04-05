@@ -25,6 +25,13 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
 
+    const { data: providerRow } = await supabaseAdmin
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const providerTenantId = (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+
     const { searchParams } = new URL(request.url);
     
     // Parse query parameters
@@ -69,7 +76,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get booking payments
+    // Get booking payments (scope by tenant_id when present — defense in depth vs booking_id list)
     let paymentsQuery = supabaseAdmin
       .from('booking_payments')
       .select(`
@@ -90,8 +97,11 @@ export async function GET(request: NextRequest) {
           booking_number
         )
       `, { count: 'exact' })
-      .in('booking_id', bookingIds)
-      .order('created_at', { ascending: false });
+      .in('booking_id', bookingIds);
+    if (providerTenantId) {
+      paymentsQuery = paymentsQuery.eq('tenant_id', providerTenantId);
+    }
+    paymentsQuery = paymentsQuery.order('created_at', { ascending: false });
 
     // Apply filters
     if (paymentMethod) {

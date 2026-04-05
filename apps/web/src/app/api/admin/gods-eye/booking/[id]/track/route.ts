@@ -1,11 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection,
-  successResponse,
-  handleApiError,
-  notFoundResponse,
- } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 
 const MAX_EVENTS = 200;
 
@@ -21,14 +19,16 @@ export async function GET(
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const admin = getSupabaseAdmin();
     const { id: bookingId } = await params;
+    const tenantId = await resolveAdminApiTenantId(request);
 
-    const { data: booking, error: bookErr } = await admin
-      .from("bookings")
-      .select("id, provider_id, location_type, status, address_latitude, address_longitude")
-      .eq("id", bookingId)
-      .single();
-
-    if (bookErr || !booking) return notFoundResponse("Booking not found");
+    const bookResult = await fetchBookingInAdminTenant(
+      admin,
+      bookingId,
+      tenantId,
+      "id, provider_id, location_type, status, address_latitude, address_longitude"
+    );
+    if ("error" in bookResult) return bookResult.error;
+    const booking = bookResult.booking;
 
     const { data: trackingState, error: trackErr } = await admin
       .from("booking_tracking_state")

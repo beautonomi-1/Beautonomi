@@ -2,10 +2,11 @@
  * Native React Native Privacy Policy screen. 100% in-app, no WebView or browser.
  */
 import { useRouter } from "expo-router";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
+import { APP_URL } from "@/config/public-env";
 
 export default function PrivacyScreen() {
   const router = useRouter();
@@ -30,6 +31,26 @@ export default function PrivacyScreen() {
         <Text style={{ marginBottom: 16, fontSize: 14, lineHeight: 24, color: Colors.gray[700] }}>
           This includes account and business information, booking and payment data, and how we use cookies and similar technologies. We do not sell your personal information.
         </Text>
+        <Text style={{ marginBottom: 8, fontSize: 13, fontWeight: "600", color: Colors.gray[900] }}>
+          Full policies on the web
+        </Text>
+        <TouchableOpacity
+          onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/privacy-policy`).catch(() => {})}
+          style={{ marginBottom: 12, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: Colors.gray[50], borderRadius: 10, borderWidth: 1, borderColor: Colors.gray[200] }}
+          accessibilityRole="button"
+          accessibilityLabel="Open full privacy policy in browser"
+        >
+          <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "600" }}>Open Privacy Policy</Text>
+          <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 4 }}>Includes jurisdiction-specific rights (GDPR, POPIA, US states, and more).</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/cookie-policy`).catch(() => {})}
+          style={{ marginBottom: 12, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: Colors.gray[50], borderRadius: 10, borderWidth: 1, borderColor: Colors.gray[200] }}
+          accessibilityRole="button"
+          accessibilityLabel="Open cookie policy in browser"
+        >
+          <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "600" }}>Open Cookie Policy</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );

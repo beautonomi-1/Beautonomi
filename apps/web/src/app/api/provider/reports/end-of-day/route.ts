@@ -39,6 +39,14 @@ export async function GET(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
 
+    const { data: providerRow } = await supabaseAdmin
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const providerTenantId =
+      (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+
     const searchParams = request.nextUrl.searchParams;
     const dateStr = searchParams.get("date");
     const locationId = searchParams.get("location_id") || undefined;
@@ -58,13 +66,17 @@ export async function GET(request: NextRequest) {
     const byPaymentMethod: Record<string, number> = {};
     PAYMENT_METHODS.forEach((m) => (byPaymentMethod[m] = 0));
 
-    // Booking payments: get rows in date range, then filter by provider via bookings
-    const { data: bpRows, error: bpError } = await supabaseAdmin
+    // Booking payments: scope by tenant when known, then filter by provider via bookings
+    let bpQuery = supabaseAdmin
       .from("booking_payments")
       .select("booking_id, amount, payment_method")
       .eq("status", "completed")
       .gte("created_at", dayStart)
       .lt("created_at", dayEndISO);
+    if (providerTenantId) {
+      bpQuery = bpQuery.eq("tenant_id", providerTenantId);
+    }
+    const { data: bpRows, error: bpError } = await bpQuery;
 
     if (bpError) throw bpError;
 

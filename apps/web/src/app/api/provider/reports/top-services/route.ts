@@ -52,22 +52,29 @@ export async function GET(request: NextRequest) {
 
     const serviceMap = new Map<
       string,
-      { service_name: string; booking_count: number; total_revenue: number }
+      { service_name: string; bookingIds: Set<string>; total_revenue: number }
     >();
 
     (bookingServices || []).forEach((bs: any) => {
       const name = bs.offerings?.title || "Unknown Service";
+      const bRow = Array.isArray(bs.bookings) ? bs.bookings[0] : bs.bookings;
+      const bookingId = bRow?.id as string | undefined;
       const existing = serviceMap.get(name) || {
         service_name: name,
-        booking_count: 0,
+        bookingIds: new Set<string>(),
         total_revenue: 0,
       };
-      existing.booking_count += 1;
+      if (bookingId) existing.bookingIds.add(bookingId);
       existing.total_revenue += Number(bs.price || 0);
       serviceMap.set(name, existing);
     });
 
     const result = Array.from(serviceMap.values())
+      .map((row) => ({
+        service_name: row.service_name,
+        booking_count: row.bookingIds.size,
+        total_revenue: row.total_revenue,
+      }))
       .sort((a, b) => b.booking_count - a.booking_count)
       .slice(0, limit);
 

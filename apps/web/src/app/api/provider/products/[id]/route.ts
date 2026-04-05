@@ -131,7 +131,7 @@ async function updateProductHandler(
         quantity: v.quantity ?? 0,
         low_stock_level: v.low_stock_level ?? 5,
         reorder_quantity: v.reorder_quantity ?? 0,
-        supply_price: v.supply_price ?? 0,
+        supply_price: parseFloat(String(v.supply_price ?? 0)),
         retail_price: parseFloat(String(v.retail_price ?? 0)),
         markup: v.markup ?? null,
         image_url: v.image_url || null,

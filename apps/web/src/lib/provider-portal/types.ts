@@ -12,6 +12,14 @@ export interface Provider {
   setup_completion: number; // 0-100
   selected_location_id?: string;
   business_type?: "freelancer" | "salon";
+  /** Default ISO 4217 for this provider (from profile / tenant). */
+  currency?: string;
+  /** BCP 47 locale for money/date (from tenant region config). */
+  locale?: string;
+  /** IANA timezone for the business (e.g. "Africa/Johannesburg"). */
+  timezone?: string;
+  /** Optional bootstrap locations returned by /api/provider/profile */
+  locations?: Salon[];
 }
 
 export interface Salon {
@@ -22,6 +30,9 @@ export interface Salon {
   is_primary: boolean;
   /** 'salon' = clients can visit; 'base' = distance/travel only (mobile-only) */
   location_type?: "salon" | "base";
+  /** Optional location hours payloads for calendar bootstrapping */
+  operating_hours?: Record<string, WorkingHoursDay> | null;
+  working_hours?: Record<string, WorkingHoursDay> | null;
 }
 
 /** Day key in working_hours: monday, tuesday, ... */
@@ -129,6 +140,8 @@ export interface ProductItem {
   category: string;
   supplier?: string;
   quantity: number;
+  /** Sum of variant quantities when has_variants; same as quantity otherwise (API GET /api/provider/products). */
+  effective_quantity?: number;
   retail_price: number;
   image_url?: string;
   // New fields
@@ -201,6 +214,8 @@ export interface Appointment {
   duration_minutes: number;
   price: number;
   status: "booked" | "pending" | "started" | "completed" | "cancelled" | "no_show" | "confirmed" | "in_progress";
+  /** Raw DB booking.status when returned by provider APIs (pending = awaiting provider confirmation). */
+  db_status?: "pending" | "confirmed" | "in_progress" | "completed" | "cancelled" | "no_show";
   // Updated tracking (for booking details timeline)
   updated_date?: string;
   // Group booking fields
@@ -237,6 +252,14 @@ export interface Appointment {
   address_postal_code?: string;
   address_latitude?: number;
   address_longitude?: number;
+  /** At-home extras (same data as customer "Additional Location Details" at checkout) */
+  apartment_unit?: string | null;
+  building_name?: string | null;
+  floor_number?: string | null;
+  access_codes?: { gate?: string; buzzer?: string; door?: string } | null;
+  parking_instructions?: string | null;
+  location_landmarks?: string | null;
+  house_call_instructions?: string | null;
   travel_fee?: number; // Travel fee for at_home services
   // At-home tracking
   current_stage?: "confirmed" | "client_arrived" | "provider_on_way" | "provider_arrived" | "service_started" | "service_completed";
@@ -372,7 +395,7 @@ export interface YocoPayment {
   device_id: string;
   device_name?: string;
   amount: number; // Amount in cents (ZAR)
-  currency: string; // Default: "ZAR"
+  currency: string; // Default: last-resort (see `@/lib/regions/last-resort-currency`)
   status: "pending" | "successful" | "failed" | "cancelled";
   payment_date: string;
   appointment_id?: string;
@@ -492,6 +515,8 @@ export interface WaitlistEntry {
   created_date: string;
   notified_date?: string;
   notes?: string;
+  /** Salon / branch for multi-location providers */
+  location_id?: string | null;
 }
 
 /**
@@ -531,6 +556,8 @@ export interface RecurringAppointment {
   is_exception: boolean; // True if this instance was modified
   created_date: string;
   notes?: string;
+  /** Branch for recurring rule (when multi-location) */
+  location_id?: string | null;
 }
 
 /**
@@ -698,6 +725,7 @@ export interface GroupBookingParticipant {
   group_booking_id: string;
   client_id?: string;
   client_name: string;
+  is_primary_contact?: boolean;
   client_email?: string;
   client_phone?: string;
   service_id: string;
@@ -751,7 +779,8 @@ export interface AvailabilityBlockDisplay {
   location_id: string | null; // null = all locations
   block_type: "unavailable" | "break" | "maintenance";
   reason?: string | null;
-  _source: "availability_block";
+  /** Table `availability_blocks` vs synthesized staff time off / day off (matches public booking rules). */
+  _source: "availability_block" | "staff_unavailability";
 }
 
 export interface BlockedTimeType {

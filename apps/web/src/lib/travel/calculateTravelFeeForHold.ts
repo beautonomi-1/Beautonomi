@@ -6,7 +6,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import { computeTravelFee, type TravelFeeRules } from "@/lib/travel/travelFeeEngine";
+import { matchPlatformZoneForHouseCall } from "@/lib/travel/matchPlatformZoneForHouseCall";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
+import { roundCurrency } from "@beautonomi/utils";
 
 export interface HoldAddressInput {
   latitude: number;
@@ -103,68 +105,83 @@ export async function calculateTravelFeeForHold(
   } catch {
     distanceKm = mapbox.calculateDistance(baseLocation, clientCoordinates);
   }
-  const maxDistance = provider.max_service_distance_km || HOUSE_CALL_CONFIG.DEFAULT_MAX_SERVICE_DISTANCE_KM;
-  const isDistanceFilterEnabled = provider.is_distance_filter_enabled || false;
+  const isDistanceFilterEnabled = provider.is_distance_filter_enabled === true;
+  const rawMaxKm = provider.max_service_distance_km;
+  const explicitMaxDistanceKm =
+    rawMaxKm != null && rawMaxKm !== "" && Number.isFinite(Number(rawMaxKm))
+      ? Number(rawMaxKm)
+      : null;
+  const maxDistanceWhenFilterOn =
+    explicitMaxDistanceKm ?? HOUSE_CALL_CONFIG.DEFAULT_MAX_SERVICE_DISTANCE_KM;
+  const maxRadiusKmForFeeEngine =
+    explicitMaxDistanceKm != null ? explicitMaxDistanceKm : isDistanceFilterEnabled ? maxDistanceWhenFilterOn : undefined;
 
   let matchedZone: any = null;
-  const { data: platformZones } = await supabase
-    .from("platform_zones")
-    .select("*")
-    .eq("is_active", true);
 
-  if (platformZones && platformZones.length > 0) {
-    for (const zone of platformZones) {
-      let isInZone = false;
-      if (zone.zone_type === "postal_code" && serviceAddress.postalCode) {
-        const normalizedPostal = serviceAddress.postalCode.replace(/\s/g, "");
-        isInZone = zone.postal_codes?.some((pc: string) => pc.replace(/\s/g, "") === normalizedPostal) || false;
-      } else if (zone.zone_type === "city" && serviceAddress.city) {
-        const normalizedCity = serviceAddress.city.toLowerCase().trim();
-        isInZone = zone.cities?.some((c: string) => c.toLowerCase().trim() === normalizedCity) || false;
-      } else if (zone.zone_type === "radius" && zone.center_latitude && zone.center_longitude && zone.radius_km) {
-        const zoneCenter = {
-          latitude: parseFloat(zone.center_latitude.toString()),
-          longitude: parseFloat(zone.center_longitude.toString()),
-        };
-        isInZone = mapbox.calculateDistance(zoneCenter, clientCoordinates) <= zone.radius_km;
-      } else if (zone.zone_type === "polygon" && zone.polygon_coordinates) {
-        const polygon = zone.polygon_coordinates;
-        if (Array.isArray(polygon) && polygon.length > 0) {
-          const ring = Array.isArray(polygon[0]) ? polygon[0] : polygon;
-          const polygonCoords = ring.map((coord: any) => ({
-            longitude: Array.isArray(coord) ? coord[0] : (coord.lng ?? coord.longitude),
-            latitude: Array.isArray(coord) ? coord[1] : (coord.lat ?? coord.latitude),
-          }));
-          let inside = false;
-          for (let i = 0, j = polygonCoords.length - 1; i < polygonCoords.length; j = i++) {
-            const xi = polygonCoords[i].longitude, yi = polygonCoords[i].latitude;
-            const xj = polygonCoords[j].longitude, yj = polygonCoords[j].latitude;
-            const intersect =
-              yi > clientCoordinates.latitude !== yj > clientCoordinates.latitude &&
-              clientCoordinates.longitude < ((xj - xi) * (clientCoordinates.latitude - yi)) / (yj - yi) + xi;
-            if (intersect) inside = !inside;
-          }
-          isInZone = inside;
-        }
-      }
-      if (isInZone) {
-        const { data: providerSelection } = await supabase
-          .from("provider_zone_selections")
-          .select("*")
-          .eq("provider_id", providerId)
-          .eq("platform_zone_id", zone.id)
-          .eq("is_active", true)
+  // ── 1. PostGIS platform-zone check (authoritative) ───────────────────────────────────
+  // Use the check_point_in_platform_zones RPC which tests against the computed geometry
+  // column built from postal-area inclusions/exclusions — the same geometry shown on the
+  // admin map. This replaces the old JS polygon/postal/city matching loops.
+  let ptZones: { zone_id: string; zone_name: string }[] = [];
+  try {
+    const { data } = await supabase.rpc("check_point_in_platform_zones", {
+      p_lng: clientCoordinates.longitude,
+      p_lat: clientCoordinates.latitude,
+    });
+    ptZones = (data ?? []) as { zone_id: string; zone_name: string }[];
+  } catch {
+    // RPC not available — fall through to legacy path below
+  }
+
+  const { count: platformZoneCount } = await supabase
+    .from("platform_zones")
+    .select("id", { count: "exact", head: true })
+    .eq("is_active", true)
+    .eq("status", "active");
+
+  const hasPlatformZones = (platformZoneCount ?? 0) > 0;
+
+  if (hasPlatformZones) {
+    // Prefer PostGIS when geometry exists (inclusions/exclusions). Radius-only zones
+    // have no geometry and never appear in ptZones — fall through to JS matcher below.
+    if (ptZones.length > 0) {
+      const matchedZoneIds = ptZones.map((z) => z.zone_id);
+      const { data: providerSelection } = await supabase
+        .from("provider_zone_selections")
+        .select("*")
+        .eq("provider_id", providerId)
+        .eq("is_active", true)
+        .in("platform_zone_id", matchedZoneIds)
+        .limit(1)
+        .maybeSingle();
+
+      if (providerSelection) {
+        const { data: zoneRow } = await supabase
+          .from("platform_zones")
+          .select("id, name")
+          .eq("id", providerSelection.platform_zone_id)
           .single();
-        if (providerSelection) {
-          matchedZone = { ...zone, provider_selection: providerSelection };
-          break;
-        }
+        matchedZone = { ...(zoneRow ?? {}), provider_selection: providerSelection };
       }
     }
-    if (!matchedZone && platformZones.length > 0) {
+    if (!matchedZone) {
+      const jsMatch = await matchPlatformZoneForHouseCall(supabase, mapbox, {
+        providerId,
+        serviceAddress: {
+          city: serviceAddress.city,
+          postalCode: serviceAddress.postalCode,
+          coordinates: clientCoordinates,
+        },
+      });
+      if (jsMatch.matchedZone) {
+        matchedZone = jsMatch.matchedZone;
+      }
+    }
+    if (!matchedZone) {
       return { travelFee: 0, distanceKm: parseFloat(distanceKm.toFixed(2)), withinServiceArea: false };
     }
   } else {
+    // ── 2. Legacy fallback — no active platform_zones in the system ──────────────────────
     const { data: serviceZones } = await supabase
       .from("service_zones")
       .select("*")
@@ -189,7 +206,7 @@ export async function calculateTravelFeeForHold(
     }
   }
 
-  if (isDistanceFilterEnabled && distanceKm > maxDistance) {
+  if (isDistanceFilterEnabled && distanceKm > maxDistanceWhenFilterOn) {
     return { travelFee: 0, distanceKm: parseFloat(distanceKm.toFixed(2)), withinServiceArea: false };
   }
 
@@ -213,15 +230,46 @@ export async function calculateTravelFeeForHold(
   };
 
   const usePlatformDefault = !travelFeeSettings || travelFeeSettings.use_platform_default;
-  const travelFeeRules: TravelFeeRules = {
-    strategy: "distance",
-    perKmRate: usePlatformDefault ? platformTravelFees.default_rate_per_km : (travelFeeSettings?.rate_per_km ?? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_FEE.RATE_PER_KM),
-    minimumFee: usePlatformDefault ? platformTravelFees.default_minimum_fee : (travelFeeSettings?.minimum_fee ?? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_FEE.MINIMUM_FEE),
-    maximumFee: usePlatformDefault ? platformTravelFees.default_maximum_fee : (travelFeeSettings?.maximum_fee ?? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_FEE.MAXIMUM_FEE),
-    maxRadiusKm: maxDistance,
-    baseTravelTimeMinutes: HOUSE_CALL_CONFIG.BASE_TRAVEL_TIME_MINUTES,
-    defaultMinutesPerKm: HOUSE_CALL_CONFIG.DEFAULT_MINUTES_PER_KM,
-  };
+  const platformModel = platformTravelFees.pricing_model ?? "per_km";
+  const providerModel = travelFeeSettings?.pricing_model ?? platformModel;
+  const effectiveModel = usePlatformDefault ? platformModel : providerModel;
+
+  const platformTiers = Array.isArray(platformTravelFees.default_tiers) ? platformTravelFees.default_tiers : [];
+  const providerTiers = Array.isArray(travelFeeSettings?.tiers) ? travelFeeSettings.tiers : [];
+  const effectiveTiers =
+    effectiveModel === "tiered"
+      ? usePlatformDefault
+        ? platformTiers
+        : providerTiers.length > 0
+          ? providerTiers
+          : platformTiers
+      : [];
+
+  let travelFeeRules: TravelFeeRules;
+
+  if (effectiveModel === "tiered" && effectiveTiers.length > 0) {
+    travelFeeRules = {
+      strategy: "tiered",
+      tiers: effectiveTiers.map((t: { max_km: number; fee: number }) => ({
+        maxDistanceKm: t.max_km,
+        fee: t.fee,
+        minutesPerKm: 2,
+      })),
+      maxRadiusKm: maxRadiusKmForFeeEngine,
+      baseTravelTimeMinutes: HOUSE_CALL_CONFIG.BASE_TRAVEL_TIME_MINUTES,
+      defaultMinutesPerKm: HOUSE_CALL_CONFIG.DEFAULT_MINUTES_PER_KM,
+    };
+  } else {
+    travelFeeRules = {
+      strategy: "distance",
+      perKmRate: usePlatformDefault ? platformTravelFees.default_rate_per_km : (travelFeeSettings?.rate_per_km ?? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_FEE.RATE_PER_KM),
+      minimumFee: usePlatformDefault ? platformTravelFees.default_minimum_fee : (travelFeeSettings?.minimum_fee ?? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_FEE.MINIMUM_FEE),
+      maximumFee: usePlatformDefault ? platformTravelFees.default_maximum_fee : (travelFeeSettings?.maximum_fee ?? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_FEE.MAXIMUM_FEE),
+      maxRadiusKm: maxRadiusKmForFeeEngine,
+      baseTravelTimeMinutes: HOUSE_CALL_CONFIG.BASE_TRAVEL_TIME_MINUTES,
+      defaultMinutesPerKm: HOUSE_CALL_CONFIG.DEFAULT_MINUTES_PER_KM,
+    };
+  }
 
   const travelFeeResult = computeTravelFee(baseLocation, serviceAddress, travelFeeRules, {
     overrideDistanceKm: distanceKm,
@@ -235,14 +283,16 @@ export async function calculateTravelFeeForHold(
   }
 
   let finalTravelFee = travelFeeResult.fee;
-  if (matchedZone?.provider_selection) {
+  // Only override with the zone flat rate when it's explicitly set (non-null).
+  // NULL travel_fee means "use the rate engine" — set when a provider is auto-enrolled.
+  if (matchedZone?.provider_selection?.travel_fee != null) {
     finalTravelFee = parseFloat(matchedZone.provider_selection.travel_fee.toString());
   } else if (matchedZone?.travel_fee != null) {
     finalTravelFee = parseFloat(matchedZone.travel_fee.toString());
   }
 
   return {
-    travelFee: Math.round(finalTravelFee * 100) / 100,
+    travelFee: roundCurrency(finalTravelFee),
     distanceKm: parseFloat((travelFeeResult.distanceKm ?? distanceKm).toFixed(2)),
     withinServiceArea: true,
   };

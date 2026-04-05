@@ -1,4 +1,5 @@
 "use client";
+import { useReportExportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -32,6 +33,7 @@ interface PackageUsageData {
 }
 
 export default function PackageUsageReport() {
+  const exportCurrency = useReportExportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 90),
     to: new Date(),
@@ -78,7 +80,7 @@ export default function PackageUsageReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "package-usage");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "package-usage", exportCurrency);
     exportToCSV(exportData, "package-usage-report");
   };
 

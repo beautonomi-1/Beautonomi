@@ -38,6 +38,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import Link from "next/link";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface Provider {
   id: string;
@@ -89,6 +90,7 @@ interface Provider {
 }
 
 export default function ProviderDetailPage() {
+  const { format: fmt } = useReportCurrency();
   const params = useParams();
   const router = useRouter();
   const providerId = params.id as string;
@@ -738,7 +740,7 @@ export default function ProviderDetailPage() {
                         <div>
                           <p className="font-medium">{service.title || service.name}</p>
                           <p className="text-sm text-gray-500">
-                            {service.duration_minutes} min • ZAR {service.price?.toFixed(2)}
+                            {service.duration_minutes} min • {fmt(Number(service.price ?? 0))}
                           </p>
                         </div>
                         <Badge

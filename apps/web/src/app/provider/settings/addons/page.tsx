@@ -1,5 +1,7 @@
 "use client";
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import React, { useState, useEffect } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -29,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { providerApi } from "@/lib/provider-portal/api";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 interface ServiceAddon {
   id: string;
@@ -273,13 +276,15 @@ function AddonDialog({
   onClose: () => void;
   onSave: (data: any) => void;
 }) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [formData, setFormData] = useState({
     name: addon?.name || "",
     description: addon?.description || "",
     type: (addon?.type || "service") as "service" | "product" | "upgrade",
     category: addon?.category || "",
     price: addon?.price || 0,
-    currency: addon?.currency || "ZAR",
+    currency: addon?.currency || tenantCurrency,
     duration_minutes: addon?.duration_minutes || null,
     is_active: addon?.is_active ?? true,
     is_recommended: addon?.is_recommended ?? false,

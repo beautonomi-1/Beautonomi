@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { fetcher } from "@/lib/http/fetcher";
 import { useAuth } from "@/providers/AuthProvider";
 
@@ -33,46 +33,51 @@ export function useSavedAddresses() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Only load addresses if user is authenticated
-    if (!authLoading) {
-      if (user) {
-        loadAddresses();
-      } else {
-        // User not authenticated, set empty addresses
-        setAddresses([]);
-        setIsLoading(false);
-        setError(null);
-      }
-    }
-  }, [user, authLoading]);
-
-  const loadAddresses = async () => {
-    // Don't make API call if user is not authenticated
+  const loadAddresses = useCallback(async (attempt = 0) => {
     if (!user) {
       setAddresses([]);
       setIsLoading(false);
+      setError(null);
       return;
     }
 
+    setIsLoading(true);
+    setError(null);
     try {
-      setIsLoading(true);
-      setError(null);
-      const response = await fetcher.get<{ data: SavedAddress[] }>("/api/me/addresses", { cache: "no-store" });
+      const response = await fetcher.get<{ data: SavedAddress[] }>("/api/me/addresses", {
+        cache: "no-store",
+        timeoutMs: 15_000,
+      });
       setAddresses(response.data || []);
     } catch (err: any) {
-      // Only set error if it's not a 401/403 (unauthorized) error
-      if (err.status !== 401 && err.status !== 403) {
-        setError(err.message || "Failed to load addresses");
-        console.error("Error loading addresses:", err);
-      } else {
-        // User not authenticated, clear addresses
+      if (err.status === 401 || err.status === 403) {
         setAddresses([]);
+        setError(null);
+      } else {
+        if (attempt < 1) {
+          await new Promise((r) => setTimeout(r, 450));
+          await loadAddresses(attempt + 1);
+          return;
+        }
+        const message = err.message || "Failed to load addresses";
+        setError(message);
+        console.error("Error loading addresses:", err);
       }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (user) {
+      void loadAddresses();
+    } else {
+      setAddresses([]);
+      setIsLoading(false);
+      setError(null);
+    }
+  }, [user, authLoading, loadAddresses]);
 
   const saveAddress = async (addressData: Omit<SavedAddress, "id" | "created_at" | "updated_at">) => {
     try {

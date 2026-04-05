@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { z } from "zod";
 
 const bulkActionSchema = z.object({
@@ -20,9 +20,6 @@ const bulkActionSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
-    if (!user) {
-      return unauthorizedResponse("Authentication required");
-    }
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -38,6 +35,24 @@ export async function POST(request: NextRequest) {
     }
 
     const { booking_ids, action, reason } = validationResult.data;
+
+    const tenantId = await resolveAdminApiTenantId(request);
+    const { data: tenantRows, error: tenantCheckError } = await supabase
+      .from("bookings")
+      .select("id")
+      .in("id", booking_ids)
+      .eq("tenant_id", tenantId);
+
+    if (tenantCheckError) {
+      throw tenantCheckError;
+    }
+    if (!tenantRows || tenantRows.length !== booking_ids.length) {
+      return errorResponse(
+        "One or more bookings are not in the current market",
+        "TENANT_MISMATCH",
+        403
+      );
+    }
 
     let updateData: Record<string, unknown> = {};
     const results = { success: 0, failed: 0, errors: [] as string[] };

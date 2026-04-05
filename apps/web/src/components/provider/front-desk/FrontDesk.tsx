@@ -90,7 +90,7 @@ export function FrontDesk() {
   if (loading && bookings.length === 0) {
     return (
       <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
-        <div className="container mx-auto p-8 bg-[#FDFDFD] min-h-[60vh]">
+        <div className="container mx-auto px-3 py-4 sm:px-6 sm:py-8 lg:p-8 bg-[#FDFDFD] min-h-[60vh] min-w-0 max-w-full overflow-x-hidden">
           <PageHeader
             title="Front Desk"
             subtitle="Manage today's appointments"
@@ -116,7 +116,7 @@ export function FrontDesk() {
 
   return (
     <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
-      <div className="flex flex-col min-h-0 w-full max-w-full overflow-hidden bg-[#FDFDFD] rounded-2xl transition-all duration-500">
+      <div className="flex flex-col min-h-0 w-full min-w-0 max-w-full overflow-x-hidden bg-[#FDFDFD] rounded-2xl transition-all duration-500">
         <PageHeader
           title="Front Desk"
           subtitle={`${format(selectedDate, "EEEE, MMM d")} • ${bookings.length} appointments`}
@@ -127,7 +127,7 @@ export function FrontDesk() {
           ]}
         />
 
-        <div className="space-y-6 mb-6 p-8 pt-0">
+        <div className="space-y-6 mb-6 px-3 pt-0 pb-2 sm:px-6 lg:px-8">
           <CommandBar
             date={selectedDate}
             onDateChange={setSelectedDate}
@@ -138,6 +138,25 @@ export function FrontDesk() {
             onLocationChange={(id) => setSelectedLocation(id)}
             onRefetch={refetch}
           />
+
+          {queueCounts.needs_confirmation > 0 && (
+            <div
+              role="status"
+              className="rounded-2xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 shadow-sm"
+            >
+              <span className="font-semibold">{queueCounts.needs_confirmation}</span>
+              {queueCounts.needs_confirmation === 1 ? " booking needs " : " bookings need "}
+              your confirmation before check-in or at-home steps. Use{" "}
+              <button
+                type="button"
+                className="font-semibold underline underline-offset-2 hover:text-amber-900"
+                onClick={() => setActiveTab("needs_confirmation")}
+              >
+                To confirm
+              </button>{" "}
+              or confirm from each card.
+            </div>
+          )}
 
           <CommandCenter
             counts={queueCounts}
@@ -155,8 +174,8 @@ export function FrontDesk() {
         )}
 
         {!error && (
-          <div className="flex flex-1 min-h-0 p-8 pt-0">
-            <div className="flex-1 min-w-[320px] min-h-0 flex flex-col">
+          <div className="flex flex-1 min-h-0 px-3 pb-6 sm:px-6 lg:px-8 pt-0">
+            <div className="flex-1 min-w-0 min-h-0 flex flex-col">
               <ScrollArea className="flex-1 pr-3">
                 <div className="grid gap-5 pb-8 grid-cols-1 md:grid-cols-2 transition-all duration-500">
                   {filteredBookings.map((b) => (

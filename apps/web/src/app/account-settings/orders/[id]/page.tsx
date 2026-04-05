@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -55,6 +56,7 @@ function timelineIndex(status: string) {
 export default function OrderDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const locale = useTenantLocaleTag();
   const [order, setOrder] = useState<ProductOrder | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -104,7 +106,7 @@ export default function OrderDetailPage() {
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">{order.order_number}</h1>
           <span className="text-sm text-gray-400">
-            {new Date(order.created_at).toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}
+            {new Date(order.created_at).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })}
           </span>
         </div>
 

@@ -27,6 +27,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 import { APP_URL } from "@/config/public-env";
+import { E164PhoneField } from "@/components/E164PhoneField";
+import { validateE164Phone } from "@/lib/phone-country-codes";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -162,6 +164,13 @@ export default function BillingScreen() {
   );
 
   async function handleSave() {
+    if (form.billingPhone.trim()) {
+      const pe = validateE164Phone(form.billingPhone);
+      if (pe) {
+        Alert.alert("Invalid phone", pe);
+        return;
+      }
+    }
     const { error: err } = await updateBilling(
       "/api/provider/settings/billing",
       {
@@ -233,20 +242,14 @@ export default function BillingScreen() {
                 accessibilityLabel="Billing email"
               />
             </View>
-            <View style={twStyle("mb-3")}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-                Billing Phone
-              </Text>
-              <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                value={form.billingPhone}
-                onChangeText={(t) => setForm((p) => ({ ...p, billingPhone: t }))}
-                placeholder="+27 81 234 5678"
-                placeholderTextColor="#9ca3af"
-                keyboardType="phone-pad"
-                accessibilityLabel="Billing phone"
-              />
-            </View>
+            <E164PhoneField
+              label="Billing Phone"
+              valueE164={form.billingPhone}
+              onChangeE164={(e164) => setForm((p) => ({ ...p, billingPhone: e164 }))}
+              muted
+              showHint={false}
+              accessibilityLabel="Billing phone"
+            />
             <ActionButton
               label="Save"
               onPress={handleSave}

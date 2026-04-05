@@ -9,19 +9,59 @@
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "version": "1.0.3",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "plugins": [
-      "expo-router",
-      "expo-font",
-      "singular-react-native",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Beautonomi Provider uses Face ID or Touch ID so you can sign in quickly. Biometric data stays on your device and is not sent to our servers."
+        }
+      ],
       [
         "onesignal-expo-plugin",
         {
           "mode": "development"
+        }
+      ],
+      "expo-router",
+      "expo-font",
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "This identifier is used to measure how professionals discover Beautonomi Provider (for example, which campaigns led to installs) so we can improve the app. You can change this anytime in Settings."
+        }
+      ],
+      "singular-react-native",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Beautonomi Provider uses your location while the app is open for journey tracking, arrival checks, and at-home service features."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Beautonomi Provider to access photos for your catalogue, profile, and documentation.",
+          "cameraPermission": "Allow Beautonomi Provider to use the camera for your catalogue, profile, and documentation."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Beautonomi Provider uses the camera to scan the customer's arrival QR code for at-home visits.",
+          "recordAudioAndroid": false
         }
       ],
       [
@@ -41,6 +81,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.beautonomi.partner",
+      "appleTeamId": "QW33CYPQX5",
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"
@@ -55,7 +96,9 @@
       },
       "associatedDomains": [
         "applinks:beautonomi.com",
-        "applinks:www.beautonomi.com"
+        "applinks:www.beautonomi.com",
+        "applinks:beautonomi.co.za",
+        "applinks:www.beautonomi.co.za"
       ]
     },
     "android": {
@@ -64,7 +107,10 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.beautonomi.partner",
-      "versionCode": 21,
+      "permissions": [
+        "com.google.android.gms.permission.AD_ID"
+      ],
+      "versionCode": 23,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",
@@ -76,6 +122,21 @@
             {
               "scheme": "https",
               "host": "beautonomi.com",
+              "pathPrefix": "/provider"
+            },
+            {
+              "scheme": "https",
+              "host": "www.beautonomi.com",
+              "pathPrefix": "/provider"
+            },
+            {
+              "scheme": "https",
+              "host": "beautonomi.co.za",
+              "pathPrefix": "/provider"
+            },
+            {
+              "scheme": "https",
+              "host": "www.beautonomi.co.za",
               "pathPrefix": "/provider"
             }
           ],

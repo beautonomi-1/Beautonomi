@@ -1,8 +1,10 @@
 "use client";
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Building2, Home, MapPin, AlertCircle, Check, Briefcase, Star } from "lucide-react";
+import { Building2, Home, MapPin, AlertCircle, Check, Briefcase, Star, Loader2, LocateFixed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +12,9 @@ import { BookingState, BookingMode } from "../booking-flow";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
+import { mapGeocodeFeatureToAddressParts } from "@beautonomi/utils";
 import { useSavedAddresses } from "@/hooks/useSavedAddresses";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 import {
@@ -52,8 +56,16 @@ export default function StepVenueChoice({
   onNext: _onNext,
   providerSlug,
 }: StepVenueChoiceProps) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const { user } = useAuth();
-  const { addresses: savedAddresses, saveAddress, loadAddresses } = useSavedAddresses();
+  const {
+    addresses: savedAddresses,
+    saveAddress,
+    loadAddresses,
+    isLoading: isLoadingSavedAddresses,
+    error: savedAddressesError,
+  } = useSavedAddresses();
   const [isValidating, setIsValidating] = useState(false);
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
   const [addressInput, setAddressInput] = useState("");
@@ -76,6 +88,7 @@ export default function StepVenueChoice({
     coverage: string;
   }>>([]);
   const [showZonesInfo, setShowZonesInfo] = useState(false);
+  const [isGettingCurrentLocation, setIsGettingCurrentLocation] = useState(false);
 
   // Load provider info to check mobile services availability
   useEffect(() => {
@@ -213,8 +226,9 @@ export default function StepVenueChoice({
       updateBookingState({ address: null });
       // Can proceed immediately for salon
     } else {
-      // For mobile, need to select/enter address
-      setShowAddressInput(true);
+      // Show saved addresses first; do not open manual input (that hid the list).
+      setShowAddressInput(false);
+      void loadAddresses();
     }
   };
 
@@ -419,6 +433,61 @@ export default function StepVenueChoice({
     }
   };
 
+  const handleUseCurrentLocation = async () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setZoneError(null);
+    setIsGettingCurrentLocation(true);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          const reverse = await fetcher.post<{ data: any | null }>(
+            "/api/mapbox/reverse-geocode",
+            { longitude, latitude }
+          );
+
+          if (reverse.data) {
+            const parsed = mapGeocodeFeatureToAddressParts(reverse.data, {
+              defaultCountryName: HOUSE_CALL_CONFIG.DEFAULT_COUNTRY_NAME,
+            });
+            await handleAddressInput({
+              ...parsed,
+              latitude,
+              longitude,
+              place_name:
+                reverse.data.place_name ||
+                `${parsed.address_line1}, ${parsed.city}, ${parsed.country}`,
+            });
+          } else {
+            await handleAddressInput({
+              address_line1: "Current location",
+              city: "",
+              country: HOUSE_CALL_CONFIG.DEFAULT_COUNTRY_NAME,
+              latitude,
+              longitude,
+              place_name: `Current location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+            });
+          }
+          toast.success("Current location selected");
+        } catch {
+          toast.error("Unable to resolve your address from current location");
+        } finally {
+          setIsGettingCurrentLocation(false);
+        }
+      },
+      () => {
+        toast.error("Unable to get your location. Please enable location permissions.");
+        setIsGettingCurrentLocation(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+    );
+  };
+
   return (
     <div className="px-4 py-6 space-y-6">
       <div>
@@ -585,7 +654,7 @@ export default function StepVenueChoice({
                       <div className="text-blue-600">{zone.coverage}</div>
                       {zone.travelFee > 0 && (
                         <div className="text-blue-600">
-                          Travel fee: {zone.travelFee.toFixed(2)} {bookingState.selectedServices[0]?.currency || "ZAR"}
+                          Travel fee: {zone.travelFee.toFixed(2)} {bookingState.selectedServices[0]?.currency || tenantCurrency}
                         </div>
                       )}
                     </div>
@@ -614,6 +683,28 @@ export default function StepVenueChoice({
                   Book at Salon Instead
                 </Button>
               </div>
+            </div>
+          )}
+
+          {user && isLoadingSavedAddresses && (
+            <div className="flex items-center gap-2 py-3 text-sm text-gray-600">
+              <Loader2 className="w-4 h-4 animate-spin text-primary flex-shrink-0" aria-hidden />
+              <span>Loading saved addresses…</span>
+            </div>
+          )}
+
+          {user && savedAddressesError && !isLoadingSavedAddresses && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-red-900">{savedAddressesError}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="touch-target shrink-0"
+                onClick={() => void loadAddresses()}
+              >
+                Try again
+              </Button>
             </div>
           )}
 
@@ -661,15 +752,36 @@ export default function StepVenueChoice({
           )}
 
           {!showAddressInput && (
-            <Button
-              variant="outline"
-              onClick={() => setShowAddressInput(true)}
-              className="w-full touch-target"
-            >
-              {savedAddresses.length > 0
-                ? "Enter New Address"
-                : "Enter Address"}
-            </Button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowAddressInput(true)}
+                className="w-full touch-target"
+                disabled={isGettingCurrentLocation || isValidating}
+              >
+                {savedAddresses.length > 0
+                  ? "Enter New Address"
+                  : "Enter Address"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => void handleUseCurrentLocation()}
+                className="w-full touch-target"
+                disabled={isGettingCurrentLocation || isValidating}
+              >
+                {isGettingCurrentLocation ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Locating...
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    <LocateFixed className="w-4 h-4" />
+                    Use Current Location
+                  </span>
+                )}
+              </Button>
+            </div>
           )}
 
           {showAddressInput && (
@@ -710,6 +822,24 @@ export default function StepVenueChoice({
                 >
                   Cancel
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => void handleUseCurrentLocation()}
+                  className="flex-1 touch-target"
+                  disabled={isValidating || isGettingCurrentLocation}
+                >
+                  {isGettingCurrentLocation ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Locating...
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-2">
+                      <LocateFixed className="w-4 h-4" />
+                      Use Current Location
+                    </span>
+                  )}
+                </Button>
               </div>
             </motion.div>
           )}
@@ -727,7 +857,7 @@ export default function StepVenueChoice({
                     {bookingState.address.travelFee !== undefined && (
                       <div className="mt-2 space-y-1">
                         <p className="text-sm font-medium text-green-900">
-                          Travel Fee: {bookingState.address.travelFee.toFixed(2)} {bookingState.selectedServices[0]?.currency || "ZAR"}
+                          Travel Fee: {bookingState.address.travelFee.toFixed(2)} {bookingState.selectedServices[0]?.currency || tenantCurrency}
                         </p>
                         {bookingState.address.distanceKm && (
                           <p className="text-xs text-green-700">
@@ -740,7 +870,7 @@ export default function StepVenueChoice({
                             {bookingState.address.breakdown.map((item, idx) => (
                               <div key={idx} className="flex justify-between">
                                 <span>{item.label}:</span>
-                                <span>{item.amount.toFixed(2)} {bookingState.selectedServices[0]?.currency || "ZAR"}</span>
+                                <span>{item.amount.toFixed(2)} {bookingState.selectedServices[0]?.currency || tenantCurrency}</span>
                               </div>
                             ))}
                           </div>

@@ -253,7 +253,11 @@ const AccountSettingsNavbar: React.FC = () => {
         </div>
       </div>
 
-      <LoginModal open={isLoginModalOpen} setOpen={setIsLoginModalOpen} />
+      <LoginModal
+        open={isLoginModalOpen}
+        setOpen={setIsLoginModalOpen}
+        initialMode="login"
+      />
     </div>
   );
 };

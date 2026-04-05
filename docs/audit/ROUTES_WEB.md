@@ -518,7 +518,6 @@
 | `/api/provider/onboarding` | `api/provider/onboarding/route.ts` | api |
 | `/api/provider/onboarding/draft` | `api/provider/onboarding/draft/route.ts` | api |
 | `/api/provider/onboarding/suggest-zones` | `api/provider/onboarding/suggest-zones/route.ts` | api |
-| `/api/provider/onboarding/verify-phone` | `api/provider/onboarding/verify-phone/route.ts` | api |
 | `/api/provider/packages` | `api/provider/packages/route.ts` | api |
 | `/api/provider/packages/[id]` | `api/provider/packages/[id]/route.ts` | api |
 | `/api/provider/pay-runs` | `api/provider/pay-runs/route.ts` | api |

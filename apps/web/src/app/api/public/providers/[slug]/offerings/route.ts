@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import type { OfferingCard } from "@/types/beautonomi";
 
 /**
@@ -12,6 +13,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+
     const supabase = await getSupabaseServer();
     const { slug } = await params;
 
@@ -21,6 +26,7 @@ export async function GET(
       .select("id")
       .eq("slug", slug)
       .eq("status", "active")
+      .eq("tenant_id", tenantId)
       .single();
 
     if (providerError || !provider) {

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
 /** Empty addons response so booking flow never 404s on addons */
 function emptyAddonsResponse(serviceId: string) {
@@ -26,6 +27,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string; serviceId: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+
     const { slug, serviceId } = await params;
     const supabase = await getSupabaseServer();
 
@@ -34,6 +39,7 @@ export async function GET(
       .from("providers")
       .select("id")
       .eq("slug", slug)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (providerError || !provider) {

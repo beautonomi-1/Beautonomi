@@ -21,6 +21,13 @@ type OnDemandRequest = {
   };
 };
 
+function formatDateTimeSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleString();
+}
+
 export default function OnDemandIncomingScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -64,7 +71,11 @@ export default function OnDemandIncomingScreen() {
       `/api/provider/on-demand/requests/${id}/accept`,
       {}
     );
-    if (!res.error && res.data) {
+    if (res.error) {
+      Alert.alert("Could not accept", typeof res.error === "string" ? res.error : "Please try again.");
+      return;
+    }
+    if (res.data) {
       const payload = res.data as { booking_id?: string };
       if (payload.booking_id) {
         router.replace(`/(app)/(tabs)/more/bookings/${payload.booking_id}` as never);
@@ -129,6 +140,16 @@ export default function OnDemandIncomingScreen() {
     <ScreenContainer>
       <ScreenHeader title="Incoming request" onBack={() => router.back()} />
       <View style={twStyle("px-2 pt-4")}>
+        {canRespond && (
+          <View
+            style={twStyle("mb-4 rounded-xl border-2 border-rose-300 bg-rose-50 px-4 py-3")}
+            accessibilityRole="alert"
+          >
+            <Text style={twStyle("text-center text-sm font-bold text-rose-900")}>
+              New on-demand request — accept or decline before it expires.
+            </Text>
+          </View>
+        )}
         <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-4")}>
           <View style={twStyle("flex-row items-center justify-between mb-3")}>
             <Text style={twStyle("font-semibold text-gray-900 capitalize")}>
@@ -141,11 +162,11 @@ export default function OnDemandIncomingScreen() {
             )}
           </View>
           <Text style={twStyle("text-sm text-gray-500")}>
-            Requested {request.requested_at ? new Date(request.requested_at).toLocaleString() : "—"}
+            Requested {formatDateTimeSafe(request.requested_at)}
           </Text>
           {request.expires_at && (
             <Text style={twStyle("mt-1 text-xs text-gray-400")}>
-              Expires {new Date(request.expires_at).toLocaleString()}
+              Expires {formatDateTimeSafe(request.expires_at)}
             </Text>
           )}
         </View>
@@ -162,7 +183,7 @@ export default function OnDemandIncomingScreen() {
         )}
         {scheduledAt && (
           <Text style={twStyle("text-sm text-gray-600 mb-4")}>
-            Preferred time: {new Date(scheduledAt).toLocaleString()}
+            Preferred time: {formatDateTimeSafe(scheduledAt)}
           </Text>
         )}
 

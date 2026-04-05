@@ -586,12 +586,14 @@ export default function AdminContent() {
                       <option value="privacy-policy">📄 privacy-policy</option>
                       <option value="terms-and-condition">📄 terms-and-condition</option>
                       <option value="terms-of-service">📄 terms-of-service</option>
+                      <option value="cookie-policy">📄 cookie-policy</option>
                     </optgroup>
                     {pageSlugs.filter(slug => 
                       slug !== "become-a-partner" && 
                       slug !== "privacy-policy" && 
                       slug !== "terms-and-condition" && 
                       slug !== "terms-of-service" &&
+                      slug !== "cookie-policy" &&
                       slug !== "about" &&
                       slug !== "help"
                     ).length > 0 && (
@@ -601,6 +603,7 @@ export default function AdminContent() {
                           slug !== "privacy-policy" && 
                           slug !== "terms-and-condition" && 
                           slug !== "terms-of-service" &&
+                          slug !== "cookie-policy" &&
                           slug !== "about" &&
                           slug !== "help"
                         ).map((slug) => (
@@ -621,12 +624,12 @@ export default function AdminContent() {
                       📝 Become a Partner
                     </Button>
                   )}
-                  {!pageFilter.startsWith("privacy") && !pageFilter.startsWith("terms") && pageFilter !== "about" && pageFilter !== "help" && (
+                  {!pageFilter.startsWith("privacy") && !pageFilter.startsWith("terms") && pageFilter !== "cookie-policy" && pageFilter !== "about" && pageFilter !== "help" && (
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() => {
-                        const footerPages = ["privacy-policy", "terms-and-condition", "terms-of-service", "about", "help"];
+                        const footerPages = ["privacy-policy", "terms-and-condition", "terms-of-service", "cookie-policy", "about", "help"];
                         const firstFooterPage = footerPages.find(p => pageSlugs.includes(p)) || footerPages[0];
                         setPageFilter(firstFooterPage);
                       }}
@@ -766,6 +769,7 @@ export default function AdminContent() {
                     p.page_slug === "privacy-policy" || 
                     p.page_slug === "terms-and-condition" || 
                     p.page_slug === "terms-of-service" ||
+                    p.page_slug === "cookie-policy" ||
                     p.page_slug === "about" ||
                     p.page_slug === "help"
                   );
@@ -773,6 +777,7 @@ export default function AdminContent() {
                     p.page_slug !== "privacy-policy" && 
                     p.page_slug !== "terms-and-condition" && 
                     p.page_slug !== "terms-of-service" &&
+                    p.page_slug !== "cookie-policy" &&
                     p.page_slug !== "about" &&
                     p.page_slug !== "help"
                   );
@@ -2021,6 +2026,7 @@ function PageContentModal({
           formData.page_slug === "privacy-policy" || 
           formData.page_slug === "terms-and-condition" || 
           formData.page_slug === "terms-of-service" ||
+          formData.page_slug === "cookie-policy" ||
           formData.page_slug === "about" ||
           formData.page_slug === "help" ||
           formData.page_slug === "career" ||
@@ -2029,10 +2035,11 @@ function PageContentModal({
           formData.page_slug === "against-discrimination" ||
           formData.page_slug === "release" ||
           formData.page_slug === "pricing" ||
-          formData.page_slug === "signup") && (
+          formData.page_slug === "signup" ||
+          formData.page_slug === "resources") && (
           <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
             <p className="text-sm text-blue-800 dark:text-blue-200">
-              <strong>💡 Managing {formData.page_slug === "become-a-partner" ? "Become a Partner" : formData.page_slug === "gift-card" ? "Gift Card" : "Footer"} Page Content:</strong> Select <strong>HTML</strong> as the content type to use the rich text WYSIWYG editor. 
+              <strong>💡 Managing {formData.page_slug === "become-a-partner" ? "Become a Partner" : formData.page_slug === "gift-card" ? "Gift Card" : formData.page_slug === "resources" ? "Resources" : "Footer"} Page Content:</strong> Select <strong>HTML</strong> as the content type to use the rich text WYSIWYG editor. 
               {formData.page_slug === "become-a-partner" ? (
                 <>
                   <br /><br />
@@ -2120,8 +2127,118 @@ function PageContentModal({
                     💡 <strong>Image Management:</strong> Use "image" content type for single image URLs. Use "json" content type for arrays of images (designs_list). Images can be uploaded via Supabase Storage and URLs stored in CMS.
                   </p>
                 </>
+              ) : formData.page_slug === "privacy-policy" ? (
+                <>
+                  <br /><br />
+                  <strong>Section keys for /privacy-policy (must match the live page):</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li><code>hero_title</code> - Main H1 headline (text or HTML)</li>
+                    <li><code>hero_description</code> - Body under &quot;Privacy Policy&quot; card (use <strong>HTML</strong> for rich text)</li>
+                    <li><code>hero_image</code> - Hero image URL (content type <strong>image</strong> or text URL)</li>
+                    <li><code>supplemental_policies</code> - JSON array: <code>[{`{"title":"...","link":"/path"}`}]</code></li>
+                    <li><code>related_articles</code> - JSON array: <code>[{`{"category":"...","title":"...","description":"...","link":"/path"}`}]</code> (category optional)</li>
+                  </ul>
+                  <p className="text-xs text-gray-600 mt-2">
+                    The public page loads <code>GET /api/public/content/pages/privacy-policy</code>. Only rows with <strong>is_active</strong> are returned. The sidebar <strong>Contact us</strong> button always goes to <code>/help</code> (platform support), not account messages.
+                  </p>
+                </>
+              ) : formData.page_slug === "terms-and-condition" ? (
+                <>
+                  <br /><br />
+                  <strong>Section keys for /terms-and-condition (must match the live page):</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li><code>page_title</code> or <code>hero_title</code> - Main H1 headline</li>
+                    <li><code>hero_image</code> - Hero image URL (optional; same pattern as privacy)</li>
+                    <li><code>intro_heading</code> - Title above the intro block (default: &quot;Applicability of Terms&quot;)</li>
+                    <li><code>intro</code> - Opening copy (HTML). Aliases: <code>hero_description</code>, <code>hero_content</code></li>
+                    <li><code>sections</code> - JSON array of objects <code>{`{"title":"...","content":"... (HTML OK)"}`}</code></li>
+                    <li><code>sidebar_heading</code> / <code>sidebar_description</code> - Sticky sidebar copy</li>
+                    <li><code>supplemental_policies</code> / <code>related_articles</code> - Same JSON shapes as privacy (optional; sections hidden if empty)</li>
+                  </ul>
+                  <p className="text-xs text-gray-600 mt-2">
+                    Public API: <code>GET /api/public/content/pages/terms-and-condition</code>. The sidebar <strong>Contact us</strong> button always goes to <code>/help</code>.
+                  </p>
+                </>
+              ) : formData.page_slug === "cookie-policy" ? (
+                <>
+                  <br /><br />
+                  <strong>Section keys for /cookie-policy (must match the live page):</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li><code>page_title</code> or <code>hero_title</code> - Main H1 headline</li>
+                    <li><code>hero_image</code> - Hero image URL (optional)</li>
+                    <li><code>intro_heading</code> - Title above the intro block</li>
+                    <li><code>intro</code> - Opening copy (HTML). Aliases: <code>hero_description</code>, <code>hero_content</code></li>
+                    <li><code>sections</code> - JSON array of objects <code>{`{"title":"...","content":"... (HTML OK)"}`}</code></li>
+                    <li><code>sidebar_heading</code> / <code>sidebar_description</code> - Sticky sidebar copy</li>
+                  </ul>
+                  <p className="text-xs text-gray-600 mt-2">
+                    Public API: <code>GET /api/public/content/pages/cookie-policy</code>.
+                  </p>
+                </>
+              ) : formData.page_slug === "help" ? (
+                <>
+                  <br /><br />
+                  <strong>Section keys for /help (Help Centre):</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li><code>hero_title</code> - Main headline (default: &quot;Hi, how can we help?&quot;)</li>
+                    <li><code>search_placeholder</code> - Search input placeholder</li>
+                    <li><code>search_suggestions</code> - JSON array of strings shown under &quot;Top articles&quot;</li>
+                    <li><code>cta_heading</code> - Support strip title</li>
+                    <li><code>cta_body_guest</code> - Copy when the visitor is logged out (desktop)</li>
+                    <li><code>cta_body_authenticated</code> - Copy when logged in (desktop)</li>
+                    <li><code>cta_mobile_hint_guest</code> - Short line above the login button on small screens</li>
+                  </ul>
+                  <p className="text-xs text-gray-600 mt-2">
+                    Public API: <code>GET /api/public/page-content?page_slug=help</code>
+                  </p>
+                </>
+              ) : formData.page_slug === "resources" ? (
+                <>
+                  <br /><br />
+                  <strong>/resources page:</strong> The live page loads <code>GET /api/public/page-content?page_slug=resources</code> and renders <strong>every active row</strong> for this slug in <strong>display order</strong>. You can use any <code>section_key</code> names; each block is shown as HTML or plain text depending on content type.
+                </>
+              ) : formData.page_slug === "career" ? (
+                <>
+                  <br /><br />
+                  <strong>Section keys for <code>/career</code> (Careers marketing + Zoho Recruit):</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li><code>careers_portal_url</code> - HTTPS URL for open roles (e.g. Zoho Career Site). Used for CTAs and redirects from <code>/career/positions</code>. Host must be <code>*.zohorecruit.com</code>. Content type <strong>text</strong>.</li>
+                    <li><code>meta_title</code> - Browser / SEO title (text).</li>
+                    <li><code>meta_description</code> - SEO description; keep short (text).</li>
+                    <li><code>hero_eyebrow</code> - Short line above headline, e.g. &quot;We&apos;re hiring&quot; (text).</li>
+                    <li><code>hero_title</code> - Main headline (text).</li>
+                    <li><code>hero_subtitle</code> - One scannable sentence; UI truncates very long text (text).</li>
+                    <li><code>hero_cta_label</code> - Primary button label, e.g. &quot;View open roles&quot; (text).</li>
+                    <li><code>value_cards</code> - JSON array of <code>{`{ "title", "blurb", "image_url?", "cta_label?" }`}</code> (3–4 cards). Keep blurbs brief.</li>
+                    <li><code>highlight_cards</code> - Optional JSON array of small cards: <code>{`{ "title", "blurb" }`}</code> (2–3 items).</li>
+                    <li><code>carousel_slides</code> - Optional JSON: <code>{`[{ "image_url", "alt" }]`}</code> for the image strip; use Supabase public URLs or other hosts allowed for Next.js images.</li>
+                  </ul>
+                  <p className="text-xs text-gray-600 mt-2">
+                    Public API: <code>GET /api/public/pages/career</code>. Job search and apply on the site redirect to <code>careers_portal_url</code> when valid.
+                  </p>
+                  <br />
+                  <strong>value_cards JSON example:</strong>
+                  <pre className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs overflow-x-auto">{`[
+  { "title": "Flexibility", "blurb": "Work in the way that fits your life.", "image_url": "https://...", "cta_label": "See roles" },
+  { "title": "Belonging", "blurb": "Bring your whole self. We grow together." }
+]`}</pre>
+                </>
+              ) : formData.page_slug === "beautonomi-friendly" ? (
+                <>
+                  <br /><br />
+                  <strong>Section keys for /beautonomi-friendly (hero only; carousel blocks are still static):</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li><code>hero_title</code> - Lines for the H1, separated by <strong>newlines</strong> (default: three lines &quot;Introducing&quot;, &quot;Beautonomi-friendly&quot;, &quot;apartments&quot;)</li>
+                    <li><code>hero_subtitle</code> - Subheading under the title</li>
+                    <li><code>cta_label</code> - Primary button label</li>
+                    <li><code>cta_href</code> - Primary button link (default <code>/explore</code>)</li>
+                  </ul>
+                  <p className="text-xs text-gray-600 mt-2">
+                    Public API: <code>GET /api/public/page-content?page_slug=beautonomi-friendly</code>
+                  </p>
+                </>
               ) : (
-                <> 
+                <>
                   <br /><br />
                   <strong>Available Section Keys for {formData.page_slug} page:</strong>
                   <ul className="list-disc list-inside mt-2 space-y-1">
@@ -2152,6 +2269,7 @@ function PageContentModal({
                   <SelectItem value="become-a-partner">become-a-partner (Become a Partner page)</SelectItem>
                   <SelectItem value="gift-card">gift-card (Gift Card Marketing Page)</SelectItem>
                   <SelectItem value="home">home</SelectItem>
+                  <SelectItem value="resources">resources (/resources)</SelectItem>
                   <SelectItem value="about">about (About Page)</SelectItem>
                   <SelectItem value="help">help (Help Center)</SelectItem>
                   <SelectItem value="career">career (Careers)</SelectItem>
@@ -2164,6 +2282,7 @@ function PageContentModal({
                   <SelectItem value="privacy-policy">privacy-policy (Privacy Policy - Footer Page)</SelectItem>
                   <SelectItem value="terms-and-condition">terms-and-condition (Terms & Conditions - Footer Page)</SelectItem>
                   <SelectItem value="terms-of-service">terms-of-service (Terms of Service - Footer Page)</SelectItem>
+                  <SelectItem value="cookie-policy">cookie-policy (Cookie Policy - Footer Page)</SelectItem>
                 </SelectContent>
               </Select>
               <Input

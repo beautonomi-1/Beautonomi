@@ -5,6 +5,8 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 const citySchema = z.object({
   name: z.string().min(1, "City name is required"),
@@ -30,26 +32,17 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
-    // Get cities with provider count
-    const { data: cities, error } = await supabase
-      .from("featured_cities")
-      .select("*")
-      .order("name", { ascending: true });
-
-    if (error) {
-      console.error("Error fetching featured cities:", error);
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Failed to fetch featured cities",
-            code: "FETCH_ERROR",
-          },
-        },
-        { status: 500 }
-      );
-    }
+    const scoped = await fetchScopedListMerged<{ name: string; country: string; [key: string]: unknown }>({
+      supabase,
+      table: "featured_cities",
+      tenantId,
+      select: "*",
+      dedupeKey: (city) => `${city.country}:${city.name}`.toLowerCase(),
+      orderBy: { column: "name", ascending: true },
+    });
+    const cities = scoped.data;
 
     type CityRow = { name: string; country: string; [key: string]: unknown };
     const citiesWithCounts = await Promise.all(
@@ -57,6 +50,7 @@ export async function GET(request: NextRequest) {
         const { count } = await supabase
           .from("providers")
           .select("*", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
           .eq("city", city.name)
           .eq("country", city.country)
           .eq("status", "active");
@@ -100,6 +94,7 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     // Validate request body
@@ -123,6 +118,7 @@ export async function POST(request: NextRequest) {
     const { data: city, error } = await supabase
       .from("featured_cities")
       .insert({
+        tenant_id: tenantId,
         name,
         country,
         image_url: image_url || null,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 export async function GET(
   request: NextRequest,
@@ -10,6 +11,7 @@ export async function GET(
   try {
     await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     if (!supabase) {
       return NextResponse.json(
@@ -50,6 +52,7 @@ export async function GET(
     const { data: bookings } = await supabase
       .from("bookings")
       .select("*")
+      .eq("tenant_id", tenantId)
       .eq("user_id", id);
 
     // Convert to CSV format

@@ -6,6 +6,7 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { z } from "zod";
 
 const addSchema = z.object({
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
       request,
     );
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     const { data: items, error } = await (supabase.from("cart_items") as any)
       .select(
@@ -51,7 +53,24 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    const enriched = (items ?? []).map((item: any) => {
+    const providerIds = Array.from(
+      new Set(
+        (items ?? [])
+          .map((item: any) => item.product?.provider_id ?? item.provider?.id ?? null)
+          .filter((id: string | null): id is string => Boolean(id)),
+      ),
+    );
+    const { data: tenantProviders } = providerIds.length
+      ? await supabase.from("providers").select("id").in("id", providerIds).eq("tenant_id", tenantId)
+      : { data: [] as Array<{ id: string }> };
+    const allowedProviderIds = new Set((tenantProviders ?? []).map((p) => p.id));
+
+    const enriched = (items ?? [])
+      .filter((item: any) => {
+        const providerId = item.product?.provider_id ?? item.provider?.id ?? null;
+        return providerId != null && allowedProviderIds.has(providerId);
+      })
+      .map((item: any) => {
       const effectiveQty = item.product_variant ? item.product_variant.quantity : item.product?.quantity ?? 0;
       const effectivePrice = item.product_variant ? item.product_variant.retail_price : item.product?.retail_price ?? 0;
       return {
@@ -84,6 +103,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = addSchema.parse(body);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     // Validate the product exists and is available
     const { data: product, error: prodErr } = await (supabase.from("products") as any)
@@ -93,6 +113,15 @@ export async function POST(request: NextRequest) {
 
     if (prodErr || !product) {
       return errorResponse("Product not found", "NOT_FOUND", 404);
+    }
+    const { data: productProvider } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("id", product.provider_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!productProvider?.id) {
+      return errorResponse("Product not available in this market", "TENANT_MISMATCH", 404);
     }
     if (!product.is_active || !product.retail_sales_enabled) {
       return errorResponse("Product is not available for purchase", "UNAVAILABLE", 400);
@@ -183,10 +212,20 @@ export async function DELETE(request: NextRequest) {
       request,
     );
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const { data: tenantProviders } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("tenant_id", tenantId);
+    const providerIds = (tenantProviders ?? []).map((p) => p.id);
+    if (providerIds.length === 0) {
+      return successResponse({ cleared: true });
+    }
 
     const { error } = await (supabase.from("cart_items") as any)
       .delete()
-      .eq("user_id", user.id);
+      .eq("user_id", user.id)
+      .in("provider_id", providerIds);
 
     if (error) throw error;
 

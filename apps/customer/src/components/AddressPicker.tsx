@@ -31,6 +31,7 @@ import {
 import { haptic } from "@/lib/haptics";
 import { useResponsive } from "@/hooks/useResponsive";
 import { RADIUS_INPUT, RADIUS_CARD } from "@/constants/layout";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 export interface AddressPickerSelection {
   label: string;
@@ -67,8 +68,16 @@ export function AddressPicker({
   initialQuery,
 }: AddressPickerProps) {
   const { contentPadding } = useResponsive();
+  const { bundle } = useConfigBundle();
+  const defaultCountryLabel =
+    bundle?.meta?.tenant_region?.name?.trim() || "—";
   const { user } = useAuth();
-  const { addresses, loading: addressesLoading } = useAddresses(visible && !!user);
+  const {
+    addresses,
+    loading: addressesLoading,
+    error: addressesError,
+    reload: reloadAddresses,
+  } = useAddresses(visible && !!user);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<GeocodeSuggestion[]>([]);
   const [searching, setSearching] = useState(false);
@@ -145,20 +154,23 @@ export function AddressPicker({
     [onSelect, onClose],
   );
 
-  function parseStructuredFromSuggestion(s: GeocodeSuggestion): AddressPickerSelection["structured"] {
-    const context = s.context ?? [];
-    const find = (prefix: string) => context.find((c) => c.id.startsWith(prefix))?.text ?? "";
-    const place = find("place.") || find("locality.") || find("district.");
-    const country = find("country.");
-    const parts = (s.place_name || "").split(",").map((p) => p.trim()).filter(Boolean);
-    return {
-      address_line1: parts[0] || s.text || "",
-      city: place || parts[1] || "",
-      state: find("region.") || undefined,
-      postal_code: find("postcode.") || undefined,
-      country: country || "South Africa",
-    };
-  }
+  const parseStructuredFromSuggestion = useCallback(
+    (s: GeocodeSuggestion): AddressPickerSelection["structured"] => {
+      const context = s.context ?? [];
+      const find = (prefix: string) => context.find((c) => c.id.startsWith(prefix))?.text ?? "";
+      const place = find("place.") || find("locality.") || find("district.");
+      const country = find("country.");
+      const parts = (s.place_name || "").split(",").map((p) => p.trim()).filter(Boolean);
+      return {
+        address_line1: parts[0] || s.text || "",
+        city: place || parts[1] || "",
+        state: find("region.") || undefined,
+        postal_code: find("postcode.") || undefined,
+        country: country || defaultCountryLabel,
+      };
+    },
+    [defaultCountryLabel],
+  );
 
   const handleSuggestionSelect = useCallback(
     (s: GeocodeSuggestion) => {
@@ -174,7 +186,7 @@ export function AddressPicker({
       });
       onClose();
     },
-    [onSelect, onClose],
+    [onSelect, onClose, parseStructuredFromSuggestion],
   );
 
   const handleUseCurrentLocation = useCallback(async () => {
@@ -211,13 +223,13 @@ export function AddressPicker({
           city: place || parts[1] || "—",
           state: find("region.") || undefined,
           postal_code: find("postcode.") || undefined,
-          country: country || "South Africa",
+          country: country || defaultCountryLabel,
         };
       } else {
         structured = {
           address_line1: "Current location",
           city: "—",
-          country: "South Africa",
+          country: defaultCountryLabel,
         };
       }
 
@@ -228,13 +240,14 @@ export function AddressPicker({
         displayName,
         structured,
       });
+      onUseCurrentLocation();
       onClose();
     } catch (e) {
       Alert.alert("Location error", e instanceof Error ? e.message : "Could not get your location.");
     } finally {
       setGettingLocation(false);
     }
-  }, [onSelect, onClose, gettingLocation]);
+  }, [onSelect, onUseCurrentLocation, onClose, gettingLocation, defaultCountryLabel]);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -326,6 +339,15 @@ export function AddressPicker({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={true}
           >
+            {user && addressesError && !addressesLoading && (
+              <View style={{ paddingHorizontal: contentPadding, paddingTop: 8, paddingBottom: 8 }}>
+                <Text style={{ fontSize: 13, color: "#991B1B", marginBottom: 10 }}>{addressesError}</Text>
+                <TouchableOpacity onPress={() => void reloadAddresses()} accessibilityRole="button">
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Try again</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {user && addresses.length > 0 && (
               <View style={{ paddingHorizontal: contentPadding, paddingTop: 8, marginBottom: 8 }}>
                 <Text style={{ fontSize: 13, fontWeight: "600", color: "#6B7280", marginBottom: 8 }}>
@@ -420,7 +442,7 @@ export function AddressPicker({
               </View>
             )}
 
-            {!addressesLoading && addresses.length === 0 && suggestions.length === 0 && (
+            {!addressesLoading && !addressesError && addresses.length === 0 && suggestions.length === 0 && (
               <View style={{ padding: 24, alignItems: "center" }}>
                 <Text style={{ fontSize: 13, color: Colors.gray[400], textAlign: "center" }}>
                   Search for an address above or use your current location

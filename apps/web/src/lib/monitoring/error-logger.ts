@@ -62,8 +62,14 @@ class ErrorLogger {
     this.init();
     
     if (!this.supabaseAdmin) {
-      // Fallback to console if Supabase not available
-      console.error("Error Log:", error);
+      // Client (or missing service role): avoid console showing `{}` for plain objects in some devtools setups
+      const line = [
+        `[ErrorLog] ${error.error_type}: ${error.error_message}`,
+        error.method && error.endpoint ? ` | ${error.method} ${error.endpoint}` : "",
+        error.status_code != null ? ` | status=${error.status_code}` : "",
+        error.severity ? ` | ${error.severity}` : "",
+      ].join("");
+      console.error(line);
       return;
     }
 

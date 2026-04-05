@@ -10,6 +10,7 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 const articleSchema = z.object({
   category_id: z.string().uuid(),
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest) {
     if (!user) return unauthorizedResponse("Authentication required");
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     if (!supabase) {
       return NextResponse.json({ data: [], error: null });
     }
@@ -46,6 +48,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("learning_articles")
       .select("*, learning_categories(title, slug)", { count: "exact" })
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .order("created_at", { ascending: false });
 
     if (category_id) query = query.eq("category_id", category_id);
@@ -75,6 +78,7 @@ export async function POST(request: NextRequest) {
     if (!user) return unauthorizedResponse("Authentication required");
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     const parsed = articleSchema.safeParse(body);
@@ -94,6 +98,7 @@ export async function POST(request: NextRequest) {
 
     const insert = {
       ...parsed.data,
+      tenant_id: tenantId,
       author_id: user.id,
       published_at: parsed.data.published_at ?? (parsed.data.status === "published" ? new Date().toISOString() : null),
     };

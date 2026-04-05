@@ -342,15 +342,30 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
                     Freelancer
                   </div>
                 )}
-                {current_badge && (
-                  <div
-                    className="text-white rounded-full px-3 py-1.5 text-xs font-medium shadow-lg border border-white/30"
-                    style={{ backgroundColor: current_badge.color || "#6366f1" }}
-                    title={current_badge.description || current_badge.name}
-                  >
-                    {current_badge.name}
-                  </div>
-                )}
+              </div>
+              {/* Avatar on main gallery (bottom-left) — avoids overlapping the name block below */}
+              <div
+                className="pointer-events-none absolute inset-x-0 bottom-0 z-[5] h-32 bg-gradient-to-t from-black/55 via-black/20 to-transparent"
+                aria-hidden
+              />
+              <div className="absolute bottom-5 left-5 z-10 h-[88px] w-[88px] shrink-0">
+                <div className="relative h-full w-full overflow-hidden rounded-full border-[3px] border-white bg-gray-200 shadow-xl ring-1 ring-black/10">
+                  {thumbnail_url ? (
+                    <Image
+                      src={thumbnail_url}
+                      alt={businessName ? `${businessName} profile photo` : "Provider profile photo"}
+                      fill
+                      sizes="88px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400">
+                      <span className="text-2xl font-bold text-white">
+                        {(businessName || "P").charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             </Link>
           </div>
@@ -410,57 +425,24 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
         </div>
       </div>
 
-      {/* Provider Information Section - Enhanced Desktop Design */}
-      <div className="relative px-4 md:px-10 -mt-8 md:-mt-12 bg-white rounded-t-3xl pt-8 md:pt-12 pb-6 md:pb-8 shadow-xl">
-        {/* Floating Avatar - Breaks the hero image box */}
-        <div className="absolute -top-12 left-10 z-10 hidden md:block">
-          <div className="relative">
-            <div className="relative w-24 h-24 rounded-full border-4 border-white overflow-hidden bg-gray-200 shadow-xl">
-              {thumbnail_url ? (
-                <Image
-                  src={thumbnail_url}
-                  alt={businessName || "Provider"}
-                  fill
-                  sizes="96px"
-                  className="object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-300 to-gray-400">
-                  <span className="text-white font-bold text-2xl">
-                    {(businessName || "P").charAt(0).toUpperCase()}
-                  </span>
-                </div>
-              )}
-            </div>
-            {/* SuperPartner/Verified Badge */}
-            {(is_verified || is_featured) && (
-              <div className="absolute -bottom-1 -right-1 bg-white rounded-full p-0.5 shadow-lg">
-                <div className="h-7 w-7 rounded-full bg-gradient-to-br from-amber-500 via-yellow-500 to-amber-600 flex items-center justify-center">
-                  <Check className="h-4 w-4 text-white stroke-[3]" />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6 mb-6">
+      {/* Provider information — avatar sits on gallery above */}
+      <div className="relative -mt-6 rounded-t-3xl bg-white px-4 pb-6 pt-6 shadow-xl md:-mt-8 md:px-10 md:pb-8 md:pt-8">
+        <div className="mb-6 flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="flex-1">
             {/* Provider Name and Location */}
             <div className="mb-4">
-              <div className="flex flex-wrap items-center gap-2 mb-2">
-                <h1 className="text-3xl md:text-4xl font-bold text-gray-900 leading-tight">
-                  {businessName || "Provider"}
-                </h1>
-                {current_badge && (
-                  <span
-                    className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium text-white border border-white/30"
-                    style={{ backgroundColor: current_badge.color || "#6366f1" }}
-                    title={current_badge.description || current_badge.name}
-                  >
-                    {current_badge.name}
-                  </span>
-                )}
-              </div>
+              <h1 className="mb-2 text-3xl font-bold leading-tight text-gray-900 md:text-4xl">
+                {businessName || "Provider"}
+              </h1>
+              {current_badge ? (
+                <span
+                  className="mb-3 inline-flex max-w-full items-center rounded-full border border-white/30 px-3 py-1 text-sm font-medium text-white"
+                  style={{ backgroundColor: current_badge.color || "#6366f1" }}
+                  title={current_badge.description || current_badge.name}
+                >
+                  {current_badge.name}
+                </span>
+              ) : null}
               <div className="flex flex-col gap-1 mb-3">
                 {(city || country) && (
                   <div className="flex items-center gap-1 text-gray-600 text-sm md:text-base">
@@ -503,7 +485,8 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
               <div className="flex flex-col items-center flex-1">
                 <MapPin className="h-5 w-5 md:h-6 md:w-6 text-gray-500 mb-1.5" />
                 <span className="text-xs text-gray-600 mb-0.5">Distance</span>
-                <span className="text-sm md:text-base font-semibold text-gray-900">
+                <span className="inline-flex items-center gap-1.5 text-sm md:text-base font-semibold text-gray-900">
+                  <MapPin className="h-3.5 w-3.5 md:h-4 md:w-4 text-gray-500" aria-hidden />
                   {distance_km ? `${distance_km.toFixed(1)} km` : "—"}
                 </span>
               </div>
@@ -616,7 +599,11 @@ const PartnerHero: React.FC<PartnerHeroProps> = ({
             : undefined
         }
       />
-      <LoginModal open={isLoginModalOpen} setOpen={setIsLoginModalOpen} />
+      <LoginModal
+        open={isLoginModalOpen}
+        setOpen={setIsLoginModalOpen}
+        initialMode="login"
+      />
     </div>
   );
 };

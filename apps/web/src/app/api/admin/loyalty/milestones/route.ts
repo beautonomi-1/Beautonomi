@@ -4,6 +4,9 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const milestoneSchema = z.object({
   name: z.string().min(1),
@@ -11,7 +14,7 @@ const milestoneSchema = z.object({
   points_threshold: z.number().int().positive(),
   reward_type: z.literal("wallet_credit").default("wallet_credit"),
   reward_amount: z.number().min(0),
-  reward_currency: z.string().min(1).default("ZAR"),
+  reward_currency: z.string().min(1).optional(),
   is_active: z.boolean().optional().default(true),
 });
 
@@ -43,7 +46,14 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
-    const body = milestoneSchema.parse(await request.json());
+    const parsed = milestoneSchema.parse(await request.json());
+    const tenantId = await resolveAdminApiTenantId(request);
+    const lastResortCurrency =
+      (await getTenantRegionConfig(tenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    const body = {
+      ...parsed,
+      reward_currency: parsed.reward_currency ?? lastResortCurrency,
+    };
 
     const { data: row, error } = await supabase.from("loyalty_milestones")
       .insert({

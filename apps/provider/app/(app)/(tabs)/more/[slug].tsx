@@ -1,6 +1,6 @@
 /**
- * Real screen for More tab features managed on the web portal.
- * No "coming soon" – clear instructions to manage in the web app.
+ * Native fallback screen for More tab feature slugs.
+ * Redirects known slugs to native routes and keeps unknown slugs in-app.
  */
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { View, Text, TouchableOpacity } from "react-native";
@@ -9,6 +9,7 @@ import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Colors } from "@/constants/colors";
+import { useEffect } from "react";
 
 interface SetupStatus {
   isComplete: boolean;
@@ -27,6 +28,18 @@ const SLUG_TO_SUBTITLE: Record<string, string> = {
   "reports": "Analytics, activity & insights",
   "engagement-hub": "Reviews, messaging & marketing",
   "finance-hub": "Earnings and payouts",
+};
+
+const SLUG_TO_NATIVE_ROUTE: Record<string, string> = {
+  routes: "/(app)/(tabs)/more/routes",
+  reports: "/(app)/(tabs)/more/reports",
+  "finance-hub": "/(app)/(tabs)/more/finance",
+  "finance-billing-hub": "/(app)/(tabs)/more/finance-billing-hub",
+  "products-ecommerce-hub": "/(app)/(tabs)/more/products-ecommerce-hub",
+  "catalogue-offerings-hub": "/(app)/(tabs)/more/catalogue-overview",
+  "custom-requests": "/(app)/(tabs)/more/custom-requests",
+  "resources-forms-hub": "/(app)/(tabs)/more/forms",
+  "engagement-hub": "/(app)/(tabs)/more/marketing-hub",
 };
 
 function slugToTitle(slug: string): string {
@@ -57,6 +70,12 @@ export default function MoreSlugScreen() {
   const title = slug ? slugToTitle(slug) : "Feature";
   const subtitle = slug ? SLUG_TO_SUBTITLE[slug] : null;
   const showSetupBanner = setupStatus && !setupStatus.isComplete && setupStatus.completionPercentage < 100;
+  const nativeRoute = slug ? SLUG_TO_NATIVE_ROUTE[slug] : null;
+
+  useEffect(() => {
+    if (!nativeRoute) return;
+    router.replace(nativeRoute as never);
+  }, [nativeRoute, router]);
 
   return (
     <ScreenContainer>
@@ -88,8 +107,17 @@ export default function MoreSlugScreen() {
             <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[600] }}>{subtitle}</Text>
           )}
           <Text style={{ marginTop: 16, fontSize: 14, color: Colors.gray[600], lineHeight: 20 }}>
-            Manage this in the provider dashboard on the web. Open the web dashboard (e.g. via Portal or in-app browser) for full editing, reports, and setup.
+            This feature is being finalized in native. Use the related native sections while rollout completes.
           </Text>
+          {nativeRoute && (
+            <TouchableOpacity
+              onPress={() => router.replace(nativeRoute as never)}
+              style={{ marginTop: 16, borderRadius: 12, borderWidth: 1, borderColor: "#c7d2fe", backgroundColor: "#eef2ff", paddingVertical: 10, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "center" }}
+            >
+              <Ionicons name="arrow-forward-circle-outline" size={18} color="#4338ca" />
+              <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: "600", color: "#4338ca" }}>Open native screen</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </ScreenContainer>

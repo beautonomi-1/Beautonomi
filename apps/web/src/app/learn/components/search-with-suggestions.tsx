@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Search, ChevronRight, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -188,6 +187,7 @@ export function SearchWithSuggestions({
                   key={r.id}
                   type="button"
                   role="option"
+                  aria-selected={false}
                   className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-all duration-200 ease-in-out hover:bg-zinc-100 active:scale-[0.99]"
                   onClick={() => goToArticle(r.slug)}
                 >

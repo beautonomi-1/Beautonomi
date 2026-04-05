@@ -13,6 +13,9 @@ import { toast } from "sonner";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { formatCurrency } from "@/lib/utils";
 
 interface CancellationPolicy {
   id?: string;
@@ -25,6 +28,8 @@ interface CancellationPolicy {
 }
 
 export default function CancellationPoliciesPage() {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [policies, setPolicies] = useState<CancellationPolicy[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -217,7 +222,10 @@ export default function CancellationPoliciesPage() {
                   </p>
                   {policy.fee_amount && policy.fee_amount > 0 && (
                     <p className="text-sm text-gray-600 mt-1">
-                      Cancellation fee: {policy.fee_type === "percentage" ? `${policy.fee_amount}%` : `ZAR ${policy.fee_amount}`}
+                      Cancellation fee:{" "}
+                      {policy.fee_type === "percentage"
+                        ? `${policy.fee_amount}%`
+                        : formatCurrency(policy.fee_amount ?? 0, tenantCurrency)}
                     </p>
                   )}
                 </div>
@@ -436,7 +444,7 @@ function PolicyDialog({
                   }
                 />
                 <span className="text-sm text-gray-600">
-                  {formData.fee_type === "percentage" ? "%" : "ZAR"}
+                  {formData.fee_type === "percentage" ? "%" : LAST_RESORT_CURRENCY}
                 </span>
               </div>
             </div>

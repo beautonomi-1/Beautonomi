@@ -15,6 +15,7 @@ import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { toast } from "sonner";
+import { labelForSupportTicketCategory } from "@/lib/support/ticket-categories";
 
 type Message = {
   id: string;
@@ -147,6 +148,14 @@ export default function MyTicketDetailPage() {
                 <Badge className={statusColor(ticket.status)}>{ticket.status.replace("_", " ")}</Badge>
               </div>
               <CardTitle className="text-xl">{ticket.subject}</CardTitle>
+              {ticket.category ? (
+                <p className="text-sm text-zinc-600">
+                  Category:{" "}
+                  <span className="font-medium text-zinc-800">
+                    {labelForSupportTicketCategory(ticket.category)}
+                  </span>
+                </p>
+              ) : null}
               <p className="text-sm text-gray-500">
                 Created {new Date(ticket.created_at).toLocaleString()}
               </p>
