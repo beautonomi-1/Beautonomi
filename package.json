@@ -1,7 +1,11 @@
 {
   "name": "beautonomi-monorepo",
   "private": true,
-  "packageManager": "pnpm@9.15.0",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=10.33.0"
+  },
   "pnpm": {
     "overrides": {
       "react": "19.1.0",

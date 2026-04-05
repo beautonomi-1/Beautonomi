@@ -10,6 +10,8 @@
  * The "user:" prefix is set in /api/me/verification/sumsub/token.
  * Provider token (/api/provider/verification/sumsub/token) uses plain UUIDs
  * for backward compatibility.
+ *
+ * @tenant-hint SumSub HMAC webhook; service role updates users / user_verifications / provider_verification_status by externalUserId (not Host / request tenant).
  */
 
 import { NextRequest, NextResponse } from "next/server";

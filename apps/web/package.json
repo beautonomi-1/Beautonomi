@@ -6,7 +6,7 @@
     "dev": "cross-env NODE_OPTIONS=--max-old-space-size=8192 next dev --webpack -p 3000",
     "dev:turbo": "cross-env NODE_OPTIONS=--max-old-space-size=8192 next dev --turbopack -p 3000",
     "dev:webpack": "cross-env NODE_OPTIONS=--max-old-space-size=8192 next dev --webpack -p 3000",
-    "build": "cross-env NODE_OPTIONS=--max-old-space-size=8192 next build --webpack",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=6144 next build --webpack",
     "build:turbo": "cross-env NODE_OPTIONS=--max-old-space-size=8192 next build --turbopack",
     "start": "next start",
     "lint": "eslint .",

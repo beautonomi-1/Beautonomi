@@ -73,6 +73,8 @@ const nextConfig = {
 
   // Experimental features for performance
   experimental: {
+    // Lowers peak RSS during `next build --webpack` (important on ~7GB CI / default Vercel builders).
+    webpackMemoryOptimizations: true,
     // Exclude @radix-ui/react-select to avoid Turbopack HMR "module factory is not available" errors
     optimizePackageImports: [
       'lucide-react',
@@ -92,6 +94,10 @@ const nextConfig = {
   // breaks the manifest: the browser loads vendor.css as a script → MIME / SyntaxError).
   // Strip it if present (e.g. stale tooling) and avoid replacing Next's default client splitChunks.
   webpack: (config, { dev, isServer }) => {
+    // Cap parallel module work in production builds to avoid OOM on 7–8GB runners (heap alone can exceed RAM).
+    if (!dev) {
+      config.parallelism = Math.min(config.parallelism ?? 100, 2);
+    }
     // Windows dev: persistent webpack filesystem cache under .next/dev/cache/webpack can hit ENOENT
     // (missing *.pack.gz / routes-manifest) after partial deletes or restarts while compiling → 500 ISE.
     // Memory-only cache is slower but avoids a corrupted pack leaving the server unusable until full clean.
