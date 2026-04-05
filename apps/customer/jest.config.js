@@ -10,7 +10,13 @@ module.exports = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },
-  testPathIgnorePatterns: ["<rootDir>/node_modules/", "<rootDir>/.expo/"],
+  // Component tests use @testing-library/react-native → loads RN entry (Flow/ESM); CI uses node env only.
+  // Run those in E2E or a dedicated RN Jest preset. Lib/unit tests stay enabled.
+  testPathIgnorePatterns: [
+    "<rootDir>/node_modules/",
+    "<rootDir>/.expo/",
+    "<rootDir>/__tests__/components/.*\\.test\\.tsx$",
+  ],
   collectCoverageFrom: [
     "src/**/*.{ts,tsx}",
     "app/**/*.{ts,tsx}",
