@@ -25,7 +25,7 @@ interface Message {
   sender_id: string;
   sender_name: string;
   content: string;
-  attachments?: { url: string }[] | string[];
+  attachments?: { url: string; expired?: boolean; type?: string; name?: string }[] | string[];
   created_at: string;
   is_read?: boolean;
   read_at?: string | null;
@@ -437,11 +437,14 @@ export default function ChatScreen() {
                 }
                 const msg = item.message;
                 const isMe = msg.sender_id === user.id;
-                const urls = Array.isArray(msg.attachments)
-                  ? msg.attachments
-                      .map((a: any) => (typeof a === "string" ? a : a?.url))
-                      .filter(Boolean)
+                const attachmentItems: { url: string; expired?: boolean; name?: string }[] = Array.isArray(
+                  msg.attachments
+                )
+                  ? msg.attachments.map((a: any) =>
+                      typeof a === "string" ? { url: a } : { url: a?.url || "", expired: a?.expired, name: a?.name }
+                    )
                   : [];
+                const hasRenderableAttachments = attachmentItems.some((a) => a.expired || a.url);
                 return (
                   <View style={{ marginBottom: 12, alignItems: isMe ? "flex-end" : "flex-start" }}>
                     <View
@@ -460,23 +463,36 @@ export default function ChatScreen() {
                         elevation: 1,
                       }}
                     >
-                      {urls.length > 0 && (
+                      {hasRenderableAttachments && (
                         <View style={{ marginBottom: 8 }}>
-                          {urls.map((url: string, i: number) => (
-                            <Image
-                              key={i}
-                              source={{ uri: url }}
-                              style={{
-                                width: 192,
-                                height: 192,
-                                borderRadius: 8,
-                                marginBottom: i < urls.length - 1 ? 8 : 0,
-                              }}
-                              contentFit="cover"
-                              cachePolicy="memory-disk"
-                              transition={200}
-                            />
-                          ))}
+                          {attachmentItems.map((att, i) =>
+                            att.expired || !att.url ? (
+                              <Text
+                                key={i}
+                                style={{
+                                  fontSize: 13,
+                                  color: isMe ? "rgba(255,255,255,0.85)" : Colors.gray[600],
+                                  marginBottom: i < attachmentItems.length - 1 ? 8 : 0,
+                                }}
+                              >
+                                {att.name ? `${att.name} — ` : ""}File no longer available (retention policy).
+                              </Text>
+                            ) : (
+                              <Image
+                                key={i}
+                                source={{ uri: att.url }}
+                                style={{
+                                  width: 192,
+                                  height: 192,
+                                  borderRadius: 8,
+                                  marginBottom: i < attachmentItems.length - 1 ? 8 : 0,
+                                }}
+                                contentFit="cover"
+                                cachePolicy="memory-disk"
+                                transition={200}
+                              />
+                            )
+                          )}
                         </View>
                       )}
                       {msg.content ? (

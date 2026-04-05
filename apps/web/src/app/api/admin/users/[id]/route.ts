@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { purgeUserMessageAttachmentFiles } from "@/lib/account/purge-user-message-files";
 import { z } from "zod";
 
 /**
@@ -162,6 +163,7 @@ export async function PATCH(
         : null;
       updateData.deactivated_at = at;
       updateData.deactivated_by = at ? 'admin' : null;
+      updateData.is_active = at ? false : true;
     }
 
     if (validationResult.data.deactivation_reason !== undefined) {
@@ -282,8 +284,10 @@ export async function DELETE(
       );
     }
 
-    // Use admin client to delete auth user (this will cascade delete user record)
     const supabaseAdmin = getSupabaseAdmin();
+
+    await purgeUserMessageAttachmentFiles(supabaseAdmin, id);
+
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(id);
 
     if (deleteError) {

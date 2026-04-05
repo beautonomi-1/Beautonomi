@@ -39,6 +39,8 @@ interface Attachment {
   offer_id?: string;
   preferred_start_at?: string | null;
   withdrawn?: boolean;
+  /** Set when file URLs are past retention or removed server-side */
+  expired?: boolean;
 }
 
 interface Message {
@@ -1041,7 +1043,12 @@ export default function WhatsAppChat({
                             .filter(a => a.type !== "custom_offer" && a.type !== "custom_request")
                             .map((attachment, idx) => (
                             <div key={idx} className="rounded-lg overflow-hidden">
-                              {isImage(attachment.type) ? (
+                              {attachment.expired || !attachment.url ? (
+                                <div className="flex items-center gap-2 p-3 bg-gray-100/80 rounded-lg border border-dashed border-gray-300 text-sm text-[#667781]">
+                                  <File className="w-5 h-5 shrink-0 opacity-60" />
+                                  <span>{attachment.name || "Attachment"} is no longer available (retention policy).</span>
+                                </div>
+                              ) : isImage(attachment.type) ? (
                                 <div className="relative max-w-full">
                                   <Image
                                     src={attachment.url}
@@ -1109,7 +1116,7 @@ export default function WhatsAppChat({
                             : "Delivered"
                         }
                       >
-                        {message.read_at ? "✓✓" : "✓✓"}
+                        {message.read_at ? "✓✓" : "✓"}
                       </span>
                     )}
                   </div>
