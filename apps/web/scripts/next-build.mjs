@@ -10,9 +10,10 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const nextCli = join(root, "node_modules", "next", "dist", "bin", "next");
 
-// Override: NEXT_WEB_FORCE_WEBPACK=1 on GHA if a webpack-only regression appears.
+// Use Turbopack on memory-constrained CI (GHA) and Vercel — webpack `next build` often exceeds ~6GB heap.
+// Override: NEXT_WEB_FORCE_WEBPACK=1 to force webpack when debugging a Turbopack-only issue.
 const useTurbopack =
-  process.env.GITHUB_ACTIONS === "true" &&
+  (process.env.GITHUB_ACTIONS === "true" || process.env.VERCEL === "1") &&
   process.env.NEXT_WEB_FORCE_WEBPACK !== "1";
 const modeArgs = useTurbopack ? ["--turbopack"] : ["--webpack"];
 const nodeOpts =
