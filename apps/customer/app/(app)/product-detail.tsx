@@ -225,16 +225,16 @@ export default function ProductDetailScreen() {
         onPress: () =>
           product.provider?.id
             ? user
-              ? router.push({ pathname: "/(app)/product-checkout", params: { provider_id: product.provider.id } } as any)
+              ? router.push({ pathname: "/(app)/(tabs)/shop/product-checkout", params: { provider_id: product.provider.id } } as any)
               : router.push({
                   pathname: "/(auth)/login",
                   params: {
-                    return_to: `/(app)/product-checkout?provider_id=${encodeURIComponent(product.provider.id)}`,
+                    return_to: `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(product.provider.id)}`,
                   },
                 } as any)
-            : router.push("/(app)/cart" as any),
+            : router.push("/(app)/(tabs)/cart" as any),
       },
-      { text: "View cart", onPress: () => router.push("/(app)/cart" as any) },
+      { text: "View cart", onPress: () => router.push("/(app)/(tabs)/cart" as any) },
       { text: "Continue", style: "cancel" },
     ]);
   }, [product, user, hasVariants, selectedVariantId, inStock, displayPrice, selectedVariant, addToCart]);
@@ -672,7 +672,7 @@ export default function ProductDetailScreen() {
           {/* Prominent next-step CTAs */}
           <View style={{ flexDirection: "row", marginTop: 12, gap: 10 }}>
             <TouchableOpacity
-              onPress={() => router.push("/(app)/cart" as any)}
+              onPress={() => router.push("/(app)/(tabs)/cart" as any)}
               style={{
                 flex: 1,
                 backgroundColor: "#111827",
@@ -686,16 +686,16 @@ export default function ProductDetailScreen() {
             <TouchableOpacity
               onPress={() => {
                 if (!product.provider?.id) {
-                  router.push("/(app)/cart" as any);
+                  router.push("/(app)/(tabs)/cart" as any);
                   return;
                 }
                 if (user) {
-                  router.push({ pathname: "/(app)/product-checkout", params: { provider_id: product.provider.id } } as any);
+                  router.push({ pathname: "/(app)/(tabs)/shop/product-checkout", params: { provider_id: product.provider.id } } as any);
                 } else {
                   router.push({
                     pathname: "/(auth)/login",
                     params: {
-                      return_to: `/(app)/product-checkout?provider_id=${encodeURIComponent(product.provider.id)}`,
+                      return_to: `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(product.provider.id)}`,
                     },
                   } as any);
                 }

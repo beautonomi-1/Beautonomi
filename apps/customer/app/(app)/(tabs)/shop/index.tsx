@@ -228,7 +228,7 @@ export default function ShopScreen() {
       else {
         haptic.success();
         Alert.alert("Added to cart", "View your cart or keep shopping.", [
-          { text: "View cart", onPress: () => router.push("/(app)/cart" as any) },
+          { text: "View cart", onPress: () => router.push("/(app)/(tabs)/cart" as any) },
           { text: "OK", style: "cancel" },
         ]);
       }
@@ -411,7 +411,7 @@ export default function ShopScreen() {
         </TouchableOpacity>
         <Text style={{ flex: 1, fontSize: 20, fontWeight: "700", color: "#111827" }}>Shop</Text>
         <TouchableOpacity
-          onPress={() => router.push("/(app)/cart" as any)}
+          onPress={() => router.push("/(app)/(tabs)/cart" as any)}
           style={{ position: "relative", padding: 4 }}
           accessibilityLabel={`Cart${cart.itemCount > 0 ? `, ${cart.itemCount} items` : ""}`}
         >

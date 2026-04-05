@@ -184,10 +184,18 @@ export function useCart() {
         await reloadGuestCart();
         return { error: null };
       }
+      let rollback: CartItem[] | null = null;
+      setItems((curr) => {
+        rollback = curr;
+        return curr.map((i) => (i.id === itemId ? { ...i, quantity } : i));
+      });
       const res = await api.patch<{ item: CartItem }>(`/api/me/cart/${itemId}`, {
         quantity,
       });
-      if (res.error) return { error: getApiErrorMessage(res.error, "Could not update quantity") };
+      if (res.error) {
+        if (rollback) setItems(rollback);
+        return { error: getApiErrorMessage(res.error, "Could not update quantity") };
+      }
       await fetchCart();
       return { error: null };
     },

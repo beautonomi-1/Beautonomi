@@ -91,11 +91,11 @@ export function useProductOrders() {
       use_wallet?: boolean;
     }) => {
       const res = await api.post<{ order: ProductOrder; paid_with_wallet?: boolean; amount_due?: number }>("/api/me/orders", payload as any);
-      if (res.error) return { data: null, paid_with_wallet: false, amount_due: 0, error: getApiErrorMessage(res.error, "Your order could not be placed.") };
+      if (res.error) return { data: null, paid_with_wallet: false, amount_due: undefined, error: getApiErrorMessage(res.error, "Your order could not be placed.") };
       return {
         data: res.data?.order ?? null,
         paid_with_wallet: res.data?.paid_with_wallet ?? false,
-        amount_due: res.data?.amount_due ?? 0,
+        amount_due: res.data?.amount_due,
         error: null,
       };
     },

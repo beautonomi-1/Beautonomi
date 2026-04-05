@@ -272,7 +272,7 @@ export default function ProductCheckoutScreen() {
               router.push({
                 pathname: "/(auth)/login",
                 params: {
-                  return_to: `/(app)/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
+                  return_to: `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
                 },
               } as any),
           },
@@ -414,7 +414,7 @@ export default function ProductCheckoutScreen() {
         <View style={{ flex: 1, padding: contentPadding, justifyContent: "center", alignItems: "center" }}>
           <Text style={{ fontSize: 16, color: "#6B7280", textAlign: "center" }}>Missing seller information. Open checkout from your cart.</Text>
           <TouchableOpacity
-            onPress={() => router.replace("/(app)/cart" as any)}
+            onPress={() => router.replace("/(app)/(tabs)/cart" as any)}
             style={{ marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: PRIMARY, borderRadius: 12 }}
           >
             <Text style={{ color: "#fff", fontWeight: "700" }}>Go to cart</Text>
@@ -450,7 +450,7 @@ export default function ProductCheckoutScreen() {
             Add products from this provider to your cart first.
           </Text>
           <TouchableOpacity
-            onPress={() => router.replace("/(app)/cart" as any)}
+            onPress={() => router.replace("/(app)/(tabs)/cart" as any)}
             style={{ marginTop: 24, paddingVertical: 14, paddingHorizontal: 28, backgroundColor: PRIMARY, borderRadius: 12 }}
           >
             <Text style={{ color: "#fff", fontWeight: "700" }}>View cart</Text>
@@ -508,7 +508,7 @@ export default function ProductCheckoutScreen() {
                 router.push({
                   pathname: "/(auth)/login",
                   params: {
-                    return_to: `/(app)/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
+                    return_to: `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
                   },
                 } as any)
               }
@@ -742,7 +742,7 @@ export default function ProductCheckoutScreen() {
                       router.push({
                         pathname: "/(auth)/login",
                         params: {
-                          return_to: `/(app)/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
+                          return_to: `/(app)/(tabs)/shop/product-checkout?provider_id=${encodeURIComponent(provider_id)}`,
                         },
                       } as any)
                     }

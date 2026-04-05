@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -44,6 +44,8 @@ export default function ProfileScreen() {
     ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
     : {};
   type ChecklistItem = { id: string; label: string; completed: boolean; required?: boolean };
+  const lastProfileSummarySuccessAt = useRef(0);
+
   const [profileData, setProfileData] = useState<{
     completion: number;
     topItems: { id: string; label: string }[];
@@ -59,47 +61,34 @@ export default function ProfileScreen() {
   const fetchProfileData = useCallback(async () => {
     if (!user) return;
     try {
-      const [compRes, profileRes, loyaltyRes, verifyRes, ratingRes] = await Promise.allSettled([
-        api.get<any>("/api/me/profile-completion"),
-        api.get<any>("/api/me/profile"),
-        api.get<any>("/api/me/loyalty"),
-        api.get<any>("/api/me/verification"),
-        api.get<any>("/api/me/rating"),
-      ]);
+      const res = await api.get<{
+        completion?: number;
+        topItems?: { id: string; label: string }[];
+        checklistItems?: ChecklistItem[];
+        loyaltyPoints?: number;
+        verified?: boolean;
+        ratingAverage?: number;
+        reviewCount?: number;
+        avatarUrl?: string | null;
+      }>("/api/me/profile-summary");
 
-      const compRaw = compRes.status === "fulfilled" ? compRes.value.data : null;
-      const comp = compRaw && typeof compRaw === "object" && compRaw !== null && "data" in compRaw
-        ? (compRaw as { data: { percentage?: number; topItems?: { id: string; label: string }[]; checklistItems?: ChecklistItem[]; avatar_url?: string | null } }).data
-        : compRaw;
-      const profileObj = profileRes.status === "fulfilled" && !profileRes.value?.error ? profileRes.value.data : null;
-      const avatarFromProfile = (profileObj && typeof profileObj === "object" && profileObj !== null && "avatar_url" in profileObj)
-        ? (profileObj as { avatar_url?: string | null }).avatar_url
-        : null;
+      if (res.error || !res.data) {
+        console.warn("[Profile] profile-summary error:", res.error?.message);
+        return;
+      }
 
-      const loyalty =
-        loyaltyRes.status === "fulfilled" ? loyaltyRes.value.data : null;
-      const verify =
-        verifyRes.status === "fulfilled" ? verifyRes.value.data : null;
-      const rating =
-        ratingRes.status === "fulfilled" ? ratingRes.value.data : null;
-
-      const rawLoyalty = loyalty && typeof loyalty === "object" ? loyalty : null;
-      const points =
-        rawLoyalty?.points_balance ??
-        rawLoyalty?.balance?.available ??
-        rawLoyalty?.points ??
-        0;
-
-      const checklist = Array.isArray(comp?.checklistItems) ? comp.checklistItems : [];
+      lastProfileSummarySuccessAt.current = Date.now();
+      const d = res.data;
+      const checklist = Array.isArray(d.checklistItems) ? d.checklistItems : [];
       setProfileData({
-        completion: comp?.percentage ?? 0,
-        topItems: comp?.topItems ?? [],
+        completion: d.completion ?? 0,
+        topItems: d.topItems ?? [],
         checklistItems: checklist,
-        loyaltyPoints: Number(points) || 0,
-        verified: verify?.verified ?? false,
-        ratingAverage: Number(rating?.rating_average) || 0,
-        reviewCount: Number(rating?.review_count) || 0,
-        avatarUrl: avatarFromProfile ?? comp?.avatar_url ?? null,
+        loyaltyPoints: Number(d.loyaltyPoints) || 0,
+        verified: d.verified ?? false,
+        ratingAverage: Number(d.ratingAverage) || 0,
+        reviewCount: Number(d.reviewCount) || 0,
+        avatarUrl: d.avatarUrl ?? null,
       });
     } catch (err) {
       console.warn("[Profile] fetchProfileData error:", err);
@@ -107,14 +96,22 @@ export default function ProfileScreen() {
   }, [user]);
 
   useEffect(() => {
-    fetchProfileData();
-  }, [fetchProfileData]);
+    if (!user) {
+      setProfileData(null);
+      lastProfileSummarySuccessAt.current = 0;
+      return;
+    }
+    void fetchProfileData();
+  }, [user, fetchProfileData]);
 
-  // Refetch when tab gains focus (e.g. return from Loyalty after redemption so points count updates)
+  // Stale-while-revalidate: show cached data; background refresh if tab refocused after 60s
   useFocusEffect(
     useCallback(() => {
-      if (user) fetchProfileData();
-    }, [user, fetchProfileData])
+      if (!user) return;
+      if (lastProfileSummarySuccessAt.current === 0) return;
+      if (Date.now() - lastProfileSummarySuccessAt.current < 60_000) return;
+      void fetchProfileData();
+    }, [user, fetchProfileData]),
   );
 
   const handleRefresh = useCallback(async () => {
@@ -489,9 +486,7 @@ export default function ProfileScreen() {
           <QuickAction
             icon="heart-outline"
             label="Saved"
-            onPress={() =>
-              router.push("/(app)/account-settings/wishlists")
-            }
+            onPress={() => router.push("/(app)/(tabs)/saved" as any)}
           />
         </View>
       </View>

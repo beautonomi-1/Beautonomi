@@ -178,10 +178,7 @@ export default function AppLayout() {
         <Stack.Screen name="about" options={{ headerShown: true, title: "About Us" }} />
         <Stack.Screen name="gift-card-purchase" options={{ headerShown: true, title: "Buy Gift Card" }} />
         <Stack.Screen name="review-write" options={{ headerShown: true, title: "Write Review" }} />
-        <Stack.Screen name="cart" options={{ headerShown: true, title: "Cart" }} />
         <Stack.Screen name="product-detail" options={{ headerShown: true, title: "Product" }} />
-        <Stack.Screen name="shop" options={{ headerShown: true, title: "Shop" }} />
-        <Stack.Screen name="product-checkout" options={{ headerShown: true, title: "Checkout" }} />
         <Stack.Screen name="product-order-detail" options={{ headerShown: true, title: "Order Details" }} />
         <Stack.Screen name="request-return" options={{ headerShown: true, title: "Request Return" }} />
         <Stack.Screen name="product-orders" options={{ headerShown: true, title: "My Orders" }} />

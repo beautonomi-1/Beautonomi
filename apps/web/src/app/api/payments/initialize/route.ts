@@ -2,15 +2,14 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
-import {
-  convertToSmallestUnit,
-  validateAmount,
-  generateTransactionReference,
-} from "@/lib/payments/paystack";
+import { generateTransactionReference } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveBookingPaystackAmount } from "@/lib/payments/resolve-paystack-initialize-amount";
+import { revalidateBookingSlotBeforePayment } from "@/lib/bookings/revalidate-booking-slot-before-payment";
 
 /**
  * POST /api/payments/initialize
@@ -26,16 +25,16 @@ export async function POST(request: Request) {
 
     const supabase = await getSupabaseServer();
     const body = await request.json();
-    const { booking_id, amount, currency, email, callback_url, metadata: clientMetadata } = body;
+    const { booking_id, currency, email, callback_url, metadata: clientMetadata } = body;
     const saveCard = clientMetadata?.save_card === true;
     const setAsDefault = clientMetadata?.set_as_default === true;
 
-    if (!booking_id || !amount || !email) {
+    if (!booking_id || !email) {
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: "booking_id, amount, and email are required",
+            message: "booking_id and email are required",
             code: "VALIDATION_ERROR",
           },
         },
@@ -89,23 +88,36 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate amount
-    const amountValidation = validateAmount(parseFloat(amount));
-    if (!amountValidation.valid) {
+    const resolved = await resolveBookingPaystackAmount(supabase, booking_id, auth.user.id);
+    if (resolved.ok === false) {
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: amountValidation.error || "Invalid amount",
-            code: "INVALID_AMOUNT",
+            message: resolved.message,
+            code: resolved.code,
           },
         },
-        { status: 400 }
+        { status: resolved.status },
       );
     }
 
-    // Convert amount to smallest currency unit (kobo/cents)
-    const amountInSmallestUnit = convertToSmallestUnit(parseFloat(amount));
+    const admin = getSupabaseAdmin();
+    const slotOk = await revalidateBookingSlotBeforePayment(admin, booking_id);
+    if (slotOk.ok === false) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: slotOk.message,
+            code: slotOk.code,
+          },
+        },
+        { status: 409 },
+      );
+    }
+
+    const amountInSmallestUnit = resolved.amountSmallestUnit;
     const transactionReference = generateTransactionReference("booking", booking_id);
 
     // Get platform settings for split code (transaction split for commission)

@@ -46,7 +46,17 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    if (error) return handleApiError(error, "Failed to fetch saved posts");
+    if (error) {
+      const msg = (error as { message?: string }).message || "";
+      if (/explore_saved_list|function .* does not exist/i.test(msg)) {
+        return errorResponse(
+          "Saved posts are temporarily unavailable. If this continues, contact support.",
+          "RPC_UNAVAILABLE",
+          503,
+        );
+      }
+      return handleApiError(error, "Failed to fetch saved posts");
+    }
 
     const items = rows || [];
     const hasMore = items.length > limit;

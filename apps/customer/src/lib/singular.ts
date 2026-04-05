@@ -34,7 +34,7 @@ export function buildCustomerRoute(params: SingularLinkParams): { pathname: stri
   const screen = ((q.screen ?? path) || "").toLowerCase();
 
   if (screen === "cart" || path === "cart") {
-    return { pathname: "/(app)/cart" };
+    return { pathname: "/(app)/(tabs)/cart" };
   }
   if (screen === "partner-profile" || path === "partner-profile") {
     const slug = q.slug ?? q.provider_slug ?? "";

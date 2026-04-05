@@ -15,6 +15,9 @@ interface ProviderCardProps {
   showNearestBadge?: boolean;
   showUpcomingBadge?: boolean;
   compact?: boolean;
+  /** Same coords used for home feed distance — keeps profile distance consistent when opening from a card */
+  feedOriginLat?: number | null;
+  feedOriginLng?: number | null;
 }
 
 const PLACEHOLDER = "https://placehold.co/400x300/f5f5f5/999?text=Beauty";
@@ -26,6 +29,8 @@ export const ProviderCard = React.memo(function ProviderCard({
   showNearestBadge = false,
   showUpcomingBadge = false,
   compact = false,
+  feedOriginLat,
+  feedOriginLng,
 }: ProviderCardProps) {
   const thumbnailUrl = provider.thumbnail_url || PLACEHOLDER;
   const avatarUrl = provider.avatar_url || provider.thumbnail_url || PLACEHOLDER;
@@ -47,10 +52,25 @@ export const ProviderCard = React.memo(function ProviderCard({
         idempotency_key: `click:${provider.campaign_id}:${provider.id}:${Date.now()}`,
       }).catch(() => {});
     }
-    const params: { slug: string; campaign_id?: string; provider_id?: string } = { slug: provider.slug };
+    const params: {
+      slug: string;
+      campaign_id?: string;
+      provider_id?: string;
+      lat?: string;
+      lng?: string;
+    } = { slug: provider.slug };
     if (provider.is_sponsored && provider.campaign_id && provider.id) {
       params.campaign_id = provider.campaign_id;
       params.provider_id = provider.id;
+    }
+    if (
+      feedOriginLat != null &&
+      feedOriginLng != null &&
+      Number.isFinite(feedOriginLat) &&
+      Number.isFinite(feedOriginLng)
+    ) {
+      params.lat = String(feedOriginLat);
+      params.lng = String(feedOriginLng);
     }
     router.push({ pathname: "/(app)/partner-profile", params });
   };
